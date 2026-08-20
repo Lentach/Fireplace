@@ -23,7 +23,7 @@ class _FakeEncryptionProvider extends EncryptionProvider {
   Future<void> deleteSessionWithPeer(int peerUserId) async {}
 
   @override
-  Future<void> ensureSession(int recipientId) async {
+  Future<void> ensureSession(int recipientId, {int deviceId = 1}) async {
     ensureSessionCalls++;
     if (failEnsureSession) {
       failEnsureSession = false;
@@ -32,7 +32,7 @@ class _FakeEncryptionProvider extends EncryptionProvider {
   }
 
   @override
-  Future<String> encrypt(int recipientId, String plaintext) async {
+  Future<String> encrypt(int recipientId, String plaintext, {int deviceId = 1}) async {
     return 'ciphertext';
   }
 

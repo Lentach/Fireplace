@@ -240,8 +240,13 @@ class SocketService {
     _socket?.emit('uploadOneTimePreKeys', {'keys': keys});
   }
 
-  void fetchPreKeyBundle(int userId) {
-    _socket?.emit('fetchPreKeyBundle', {'userId': userId});
+  void fetchPreKeyBundle(int userId, {int deviceId = 1}) {
+    // deviceId omitted for 1 — the server default, and an older server's DTO
+    // predates the field (rollout order is server first).
+    _socket?.emit('fetchPreKeyBundle', {
+      'userId': userId,
+      if (deviceId != 1) 'deviceId': deviceId,
+    });
   }
 
   void requestSessionRebuild(int recipientId) {

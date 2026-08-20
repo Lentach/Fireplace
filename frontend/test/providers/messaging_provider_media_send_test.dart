@@ -61,13 +61,13 @@ class _SendReadyEncryption extends EncryptionProvider {
   bool get hadIdentityReset => false;
 
   @override
-  Future<void> ensureSession(int recipientId) async {}
+  Future<void> ensureSession(int recipientId, {int deviceId = 1}) async {}
 
   final List<String> encryptedPlaintexts = [];
   final Map<String, Map<String, dynamic>> pendingRecords = {};
 
   @override
-  Future<String> encrypt(int recipientId, String plaintext) async {
+  Future<String> encrypt(int recipientId, String plaintext, {int deviceId = 1}) async {
     encryptedPlaintexts.add(plaintext);
     return '1:abc-${encryptedPlaintexts.length}';
   }

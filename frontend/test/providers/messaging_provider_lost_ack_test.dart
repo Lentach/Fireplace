@@ -32,7 +32,7 @@ class _RealStoreEncryption extends EncryptionProvider {
   bool get hadIdentityReset => false;
 
   @override
-  Future<void> ensureSession(int recipientId) async {}
+  Future<void> ensureSession(int recipientId, {int deviceId = 1}) async {}
 
   @override
   Future<void> deleteSessionWithPeer(int peerUserId) async {}
@@ -40,7 +40,7 @@ class _RealStoreEncryption extends EncryptionProvider {
   /// Deterministic, unique-per-send ciphertext. Reused verbatim as the
   /// pending-send store key and echoed back on the history row.
   @override
-  Future<String> encrypt(int recipientId, String plaintext) async =>
+  Future<String> encrypt(int recipientId, String plaintext, {int deviceId = 1}) async =>
       '2:lostack-cipher-${++_cipherSeq}';
 
   @override

@@ -46,7 +46,6 @@ class E2eIdentityCheckUnavailableException implements Exception {
       'the missing identity is a fresh install';
 }
 
-
 class EncryptionService {
   EncryptionService({
     int decryptedContentCacheLimit = 2000,
@@ -358,9 +357,7 @@ class EncryptionService {
   Future<void> _loadOwnIdentityReplaced(int userId) async {
     try {
       final prefs = await _sharedPrefs;
-      _ownIdentityReplacedAt = prefs.getString(
-        _ownIdentityReplacedKey(userId),
-      );
+      _ownIdentityReplacedAt = prefs.getString(_ownIdentityReplacedKey(userId));
       _ownIdentityReplacedSeenAt = prefs.getString(
         _ownIdentityReplacedSeenKey(userId),
       );
@@ -765,9 +762,10 @@ class EncryptionService {
     await _storage.write(key: 'e2e_${uid}_setup_complete', value: 'true');
   }
 
-  /// Check if we have an active session with the given user.
-  Future<bool> hasSession(int userId) async {
-    final address = SignalProtocolAddress(userId.toString(), _deviceId);
+  /// Check if we have an active session with the given user's [deviceId]
+  /// (default 1 — the pre-multi-device address every legacy caller means).
+  Future<bool> hasSession(int userId, {int deviceId = _deviceId}) async {
+    final address = SignalProtocolAddress(userId.toString(), deviceId);
     return _sessionStore.containsSession(address);
   }
 
@@ -777,12 +775,13 @@ class EncryptionService {
   ///
   /// Serialized per peer (see [_sessionTails]) so a delete never lands in the
   /// middle of an in-flight encrypt/decrypt load→store window.
-  Future<void> deleteSession(int userId) {
-    return _runSessionSerialized(userId, () async {
-      final address = SignalProtocolAddress(userId.toString(), _deviceId);
+  Future<void> deleteSession(int userId, {int deviceId = _deviceId}) {
+    return _runSessionSerialized(userId, deviceId, () async {
+      final address = SignalProtocolAddress(userId.toString(), deviceId);
       await _sessionStore.deleteSession(address);
       debugPrint(
-        '[EncryptionService] Session deleted for userId=$userId (broken session reset)',
+        '[EncryptionService] Session deleted for userId=$userId '
+        'deviceId=$deviceId (broken session reset)',
       );
     });
   }
@@ -803,18 +802,24 @@ class EncryptionService {
   /// Serialized per peer (see [_sessionTails]): processPreKeyBundle archives
   /// the current ratchet state and stores a new record — racing it against an
   /// in-flight encrypt/decrypt store loses one side's advance.
-  Future<void> buildSession(int userId, Map<String, dynamic> preKeyBundle) {
+  Future<void> buildSession(
+    int userId,
+    Map<String, dynamic> preKeyBundle, {
+    int deviceId = _deviceId,
+  }) {
     return _runSessionSerialized(
       userId,
-      () => _buildSessionSerialized(userId, preKeyBundle),
+      deviceId,
+      () => _buildSessionSerialized(userId, deviceId, preKeyBundle),
     );
   }
 
   Future<void> _buildSessionSerialized(
     int userId,
+    int deviceId,
     Map<String, dynamic> preKeyBundle,
   ) async {
-    final address = SignalProtocolAddress(userId.toString(), _deviceId);
+    final address = SignalProtocolAddress(userId.toString(), deviceId);
     final builder = SessionBuilder(
       _cipherSessionStore,
       _preKeyStore,
@@ -853,7 +858,7 @@ class EncryptionService {
 
     final bundle = PreKeyBundle(
       preKeyBundle['registrationId'] as int,
-      _deviceId,
+      deviceId,
       preKeyBundle['oneTimePreKeyId'] as int? ?? 0,
       oneTimePreKey,
       preKeyBundle['signedPreKeyId'] as int,
@@ -868,15 +873,17 @@ class EncryptionService {
     );
 
     await builder.processPreKeyBundle(bundle);
-    debugPrint('[EncryptionService] Session built with userId=$userId');
+    debugPrint(
+      '[EncryptionService] Session built with userId=$userId deviceId=$deviceId',
+    );
   }
 
-  /// Tail of the in-flight session-mutation chain per peer. Signal's Double
-  /// Ratchet is stateful: EVERY operation that does load→mutate→store on a
-  /// peer's SessionRecord — encrypt, decrypt, buildSession, deleteSession —
-  /// must run through [_runSessionSerialized]. Two such operations
-  /// interleaving at store await points lose one side's advance (lost
-  /// update):
+  /// Tail of the in-flight session-mutation chain per (peer, device) address.
+  /// Signal's Double Ratchet is stateful: EVERY operation that does
+  /// load→mutate→store on an address's SessionRecord — encrypt, decrypt,
+  /// buildSession, deleteSession — must run through [_runSessionSerialized].
+  /// Two such operations interleaving at store await points lose one side's
+  /// advance (lost update):
   ///  - encrypt vs encrypt: both load the same state and emit DUPLICATE
   ///    chain counters (the 2026-07-07 note-burst bug, 0.0.90);
   ///  - encrypt vs decrypt: a decrypt store landing after a concurrent
@@ -886,69 +893,99 @@ class EncryptionService {
   ///    brand-new message (the post-0.0.90 field reports). Reproduced
   ///    deterministically in encryption_encrypt_decrypt_race_probe_test.dart.
   ///
+  /// Keyed by the COMPOSITE (peerId, deviceId), never peerId alone: two
+  /// devices of one peer hold INDEPENDENT ratchets, and a shared tail would
+  /// let a device-2 store clobber a device-1 store (T4, spec §5.4 — own
+  /// devices are just another peer address to the ratchet layer).
+  ///
   /// NOT a reentrant mutex: guarded methods must stay leaf-level and never
-  /// await another guarded method for the same peer, or they chain behind
+  /// await another guarded method for the same address, or they chain behind
   /// themselves and hang. Cross-operation sequencing (ensureSession →
   /// buildSession then encrypt) belongs at the provider layer as separate
   /// sequential acquisitions.
-  final Map<int, Future<void>> _sessionTails = {};
+  final Map<(int, int), Future<void>> _sessionTails = {};
 
-  String _sessionLockName(int peerId) {
+  /// Cross-context (Web Lock) name for one (peer, device) SessionRecord.
+  ///
+  /// Device 1 keeps the EXACT legacy name: during a rollout window an old
+  /// PWA tab still locks `fireplace-e2e-session-<uid>-<peer>` for its
+  /// device-1 mutations, and a renamed lock would let the two builds
+  /// interleave on the same persisted record. Devices ≥ 2 get their own
+  /// suffix so two devices of one peer never serialize against each other
+  /// across tabs either.
+  String _sessionLockName(int peerId, int deviceId) {
     final userId = _userId;
     if (userId == null) {
       throw StateError('EncryptionService is not initialized');
     }
-    return 'fireplace-e2e-session-$userId-$peerId';
+    return deviceId == _deviceId
+        ? 'fireplace-e2e-session-$userId-$peerId'
+        : 'fireplace-e2e-session-$userId-$peerId-d$deviceId';
   }
 
   /// Queue [action] behind every in-flight mutation in this app engine, then
-  /// take the origin-wide Web Lock for the same account/peer. The browser lock
-  /// is load-bearing: separate PWA tabs have separate Dart heaps and therefore
-  /// separate [_sessionTails], but they mutate the same persisted SessionRecord.
-  Future<T> _runSessionSerialized<T>(int peerId, Future<T> Function() action) {
-    final tail = _sessionTails[peerId] ?? Future<void>.value();
+  /// take the origin-wide Web Lock for the same account/peer/device. The
+  /// browser lock is load-bearing: separate PWA tabs have separate Dart heaps
+  /// and therefore separate [_sessionTails], but they mutate the same
+  /// persisted SessionRecord.
+  Future<T> _runSessionSerialized<T>(
+    int peerId,
+    int deviceId,
+    Future<T> Function() action,
+  ) {
+    final key = (peerId, deviceId);
+    final tail = _sessionTails[key] ?? Future<void>.value();
     final result = tail.then(
-      (_) => _sessionCrossContextLock(_sessionLockName(peerId), action),
+      (_) =>
+          _sessionCrossContextLock(_sessionLockName(peerId, deviceId), action),
     );
-    _sessionTails[peerId] = result.then<void>((_) {}, onError: (_) {});
+    _sessionTails[key] = result.then<void>((_) {}, onError: (_) {});
     return result;
   }
 
-  /// In-flight encrypt count per recipient — the overlap probe. If this is
-  /// ever >0 at enqueue, two sends WERE concurrent even if they did not feel
-  /// "rapid" (a note send overlapping a resync decrypt, a typing-driven op,
-  /// another message). Logged durably so the field report can confirm or rule
-  /// out concurrency as the cause of a peer decrypt failure.
-  final Map<int, int> _encryptInFlight = {};
+  /// In-flight encrypt count per (recipient, device) — the overlap probe. If
+  /// this is ever >0 at enqueue, two sends WERE concurrent even if they did
+  /// not feel "rapid" (a note send overlapping a resync decrypt, a
+  /// typing-driven op, another message). Logged durably so the field report
+  /// can confirm or rule out concurrency as the cause of a peer decrypt
+  /// failure.
+  final Map<(int, int), int> _encryptInFlight = {};
 
-  /// Encrypt a plaintext string for the given recipient.
+  /// Encrypt a plaintext string for the given recipient [deviceId] (default 1).
   /// Returns "{type}:{base64_body}" format.
   ///
-  /// Serialized per peer with decrypt/buildSession/deleteSession (see
-  /// [_sessionTails]): concurrent callers queue in call order.
-  Future<String> encrypt(int recipientUserId, String plaintext) {
-    final inFlight = _encryptInFlight[recipientUserId] ?? 0;
+  /// Serialized per (peer, device) with decrypt/buildSession/deleteSession
+  /// (see [_sessionTails]): concurrent callers queue in call order.
+  Future<String> encrypt(
+    int recipientUserId,
+    String plaintext, {
+    int deviceId = _deviceId,
+  }) {
+    final key = (recipientUserId, deviceId);
+    final inFlight = _encryptInFlight[key] ?? 0;
     if (inFlight > 0) {
       E2ePersistentDiag.record('ENCRYPT_OVERLAP', {
         'recipientId': recipientUserId,
+        'deviceId': deviceId,
         'inFlight': inFlight,
       });
     }
-    _encryptInFlight[recipientUserId] = inFlight + 1;
+    _encryptInFlight[key] = inFlight + 1;
 
     final result = _runSessionSerialized(
       recipientUserId,
-      () => _encryptSerialized(recipientUserId, plaintext),
+      deviceId,
+      () => _encryptSerialized(recipientUserId, deviceId, plaintext),
     );
     // Error-swallowed continuation as the decrement hook, so a failed encrypt
     // never leaks an unhandled async error (the owning caller still sees it
     // via `result`).
     result.then<void>((_) {}, onError: (_) {}).whenComplete(() {
-      final n = (_encryptInFlight[recipientUserId] ?? 1) - 1;
+      final n = (_encryptInFlight[key] ?? 1) - 1;
       if (n <= 0) {
-        _encryptInFlight.remove(recipientUserId);
+        _encryptInFlight.remove(key);
       } else {
-        _encryptInFlight[recipientUserId] = n;
+        _encryptInFlight[key] = n;
       }
     });
     return result;
@@ -956,12 +993,10 @@ class EncryptionService {
 
   Future<String> _encryptSerialized(
     int recipientUserId,
+    int deviceId,
     String plaintext,
   ) async {
-    final address = SignalProtocolAddress(
-      recipientUserId.toString(),
-      _deviceId,
-    );
+    final address = SignalProtocolAddress(recipientUserId.toString(), deviceId);
     final cipher = SessionCipher(
       _cipherSessionStore,
       _preKeyStore,
@@ -989,8 +1024,9 @@ class EncryptionService {
     int senderUserId,
     String ciphertextStr, {
     int? messageId,
+    int deviceId = _deviceId,
   }) {
-    return _runSessionSerialized(senderUserId, () async {
+    return _runSessionSerialized(senderUserId, deviceId, () async {
       if (messageId != null) {
         final replay = await _loadRawDecryptedContent(messageId, ciphertextStr);
         if (replay != null) {
@@ -1002,7 +1038,11 @@ class EncryptionService {
         }
       }
 
-      final plaintext = await _decryptSerialized(senderUserId, ciphertextStr);
+      final plaintext = await _decryptSerialized(
+        senderUserId,
+        deviceId,
+        ciphertextStr,
+      );
       if (messageId != null) {
         await _saveRawDecryptedContent(messageId, ciphertextStr, plaintext);
       }
@@ -1012,9 +1052,10 @@ class EncryptionService {
 
   Future<String> _decryptSerialized(
     int senderUserId,
+    int deviceId,
     String ciphertextStr,
   ) async {
-    final address = SignalProtocolAddress(senderUserId.toString(), _deviceId);
+    final address = SignalProtocolAddress(senderUserId.toString(), deviceId);
     final cipher = SessionCipher(
       _cipherSessionStore,
       _preKeyStore,
@@ -1344,7 +1385,11 @@ class EncryptionService {
       Map<String, dynamic>? existing;
       // Authoritative: a cache miss here would let the narrower writes below
       // (above all the "[Decryption failed]" label) replace real plaintext.
-      final existingRaw = _rawRecord(await _authoritativeSnapshot(), prefs, key);
+      final existingRaw = _rawRecord(
+        await _authoritativeSnapshot(),
+        prefs,
+        key,
+      );
       if (existingRaw != null) {
         try {
           existing = jsonDecode(existingRaw) as Map<String, dynamic>;
@@ -1547,7 +1592,11 @@ class EncryptionService {
       final prefs = await _sharedPrefs;
       final snapshot = await _authoritativeSnapshot();
       for (final id in wanted) {
-        final raw = _rawRecord(snapshot, prefs, _decryptedContentKey(userId, id));
+        final raw = _rawRecord(
+          snapshot,
+          prefs,
+          _decryptedContentKey(userId, id),
+        );
         if (raw == null) continue;
         try {
           result[id] = jsonDecode(raw) as Map<String, dynamic>;
@@ -3011,10 +3060,7 @@ class EncryptionService {
   String _rawDecryptedContentKey(int userId, int messageId) =>
       '${_rawDecryptedContentPrefix(userId)}$messageId';
 
-  Future<void> _pruneRawDecryptedContent(
-    ContentKv prefs,
-    int userId,
-  ) async {
+  Future<void> _pruneRawDecryptedContent(ContentKv prefs, int userId) async {
     final prefix = _rawDecryptedContentPrefix(userId);
     final keys = prefs
         .getKeys()
@@ -3045,10 +3091,7 @@ class EncryptionService {
   /// happen slightly early; every sweep resets the estimate to the true count.
   int? _cachedContentEstimate;
 
-  Future<void> _pruneDecryptedContentCache(
-    ContentKv prefs,
-    int userId,
-  ) async {
+  Future<void> _pruneDecryptedContentCache(ContentKv prefs, int userId) async {
     // NO reload here: the only caller (saveDecryptedContent) reloaded a few
     // lines earlier and has not awaited anything that could invalidate it.
     if (_decryptedContentCacheLimit <= 0) {
@@ -3124,10 +3167,7 @@ class EncryptionService {
   /// Every key holding a persisted plaintext record for [prefix], across both
   /// stores. The seeding count and the eviction sweep MUST use the same set,
   /// or the estimate can sit under the cap while the real total is over it.
-  Future<Set<String>> _cachedContentKeys(
-    ContentKv prefs,
-    String prefix,
-  ) async {
+  Future<Set<String>> _cachedContentKeys(ContentKv prefs, String prefix) async {
     return <String>{
       // DELIBERATELY the per-engine cache, not [_storeSnapshot]. Eviction here
       // destroys the only copy of a message and calls [markRetired], which is

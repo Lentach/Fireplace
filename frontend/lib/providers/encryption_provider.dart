@@ -30,11 +30,13 @@ class EncryptionProvider extends ChangeNotifier {
   /// bypass provider state.
   EncryptionService get encryptionService => _encryptionService;
   bool _e2eInitialized = false;
-  final Map<int, Completer<Map<String, dynamic>>> _pendingPreKeyFetches = {};
+  final Map<(int, int), Completer<Map<String, dynamic>>> _pendingPreKeyFetches =
+      {};
   bool _generatingMoreKeys = false;
 
-  /// User IDs whose sessions should be force-rebuilt on the next ensureSession call.
-  final Set<int> _forceSessionRebuild = {};
+  /// (userId, deviceId) addresses whose sessions should be force-rebuilt on
+  /// the next ensureSession call for that address.
+  final Set<(int, int)> _forceSessionRebuild = {};
 
   /// Cache of decrypted messages by id. Used when history decrypt hits
   /// DuplicateMessageException (session already advanced by live messages).
@@ -92,8 +94,8 @@ class EncryptionProvider extends ChangeNotifier {
   /// null. Drives the account-level notice; persisted until dismissed.
   String? get ownIdentityReplacedAt => _encryptionService.ownIdentityReplacedAt;
 
-  /// The pending pre-key fetch completers, keyed by recipient user ID.
-  Map<int, Completer<Map<String, dynamic>>> get pendingPreKeyFetches =>
+  /// The pending pre-key fetch completers, keyed by (userId, deviceId).
+  Map<(int, int), Completer<Map<String, dynamic>>> get pendingPreKeyFetches =>
       _pendingPreKeyFetches;
 
   // ---------- Emit Callback ----------
@@ -106,11 +108,19 @@ class EncryptionProvider extends ChangeNotifier {
 
   // ---------- Public Interface ----------
 
-  /// Encrypt plaintext for the given recipient.
+  /// Encrypt plaintext for the given recipient [deviceId] (default 1).
   /// Delegates to [EncryptionService.encrypt].
-  Future<String> encrypt(int recipientId, String plaintext) async {
+  Future<String> encrypt(
+    int recipientId,
+    String plaintext, {
+    int deviceId = 1,
+  }) async {
     try {
-      return await _encryptionService.encrypt(recipientId, plaintext);
+      return await _encryptionService.encrypt(
+        recipientId,
+        plaintext,
+        deviceId: deviceId,
+      );
     } catch (e) {
       _error = 'Encryption failed: $e';
       notifyListeners();
@@ -139,17 +149,23 @@ class EncryptionProvider extends ChangeNotifier {
     }
   }
 
-  /// Ensure a Signal session exists with [recipientId]. If not, fetches their
-  /// pre-key bundle from the server (via emit callback) and builds a session.
-  /// Uses a Completer with 10s timeout.
-  Future<void> ensureSession(int recipientId) async {
+  /// Ensure a Signal session exists with [recipientId]'s [deviceId]
+  /// (default 1 — the pre-multi-device address). If not, fetches that
+  /// device's pre-key bundle from the server (via emit callback) and builds a
+  /// session. Uses a Completer with 10s timeout.
+  Future<void> ensureSession(int recipientId, {int deviceId = 1}) async {
     if (!_e2eInitialized || _currentUserId == null) {
       throw StateError('E2E not initialized or user not authenticated');
     }
-    final needsRebuild = _forceSessionRebuild.remove(recipientId);
-    final hasSession = await _encryptionService.hasSession(recipientId);
+    final addressKey = (recipientId, deviceId);
+    final needsRebuild = _forceSessionRebuild.remove(addressKey);
+    final hasSession = await _encryptionService.hasSession(
+      recipientId,
+      deviceId: deviceId,
+    );
     _e2eFlowLog('SESSION_ENSURE', {
       'recipientId': recipientId,
+      'deviceId': deviceId,
       'hasSession': hasSession,
       'needsRebuild': needsRebuild,
     });
@@ -167,47 +183,66 @@ class EncryptionProvider extends ChangeNotifier {
       _e2eFlowLog('SESSION_ARCHIVED_FOR_REBUILD', {'recipientId': recipientId});
     }
 
-    // Check if we already have a pending fetch for this user
-    if (_pendingPreKeyFetches.containsKey(recipientId)) {
-      await _pendingPreKeyFetches[recipientId]!.future;
+    // Check if we already have a pending fetch for this address
+    if (_pendingPreKeyFetches.containsKey(addressKey)) {
+      await _pendingPreKeyFetches[addressKey]!.future;
       return;
     }
 
     final completer = Completer<Map<String, dynamic>>();
-    _pendingPreKeyFetches[recipientId] = completer;
+    _pendingPreKeyFetches[addressKey] = completer;
 
-    _e2eFlowLog('SESSION_FETCH_EMIT', {'recipientId': recipientId});
-    _emit?.call('fetchPreKeyBundle', {'userId': recipientId});
+    _e2eFlowLog('SESSION_FETCH_EMIT', {
+      'recipientId': recipientId,
+      'deviceId': deviceId,
+    });
+    // deviceId is omitted for 1 (the server default), so an older server that
+    // predates the field keeps answering — rollout order is server first.
+    _emit?.call('fetchPreKeyBundle', {
+      'userId': recipientId,
+      if (deviceId != 1) 'deviceId': deviceId,
+    });
 
     // Wait for the server response with a timeout
     final bundle = await completer.future.timeout(
       const Duration(seconds: 10),
       onTimeout: () {
-        _pendingPreKeyFetches.remove(recipientId);
+        _pendingPreKeyFetches.remove(addressKey);
         throw TimeoutException(
-          'Pre-key bundle fetch timed out for user $recipientId',
+          'Pre-key bundle fetch timed out for user $recipientId '
+          'device $deviceId',
         );
       },
     );
 
-    await _encryptionService.buildSession(recipientId, bundle);
-    debugPrint('[E2E] Session established with userId=$recipientId');
-    _e2eFlowLog('SESSION_BUILT', {'recipientId': recipientId});
+    await _encryptionService.buildSession(
+      recipientId,
+      bundle,
+      deviceId: deviceId,
+    );
+    debugPrint(
+      '[E2E] Session established with userId=$recipientId deviceId=$deviceId',
+    );
+    _e2eFlowLog('SESSION_BUILT', {
+      'recipientId': recipientId,
+      'deviceId': deviceId,
+    });
   }
 
-  /// Whether the session for [recipientId] should be force-rebuilt.
-  bool needsSessionRebuild(int recipientId) {
-    return _forceSessionRebuild.contains(recipientId);
+  /// Whether the session for [recipientId]'s [deviceId] should be force-rebuilt.
+  bool needsSessionRebuild(int recipientId, {int deviceId = 1}) {
+    return _forceSessionRebuild.contains((recipientId, deviceId));
   }
 
-  /// Remove [recipientId] from the force-rebuild set.
-  void clearSessionRebuild(int recipientId) {
-    _forceSessionRebuild.remove(recipientId);
+  /// Remove [recipientId]'s [deviceId] from the force-rebuild set.
+  void clearSessionRebuild(int recipientId, {int deviceId = 1}) {
+    _forceSessionRebuild.remove((recipientId, deviceId));
   }
 
-  /// Mark [recipientId] for session force-rebuild on next ensureSession.
-  void markSessionRebuild(int recipientId) {
-    _forceSessionRebuild.add(recipientId);
+  /// Mark [recipientId]'s [deviceId] for session force-rebuild on next
+  /// ensureSession.
+  void markSessionRebuild(int recipientId, {int deviceId = 1}) {
+    _forceSessionRebuild.add((recipientId, deviceId));
   }
 
   /// Whether a Signal session exists with [peerUserId]. Diagnostic + policy
@@ -760,10 +795,16 @@ class EncryptionProvider extends ChangeNotifier {
     return result;
   }
 
-  /// Clear a pending pre-key fetch for [recipientId] (e.g. on send failure
-  /// so retry gets a fresh fetch).
-  void clearPendingPreKeyFetch(int recipientId) {
-    _pendingPreKeyFetches.remove(recipientId);
+  /// Clear pending pre-key fetches for [recipientId] (e.g. on send failure
+  /// so retry gets a fresh fetch). [deviceId] narrows to one address; absent,
+  /// every device's pending fetch for that user is dropped — the send-failure
+  /// caller cannot know which device's fetch died.
+  void clearPendingPreKeyFetch(int recipientId, {int? deviceId}) {
+    if (deviceId != null) {
+      _pendingPreKeyFetches.remove((recipientId, deviceId));
+      return;
+    }
+    _pendingPreKeyFetches.removeWhere((key, _) => key.$1 == recipientId);
   }
 
   // ---------- TEMP storage-durability probes (remove after root cause) ----------
@@ -1386,20 +1427,26 @@ class EncryptionProvider extends ChangeNotifier {
   }
 
   /// Handler for `preKeyBundleResponse` server event.
-  /// Completes the pending pre-key fetch for the given user.
+  /// Completes the pending pre-key fetch for the given (user, device). A
+  /// server that predates per-device bundles echoes no `deviceId` — that
+  /// means device 1, so the legacy pairing keeps working.
   void onPreKeyBundleResponse(dynamic data) {
     final map = data as Map<String, dynamic>;
     final userId = map['userId'] as int;
+    final deviceId = map['deviceId'] is int ? map['deviceId'] as int : 1;
     final bundle = map['bundle'];
     _e2eFlowLog('PREKEY_RESP', {
       'userId': userId,
+      'deviceId': deviceId,
       'hasBundle': bundle != null && bundle is Map<String, dynamic>,
     });
-    final completer = _pendingPreKeyFetches.remove(userId);
+    final completer = _pendingPreKeyFetches.remove((userId, deviceId));
     if (completer == null || completer.isCompleted) return;
     if (bundle == null || bundle is! Map<String, dynamic>) {
       completer.completeError(
-        StateError('Recipient has no key bundle (userId=$userId)'),
+        StateError(
+          'Recipient has no key bundle (userId=$userId deviceId=$deviceId)',
+        ),
       );
       return;
     }
@@ -1564,7 +1611,8 @@ class EncryptionProvider extends ChangeNotifier {
     // Mark session for rebuild — actual delete happens atomically in ensureSession
     // before the next send, avoiding the race where a hot-path deleteSession
     // wipes a session that encrypt() is about to use.
-    _forceSessionRebuild.add(fromUserId);
+    // Legacy event — it predates devices, so it names the device-1 session.
+    _forceSessionRebuild.add((fromUserId, 1));
     _e2eFlowLog('SESSION_REBUILD_RECEIVED', {'fromUserId': fromUserId});
   }
 

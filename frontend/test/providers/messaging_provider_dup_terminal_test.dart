@@ -52,7 +52,7 @@ class _DupEncryption extends EncryptionProvider {
   bool get hadIdentityReset => false;
 
   @override
-  Future<void> ensureSession(int recipientId) async {}
+  Future<void> ensureSession(int recipientId, {int deviceId = 1}) async {}
 
   @override
   bool wasDecryptedBefore(int messageId) => ledger.contains(messageId);
