@@ -15,6 +15,8 @@ import '../providers/friends_provider.dart';
 import 'chat_detail_screen.dart';
 import '../utils/pending_deep_link_stub.dart'
     if (dart.library.html) '../utils/pending_deep_link_web.dart';
+import '../utils/page_lifecycle_stub.dart'
+    if (dart.library.html) '../utils/page_lifecycle_web.dart';
 import '../utils/e2e_diag_log.dart';
 import '../utils/tab_visibility.dart';
 import '../utils/instant_opaque_route.dart';
@@ -38,6 +40,7 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   int _selectedIndex = 0;
   StreamSubscription<dynamic>? _tabVisibilitySub;
+  StreamSubscription<dynamic>? _pageResumeSub;
   UnreadBadgeSync? _unreadBadgeSync;
 
   @override
@@ -68,23 +71,42 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           }
           return;
         }
-        unawaited(() async {
-          await auth.ensureSessionReady();
-          if (!mounted) return;
-          if (!auth.isLoggedIn) return;
-          context.read<ConversationsProvider>().setClientVisible(true);
-          context.read<ConnectionProvider>().ensureReconnectIfNeeded();
-          // iOS PWA: a notification tap on a suspended WebView loses the SW's
-          // click postMessage — the SW also persisted the target conversation
-          // to IndexedDB, so drain it now that the tab is visible again.
-          final pendingConvId = await consumePendingNotificationDeepLink();
-          if (pendingConvId != null && mounted) {
-            context
-                .read<ConversationsProvider>()
-                .requestNavigateToConversationFromNotification(pendingConvId);
-          }
-        }());
+        unawaited(_recoverForeground(markVisible: true));
       });
+      // Android Chrome freezes backgrounded PWA tabs. A notification-tap
+      // focus() or bfcache restore revives the page with a dead socket, and
+      // per the Page Lifecycle spec `resume` fires BEFORE visibilitychange —
+      // so visibility is unknowable here. Run the socket-recovery half
+      // unconditionally; the tab-visibility listener above owns the
+      // clientVisible flip when the page actually becomes visible (field
+      // bug, Aug 2026).
+      _pageResumeSub = registerPageResumeListener(() {
+        if (!mounted) return;
+        E2eDiagLog.add('PAGE_RESUME', {});
+        unawaited(_recoverForeground(markVisible: false));
+      });
+    }
+  }
+
+  Future<void> _recoverForeground({required bool markVisible}) async {
+    final auth = context.read<AuthProvider>();
+    await auth.ensureSessionReady();
+    if (!mounted) return;
+    if (!auth.isLoggedIn) return;
+    // Only a real visibility signal may claim "user is looking": a background
+    // unfreeze must not re-enable read receipts or server push suppression.
+    if (markVisible) {
+      context.read<ConversationsProvider>().setClientVisible(true);
+    }
+    context.read<ConnectionProvider>().ensureReconnectIfNeeded();
+    // iOS PWA: a notification tap on a suspended WebView loses the SW's
+    // click postMessage — the SW also persisted the target conversation
+    // to IndexedDB, so drain it now that the tab is visible again.
+    final pendingConvId = await consumePendingNotificationDeepLink();
+    if (pendingConvId != null && mounted) {
+      context
+          .read<ConversationsProvider>()
+          .requestNavigateToConversationFromNotification(pendingConvId);
     }
   }
 
@@ -129,6 +151,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       unawaited(badge.dispose());
     }
     _tabVisibilitySub?.cancel();
+    _pageResumeSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }

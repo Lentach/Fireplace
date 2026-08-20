@@ -65,6 +65,9 @@ class ConversationsProvider extends ChangeNotifier {
     _emit = emit;
   }
 
+  /// Foreground truth for gating client-side effects (e.g. read receipts).
+  bool get isClientVisible => _clientVisible;
+
   /// Called from [MainShell] lifecycle / tab visibility so backend can suppress redundant pushes.
   void setClientVisible(bool visible) {
     if (_clientVisible == visible) return;

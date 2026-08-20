@@ -275,17 +275,25 @@ self.addEventListener('notificationclick', function (event) {
         }
         if (!best && all.length > 0) { best = all[0]; }
 
+        var url = convId != null ? '/?notify_conv=' + convId : '/';
+
         if (best) {
           // The pending deep-link stays stored as a fallback: if this client is
           // a suspended/stale iOS WebView the message is lost, and the page
           // drains IndexedDB on resume instead. The page deletes the record
           // when either path handles it.
           best.postMessage({ type: 'push-notification-click', conversationId: convId });
-          return best.focus().catch(function () {});
+          // Android field bug: focus() on a frozen/discarded WebAPK client can
+          // reject, and the previously swallowed rejection made notification
+          // taps do visibly nothing until the user swipe-closed the app
+          // (users 48/90, Aug 2026). Fall back to opening a fresh window; the
+          // inner catch keeps a blocked popup from rejecting waitUntil.
+          return best.focus().catch(function () {
+            return clients.openWindow(url).catch(function () {});
+          });
         }
         // Cold start / killed PWA — URL param works on Android/desktop; iOS
         // ignores it (start_url) and relies on the IndexedDB record above.
-        var url = convId != null ? '/?notify_conv=' + convId : '/';
         return clients.openWindow(url);
       })
   );
