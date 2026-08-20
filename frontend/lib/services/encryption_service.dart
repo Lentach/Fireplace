@@ -195,6 +195,11 @@ class EncryptionService {
   /// Public key data to upload to the server (set after key generation).
   Map<String, dynamic>? _keysForUpload;
 
+  /// True only between a §5.1 [adoptProvisionedIdentity] and its ceremony's
+  /// settlement — the sole state in which [discardProvisionedIdentity] may
+  /// destroy key material (T3 review invariant lock).
+  bool _provisionalIdentityAdopted = false;
+
   /// True once [initialize] refused to start because identity material is
   /// incomplete. The only way forward is
   /// [regenerateIdentityAfterConfirmedLoss], which the USER must consent to.
@@ -600,6 +605,19 @@ class EncryptionService {
     required String ikPrivBase64,
     required String dakPubBase64,
   }) async {
+    // Invariant lock (T3 review NOTE): adopting over a device that already
+    // holds ANY identity would silently orphan every session keyed to it —
+    // the UI gates this flow on identityIncomplete, but the service must
+    // refuse on its own too. Both record shapes checked (atomic + legacy).
+    final existingPrefix = 'e2e_${userId}_';
+    if (await _storage.read(key: '${existingPrefix}identity_record_v1') !=
+            null ||
+        await _storage.read(key: '${existingPrefix}identity_key_pair') !=
+            null) {
+      throw StateError(
+        'adoptProvisionedIdentity: device already holds an identity',
+      );
+    }
     // Parse EVERYTHING first: a malformed blob must fail before any write.
     final identityKeyPair = IdentityKeyPair(
       IdentityKey.fromBytes(base64Decode(ikPubBase64), 0),
@@ -650,6 +668,7 @@ class EncryptionService {
     needsKeyUpload = true;
     identityIncomplete = false;
     _initialized = true;
+    _provisionalIdentityAdopted = true;
     E2ePersistentDiag.record('LINK_IDENTITY_ADOPTED', {'userId': userId});
   }
 
@@ -658,6 +677,14 @@ class EncryptionService {
   /// it started. Only runs on a device whose ceremony this process started —
   /// the adopt path is reachable only while the device holds no identity.
   Future<void> discardProvisionedIdentity(int userId) async {
+    // Invariant lock (T3 review NOTE): this delete is legal ONLY against an
+    // identity this process adopted in a still-unsettled ceremony. Any other
+    // caller would be destroying a real account's keys.
+    if (!_provisionalIdentityAdopted) {
+      throw StateError(
+        'discardProvisionedIdentity: no provisional identity to discard',
+      );
+    }
     final p = 'e2e_${userId}_';
     final all = await _storage.readAll();
     for (final key in all.keys.toList()) {
@@ -678,6 +705,7 @@ class EncryptionService {
     }
     _keysForUpload = null;
     needsKeyUpload = false;
+    _provisionalIdentityAdopted = false;
     _initialized = false;
     E2ePersistentDiag.record('LINK_IDENTITY_DISCARDED', {'userId': userId});
   }
