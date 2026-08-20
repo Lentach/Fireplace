@@ -733,4 +733,92 @@ that is the designed outcome).
     session that cannot outlive the process. A backend restart drops every pending stage,
     indistinguishable from TTL expiry and handled by I1 abort hygiene; nothing durable
     leaks (counter gaps are safe per (a)).
+- **Amendment 2026-08-20 (T4 pre-implementation settlement, per the Stage-0 "settle before
+  code" rule; doc remains frozen — these pin wire shapes, ingest ordering and marker
+  vocabulary for mechanisms §5.2/§5.3 already mandate, changing no protocol). Grounded in
+  `docs/plans/2026-08-20-t4-envelope-fanout-research.md` (three codebase scouts + two
+  primary-source librarians):**
+  - **(v) Send DTO growth + legacy normalization AT INGEST.** `SendMessageDto` grows three
+    OPTIONAL fields: `envelopes: [{userId, deviceId, ciphertext}]` (non-empty when present;
+    each ciphertext individually bound by the existing 65536 limit), `senderListVersion`,
+    `recipientListVersion`. A send is NEW-MODEL iff `envelopes` is present and non-empty,
+    else LEGACY. Before any persistence a legacy send carrying `encryptedContent` is
+    NORMALIZED into the one-element list `[{userId: recipientId, deviceId: 1, ciphertext:
+    encryptedContent}]`, so exactly ONE downstream write path exists (Signal-Server keeps a
+    single normalized `messagesByDeviceId` map regardless of count —
+    `push/MessageSender.java`); a send carrying neither ciphertext (PING and today's
+    ciphertext-less shapes) writes NO envelope and keeps today's behavior. NEW-MODEL rows
+    NEVER write `messages.encryptedContent` — it stays NULL, retained per §4 for
+    pre-migration rows only. Exactly one envelope per `(userId, deviceId)`: a duplicate pair
+    is REFUSED (`duplicate_envelope_device`), mirroring Signal-Server's
+    `IncomingMessageList.isNotDuplicateRecipients()` (last-wins would brick a device's
+    ratchet). An envelope addressed to a recipient device that is not live
+    (`DevicesService.isActive`) is REFUSED (`unknown_recipient_device`) — fail-closed; the
+    full falsification-7 revocation case remains T6. A self-sync envelope addressed to the
+    ORIGIN device itself is REFUSED (`self_envelope_for_origin_device`). Envelope COVERAGE is
+    not otherwise server-enforced: the server cannot know which devices the client could
+    build sessions to, so I5's never-silently-drop-a-device duty stays with the client.
+    Version cross-check applies per party ONLY when that party has an
+    `account_authorizations` row: an enrolled party's stamp MUST equal the stored
+    `listVersion` (absent stamp counts as mismatch); a non-enrolled party is single-device by
+    construction (rows ≥ 2 are minted solely by the provisioning commit) and carries no
+    stamp. Legacy normalized sends carry no stamps and bypass the cross-check entirely — the
+    §8 rollout window, whose cost is that a legacy client reaches device 1 only.
+  - **(vi) `deviceListStale` refusal payload.** The stale-send refusal is a response-event in
+    house style (`{success:false, error}` per `chat-device-list.service.ts`, NOT the send
+    path's bare `error` emit), emitted to the CALLER socket only:
+    `deviceListStale {success:false, error:"device_list_stale", tempId?, lists:[{userId,
+    version, listCanonical(base64), listSignature, enrollment:{dakPub, enrollmentSig,
+    enrollmentCreatedAt}}]}`. §5.2's singular payload becomes an ENTRY in `lists`, one per
+    party whose stamp mismatched (recipient first when both are), so ONE round trip repairs
+    both views — Signal-Server returns device IDs only
+    (`MismatchedDevicesResponse`/`StaleDevicesResponse`) and forces a second `/keys` trip,
+    while Sesame §3.3 explicitly permits returning the key material with the ids; ours is the
+    Sesame shape and is self-verifying. `tempId` is REQUIRED for correlation when several
+    sends are in flight. The check runs BEFORE any write: zero message rows, zero envelope
+    rows (falsification 5; prior art is validate-then-insert,
+    `MessageSender.validateIndividualMessageBundle` throwing before
+    `messagesManager.insert`). The client MUST verify the I7 chain on a delivered list before
+    adopting it and MUST fail the send on an invalid chain (falsification 4 — never the
+    server's bare word), then retry at most 3 times before surfacing a hard send failure
+    (Sesame §3.3/§4.1 mandate a finite cap without fixing the number).
+  - **(vii) `senderListInfo` DEFERS to T5.** The §5.2 layer-2 field lives in E2E plaintext
+    inside the ciphertext; the server never sees, stores, or validates it, so it is purely a
+    client concern. Its falsifications (16 split-view, 22 false-alarm discipline) are both
+    recipient-side escalation tests, and the receive-side guards they interact with are
+    exactly the ones T5 flips to origin-device scoping. Landing the field alone in T4 would
+    be dead weight; `E2eEnvelope.parse` ignores unknown keys, so adding it later costs
+    nothing (the `linkPreview` precedent, root `CLAUDE.md` §7 envelope-compat).
+  - **(viii) Per-device history reads + `envelopeStatus` vocabulary.** `getMessages` /
+    `findByConversation` join `message_envelopes` on the REQUESTING `(recipientUserId,
+    recipientDeviceId)` taken from the socket's JWT (legacy JWTs default to device 1, so
+    addressing is uniform). The served ciphertext continues to ride the EXISTING
+    `encryptedContent` wire field — no new ciphertext field, so older clients are untouched.
+    Per-row fallback, device-gated: (1) this device's envelope → serve its ciphertext, NO
+    `envelopeStatus`; (2) legacy `messages.encryptedContent` → served ONLY to the row's
+    session owner, i.e. `deviceId == (originDeviceId ?? 1)` for the requester's OWN rows and
+    `deviceId == 1` for rows it received; (3) otherwise the additive string marker. Two
+    marker values, both carrying NO ciphertext: `"none_for_device"` (the row predates this
+    device's link — the §5.3 honest placeholder) and `"own_origin"` (the requester's own row
+    on its origin device: no envelope exists for the origin device BY DESIGN, since self-sync
+    envelopes address the sender's OTHER devices). The second value is REQUIRED — without it
+    the origin device would render "sent before this device was linked" over every message it
+    ever sent. An extensible string code set is the industry-consistent shape (Matrix
+    MSC2399's `m.room_key.withheld` `code`; `matrix-sdk-crypto`'s `UtdCause` keeps a dedicated
+    `SentBeforeWeJoined` variant distinct from generic `Unknown`). Client rules: a marker row
+    is EXCLUDED from the decrypt pass (it can never become `[Decryption failed]`), NEVER
+    overwrites locally stored plaintext (it joins `placeholderContents`), and is NEVER a
+    destruction trigger (I8, falsification 13); `own_origin` renders from the local plaintext
+    store exactly as today and has no placeholder copy of its own.
+  - **(ix) Lost-ack continuity under fan-out (forced by (v)+(viii); T5 keeps the rest).**
+    Because a new-model row carries no ciphertext for its origin device, the landed
+    exact-ciphertext pending-send reconcile (`frontend/CLAUDE.md` §5) would silently stop
+    matching — a data-loss regression in the path that guards the ONLY plaintext copy.
+    Therefore T4 lands the §5.4 key itself: the client MINTS `sendToken` for every new-model
+    send and stores it IN the pending-send record; the server echoes `sendToken` on
+    `messageSent` and on history rows served to that row's origin device; the reconcile
+    matches `(senderId, originDeviceId, sendToken)` and MUST resolve to EXACTLY ONE row, an
+    ambiguous match being a no-op that never consumes the record. Exact-ciphertext equality
+    REMAINS the fallback for legacy and pre-existing records. The own-sender guard flip,
+    self-sync consumption rules, and re-ack-without-re-fan under envelopes stay T5.
 - **Next gate:** per-ticket implementation reviews (T1–T8); Stage 0 is CLOSED 2026-08-19.
