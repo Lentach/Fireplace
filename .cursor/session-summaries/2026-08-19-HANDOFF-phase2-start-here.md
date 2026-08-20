@@ -1,3 +1,9 @@
+> ## ⛔ SUPERSEDED 2026-08-20 — read `2026-08-20-HANDOFF-phase2-T3-start-here.md` instead.
+> Everything below predates: both owner decisions (now LOCKED), the cooldown carve-out
+> (`94d030d`, live-fired), Stage 0 (CLOSED, amendments (a)–(h)), T1 (`584f2d3`) and T2
+> (`6101774`). Its §1 owner rules and §5 environment traps remain true and are restated in the
+> 08-20 file; its "two open decisions" and repo state are STALE.
+
 # HANDOFF — Fireplace multi-device, Phase 2 starts here (2026-08-19)
 
 **You are picking up a program mid-flight. Read this file to the end before touching anything.**
