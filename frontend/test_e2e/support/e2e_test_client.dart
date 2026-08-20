@@ -228,6 +228,11 @@ class E2eClient {
     'identityResetCancelResult',
     'recoveryKeySet',
     'ownKeyBundleStatus',
+    // Phase 2 T2: DAK enrollment + signed device list.
+    'deviceAuthorityEnrolled',
+    'deviceListUpdated',
+    'deviceList',
+    'deviceListChanged',
     'newFriendRequest',
     'friendRequestSent',
     'friendRequestFailed',
@@ -420,6 +425,47 @@ class E2eClient {
       reason: '$label own bundle status',
     );
     return (payload as Map).cast<String, dynamic>();
+  }
+
+  /// Emits `enrollDeviceAuthority` (Phase 2 T2, spec §3) and returns the
+  /// server's `deviceAuthorityEnrolled` answer — success or refusal.
+  Future<Map<String, dynamic>> enrollDeviceAuthority(
+    Map<String, dynamic> payload,
+  ) async {
+    events.discard('deviceAuthorityEnrolled');
+    socketService.socket!.emit('enrollDeviceAuthority', payload);
+    final answer = await events.next(
+      'deviceAuthorityEnrolled',
+      reason: '$label enrollment answer',
+    );
+    return (answer as Map).cast<String, dynamic>();
+  }
+
+  /// Emits `updateDeviceList` (a DAK-signed list mutation, spec §3/§5.2) and
+  /// returns the server's `deviceListUpdated` answer.
+  Future<Map<String, dynamic>> updateDeviceList(
+    Map<String, dynamic> payload,
+  ) async {
+    events.discard('deviceListUpdated');
+    socketService.socket!.emit('updateDeviceList', payload);
+    final answer = await events.next(
+      'deviceListUpdated',
+      reason: '$label list update answer',
+    );
+    return (answer as Map).cast<String, dynamic>();
+  }
+
+  /// Emits `getDeviceList` for [targetUserId] and returns the `deviceList`
+  /// answer: `{userId, authorization: {...} | null}`.
+  Future<Map<String, dynamic>> fetchDeviceList(int targetUserId) async {
+    events.discard('deviceList');
+    socketService.socket!.emit('getDeviceList', {'userId': targetUserId});
+    final answer = await events.next(
+      'deviceList',
+      where: (p) => p is Map && p['userId'] == targetUserId,
+      reason: '$label device list for user $targetUserId',
+    );
+    return (answer as Map).cast<String, dynamic>();
   }
 
   /// Uploads staged OTPs. [tagIdentityEpoch] selects the current client wire

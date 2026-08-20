@@ -1,0 +1,252 @@
+import {
+  DeviceListRejectedError,
+  DeviceListService,
+} from './device-list.service';
+import { DEVICE_LIST_VECTOR as V } from './device-list-signature.vectors';
+
+/**
+ * Server-side gate of the DAK-signed device list (Phase 2 T2). Signatures are
+ * the REAL Dart-client vectors (see device-list-signature.util.spec.ts) —
+ * this spec covers the service's own laws: first-write-wins enrollment (I2),
+ * version monotonicity with an atomic CAS (falsification 3), byte-exact
+ * storage of the client's base64 (falsification 23), and the published-
+ * identity gate. The wire harness proves the same laws over a live socket +
+ * Postgres.
+ */
+
+interface AuthRepoMock {
+  findOne: jest.Mock;
+  insert: jest.Mock;
+  query: jest.Mock;
+}
+
+describe('DeviceListService', () => {
+  let authRepo: AuthRepoMock;
+  let keyBundleRepo: { findOne: jest.Mock };
+  let service: DeviceListService;
+
+  const enrollment = () => ({
+    dakPub: V.dakPub,
+    enrollmentSig: V.enrollmentSig,
+    createdAt: V.createdAtMs,
+    listCanonical: V.listCanonical,
+    listSignature: V.listSignature,
+  });
+
+  const storedRow = () => ({
+    userId: V.userId,
+    dakPub: V.dakPub,
+    enrollmentSig: V.enrollmentSig,
+    enrollmentCreatedAt: new Date(V.createdAtMs),
+    listVersion: 1,
+    listSignature: V.listSignature,
+    listCanonical: V.listCanonical,
+  });
+
+  beforeEach(() => {
+    authRepo = {
+      findOne: jest.fn(),
+      insert: jest.fn().mockResolvedValue(undefined),
+      // repo.query() returns [rows, rowCount] for UPDATE (backend/CLAUDE.md
+      // §4) — the mock MUST return the tuple shape or it hides the exact bug
+      // class the OTP claim shipped with.
+      query: jest.fn().mockResolvedValue([[], 1]),
+    };
+    keyBundleRepo = {
+      findOne: jest
+        .fn()
+        .mockResolvedValue({ identityPublicKey: V.identityPublicKey }),
+    };
+    service = new DeviceListService(authRepo as never, keyBundleRepo as never);
+  });
+
+  describe('enroll (first-write-wins, I2)', () => {
+    it('verifies both signatures against the PUBLISHED identity and stores the exact base64', async () => {
+      await service.enroll(V.userId, enrollment());
+
+      // Account-scoped identity lookup, same as the §6.1 lock.
+      expect(keyBundleRepo.findOne).toHaveBeenCalledWith({
+        where: { userId: V.userId },
+        order: { deviceId: 'ASC' },
+      });
+      expect(authRepo.insert).toHaveBeenCalledWith({
+        userId: V.userId,
+        dakPub: V.dakPub,
+        enrollmentSig: V.enrollmentSig,
+        enrollmentCreatedAt: new Date(V.createdAtMs),
+        listVersion: 1,
+        listSignature: V.listSignature,
+        // BYTE-EXACT: the stored string is the client's base64 verbatim.
+        listCanonical: V.listCanonical,
+      });
+    });
+
+    it('refuses when the account has no published identity', async () => {
+      keyBundleRepo.findOne.mockResolvedValue(null);
+      await expect(service.enroll(V.userId, enrollment())).rejects.toThrow(
+        new DeviceListRejectedError('no_published_identity'),
+      );
+      expect(authRepo.insert).not.toHaveBeenCalled();
+    });
+
+    it('refuses an enrollment signature made by a DIFFERENT identity', async () => {
+      keyBundleRepo.findOne.mockResolvedValue({
+        identityPublicKey: V.lockNewIdentityPublicKey,
+      });
+      await expect(service.enroll(V.userId, enrollment())).rejects.toThrow(
+        new DeviceListRejectedError('invalid_enrollment_signature'),
+      );
+    });
+
+    it('refuses a second enrollment on the unique violation, loudly, never overwriting', async () => {
+      authRepo.insert.mockRejectedValue(
+        Object.assign(new Error('duplicate key'), {
+          driverError: { code: '23505' },
+        }),
+      );
+      await expect(service.enroll(V.userId, enrollment())).rejects.toThrow(
+        new DeviceListRejectedError('already_enrolled'),
+      );
+    });
+
+    it('propagates a non-constraint insert failure unchanged', async () => {
+      authRepo.insert.mockRejectedValue(new Error('connection terminated'));
+      await expect(service.enroll(V.userId, enrollment())).rejects.toThrow(
+        'connection terminated',
+      );
+    });
+
+    it('refuses a canonical whose userId is not the caller', async () => {
+      // The pinned canonical carries userId 4242; enroll as 17.
+      keyBundleRepo.findOne.mockResolvedValue({
+        identityPublicKey: V.identityPublicKey,
+      });
+      await expect(service.enroll(17, enrollment())).rejects.toThrow(
+        DeviceListRejectedError,
+      );
+      expect(authRepo.insert).not.toHaveBeenCalled();
+    });
+
+    it('refuses an enrollment list at version > 1', async () => {
+      await expect(
+        service.enroll(V.userId, {
+          ...enrollment(),
+          listCanonical: V.v2ListCanonical,
+          listSignature: V.v2ListSignature,
+        }),
+      ).rejects.toThrow(
+        new DeviceListRejectedError('enrollment_version_must_be_1'),
+      );
+    });
+
+    it('refuses a duplicate-key canonical AT PARSE (falsification 23)', async () => {
+      const ambiguous = Buffer.from(
+        `{"userId":${V.userId},"version":1,"version":1,"devices":[]}`,
+        'utf8',
+      ).toString('base64');
+      await expect(
+        service.enroll(V.userId, { ...enrollment(), listCanonical: ambiguous }),
+      ).rejects.toThrow(new DeviceListRejectedError('invalid_canonical'));
+    });
+
+    it('refuses a non-canonical base64 transport form', async () => {
+      // Same bytes, whitespace-broken base64: storing this string would break
+      // the byte-exact serve.
+      const broken = `${V.listCanonical.slice(0, 10)} ${V.listCanonical.slice(10)}`;
+      await expect(
+        service.enroll(V.userId, { ...enrollment(), listCanonical: broken }),
+      ).rejects.toThrow(new DeviceListRejectedError('invalid_canonical'));
+    });
+  });
+
+  describe('applySignedListUpdate (monotonic versions, falsification 3)', () => {
+    it('accepts a valid v2 signed by the ENROLLED DAK via an atomic CAS', async () => {
+      authRepo.findOne.mockResolvedValue(storedRow());
+      await expect(
+        service.applySignedListUpdate(V.userId, {
+          listCanonical: V.v2ListCanonical,
+          listSignature: V.v2ListSignature,
+        }),
+      ).resolves.toBe(2);
+      const [sql, params] = authRepo.query.mock.calls[0] as [string, unknown[]];
+      expect(sql).toContain('"listVersion" < $3');
+      expect(params).toEqual([
+        V.v2ListCanonical,
+        V.v2ListSignature,
+        2,
+        V.userId,
+      ]);
+    });
+
+    it('refuses when the account never enrolled', async () => {
+      authRepo.findOne.mockResolvedValue(null);
+      await expect(
+        service.applySignedListUpdate(V.userId, {
+          listCanonical: V.v2ListCanonical,
+          listSignature: V.v2ListSignature,
+        }),
+      ).rejects.toThrow(new DeviceListRejectedError('not_enrolled'));
+    });
+
+    it('refuses a replay/rollback: version <= stored (falsification 3)', async () => {
+      authRepo.findOne.mockResolvedValue({ ...storedRow(), listVersion: 2 });
+      await expect(
+        service.applySignedListUpdate(V.userId, {
+          listCanonical: V.v2ListCanonical,
+          listSignature: V.v2ListSignature,
+        }),
+      ).rejects.toThrow(new DeviceListRejectedError('stale_version'));
+      expect(authRepo.query).not.toHaveBeenCalled();
+    });
+
+    it('refuses when the CAS loses a concurrent race (rowCount 0)', async () => {
+      authRepo.findOne.mockResolvedValue(storedRow());
+      authRepo.query.mockResolvedValue([[], 0]);
+      await expect(
+        service.applySignedListUpdate(V.userId, {
+          listCanonical: V.v2ListCanonical,
+          listSignature: V.v2ListSignature,
+        }),
+      ).rejects.toThrow(new DeviceListRejectedError('stale_version'));
+    });
+
+    it('refuses a signature by anything but the enrolled DAK (falsification 2)', async () => {
+      // The stored DAK is the identity key here — the vector list signature
+      // no longer verifies, exactly like an IK-signed mutation.
+      authRepo.findOne.mockResolvedValue({
+        ...storedRow(),
+        dakPub: V.identityPublicKey,
+      });
+      await expect(
+        service.applySignedListUpdate(V.userId, {
+          listCanonical: V.v2ListCanonical,
+          listSignature: V.v2ListSignature,
+        }),
+      ).rejects.toThrow(new DeviceListRejectedError('invalid_list_signature'));
+      expect(authRepo.query).not.toHaveBeenCalled();
+    });
+
+    it('refuses a cross-construction signature: enrollment sig as list sig (falsification 25)', async () => {
+      authRepo.findOne.mockResolvedValue(storedRow());
+      await expect(
+        service.applySignedListUpdate(V.userId, {
+          listCanonical: V.v2ListCanonical,
+          listSignature: V.enrollmentSig,
+        }),
+      ).rejects.toThrow(new DeviceListRejectedError('invalid_list_signature'));
+    });
+  });
+
+  describe('getAuthorization', () => {
+    it('returns the stored row untouched (serve-byte-exact upstream)', async () => {
+      const row = storedRow();
+      authRepo.findOne.mockResolvedValue(row);
+      await expect(service.getAuthorization(V.userId)).resolves.toBe(row);
+    });
+
+    it('returns null for a never-enrolled account', async () => {
+      authRepo.findOne.mockResolvedValue(null);
+      await expect(service.getAuthorization(V.userId)).resolves.toBeNull();
+    });
+  });
+});

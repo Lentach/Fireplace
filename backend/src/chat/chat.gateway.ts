@@ -21,6 +21,7 @@ import { ChatPresenceService } from './services/chat-presence.service';
 import { ChatBlockService } from './services/chat-block.service';
 import { ChatSearchService } from './services/chat-search.service';
 import { ChatReactionService } from './services/chat-reaction.service';
+import { ChatDeviceListService } from './services/chat-device-list.service';
 import { userRoom } from './utils/user-room';
 import { DEFAULT_DEVICE_ID } from '../key-bundles/key-bundles.service';
 import { DevicesService } from '../key-bundles/devices.service';
@@ -78,6 +79,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private chatBlockService: ChatBlockService,
     private chatSearchService: ChatSearchService,
     private chatReactionService: ChatReactionService,
+    private chatDeviceListService: ChatDeviceListService,
     private devicesService: DevicesService,
   ) {}
 
@@ -475,6 +477,53 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       data,
       this.server,
     );
+  }
+
+  // ========== DEVICE LIST (Phase 2 T2, spec §3/§7 row 424) ==========
+
+  /**
+   * DAK enrollment (§3). Tight limit like the reset ceremony: a legitimate
+   * account enrolls once in its lifetime, and each attempt costs signature
+   * verifications.
+   */
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 900000 } })
+  @SubscribeMessage('enrollDeviceAuthority')
+  async handleEnrollDeviceAuthority(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: unknown,
+  ) {
+    return this.chatDeviceListService.handleEnrollDeviceAuthority(
+      client,
+      data,
+      this.server,
+    );
+  }
+
+  /** DAK-signed list mutation (§3/§5.2) — mutating-action tier. */
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 60, ttl: 900000 } })
+  @SubscribeMessage('updateDeviceList')
+  async handleUpdateDeviceList(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: unknown,
+  ) {
+    return this.chatDeviceListService.handleUpdateDeviceList(
+      client,
+      data,
+      this.server,
+    );
+  }
+
+  /** Serve any account's enrollment + signed list (I7) — fetch tier. */
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 300, ttl: 900000 } })
+  @SubscribeMessage('getDeviceList')
+  async handleGetDeviceList(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: unknown,
+  ) {
+    return this.chatDeviceListService.handleGetDeviceList(client, data);
   }
 
   // ========== CONVERSATION HANDLERS ==========

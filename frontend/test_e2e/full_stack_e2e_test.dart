@@ -30,8 +30,14 @@
 // bundles/OTPs) in the TARGET dev DB — harmless local cruft; never point
 // E2E_BASE_URL at production.
 
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:fireplace/services/device_list/device_authority_engine.dart';
+import 'package:fireplace/services/device_list/device_list_canonical.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/e2e_test_client.dart';
@@ -888,6 +894,340 @@ void main() {
         },
         timeout: const Timeout(Duration(minutes: 1)),
       );
+    });
+
+    // Phase 2 T2 (spec §3/§5.2 + §12 amendments (d)/(g)): DAK enrollment,
+    // the DAK-signed device list, and its falsifications — 2 (IK-signed
+    // mutation), 3 (rollback/replay), 23 (byte-exact canonical), 25
+    // (cross-construction signatures). Reuses alice (enrolling primary) and
+    // bob (verifying peer): the register throttle budget is spent
+    // (10/hr/IP across the suite), so NO new accounts here.
+    group('DAK-signed device list (Phase 2 T2)', () {
+      final engine = DeviceAuthorityEngine();
+      late IdentityKeyPair aliceIdentity;
+      late int enrolledCreatedAt;
+      late Map<String, dynamic> enrollPayload;
+      late Map<String, dynamic> enrolledAuthorization;
+
+      setUpAll(() async {
+        aliceIdentity = IdentityKeyPair.fromSerialized(
+          base64Decode(await alice.exportIdentityPair()),
+        );
+      });
+
+      test('enrollment pins DAK + v1 signed list, serves it byte-exact, and a '
+          'peer chain-verifies IK→E→DAK→list (I7, falsification 23)', () async {
+        // An unenrolled account answers null — the fail-closed shape a
+        // legacy-server probe also relies on (§8).
+        final before = await bob.fetchDeviceList(alice.userId);
+        expect(before['authorization'], isNull);
+
+        alice.events.discard('deviceListChanged');
+        enrolledCreatedAt = DateTime.now().millisecondsSinceEpoch;
+        final result = await engine.enroll(
+          userId: alice.userId,
+          identity: aliceIdentity,
+          createdAtMs: enrolledCreatedAt,
+          send: (payload) {
+            enrollPayload = payload;
+            return alice.enrollDeviceAuthority(payload);
+          },
+        );
+        expect(result.accepted, isTrue, reason: 'error=${result.error}');
+
+        // The account's sessions learn about the accepted write (§7 row
+        // 424: deviceListChanged).
+        final changed = await alice.events.next(
+          'deviceListChanged',
+          where: (p) => p is Map && p['userId'] == alice.userId,
+          reason: 'alice deviceListChanged v1',
+        );
+        expect((changed as Map)['listVersion'], 1);
+
+        // Served BYTE-EXACT: the stored base64 is the minted base64,
+        // character for character (falsification 23 transport rule).
+        final own = await alice.fetchDeviceList(alice.userId);
+        final auth = (own['authorization'] as Map).cast<String, dynamic>();
+        expect(auth['listCanonical'], enrollPayload['listCanonical']);
+        expect(auth['listSignature'], enrollPayload['listSignature']);
+        expect(auth['dakPub'], enrollPayload['dakPub']);
+        expect(auth['enrollmentSig'], enrollPayload['enrollmentSig']);
+        expect(
+          auth['enrollmentCreatedAt'],
+          enrolledCreatedAt,
+          reason: 'peers re-verify E over the exact signed createdAt',
+        );
+        expect(auth['listVersion'], 1);
+
+        // Peer view: bob fetches the list and verifies the FULL chain
+        // against his TOFU'd view of alice's identity key (I7).
+        final tofu = await bob.fetchBundleFor(alice.userId);
+        final answer = await bob.fetchDeviceList(alice.userId);
+        enrolledAuthorization = (answer['authorization'] as Map)
+            .cast<String, dynamic>();
+        expect(
+          enrolledAuthorization['listCanonical'],
+          enrollPayload['listCanonical'],
+          reason: 'listCanonical must survive the wire byte-exact',
+        );
+        final verdict = DeviceAuthorityEngine.verifyPeerDeviceList(
+          authorization: enrolledAuthorization,
+          tofuIdentityKeyBase64: tofu['identityPublicKey'] as String,
+          expectedUserId: alice.userId,
+        );
+        expect(verdict.ok, isTrue, reason: 'reason=${verdict.reason}');
+        expect(verdict.deviceList!.devices.single.deviceId, 1);
+      }, timeout: const Timeout(Duration(minutes: 2)));
+
+      test('a second enrollment is refused — first-write-wins, the DAK '
+          'authority is born once (I2)', () async {
+        final second = DeviceAuthorityEngine();
+        final result = await second.enroll(
+          userId: alice.userId,
+          identity: aliceIdentity,
+          send: alice.enrollDeviceAuthority,
+        );
+        expect(result.accepted, isFalse);
+        expect(result.error, 'already_enrolled');
+
+        // Nothing moved: the pinned enrollment is the original one.
+        final own = await alice.fetchDeviceList(alice.userId);
+        final auth = (own['authorization'] as Map).cast<String, dynamic>();
+        expect(auth['dakPub'], enrollPayload['dakPub']);
+        expect(auth['listVersion'], 1);
+      }, timeout: const Timeout(Duration(minutes: 1)));
+
+      test('a list mutation signed by IK instead of DAK is rejected by the '
+          'server and by the peer verifier (falsification 2)', () async {
+        final canonical = encodeCanonicalDeviceList(
+          DeviceList(
+            userId: alice.userId,
+            version: 2,
+            devices: [
+              DeviceListEntry(
+                deviceId: 1,
+                platform: 'android',
+                addedAtMs: enrolledCreatedAt,
+              ),
+            ],
+          ),
+        );
+        // Signed with the CORRECT list context but the WRONG authority:
+        // the account's identity key (what a compromised linked PWA holds).
+        final ikSignature = Curve.calculateSignature(
+          aliceIdentity.getPrivateKey(),
+          buildDeviceListMessage(canonical),
+        );
+        final answer = await alice.updateDeviceList({
+          'listCanonical': base64Encode(canonical),
+          'listSignature': base64Encode(ikSignature),
+        });
+        expect(answer['success'], isFalse);
+        expect(answer['error'], 'invalid_list_signature');
+
+        // Client half: the same forgery presented as a getDeviceList
+        // answer is refused by the chain verifier.
+        final verdict = DeviceAuthorityEngine.verifyPeerDeviceList(
+          authorization: {
+            ...enrolledAuthorization,
+            'listVersion': 2,
+            'listCanonical': base64Encode(canonical),
+            'listSignature': base64Encode(ikSignature),
+          },
+          tofuIdentityKeyBase64: base64Encode(
+            aliceIdentity.getPublicKey().serialize(),
+          ),
+          expectedUserId: alice.userId,
+        );
+        expect(verdict.ok, isFalse);
+        expect(verdict.reason, 'invalid_list_signature');
+
+        // The stored list did not move.
+        final own = await alice.fetchDeviceList(alice.userId);
+        expect((own['authorization'] as Map)['listVersion'], 1);
+      }, timeout: const Timeout(Duration(minutes: 1)));
+
+      test('version rollback, replay, and unsigned mutations are refused '
+          'loudly; a valid v2 advances (falsification 3)', () async {
+        final v2 = DeviceList(
+          userId: alice.userId,
+          version: 2,
+          devices: [
+            DeviceListEntry(
+              deviceId: 1,
+              platform: 'android',
+              addedAtMs: enrolledCreatedAt,
+              name: 'primary',
+            ),
+          ],
+        );
+        alice.events.discard('deviceListChanged');
+        final v2Payload = engine.signList(v2);
+        final accepted = await alice.updateDeviceList(v2Payload);
+        expect(accepted['success'], isTrue, reason: '$accepted');
+        expect(accepted['listVersion'], 2);
+        final changed = await alice.events.next(
+          'deviceListChanged',
+          where: (p) => p is Map && p['listVersion'] == 2,
+          reason: 'alice deviceListChanged v2',
+        );
+        expect((changed as Map)['userId'], alice.userId);
+
+        // Replay of the accepted v2 → refused (version <= stored).
+        final replayed = await alice.updateDeviceList(v2Payload);
+        expect(replayed['success'], isFalse);
+        expect(replayed['error'], 'stale_version');
+
+        // Rollback: a FRESH valid signature over version 1 → refused.
+        final rollback = await alice.updateDeviceList(
+          engine.signList(
+            DeviceList(
+              userId: alice.userId,
+              version: 1,
+              devices: [
+                DeviceListEntry(
+                  deviceId: 1,
+                  platform: 'android',
+                  addedAtMs: enrolledCreatedAt,
+                ),
+              ],
+            ),
+          ),
+        );
+        expect(rollback['success'], isFalse);
+        expect(rollback['error'], 'stale_version');
+
+        // Unsigned/garbage signature at a NEW version → refused.
+        final v3 = engine.signList(
+          DeviceList(userId: alice.userId, version: 3, devices: v2.devices),
+        );
+        final unsigned = await alice.updateDeviceList({
+          'listCanonical': v3['listCanonical'],
+          'listSignature': base64Encode(Uint8List(64)),
+        });
+        expect(unsigned['success'], isFalse);
+        expect(unsigned['error'], 'invalid_list_signature');
+
+        // The stored list is exactly the accepted v2, byte-exact.
+        final own = await alice.fetchDeviceList(alice.userId);
+        final auth = (own['authorization'] as Map).cast<String, dynamic>();
+        expect(auth['listVersion'], 2);
+        expect(auth['listCanonical'], v2Payload['listCanonical']);
+
+        // Client half of the rollback flag: a peer that pinned v2 and is
+        // then served the old v1 answer raises the LOUD flag (I7).
+        final verdict = DeviceAuthorityEngine.verifyPeerDeviceList(
+          authorization: enrolledAuthorization,
+          tofuIdentityKeyBase64: base64Encode(
+            aliceIdentity.getPublicKey().serialize(),
+          ),
+          expectedUserId: alice.userId,
+          previousVersion: 2,
+        );
+        expect(verdict.ok, isFalse);
+        expect(verdict.reason, 'version_rollback');
+      }, timeout: const Timeout(Duration(minutes: 2)));
+
+      test('an ambiguous canonical is rejected AT PARSE even when correctly '
+          'DAK-signed (falsification 23)', () async {
+        // Duplicate-key bytes a canonical writer can never produce, signed
+        // with the REAL enrolled DAK so only the parser can refuse them.
+        final duplicateKey = Uint8List.fromList(
+          utf8.encode(
+            '{"userId":${alice.userId},"version":4,"version":4,"devices":'
+            '[{"addedAt":1,"deviceId":1,"platform":"android"}]}',
+          ),
+        );
+        // ignore: invalid_use_of_visible_for_testing_member
+        final dupSig = engine.debugSignCanonicalBytes(duplicateKey);
+        final dup = await alice.updateDeviceList({
+          'listCanonical': base64Encode(duplicateKey),
+          'listSignature': base64Encode(dupSig),
+        });
+        expect(dup['success'], isFalse);
+        expect(dup['error'], 'invalid_canonical');
+
+        // Whitespace re-serialization of a valid list: same rejection.
+        final whitespace = Uint8List.fromList(
+          utf8.encode(
+            '{"userId":${alice.userId}, "version":4,"devices":'
+            '[{"addedAt":1,"deviceId":1,"platform":"android"}]}',
+          ),
+        );
+        // ignore: invalid_use_of_visible_for_testing_member
+        final wsSig = engine.debugSignCanonicalBytes(whitespace);
+        final ws = await alice.updateDeviceList({
+          'listCanonical': base64Encode(whitespace),
+          'listSignature': base64Encode(wsSig),
+        });
+        expect(ws['success'], isFalse);
+        expect(ws['error'], 'invalid_canonical');
+
+        // The client parser refuses the identical bytes (shared grammar).
+        expect(
+          () => parseCanonicalDeviceList(duplicateKey),
+          throwsA(isA<CanonicalDeviceListException>()),
+        );
+
+        final own = await alice.fetchDeviceList(alice.userId);
+        expect((own['authorization'] as Map)['listVersion'], 2);
+      }, timeout: const Timeout(Duration(minutes: 1)));
+
+      test('a signature minted for one construction is rejected by every '
+          'other construction\'s verifier (falsification 25)', () async {
+        // Enrollment signature presented as a list signature.
+        final crossList = await alice.updateDeviceList({
+          'listCanonical': enrollPayload['listCanonical'],
+          'listSignature': enrollPayload['enrollmentSig'],
+        });
+        expect(crossList['success'], isFalse);
+        expect(crossList['error'], 'invalid_list_signature');
+
+        // bob (unenrolled) attempts enrollment whose E-slot carries other
+        // constructions' signatures. His engine mints honestly, then the
+        // signature is swapped — everything else stays valid.
+        final bobIdentity = IdentityKeyPair.fromSerialized(
+          base64Decode(await bob.exportIdentityPair()),
+        );
+        final bobEngine = DeviceAuthorityEngine();
+        final bobPayload = bobEngine.mintEnrollment(
+          userId: bob.userId,
+          identity: bobIdentity,
+          createdAtMs: DateTime.now().millisecondsSinceEpoch,
+        );
+
+        // (a) The DAK list signature presented as the enrollment sig.
+        final listAsEnroll = await bob.enrollDeviceAuthority({
+          ...bobPayload,
+          'enrollmentSig': bobPayload['listSignature'],
+        });
+        expect(listAsEnroll['success'], isFalse);
+        expect(listAsEnroll['error'], 'invalid_enrollment_signature');
+
+        // (b) A FROZEN §6.1 registration-lock signature (0x05-leading
+        // layout, no context) presented as the enrollment sig — the
+        // CVE-2022-39250-class replay amendment (d) exists to kill.
+        final ikSerialized = bobIdentity.getPublicKey().serialize();
+        final lockMessage = Uint8List.fromList([
+          ...ikSerialized,
+          ...utf8.encode('${bob.userId}'),
+          ...List<int>.generate(32, (i) => i),
+        ]);
+        final lockSig = Curve.calculateSignature(
+          bobIdentity.getPrivateKey(),
+          lockMessage,
+        );
+        final lockAsEnroll = await bob.enrollDeviceAuthority({
+          ...bobPayload,
+          'enrollmentSig': base64Encode(lockSig),
+        });
+        expect(lockAsEnroll['success'], isFalse);
+        expect(lockAsEnroll['error'], 'invalid_enrollment_signature');
+
+        // The refusals wrote nothing: bob is still unenrolled.
+        final bobOwn = await bob.fetchDeviceList(bob.userId);
+        expect(bobOwn['authorization'], isNull);
+      }, timeout: const Timeout(Duration(minutes: 1)));
     });
 
     test('no unexpected socket errors surfaced during the run', () {

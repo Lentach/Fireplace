@@ -10,6 +10,7 @@ import { RecoveryKey } from './recovery-key.entity';
 import { DevicesService } from './devices.service';
 import { KeyBundlesService } from './key-bundles.service';
 import { IdentityResetService } from './identity-reset.service';
+import { DeviceListService } from './device-list.service';
 
 @Module({
   imports: [
@@ -26,7 +27,17 @@ import { IdentityResetService } from './identity-reset.service';
       RecoveryKey,
     ]),
   ],
-  providers: [DevicesService, KeyBundlesService, IdentityResetService],
-  exports: [DevicesService, KeyBundlesService, IdentityResetService],
+  providers: [
+    DevicesService,
+    KeyBundlesService,
+    IdentityResetService,
+    DeviceListService,
+  ],
+  exports: [
+    DevicesService,
+    KeyBundlesService,
+    IdentityResetService,
+    DeviceListService,
+  ],
 })
 export class KeyBundlesModule {}

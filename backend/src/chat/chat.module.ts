@@ -9,6 +9,7 @@ import { ChatPresenceService } from './services/chat-presence.service';
 import { ChatBlockService } from './services/chat-block.service';
 import { ChatSearchService } from './services/chat-search.service';
 import { ChatReactionService } from './services/chat-reaction.service';
+import { ChatDeviceListService } from './services/chat-device-list.service';
 import { ChatLinkPreviewService } from './services/chat-link-preview.service';
 import { ChatValidationModule } from './chat-validation.module';
 import { LinkPreviewModule } from './services/link-preview.module';
@@ -46,6 +47,7 @@ import { ConversationNotificationPreferencesModule } from '../conversation-notif
     ChatBlockService,
     ChatSearchService,
     ChatReactionService,
+    ChatDeviceListService,
     ChatLinkPreviewService,
     WsThrottlerGuard,
   ],
