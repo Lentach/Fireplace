@@ -21,6 +21,7 @@ describe('DevicesService', () => {
       update: jest.fn().mockResolvedValue({ affected: 0 }),
       insert: jest.fn().mockResolvedValue({ identifiers: [] }),
       find: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn().mockResolvedValue(null),
       query: jest.fn().mockResolvedValue([[], 0]),
     };
     const module: TestingModule = await Test.createTestingModule({
@@ -50,14 +51,26 @@ describe('DevicesService', () => {
     );
   });
 
-  it('never marks a linked device primary', async () => {
-    // Invariant I2: only a Keystore-capable device may be primary, and the
-    // primary is the account's original device until §6.3 hands it over.
+  it('never creates a row for a linked device id (amendment (b))', async () => {
+    // Rows for ids >= 2 are created SOLELY by the provisioning commit
+    // transaction: an auto-insert here would activate a deviceId no
+    // ceremony ever committed. The connect still refreshes lastSeenAt.
     await service.touch(7, 2);
 
-    expect(repo.insert).toHaveBeenCalledWith(
-      expect.objectContaining({ deviceId: 2, isPrimary: false }),
+    expect(repo.update).toHaveBeenCalledWith(
+      { userId: 7, deviceId: 2 },
+      { lastSeenAt: expect.any(Date) as unknown },
     );
+    expect(repo.insert).not.toHaveBeenCalled();
+  });
+
+  it('a provisioned device row still gets its lastSeenAt refresh', async () => {
+    repo.update.mockResolvedValue({ affected: 1 });
+
+    await service.touch(7, 2);
+
+    expect(repo.update).toHaveBeenCalledTimes(1);
+    expect(repo.insert).not.toHaveBeenCalled();
   });
 
   it('an existing row is only touched, never re-primaried or re-platformed', async () => {
@@ -80,6 +93,34 @@ describe('DevicesService', () => {
 
     await expect(service.touch(7)).resolves.toBeUndefined();
     expect(warnSpy).toHaveBeenCalledTimes(1);
+  });
+
+  describe('isActive', () => {
+    // Gate for per-device key-material uploads (spec §5.1 / amendment (b)).
+    it('false when no row exists (never activated)', async () => {
+      await expect(service.isActive(7, 2)).resolves.toBe(false);
+      expect(repo.findOne).toHaveBeenCalledWith({
+        where: { userId: 7, deviceId: 2 },
+      });
+    });
+
+    it('true for a live provisioned row', async () => {
+      repo.findOne.mockResolvedValue({
+        userId: 7,
+        deviceId: 2,
+        revokedAt: null,
+      });
+      await expect(service.isActive(7, 2)).resolves.toBe(true);
+    });
+
+    it('false for a revoked row', async () => {
+      repo.findOne.mockResolvedValue({
+        userId: 7,
+        deviceId: 2,
+        revokedAt: new Date(),
+      });
+      await expect(service.isActive(7, 2)).resolves.toBe(false);
+    });
   });
 
   describe('allocateDeviceId', () => {

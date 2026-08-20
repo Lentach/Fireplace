@@ -11,6 +11,7 @@ import { DevicesService } from './devices.service';
 import { KeyBundlesService } from './key-bundles.service';
 import { IdentityResetService } from './identity-reset.service';
 import { DeviceListService } from './device-list.service';
+import { ProvisioningStagesService } from './provisioning-stages.service';
 
 @Module({
   imports: [
@@ -32,12 +33,14 @@ import { DeviceListService } from './device-list.service';
     KeyBundlesService,
     IdentityResetService,
     DeviceListService,
+    ProvisioningStagesService,
   ],
   exports: [
     DevicesService,
     KeyBundlesService,
     IdentityResetService,
     DeviceListService,
+    ProvisioningStagesService,
   ],
 })
 export class KeyBundlesModule {}

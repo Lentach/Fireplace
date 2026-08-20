@@ -8,6 +8,7 @@ import {
 import { ConversationsService } from '../../conversations/conversations.service';
 import { PushNotificationsService } from '../../push-notifications/push-notifications.service';
 import { IdentityResetService } from '../../key-bundles/identity-reset.service';
+import { DevicesService } from '../../key-bundles/devices.service';
 import { Socket, Server } from 'socket.io';
 import { Logger } from '@nestjs/common';
 
@@ -25,6 +26,7 @@ describe('ChatKeyExchangeService', () => {
     getStatusForUser: jest.Mock;
     setRecoveryKey: jest.Mock;
   };
+  let devicesService: { isActive: jest.Mock };
   let clientRoomEmit: jest.Mock;
 
   /** Nonce the registration lock issues onto a socket session (§6.1). */
@@ -37,7 +39,7 @@ describe('ChatKeyExchangeService', () => {
    * what the service wrote without asserting a shape at each access.
    */
   interface MockSocketData {
-    user: { id: number } | null;
+    user: { id: number; deviceId?: number } | null;
     registrationLockNonce?: LockNonce;
   }
   // `Socket.data` is `any`, and `any & T` collapses back to `any` — omit it
@@ -85,6 +87,9 @@ describe('ChatKeyExchangeService', () => {
       getStatusForUser: jest.fn().mockResolvedValue(null),
       setRecoveryKey: jest.fn().mockResolvedValue(undefined),
     };
+    devicesService = {
+      isActive: jest.fn().mockResolvedValue(true),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -109,6 +114,7 @@ describe('ChatKeyExchangeService', () => {
           useValue: pushNotificationsService,
         },
         { provide: IdentityResetService, useValue: identityResetService },
+        { provide: DevicesService, useValue: devicesService },
       ],
     }).compile();
 
@@ -260,6 +266,87 @@ describe('ChatKeyExchangeService', () => {
         'error',
         expect.anything(),
       );
+    });
+  });
+
+  // T3, spec §5.1 / §12 amendment (b): key material may land only on a
+  // deviceId a provisioning commit actually activated. Device 1 predates the
+  // devices table and stays exempt.
+  describe('never-activated deviceId upload rejection', () => {
+    const bundleData = {
+      registrationId: 12345,
+      identityPublicKey: 'base64-identity-key',
+      signedPreKeyId: 1,
+      signedPreKeyPublic: 'base64-signed-pre-key',
+      signedPreKeySignature: 'base64-signature',
+    };
+    const otpData = { keys: [{ keyId: 1, publicKey: 'pk-1' }] };
+    // `jest.Mocked<KeyBundlesService>` members are METHODS to the compiler,
+    // so `expect(service.method)` trips unbound-method; this view types the
+    // same mock objects as plain function properties for assertions.
+    const kbMocks = () =>
+      keyBundlesService as unknown as {
+        upsertKeyBundle: jest.Mock;
+        uploadOneTimePreKeys: jest.Mock;
+      };
+
+    it('refuses a bundle from a session on a never-activated deviceId', async () => {
+      mockClient.data.user = { id: 1, deviceId: 2 };
+      devicesService.isActive.mockResolvedValue(false);
+
+      await service.handleUploadKeyBundle(
+        mockClient as Socket,
+        bundleData,
+        mockServer as Server,
+      );
+
+      expect(devicesService.isActive).toHaveBeenCalledWith(1, 2);
+      expect(kbMocks().upsertKeyBundle).not.toHaveBeenCalled();
+      expect(mockClient.emit).toHaveBeenCalledWith('keyBundleUploaded', {
+        success: false,
+        error: 'device_not_active',
+      });
+    });
+
+    it('refuses one-time pre-keys the same way, in this handler refusal shape', async () => {
+      mockClient.data.user = { id: 1, deviceId: 2 };
+      devicesService.isActive.mockResolvedValue(false);
+
+      await service.handleUploadOneTimePreKeys(mockClient as Socket, otpData);
+
+      expect(kbMocks().uploadOneTimePreKeys).not.toHaveBeenCalled();
+      expect(mockClient.emit).toHaveBeenCalledWith('error', {
+        message: 'device_not_active',
+      });
+    });
+
+    it('a LIVE provisioned device uploads under its own id', async () => {
+      mockClient.data.user = { id: 1, deviceId: 2 };
+      devicesService.isActive.mockResolvedValue(true);
+
+      await service.handleUploadKeyBundle(
+        mockClient as Socket,
+        bundleData,
+        mockServer as Server,
+      );
+
+      expect(kbMocks().upsertKeyBundle).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ registrationId: 12345 }),
+        undefined,
+        2,
+      );
+    });
+
+    it('device 1 never consults the activation gate (§8 legacy exemption)', async () => {
+      await service.handleUploadKeyBundle(
+        mockClient as Socket,
+        bundleData,
+        mockServer as Server,
+      );
+
+      expect(devicesService.isActive).not.toHaveBeenCalled();
+      expect(kbMocks().upsertKeyBundle).toHaveBeenCalled();
     });
   });
 

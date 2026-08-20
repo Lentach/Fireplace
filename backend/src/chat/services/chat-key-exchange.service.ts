@@ -7,6 +7,7 @@ import {
   KeyBundlesService,
 } from '../../key-bundles/key-bundles.service';
 import { IdentityResetService } from '../../key-bundles/identity-reset.service';
+import { DevicesService } from '../../key-bundles/devices.service';
 import { ConversationsService } from '../../conversations/conversations.service';
 import { PushNotificationsService } from '../../push-notifications/push-notifications.service';
 import { validateDto } from '../utils/dto.validator';
@@ -78,6 +79,7 @@ export class ChatKeyExchangeService {
     private readonly conversationsService: ConversationsService,
     private readonly pushNotificationsService: PushNotificationsService,
     private readonly identityResetService: IdentityResetService,
+    private readonly devicesService: DevicesService,
   ) {}
 
   /**
@@ -130,6 +132,27 @@ export class ChatKeyExchangeService {
       const dto = validateDto(UploadKeyBundleDto, data);
       // Consumed on every attempt, so one issued nonce buys one try.
       const nonce = this.consumeRegistrationLockNonce(client, dto.nonce);
+      // The device comes from the SESSION, never from the payload: a
+      // bundle belongs to the device whose authenticated socket uploaded
+      // it (spec §5.1). A client-named device would let one session
+      // scatter key material across namespaces peers later fetch.
+      const deviceId = socketData(client).user?.deviceId ?? DEFAULT_DEVICE_ID;
+      // Never-activated-id rejection (spec §5.1 / §12 amendment (b)): key
+      // material may land only on a device the provisioning commit actually
+      // activated. Device 1 predates the devices table and stays exempt.
+      if (
+        deviceId !== DEFAULT_DEVICE_ID &&
+        !(await this.devicesService.isActive(userId, deviceId))
+      ) {
+        this.logger.warn(
+          `uploadKeyBundle refused for never-activated deviceId=${deviceId} userId=${userId}`,
+        );
+        client.emit('keyBundleUploaded', {
+          success: false,
+          error: 'device_not_active',
+        });
+        return;
+      }
       const result = await this.keyBundlesService.upsertKeyBundle(
         userId,
         {
@@ -142,11 +165,7 @@ export class ChatKeyExchangeService {
         nonce != null && dto.identitySignature != null
           ? { signature: dto.identitySignature, nonce }
           : undefined,
-        // The device comes from the SESSION, never from the payload: a
-        // bundle belongs to the device whose authenticated socket uploaded
-        // it (spec §5.1). A client-named device would let one session
-        // scatter key material across namespaces peers later fetch.
-        socketData(client).user?.deviceId ?? DEFAULT_DEVICE_ID,
+        deviceId,
       );
       // `identityChanged` tells THIS device that its own upload is what
       // replaced the stored identity — and therefore what wrote the audit row
@@ -249,12 +268,25 @@ export class ChatKeyExchangeService {
       // The real fix is client-side ordering: publish the identity, THEN the
       // keys. Owner decision pending.
       const dto = validateDto(UploadOneTimePreKeysDto, data);
+      // Session-bound, like the bundle above.
+      const deviceId = socketData(client).user?.deviceId ?? DEFAULT_DEVICE_ID;
+      // Never-activated-id rejection (spec §5.1 / §12 amendment (b)), same
+      // gate as the bundle; this handler's refusal shape is the error event.
+      if (
+        deviceId !== DEFAULT_DEVICE_ID &&
+        !(await this.devicesService.isActive(userId, deviceId))
+      ) {
+        this.logger.warn(
+          `uploadOneTimePreKeys refused for never-activated deviceId=${deviceId} userId=${userId}`,
+        );
+        client.emit('error', { message: 'device_not_active' });
+        return;
+      }
       await this.keyBundlesService.uploadOneTimePreKeys(
         userId,
         dto.keys,
         dto.identityPublicKey,
-        // Session-bound, like the bundle above.
-        socketData(client).user?.deviceId ?? DEFAULT_DEVICE_ID,
+        deviceId,
       );
       client.emit('oneTimePreKeysUploaded', { count: dto.keys.length });
     } catch (error) {

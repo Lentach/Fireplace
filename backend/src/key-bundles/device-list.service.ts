@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { AccountAuthorization } from './account-authorization.entity';
 import { KeyBundle } from './key-bundle.entity';
 import {
@@ -212,13 +212,22 @@ export class DeviceListService {
    * falsification 3's loud refusal). T3's provisioning commit and T6's
    * revocation route their list writes through this same gate.
    *
+   * `manager` (optional) makes the write participate in a caller-owned
+   * transaction — the T3 provisioning commit writes the devices row and this
+   * mutation atomically (§5.1 two-phase commit). Default behavior without it
+   * is unchanged.
+   *
    * Returns the accepted version.
    */
   async applySignedListUpdate(
     userId: number,
     input: ListUpdateInput,
+    manager?: EntityManager,
   ): Promise<number> {
-    const stored = await this.authorizationRepo.findOne({ where: { userId } });
+    const repo = manager
+      ? manager.getRepository(AccountAuthorization)
+      : this.authorizationRepo;
+    const stored = await repo.findOne({ where: { userId } });
     if (!stored) {
       throw new DeviceListRejectedError('not_enrolled');
     }
@@ -253,9 +262,7 @@ export class DeviceListService {
     // concurrent valid updates commit in some serial order and the loser is
     // refused instead of silently regressing the version.
     // repo.query() returns [rows, rowCount] for UPDATE (backend/CLAUDE.md §4).
-    const [, rowCount] = await this.authorizationRepo.query<
-      [unknown[], number]
-    >(
+    const [, rowCount] = await repo.query<[unknown[], number]>(
       `UPDATE account_authorizations
          SET "listCanonical" = $1, "listSignature" = $2, "listVersion" = $3,
              "updatedAt" = now()

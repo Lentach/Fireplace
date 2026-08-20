@@ -22,6 +22,7 @@ import { ChatBlockService } from './services/chat-block.service';
 import { ChatSearchService } from './services/chat-search.service';
 import { ChatReactionService } from './services/chat-reaction.service';
 import { ChatDeviceListService } from './services/chat-device-list.service';
+import { ChatProvisioningService } from './services/chat-provisioning.service';
 import { userRoom } from './utils/user-room';
 import { DEFAULT_DEVICE_ID } from '../key-bundles/key-bundles.service';
 import { DevicesService } from '../key-bundles/devices.service';
@@ -80,6 +81,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private chatSearchService: ChatSearchService,
     private chatReactionService: ChatReactionService,
     private chatDeviceListService: ChatDeviceListService,
+    private chatProvisioningService: ChatProvisioningService,
     private devicesService: DevicesService,
   ) {}
 
@@ -524,6 +526,97 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() data: unknown,
   ) {
     return this.chatDeviceListService.handleGetDeviceList(client, data);
+  }
+
+  // ========== PROVISIONING CEREMONY (Phase 2 T3, spec §5.1/§7 row 424) ==========
+
+  /**
+   * §5.1 ceremony open. Tight limit like enrollment: a legitimate account
+   * links at most two extra devices, ever, and each open allocates a
+   * deviceId.
+   */
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 900000 } })
+  @SubscribeMessage('openProvisioning')
+  async handleOpenProvisioning(@ConnectedSocket() client: Socket) {
+    return this.chatProvisioningService.handleOpenProvisioning(client);
+  }
+
+  /** SAS round: the primary presents its ephemeral (§5.1). */
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 30, ttl: 900000 } })
+  @SubscribeMessage('provisioningHello')
+  handleProvisioningHello(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: unknown,
+  ) {
+    return this.chatProvisioningService.handleProvisioningHello(
+      client,
+      data,
+      this.server,
+    );
+  }
+
+  /** Stages the blob + signed v+1 mutation (§5.1 two-phase commit). */
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 900000 } })
+  @SubscribeMessage('provisionDevice')
+  async handleProvisionDevice(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: unknown,
+  ) {
+    return this.chatProvisioningService.handleProvisionDevice(
+      client,
+      data,
+      this.server,
+    );
+  }
+
+  /** Blob re-fetch until TTL/completion (§5.1; falsification 18). */
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 30, ttl: 900000 } })
+  @SubscribeMessage('fetchProvisioningBlob')
+  handleFetchProvisioningBlob(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: unknown,
+  ) {
+    return this.chatProvisioningService.handleFetchProvisioningBlob(
+      client,
+      data,
+    );
+  }
+
+  /** Two-phase commit, phase two — opener socket only (falsification 8). */
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 900000 } })
+  @SubscribeMessage('provisioningComplete')
+  async handleProvisioningComplete(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: unknown,
+  ) {
+    return this.chatProvisioningService.handleProvisioningComplete(
+      client,
+      data,
+      this.server,
+    );
+  }
+
+  /**
+   * Cancel stays generously available, like resetIdentityCancel: it is the
+   * protective action of the ceremony.
+   */
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 30, ttl: 900000 } })
+  @SubscribeMessage('cancelProvisioning')
+  handleCancelProvisioning(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: unknown,
+  ) {
+    return this.chatProvisioningService.handleCancelProvisioning(
+      client,
+      data,
+      this.server,
+    );
   }
 
   // ========== CONVERSATION HANDLERS ==========

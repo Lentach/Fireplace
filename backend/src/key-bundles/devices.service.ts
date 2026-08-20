@@ -46,6 +46,13 @@ export class DevicesService {
         { lastSeenAt: new Date() },
       );
       if ((refreshed.affected ?? 0) > 0) return;
+      if (deviceId !== DEFAULT_DEVICE_ID) {
+        // Rows for ids >= 2 are created SOLELY by the provisioning commit
+        // transaction (spec §12 Stage-0 amendment (b)): auto-inserting one
+        // here would activate a deviceId the ceremony never committed and
+        // reopen the never-activated-upload hole this ticket closes.
+        return;
+      }
       await this.deviceRepo.insert({
         userId,
         deviceId,
@@ -62,6 +69,17 @@ export class DevicesService {
         }`,
       );
     }
+  }
+
+  /**
+   * Whether this deviceId was activated by a provisioning commit (row
+   * exists) and not revoked. Gate for per-device key-material uploads
+   * (spec §5.1 / §12 amendment (b)): device 1 predates the devices table
+   * and is exempt at the call sites, never here.
+   */
+  async isActive(userId: number, deviceId: number): Promise<boolean> {
+    const row = await this.deviceRepo.findOne({ where: { userId, deviceId } });
+    return row !== null && row.revokedAt === null;
   }
 
   /**
