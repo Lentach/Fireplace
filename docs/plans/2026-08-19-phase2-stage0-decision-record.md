@@ -106,3 +106,79 @@ persists it). Verified by the orchestrator: backend **850/55**, flutter **1405/1
 `test/services/unread_badge_sync_test.dart` "falls back to the window Badging API" failed once
 under back-to-back suite load, green on two other full runs — pre-existing, not T2's.
 Next ticket: **T3** (provisioning two-round DH-bound SAS) under amendments (a)(b)(c) + riders.
+
+## 8. T3 closure (2026-08-20)
+
+T3 landed across `69200b2` (settlement amendment) + `f56347b` (backend) + `2ccc76e` (client
+crypto/DAK store) + `8dc9d20` (controller/UI/wire tests) + `ca9c6ff` (review fold). Executed
+under the T2 rate-limit-recovery precedent TWICE: the writer died on a 429 before any code,
+was revived and delivered Stages 1–2 committed, then stalled ~3 h mid-Stage-3 — the
+orchestrator recovered the uncommitted Stage 3 from the worktree, verified it, and built
+Stage 4 (wire tests) itself.
+
+**Pre-code settlement (spec §12, 2026-08-20, items (i)–(iv)):** OOB payload
+`fp-link.v1.<id>.<b64url ephPubN>.<platform>` with manual-code equivalence (camera = Phase 3;
+T3 writes NO device names, deferring the NFC rider to the Phase 3 rename UI); byte-exact
+`fp-link-sas`/`fp-link-blob` derivations — local RFC-5869 HKDF-SHA256, salt 32 zero bytes
+(libsignal 0.8.2 does NOT export HKDFv3 from its barrel; src/ implementation imports
+forbidden), SAS = first 4 bytes BE uint32 mod 10^6 as `XXX XXX`, blob =
+`0x01‖IV16‖AES-256-CBC‖HMAC32` encrypt-then-MAC with constant-time verify BEFORE decrypt;
+rebind tokens travel in `provisioningCompleted` on the opener socket; stage is in-memory,
+socket-bound (restart = TTL-equivalent abort, NO table/migration).
+
+**Delivered:** `ProvisioningStagesService` (memoized allocator at open — the FIRST
+`allocateDeviceId` caller; synchronous CAS consume / restore / retire-drops-blob);
+`ChatProvisioningService` wire surface (`openProvisioning`/`provisioningHello`/
+`provisionDevice`/`fetchProvisioningBlob`/`provisioningComplete`/`cancelProvisioning`, T2
+refusal conventions, ONE commit transaction incl. `applySignedListUpdate(manager)` +
+`createToken(userId, deviceId)` + login-shape JWT); never-activated-upload rejection in BOTH
+key-exchange handlers (`device_not_active`) + `DevicesService.touch` hardened to insert only
+device 1; client `link_crypto.dart` (spec-exact, stock ProvisioningCipher unused),
+`dak_store.dart` (armed write-then-read-back gating the enroll emit),
+`LinkCeremonyController` (screen-scoped sink behind ConnectionProvider's single routing
+seam), `EncryptionService.adoptProvisionedIdentity`/`discardProvisionedIdentity` (atomic
+identity record; enumerated abort discard; service-level invariant locks from the review
+fold), DevicesScreen + LinkDeviceScreen + LinkThisDeviceScreen (RpgTheme, l10n en+pl,
+`qr_flutter` resolved cleanly so the QR ships alongside the required manual code).
+
+**Falsification → test map (all green):** 8 → wire `full link` (foreign-session complete
+`not_opener`, duplicate `already_completed`, post-commit refetch `no_blob`) + link_crypto
+unit (wrong-ephemeral blob dies `bad_mac` before decrypt); 15 → link_crypto unit (equal
+honest SAS, substituted-ephemeral mismatch, transcript-bound); 18 → wire `two-phase kill`
+(nothing committed, opener-only refetch, cancel → opener notice → stage gone) + unit
+abort-discard; 20 → wire `concurrent double-link` (loser `stale_version`, SAME stage
+re-signed v+2 lands, exactly one device per ceremony); amendment (a) idempotency → duplicate
+hello idempotent-if-identical / `ephemeral_already_pinned`, retried provisionDevice
+overwrites the stage re-using the memoized id.
+
+**Per-ticket review: GATE PASS** (zero BLOCKER/FIX; one P3 NOTE — service-level keyless
+assertion on adopt/discard — FOLDED as `ca9c6ff` rather than ridden, since T4–T8 add callers
+near that surface).
+
+**Verified by the orchestrator:** backend **885/57**, ratchet PASS 906, analyze clean,
+flutter **1424/10sk**, wire **35/2sk** (restart + ≥20 s settle + alone), both count
+verifiers OK; root `CLAUDE.md` §3 + §7 updated (new provisioning contract bullet).
+
+**App-proven (owner-granted blanket tool access), three web origins, account 193:** primary
+:8091 (held the account identity) enabled linking → enrollment v1 live; new device :8093
+(keyless banner) opened the ceremony → QR + copyable `fp-link.v1.…` code → manual entry on
+the primary → **both screens displayed SAS `041 588`** → approve → commit
+(`[provisioning] committed userId=193 deviceId=2 version=2`) → N rebound and its
+session-bound upload landed the bundle + 20 OTPs at `(193, 2)` under the shared identity
+`BVVFJ/DuqMwR`, device 1's bundle byte-untouched (regId 10558, 100 OTPs), `nextDeviceId`=3.
+Refusal path on a third keyless origin :8094: ceremony to the SAS step (`865 298`) →
+primary CANCEL → opener showed "Łączenie anulowano…", stage discarded, list stayed v2, NO
+device 3 row, `nextDeviceId`=4 (gap only), N2 storage held zero identity/DAK/prekey keys
+(abort discard). Bonus: a mangled code hit the strict parser's `invalid_code` failure state.
+
+**Deviations / notes for the record:** (1) cancel is accepted from ANY authenticated session
+of the account — the server cannot cryptographically identify "the primary" (documented in
+code; opener-cancel harmless, third-session cancel is self-DoS). (2) The wire-unreachable
+half of never-activated rejection (a live session bound to a non-live deviceId) is covered
+by backend unit specs; it becomes wire-reachable when T6 revocation lands. (3) I2 UI gating
+(web must not become primary in prod) is Phase 3 comms/UI, per §8's "stated at enable time".
+(4) Flutter web a11y tree lags behind navigation in release builds — screenshots are ground
+truth for browser proofs; snapshot-then-click in one step is the reliable ref pattern.
+
+Next ticket: **T4** (envelopes + device rooms + per-device history reads) under its §4
+riders.
