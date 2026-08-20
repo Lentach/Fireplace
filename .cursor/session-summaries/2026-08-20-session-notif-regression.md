@@ -4,6 +4,8 @@
 
 ## What was done
 
+**⤷ SAME-DAY UPDATE: SHIPPED.** Owner demanded proof before merging — delivered red-on-master/green-on-branch for both defects (the new regression test FAILS 2/3 against master's providers; the prod SW in a node VM harness opens NOTHING on a focus-rejected tap, the branch opens `/?notify_conv=42`; backend spec 36/36 re-confirms `newMessage` → single newest socket). Owner OK'd: **PR #149 squash-merged as `36a2899`, released 0.1.18, deployed + smoke PASSED (bundle contains 36a2899, app boots, Giphy key present ×1)**. Backend unchanged (0.1.11/91535317 — correct). S5 answered by owner in-session: he backgrounds briefly FROM THE CHAT LIST → never forms the zombie state; usage-pattern immunity, recorded in findings.md. `deploy-web.ps1` deletion mystery solved: **Kaspersky deleted it**; owner restored — consider an AV exclusion for the repo. Persistent-S3 caveat for support: a second same-origin context (stray Chrome tab) still starves the PWA of live messages by design (`emitToNewestTab`) — fix is the multi-device epic, interim cure is closing the tab; questionnaire Q4 discriminates.
+
 Diagnosed the Android-PWA notification cluster reported by users 48 and 90 (S1 false READ while backgrounded; S2 notification tap does nothing; S3 dead session after resume-from-notification; S4 swipe-close+icon-relaunch fixes it; S5 owner cannot reproduce). Full evidence chain, hypothesis ledger and the copy-pasteable user questionnaire live in gitignored `.planning/notif-regression/` (ROOT-CAUSE.md, findings.md, USER-DATA-REQUEST.md — usernames only there; tracked files use numeric ids per the 08-18 PII rule).
 
 Verdict (all file:line evidence in ROOT-CAUSE.md):
