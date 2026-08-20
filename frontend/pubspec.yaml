@@ -81,6 +81,13 @@ dependencies:
   sqlite3: ">=2.9.0 <3.0.0"
   sqlcipher_flutter_libs: ^0.6.8
   bip39_mnemonic: ^4.1.0
+  # T3 link ceremony crypto (spec §5.1 / §12 item (ii)): HKDF-SHA256 rides
+  # `crypto`'s HMAC, AES-256-CBC/PKCS7 rides `pointycastle` — the same engine
+  # libsignal itself uses internally (its cbc.dart helpers are not exported
+  # from the barrel). Both already resolved in the lock (crypto transitively,
+  # pointycastle as a dev dep), so this is promotion, not a new pin.
+  crypto: ^3.0.0
+  pointycastle: ^4.0.0
 
 dependency_overrides:
   record_linux: ^1.3.0
@@ -97,7 +104,6 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.3
   fake_async: ^1.3.3
-  pointycastle: ^4.0.0
   url_launcher_platform_interface: ^2.3.2
   # Same upper bound as `drift` above — a drift_dev that outruns the runtime
   # package would regenerate `content_db.g.dart` against a version this app
