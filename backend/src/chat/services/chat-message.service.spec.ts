@@ -6,6 +6,9 @@ import { UsersService } from '../../users/users.service';
 import { ChatLinkPreviewService } from './chat-link-preview.service';
 import { PushNotificationCoalescingService } from '../../push-notifications/push-notification-coalescing.service';
 import { MediaCleanupService } from '../../media/media-cleanup.service';
+import { DevicesService } from '../../key-bundles/devices.service';
+import { DeviceListService } from '../../key-bundles/device-list.service';
+import { AccountAuthorization } from '../../key-bundles/account-authorization.entity';
 import { ChatMessageService } from './chat-message.service';
 import { User } from '../../users/user.entity';
 import { Conversation } from '../../conversations/conversation.entity';
@@ -80,11 +83,22 @@ describe('ChatMessageService', () => {
    * method (unbound-method); the raw fn has no `this` to lose.
    */
   let findServedMessageIdsMock: jest.Mock;
+  /**
+   * Raw handles for the T4 fan-out asserts, for the same reason as
+   * `findServedMessageIdsMock` above: a bare jest.fn has no `this` to lose,
+   * while asserting through the class-typed method trips `unbound-method`.
+   */
+  let createMock: jest.Mock;
+  let isActiveMock: jest.Mock;
+  let getAuthorizationMock: jest.Mock;
   let mockClient: Partial<Socket>;
   let mockServer: Partial<Server>;
 
   beforeEach(async () => {
     findServedMessageIdsMock = jest.fn().mockResolvedValue([]);
+    createMock = jest.fn();
+    isActiveMock = jest.fn().mockResolvedValue(true);
+    getAuthorizationMock = jest.fn().mockResolvedValue(null);
     mockClient = {
       data: { user: { id: 1 } },
       emit: jest.fn(),
@@ -97,7 +111,7 @@ describe('ChatMessageService', () => {
         {
           provide: MessagesService,
           useValue: {
-            create: jest.fn(),
+            create: createMock,
             findByConversation: jest.fn(),
             findMediaUrlsByConversation: jest.fn().mockResolvedValue([]),
             markConversationAsReadFromSender: jest.fn(),
@@ -141,6 +155,16 @@ describe('ChatMessageService', () => {
           useValue: {
             deleteMediaFile: jest.fn().mockResolvedValue(undefined),
           },
+        },
+        {
+          provide: DevicesService,
+          useValue: { isActive: isActiveMock },
+        },
+        {
+          // Unenrolled by default: a single-device account quotes no list
+          // version, so the §5.2 cross-check does not apply to it.
+          provide: DeviceListService,
+          useValue: { getAuthorization: getAuthorizationMock },
         },
       ],
     }).compile();
@@ -415,6 +439,288 @@ describe('ChatMessageService', () => {
         10,
         'alice',
       );
+    });
+  });
+
+  describe('send fan-out ingest (spec §5.2 + §12 amendments (v)/(vi))', () => {
+    /** The happy-path lookups every send below needs. */
+    const arrangeSend = () => {
+      chatValidationService.validateCanMessage.mockResolvedValue({
+        valid: true,
+      });
+      usersService.findById
+        .mockResolvedValueOnce(mockSender as User)
+        .mockResolvedValueOnce(mockRecipient as User);
+      conversationsService.findOrCreate.mockResolvedValue(
+        mockConversation as Conversation,
+      );
+      createMock.mockResolvedValue(mockMessage as Message);
+    };
+
+    /** An enrolled account whose current signed list is at [version]. */
+    const authorization = (
+      userId: number,
+      version: number,
+    ): AccountAuthorization =>
+      ({
+        userId,
+        dakPub: `dak-${userId}`,
+        enrollmentSig: `esig-${userId}`,
+        enrollmentCreatedAt: new Date(1_700_000_000_000),
+        listVersion: version,
+        listSignature: `lsig-${userId}`,
+        listCanonical: `canon-${userId}`,
+        // The entity's `user` relation and `updatedAt` are never read by the
+        // §5.2 cross-check, so this stays a partial stand-in.
+      }) as AccountAuthorization;
+
+    const send = (data: Record<string, unknown>) =>
+      service.handleSendMessage(
+        mockClient as Socket,
+        data,
+        mockServer as Server,
+      );
+
+    /** The payload of the caller's first emit of [event], if any. */
+    const emittedPayload = (event: string) =>
+      ((mockClient.emit as jest.Mock).mock.calls as unknown[][]).find(
+        (call) => call[0] === event,
+      )?.[1];
+
+    it('normalizes a legacy single-ciphertext send to one device-1 envelope', async () => {
+      arrangeSend();
+
+      await send({
+        recipientId: 2,
+        content: '[encrypted]',
+        encryptedContent: '3:legacy-ciphertext',
+      });
+
+      expect(createMock).toHaveBeenCalledWith(
+        '[encrypted]',
+        mockSender,
+        mockConversation,
+        expect.objectContaining({
+          // The legacy column SURVIVES for a legacy send: its row is
+          // indistinguishable from a pre-migration row, and today's clients
+          // still read it through the whole §8 rollout window.
+          encryptedContent: '3:legacy-ciphertext',
+          envelopes: [
+            { userId: 2, deviceId: 1, ciphertext: '3:legacy-ciphertext' },
+          ],
+        }),
+      );
+    });
+
+    it('writes a new-model send as envelopes only, leaving the legacy column NULL', async () => {
+      arrangeSend();
+
+      await send({
+        recipientId: 2,
+        content: '[encrypted]',
+        envelopes: [
+          { userId: 2, deviceId: 1, ciphertext: '3:for-bob-1' },
+          { userId: 2, deviceId: 2, ciphertext: '3:for-bob-2' },
+          { userId: 1, deviceId: 3, ciphertext: '2:self-sync' },
+        ],
+      });
+
+      expect(createMock).toHaveBeenCalledWith(
+        '[encrypted]',
+        mockSender,
+        mockConversation,
+        expect.objectContaining({
+          encryptedContent: null,
+          envelopes: [
+            { userId: 2, deviceId: 1, ciphertext: '3:for-bob-1' },
+            { userId: 2, deviceId: 2, ciphertext: '3:for-bob-2' },
+            { userId: 1, deviceId: 3, ciphertext: '2:self-sync' },
+          ],
+        }),
+      );
+    });
+
+    it('refuses two envelopes for one device — decrypt is not idempotent', async () => {
+      arrangeSend();
+
+      await send({
+        recipientId: 2,
+        content: '[encrypted]',
+        envelopes: [
+          { userId: 2, deviceId: 2, ciphertext: '3:first' },
+          { userId: 2, deviceId: 2, ciphertext: '3:second' },
+        ],
+      });
+
+      expect(mockClient.emit).toHaveBeenCalledWith('error', {
+        message: 'duplicate_envelope_device',
+      });
+      expect(createMock).not.toHaveBeenCalled();
+    });
+
+    it('refuses an envelope addressed to a third party', async () => {
+      arrangeSend();
+
+      await send({
+        recipientId: 2,
+        content: '[encrypted]',
+        envelopes: [{ userId: 99, deviceId: 1, ciphertext: '3:eavesdrop' }],
+      });
+
+      expect(mockClient.emit).toHaveBeenCalledWith('error', {
+        message: 'unknown_envelope_user',
+      });
+      expect(createMock).not.toHaveBeenCalled();
+    });
+
+    it('refuses a self-sync envelope addressed to the origin device', async () => {
+      arrangeSend();
+
+      await send({
+        recipientId: 2,
+        content: '[encrypted]',
+        envelopes: [{ userId: 1, deviceId: 1, ciphertext: '2:to-myself' }],
+      });
+
+      expect(mockClient.emit).toHaveBeenCalledWith('error', {
+        message: 'self_envelope_for_origin_device',
+      });
+      expect(createMock).not.toHaveBeenCalled();
+    });
+
+    it('refuses an envelope for a device that was never activated', async () => {
+      arrangeSend();
+      isActiveMock.mockResolvedValue(false);
+
+      await send({
+        recipientId: 2,
+        content: '[encrypted]',
+        envelopes: [{ userId: 2, deviceId: 4, ciphertext: '3:ghost-device' }],
+      });
+
+      expect(mockClient.emit).toHaveBeenCalledWith('error', {
+        message: 'unknown_recipient_device',
+      });
+      expect(createMock).not.toHaveBeenCalled();
+    });
+
+    it('exempts device 1 from the liveness check — it predates the devices table', async () => {
+      arrangeSend();
+      isActiveMock.mockResolvedValue(false);
+
+      await send({
+        recipientId: 2,
+        content: '[encrypted]',
+        envelopes: [{ userId: 2, deviceId: 1, ciphertext: '3:for-bob-1' }],
+      });
+
+      expect(isActiveMock).not.toHaveBeenCalled();
+      expect(createMock).toHaveBeenCalled();
+    });
+
+    it('falsification 5: a stale recipient stamp refuses the send with ZERO rows written', async () => {
+      arrangeSend();
+      getAuthorizationMock.mockImplementation((userId: number) =>
+        Promise.resolve(userId === 2 ? authorization(2, 7) : null),
+      );
+
+      await send({
+        recipientId: 2,
+        content: '[encrypted]',
+        tempId: 'temp-42',
+        recipientListVersion: 6,
+        envelopes: [{ userId: 2, deviceId: 1, ciphertext: '3:for-bob-1' }],
+      });
+
+      expect(emittedPayload('deviceListStale')).toEqual({
+        success: false,
+        error: 'device_list_stale',
+        tempId: 'temp-42',
+        lists: [
+          {
+            userId: 2,
+            version: 7,
+            listCanonical: 'canon-2',
+            listSignature: 'lsig-2',
+            enrollment: {
+              dakPub: 'dak-2',
+              enrollmentSig: 'esig-2',
+              enrollmentCreatedAt: 1_700_000_000_000,
+            },
+          },
+        ],
+      });
+      // Nothing was persisted and nothing was delivered.
+      expect(createMock).not.toHaveBeenCalled();
+      expect(mockClient.emit).not.toHaveBeenCalledWith(
+        'messageSent',
+        expect.anything(),
+      );
+    });
+
+    it('reports BOTH stale parties in one refusal, recipient first', async () => {
+      arrangeSend();
+      getAuthorizationMock.mockImplementation((userId: number) =>
+        Promise.resolve(authorization(userId, 5)),
+      );
+
+      await send({
+        recipientId: 2,
+        content: '[encrypted]',
+        senderListVersion: 4,
+        recipientListVersion: 4,
+        envelopes: [{ userId: 2, deviceId: 1, ciphertext: '3:for-bob-1' }],
+      });
+
+      const payload = emittedPayload('deviceListStale') as {
+        lists: Array<{ userId: number }>;
+      };
+      expect(payload.lists.map((entry) => entry.userId)).toEqual([2, 1]);
+    });
+
+    it('treats an ABSENT stamp for an enrolled party as stale — fail closed', async () => {
+      arrangeSend();
+      getAuthorizationMock.mockImplementation((userId: number) =>
+        Promise.resolve(userId === 2 ? authorization(2, 3) : null),
+      );
+
+      await send({
+        recipientId: 2,
+        content: '[encrypted]',
+        envelopes: [{ userId: 2, deviceId: 1, ciphertext: '3:for-bob-1' }],
+      });
+
+      expect(emittedPayload('deviceListStale')).toBeDefined();
+      expect(createMock).not.toHaveBeenCalled();
+    });
+
+    it('skips the cross-check for a party that never enrolled', async () => {
+      arrangeSend();
+
+      await send({
+        recipientId: 2,
+        content: '[encrypted]',
+        envelopes: [{ userId: 2, deviceId: 1, ciphertext: '3:for-bob-1' }],
+      });
+
+      expect(emittedPayload('deviceListStale')).toBeUndefined();
+      expect(createMock).toHaveBeenCalled();
+    });
+
+    it('never cross-checks a legacy send — it quotes no versions at all', async () => {
+      arrangeSend();
+      getAuthorizationMock.mockImplementation((userId: number) =>
+        Promise.resolve(authorization(userId, 9)),
+      );
+
+      await send({
+        recipientId: 2,
+        content: '[encrypted]',
+        encryptedContent: '3:legacy-ciphertext',
+      });
+
+      expect(getAuthorizationMock).not.toHaveBeenCalled();
+      expect(createMock).toHaveBeenCalled();
     });
   });
 

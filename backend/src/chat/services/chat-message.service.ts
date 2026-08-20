@@ -26,6 +26,34 @@ import {
   newestSocketForUser,
   userRoom,
 } from '../utils/user-room';
+import { DEFAULT_DEVICE_ID } from '../../key-bundles/key-bundles.service';
+import { DevicesService } from '../../key-bundles/devices.service';
+import { DeviceListService } from '../../key-bundles/device-list.service';
+import { AccountAuthorization } from '../../key-bundles/account-authorization.entity';
+
+/** One (recipient user, device) ciphertext of a fan-out send (spec §5.2). */
+type ResolvedEnvelope = {
+  userId: number;
+  deviceId: number;
+  ciphertext: string;
+};
+
+/**
+ * One party's signed-list record in a `deviceListStale` refusal (spec §5.2
+ * layer 1 + §12 amendment (vi)). The client runs the I7 chain over this
+ * itself — the server's word alone is never trusted (falsification 4).
+ */
+type StaleListEntry = {
+  userId: number;
+  version: number;
+  listCanonical: string;
+  listSignature: string;
+  enrollment: {
+    dakPub: string;
+    enrollmentSig: string;
+    enrollmentCreatedAt: number;
+  };
+};
 
 /** Editing a sent message is only allowed within this window after it was created. */
 const EDIT_WINDOW_MS = 15 * 60 * 1000;
@@ -68,7 +96,129 @@ export class ChatMessageService {
     private readonly chatLinkPreviewService: ChatLinkPreviewService,
     private readonly pushCoalescingService: PushNotificationCoalescingService,
     private readonly mediaCleanup: MediaCleanupService,
+    private readonly devicesService: DevicesService,
+    private readonly deviceListService: DeviceListService,
   ) {}
+
+  /**
+   * The fan-out shape of this send (spec §5.2 + §12 amendment (v)).
+   *
+   * A legacy single-ciphertext send is NORMALIZED to a one-element device-1
+   * envelope so exactly one write path exists downstream (§8 compat); a send
+   * carrying no ciphertext at all (PING and today's plaintext shapes) yields
+   * no envelope and keeps its historical behaviour.
+   */
+  private resolveEnvelopes(send: SendMessageDto): ResolvedEnvelope[] {
+    if (send.envelopes?.length) {
+      return send.envelopes.map((envelope) => ({
+        userId: envelope.userId,
+        deviceId: envelope.deviceId,
+        ciphertext: envelope.ciphertext,
+      }));
+    }
+    if (send.encryptedContent) {
+      return [
+        {
+          userId: send.recipientId,
+          deviceId: DEFAULT_DEVICE_ID,
+          ciphertext: send.encryptedContent,
+        },
+      ];
+    }
+    return [];
+  }
+
+  /**
+   * The refusal code for an unacceptable envelope set, or null when the set is
+   * addressable (spec §12 amendment (v)).
+   *
+   * Every check runs BEFORE any persistence, so a refused send writes nothing
+   * (falsification 5). Device 1 predates the devices table and is exempt from
+   * the liveness check, exactly as the key-material upload gates are.
+   */
+  private async envelopeRefusal(
+    envelopes: ResolvedEnvelope[],
+    senderId: number,
+    recipientId: number,
+    originDeviceId: number,
+  ): Promise<string | null> {
+    const seen = new Set<string>();
+    for (const envelope of envelopes) {
+      const key = `${envelope.userId}:${envelope.deviceId}`;
+      // Two ciphertexts for one device would consume the same message key
+      // twice — Signal decryption is not idempotent, so last-wins would brick
+      // that device's ratchet. Refuse instead.
+      if (seen.has(key)) return 'duplicate_envelope_device';
+      seen.add(key);
+
+      // An envelope may only address this conversation's recipient or the
+      // sender's OWN other devices (§5.4 self-sync). Anything else would have
+      // the server deliver ciphertext to a third party the send never named.
+      if (envelope.userId !== recipientId && envelope.userId !== senderId) {
+        return 'unknown_envelope_user';
+      }
+      if (
+        envelope.userId === senderId &&
+        envelope.deviceId === originDeviceId
+      ) {
+        return 'self_envelope_for_origin_device';
+      }
+      if (
+        envelope.deviceId !== DEFAULT_DEVICE_ID &&
+        !(await this.devicesService.isActive(
+          envelope.userId,
+          envelope.deviceId,
+        ))
+      ) {
+        return 'unknown_recipient_device';
+      }
+    }
+    return null;
+  }
+
+  /**
+   * The parties whose device-list stamp is stale, recipient first (spec §5.2
+   * freshness layer 1 + §12 amendment (vi)).
+   *
+   * Only an ENROLLED party is checked: an account with no authorization row is
+   * single-device by construction (rows >= 2 are minted solely by the
+   * provisioning commit), so it has no version to quote. An ABSENT stamp for an
+   * enrolled party counts as a mismatch — fail closed rather than let a client
+   * skip the check by omitting the field.
+   */
+  private async staleLists(
+    send: SendMessageDto,
+    senderId: number,
+  ): Promise<StaleListEntry[]> {
+    const [recipientAuth, senderAuth] = await Promise.all([
+      this.deviceListService.getAuthorization(send.recipientId),
+      this.deviceListService.getAuthorization(senderId),
+    ]);
+    // Recipient first: it is the party whose freshness decides delivery.
+    const parties: Array<[AccountAuthorization | null, number | undefined]> = [
+      [recipientAuth, send.recipientListVersion],
+      [senderAuth, send.senderListVersion],
+    ];
+    const stale: StaleListEntry[] = [];
+    for (const [auth, quoted] of parties) {
+      if (!auth || quoted === auth.listVersion) continue;
+      stale.push({
+        userId: auth.userId,
+        version: auth.listVersion,
+        listCanonical: auth.listCanonical,
+        listSignature: auth.listSignature,
+        enrollment: {
+          dakPub: auth.dakPub,
+          enrollmentSig: auth.enrollmentSig,
+          // Epoch ms, matching the landed `deviceList` echo — the enrollment
+          // signature covers this timestamp, so it must survive transport
+          // byte-exactly for the chain to verify.
+          enrollmentCreatedAt: auth.enrollmentCreatedAt.getTime(),
+        },
+      });
+    }
+    return stale;
+  }
 
   async handleSendMessage(client: Socket, data: any, server: Server) {
     const senderId: number = client.data.user?.id;
@@ -142,10 +292,45 @@ export class ChatMessageService {
       return;
     }
 
+    // Fan-out shape and freshness (spec §5.2 + §12 amendment (v)/(vi)). Every
+    // check below runs BEFORE any persistence, so a refused send writes zero
+    // message rows and zero envelope rows (falsification 5).
+    const originDeviceId = socketDeviceId(client) ?? DEFAULT_DEVICE_ID;
+    const envelopes = this.resolveEnvelopes(send);
+    const isNewModel = (send.envelopes?.length ?? 0) > 0;
+    if (isNewModel) {
+      const refusal = await this.envelopeRefusal(
+        envelopes,
+        senderId,
+        send.recipientId,
+        originDeviceId,
+      );
+      if (refusal) {
+        client.emit('error', { message: refusal });
+        return;
+      }
+
+      const stale = await this.staleLists(send, senderId);
+      if (stale.length > 0) {
+        this.logger.warn(
+          `[send] REFUSED stale device list senderId=${senderId} recipientId=${send.recipientId} stale=${stale
+            .map((entry) => `${entry.userId}@v${entry.version}`)
+            .join(',')}`,
+        );
+        client.emit('deviceListStale', {
+          success: false,
+          error: 'device_list_stale',
+          tempId: send.tempId,
+          lists: stale,
+        });
+        return;
+      }
+    }
+
     let message: Message;
     try {
       message = await this.messagesService.create(
-        data.encryptedContent ? '[encrypted]' : data.content,
+        data.encryptedContent || isNewModel ? '[encrypted]' : data.content,
         sender,
         conversation,
         {
@@ -155,9 +340,14 @@ export class ChatMessageService {
           mediaUrl: data.mediaUrl,
           mediaDuration: data.mediaDuration,
           replyToMessageId: data.replyToMessageId ?? null,
-          encryptedContent: data.encryptedContent ?? null,
+          // A NEW-MODEL row stores nothing in the legacy column: every device
+          // reads its own envelope (§4). A legacy send keeps the column AND
+          // gets a device-1 envelope, so its row stays readable to today's
+          // clients through the whole §8 rollout window.
+          encryptedContent: isNewModel ? null : (data.encryptedContent ?? null),
           originDeviceId: socketDeviceId(client) ?? null,
           sendToken: send.sendToken ?? null,
+          envelopes: envelopes.length > 0 ? envelopes : undefined,
         },
       );
     } catch (error) {

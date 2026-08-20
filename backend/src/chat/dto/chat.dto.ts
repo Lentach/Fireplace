@@ -1,4 +1,4 @@
-import { Transform, type TransformFnParams } from 'class-transformer';
+import { Transform, Type, type TransformFnParams } from 'class-transformer';
 import {
   IsNumber,
   IsInt,
@@ -11,7 +11,10 @@ import {
   Max,
   Matches,
   ValidateIf,
+  ValidateNested,
   IsIn,
+  IsArray,
+  ArrayMinSize,
 } from 'class-validator';
 import {
   DISAPPEARING_MAX_SECONDS,
@@ -30,6 +33,30 @@ export const MEDIA_URL_REGEX = new RegExp(
   `^(https://res\\.cloudinary\\.com/[a-zA-Z0-9_-]+/(video|image|raw)/upload/.+|${_mediaOriginEscaped}/media/(avatars|msgs)/[A-Za-z0-9_-]+\\.[A-Za-z0-9]+)$`,
 );
 
+/**
+ * One recipient device's ciphertext in a fan-out send (spec §5.2 + §12
+ * amendment (v)).
+ *
+ * Exactly one envelope per (userId, deviceId): Signal decryption consumes the
+ * message key, so two envelopes for one device would brick that device's
+ * ratchet. `userId` is the recipient for inbound copies and the SENDER for
+ * self-sync copies to the sender's OTHER devices (§5.4).
+ */
+export class SendEnvelopeDto {
+  @IsInt()
+  @IsPositive()
+  userId: number;
+
+  @IsInt()
+  @IsPositive()
+  deviceId: number;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(65536)
+  ciphertext: string; // Signal ciphertext ("{type}:{base64}") for this device
+}
+
 export class SendMessageDto {
   @IsNumber()
   @IsPositive()
@@ -37,9 +64,10 @@ export class SendMessageDto {
 
   @IsString()
   @ValidateIf(
-    (o) =>
+    (o: SendMessageDto) =>
       !o.encryptedContent &&
-      !['VOICE', 'PING', 'VIDEO'].includes(o?.messageType),
+      !o.envelopes?.length &&
+      !['VOICE', 'PING', 'VIDEO'].includes(o.messageType ?? ''),
   )
   @MinLength(1, { message: 'Message cannot be empty' })
   @MaxLength(5000, { message: 'Message cannot exceed 5000 characters' })
@@ -96,6 +124,35 @@ export class SendMessageDto {
   @IsNumber()
   @IsPositive()
   replyToMessageId?: number; // ID of the message being replied to
+
+  /**
+   * Per-device ciphertexts (spec §5.2 + §12 amendment (v)). Presence makes
+   * this a NEW-MODEL send: the row's `encryptedContent` stays NULL and every
+   * ciphertext lives in `message_envelopes`. A legacy single-`encryptedContent`
+   * send is normalized to a one-element device-1 envelope AT INGEST, so
+   * exactly one downstream write path exists (§8 compat).
+   */
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => SendEnvelopeDto)
+  envelopes?: SendEnvelopeDto[];
+
+  /**
+   * The sender's and recipient's DAK-signed device-list versions at encrypt
+   * time (spec §5.2 freshness layer 1). Checked only for a party that is
+   * enrolled; a mismatch refuses the send ATOMICALLY with `deviceListStale`.
+   */
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  senderListVersion?: number;
+
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  recipientListVersion?: number;
 }
 
 export class SendFriendRequestDto {

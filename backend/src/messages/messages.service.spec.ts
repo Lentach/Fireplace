@@ -763,3 +763,99 @@ describe('MessagesService reactions (BE-152/BE-201 atomicity)', () => {
     expect(JSON.parse(store as string)).toEqual({ '👍': [1] });
   });
 });
+
+describe('MessagesService.create envelope fan-out (spec §5.2 + §12 (v))', () => {
+  /** The transactional manager the service asks for per-entity repositories. */
+  type TxManager = { getRepository: jest.Mock };
+  type MessageRepoMock = {
+    create: jest.Mock;
+    save: jest.Mock;
+    findOne: jest.Mock;
+    manager: { transaction: jest.Mock };
+  };
+
+  let service: MessagesService;
+  let repo: MessageRepoMock;
+  let messageRepo: { save: jest.Mock };
+  let envelopeRepo: { insert: jest.Mock };
+
+  beforeEach(async () => {
+    messageRepo = {
+      save: jest.fn((msg: object) => Promise.resolve({ ...msg, id: 500 })),
+    };
+    envelopeRepo = { insert: jest.fn().mockResolvedValue(undefined) };
+    const manager: TxManager = {
+      // The transactional manager hands out per-entity repositories; keying on
+      // the entity name keeps the assertion independent of import identity.
+      getRepository: jest.fn((entity: { name: string }) =>
+        entity.name === 'Message' ? messageRepo : envelopeRepo,
+      ),
+    };
+    repo = {
+      create: jest.fn((fields: object) => fields),
+      save: jest.fn(),
+      findOne: jest.fn(),
+      manager: {
+        transaction: jest.fn((run: (m: TxManager) => Promise<unknown>) =>
+          run(manager),
+        ),
+      },
+    };
+
+    const module = await Test.createTestingModule({
+      providers: [
+        MessagesService,
+        { provide: getRepositoryToken(Message), useValue: repo },
+        mediaCleanupMock(),
+      ],
+    }).compile();
+    service = module.get(MessagesService);
+  });
+
+  const sender = { id: 1 } as never;
+  const conversation = { id: 10 } as never;
+
+  it('writes the row and every envelope inside ONE transaction', async () => {
+    const message = await service.create('[encrypted]', sender, conversation, {
+      envelopes: [
+        { userId: 2, deviceId: 1, ciphertext: '3:for-bob-1' },
+        { userId: 2, deviceId: 2, ciphertext: '3:for-bob-2' },
+      ],
+    });
+
+    expect(repo.manager.transaction).toHaveBeenCalledTimes(1);
+    // The non-transactional save must NOT be the writer for a fan-out: a
+    // half-written send would leave a device unable to ever read the message.
+    expect(repo.save).not.toHaveBeenCalled();
+    expect(messageRepo.save).toHaveBeenCalledTimes(1);
+    expect(envelopeRepo.insert).toHaveBeenCalledWith([
+      {
+        messageId: 500,
+        recipientUserId: 2,
+        recipientDeviceId: 1,
+        ciphertext: '3:for-bob-1',
+        deliveredAt: null,
+        readAt: null,
+      },
+      {
+        messageId: 500,
+        recipientUserId: 2,
+        recipientDeviceId: 2,
+        ciphertext: '3:for-bob-2',
+        deliveredAt: null,
+        readAt: null,
+      },
+    ]);
+    expect(message.id).toBe(500);
+  });
+
+  it('keeps the original single save when there are no envelopes', async () => {
+    repo.save.mockResolvedValue({ id: 501 });
+
+    await service.create('hello', sender, conversation, {});
+
+    expect(repo.manager.transaction).not.toHaveBeenCalled();
+    expect(repo.save).toHaveBeenCalledTimes(1);
+    expect(envelopeRepo.insert).not.toHaveBeenCalled();
+  });
+});

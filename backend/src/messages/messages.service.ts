@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Not, Repository } from 'typeorm';
 import { Message, MessageDeliveryStatus, MessageType } from './message.entity';
+import { MessageEnvelope } from './message-envelope.entity';
 import { User } from '../users/user.entity';
 import { Conversation } from '../conversations/conversation.entity';
 import {
@@ -61,6 +62,17 @@ export class MessagesService {
       originDeviceId?: number | null;
       /** Client token making a retry idempotent (Phase 1, spec §5.4). */
       sendToken?: string | null;
+      /**
+       * Per-device ciphertexts written in the SAME transaction as the row
+       * (spec §5.2 + §12 amendment (v)). When present this is a NEW-MODEL
+       * send: `encryptedContent` stays NULL and every device reads its own
+       * envelope through the §5.3 device-gated history join.
+       */
+      envelopes?: Array<{
+        userId: number;
+        deviceId: number;
+        ciphertext: string;
+      }>;
     },
   ): Promise<Message> {
     let replyTo: Message | null = null;
@@ -94,6 +106,29 @@ export class MessagesService {
       sendToken: options?.sendToken ?? null,
       replyTo,
     });
+    // One message row + N envelope rows in ONE transaction (spec §5.2): a
+    // half-written fan-out would leave some devices permanently unable to read
+    // a message the sender believes was sent. The envelope-less path keeps its
+    // original single save so legacy and metadata sends are untouched.
+    const envelopes = options?.envelopes;
+    if (envelopes?.length) {
+      return this.msgRepo.manager.transaction(async (manager) => {
+        const saved = await manager.getRepository(Message).save(msg);
+        await manager.getRepository(MessageEnvelope).insert(
+          envelopes.map((envelope) => ({
+            messageId: saved.id,
+            recipientUserId: envelope.userId,
+            recipientDeviceId: envelope.deviceId,
+            ciphertext: envelope.ciphertext,
+            deliveredAt: null,
+            readAt: null,
+          })),
+        );
+        if (replyTo) saved.replyTo = replyTo;
+        return saved;
+      });
+    }
+
     const saved = await this.msgRepo.save(msg);
     if (replyTo) saved.replyTo = replyTo;
     return saved;
