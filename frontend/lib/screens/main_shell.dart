@@ -41,6 +41,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   int _selectedIndex = 0;
   StreamSubscription<dynamic>? _tabVisibilitySub;
   StreamSubscription<dynamic>? _pageResumeSub;
+  StreamSubscription<dynamic>? _freezeReloadSub;
   UnreadBadgeSync? _unreadBadgeSync;
 
   @override
@@ -73,18 +74,30 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         }
         unawaited(_recoverForeground(markVisible: true));
       });
-      // Android Chrome freezes backgrounded PWA tabs. A notification-tap
-      // focus() or bfcache restore revives the page with a dead socket, and
-      // per the Page Lifecycle spec `resume` fires BEFORE visibilitychange —
-      // so visibility is unknowable here. Run the socket-recovery half
-      // unconditionally; the tab-visibility listener above owns the
-      // clientVisible flip when the page actually becomes visible (field
-      // bug, Aug 2026).
-      _pageResumeSub = registerPageResumeListener(() {
+      // bfcache restore: the snapshot is coherent, only the socket is dead —
+      // soft recovery. `resume` after a TAB FREEZE is different: the thawed
+      // Flutter engine is untrustworthy (mid-screen composer, lag, dead chat
+      // — field bug on 0.1.18, users 48/90), so a frozen page is REPLACED via
+      // the freeze-reload guard below, mimicking the swipe-close + icon
+      // relaunch users prove works. The pending deep-link survives in
+      // IndexedDB; the loop guard degrades to this same soft recovery.
+      _pageResumeSub = registerPageShowRecoveryListener(() {
         if (!mounted) return;
-        E2eDiagLog.add('PAGE_RESUME', {});
+        E2eDiagLog.add('PAGE_RESUME', {'source': 'pageshow'});
         unawaited(_recoverForeground(markVisible: false));
       });
+      _freezeReloadSub = installFreezeReloadGuard(
+        onFallbackRecover: () {
+          if (!mounted) return;
+          E2eDiagLog.add('PAGE_RESUME', {'source': 'freeze-loop-guard'});
+          unawaited(_recoverForeground(markVisible: false));
+        },
+      );
+      if (consumeFrozenReloadMarker()) {
+        // This boot IS the replacement of a frozen page — the only surviving
+        // evidence, since the RAM diag log died with the reloaded page.
+        E2eDiagLog.add('BOOT_AFTER_FROZEN', {});
+      }
     }
   }
 
@@ -152,6 +165,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     }
     _tabVisibilitySub?.cancel();
     _pageResumeSub?.cancel();
+    _freezeReloadSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }

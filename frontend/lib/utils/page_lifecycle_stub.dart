@@ -1,7 +1,15 @@
 import 'dart:async';
 
-/// Stub — freeze/bfcache revival is a web-only failure mode; native apps get
+/// Stubs — freeze/bfcache revival is a web-only failure mode; native apps get
 /// real lifecycle callbacks instead.
-StreamSubscription<dynamic>? registerPageResumeListener(
-  void Function() onResume,
+StreamSubscription<dynamic>? registerPageShowRecoveryListener(
+  void Function() onRevived,
 ) => null;
+
+StreamSubscription<dynamic>? installFreezeReloadGuard({
+  required void Function() onFallbackRecover,
+}) => null;
+
+bool consumeFrozenReloadMarker() => false;
+
+bool frozenPageReloadImminent() => false;
