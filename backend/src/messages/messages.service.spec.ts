@@ -859,3 +859,99 @@ describe('MessagesService.create envelope fan-out (spec §5.2 + §12 (v))', () =
     expect(envelopeRepo.insert).not.toHaveBeenCalled();
   });
 });
+
+describe('MessagesService.updateDeliveryStatus projection (falsification 19)', () => {
+  type UpdateBuilder = {
+    update: jest.Mock;
+    set: jest.Mock;
+    where: jest.Mock;
+    execute: jest.Mock;
+  };
+
+  let service: MessagesService;
+  let repo: {
+    findOne: jest.Mock;
+    save: jest.Mock;
+    createQueryBuilder: jest.Mock;
+  };
+  let builder: UpdateBuilder;
+
+  beforeEach(async () => {
+    builder = {
+      update: jest.fn().mockReturnThis(),
+      set: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      execute: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
+    repo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 100,
+        deliveryStatus: MessageDeliveryStatus.SENT,
+        expiresAt: null,
+        disappearAfterSeconds: 300,
+        sender: { id: 1 },
+        conversation: { id: 10 },
+      }),
+      save: jest.fn(),
+      createQueryBuilder: jest.fn(() => builder),
+    };
+
+    const module = await Test.createTestingModule({
+      providers: [
+        MessagesService,
+        { provide: getRepositoryToken(Message), useValue: repo },
+        mediaCleanupMock(),
+      ],
+    }).compile();
+    service = module.get(MessagesService);
+  });
+
+  it('writes ONLY deliveryStatus, via a scoped UPDATE and never a full-entity save', async () => {
+    await service.updateDeliveryStatus(100, MessageDeliveryStatus.DELIVERED);
+
+    // A full-entity save would rewrite every column from a possibly stale
+    // in-memory copy and could silently revert a concurrent write.
+    expect(repo.save).not.toHaveBeenCalled();
+    expect(builder.set).toHaveBeenCalledWith({
+      deliveryStatus: MessageDeliveryStatus.DELIVERED,
+    });
+    // Nothing about expiry or the disappearing TTL is touched (rider F9, I9).
+    const written = builder.set.mock.calls[0][0] as Record<string, unknown>;
+    expect(written).not.toHaveProperty('expiresAt');
+    expect(written).not.toHaveProperty('disappearAfterSeconds');
+    expect(builder.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the monotonic guard in the WHERE so a race cannot regress the status', async () => {
+    await service.updateDeliveryStatus(100, MessageDeliveryStatus.READ);
+
+    const [clause, params] = builder.where.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(clause).toContain('"deliveryStatus" IN');
+    expect(params.messageId).toBe(100);
+    // READ may only overwrite the strictly lower statuses.
+    expect(params.lowerStatuses).toEqual(
+      expect.arrayContaining([
+        MessageDeliveryStatus.SENT,
+        MessageDeliveryStatus.DELIVERED,
+      ]),
+    );
+    expect(params.lowerStatuses).not.toContain(MessageDeliveryStatus.READ);
+  });
+
+  it('issues no UPDATE at all when the status would not advance', async () => {
+    repo.findOne.mockResolvedValue({
+      id: 100,
+      deliveryStatus: MessageDeliveryStatus.READ,
+      sender: { id: 1 },
+      conversation: { id: 10 },
+    });
+
+    await service.updateDeliveryStatus(100, MessageDeliveryStatus.DELIVERED);
+
+    expect(repo.createQueryBuilder).not.toHaveBeenCalled();
+    expect(repo.save).not.toHaveBeenCalled();
+  });
+});

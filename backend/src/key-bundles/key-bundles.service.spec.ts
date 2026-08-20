@@ -223,6 +223,41 @@ describe('KeyBundlesService', () => {
       });
     });
 
+    // LANDMINE 2 (T4 rider, coherence F7). A linked device publishes its OWN
+    // bundle under the account's SHARED identity key. If the churn branch
+    // compared anything but the identity, provisioning a second device would
+    // fire a takeover alarm at the user and purge device 1's key material.
+    it('a second device uploading under the SHARED account identity is not churn', async () => {
+      keyBundleRepo.findOne.mockResolvedValue({
+        userId: 11,
+        deviceId: 1,
+        ...mockKeyBundleData,
+      });
+      keyBundleRepo.upsert.mockResolvedValue({ raw: [] });
+      const warnSpy = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+
+      // Same identityPublicKey, different device, its own registrationId.
+      const result = await service.upsertKeyBundle(
+        11,
+        { ...mockKeyBundleData, registrationId: 13585 },
+        undefined,
+        2,
+      );
+
+      expect(result.identityChanged).toBe(false);
+      expect(warnSpy).not.toHaveBeenCalled();
+      expect(auditRepo.insert).not.toHaveBeenCalled();
+      // Device 1's bundle and OTPs must survive untouched.
+      expect(keyBundleRepo.delete).not.toHaveBeenCalled();
+      expect(keyBundleRepo.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 11, deviceId: 2 }),
+        { conflictPaths: ['userId', 'deviceId'] },
+      );
+      warnSpy.mockRestore();
+    });
+
     it('purges unused OTPs from superseded identity epochs (durable stale-OTP fix)', async () => {
       keyBundleRepo.upsert.mockResolvedValue({ raw: [] });
 

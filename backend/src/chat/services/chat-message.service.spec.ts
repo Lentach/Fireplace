@@ -99,6 +99,8 @@ describe('ChatMessageService', () => {
   let isActiveMock: jest.Mock;
   let getAuthorizationMock: jest.Mock;
   let schedulePushMock: jest.Mock;
+  let findByConversationMock: jest.Mock;
+  let findEnvelopeCiphertextsMock: jest.Mock;
   let mockClient: Partial<Socket>;
   let mockServer: Partial<Server>;
 
@@ -108,6 +110,8 @@ describe('ChatMessageService', () => {
     isActiveMock = jest.fn().mockResolvedValue(true);
     getAuthorizationMock = jest.fn().mockResolvedValue(null);
     schedulePushMock = jest.fn().mockResolvedValue(undefined);
+    findByConversationMock = jest.fn().mockResolvedValue([]);
+    findEnvelopeCiphertextsMock = jest.fn().mockResolvedValue(new Map());
     mockClient = {
       data: { user: { id: 1 } },
       emit: jest.fn(),
@@ -121,7 +125,8 @@ describe('ChatMessageService', () => {
           provide: MessagesService,
           useValue: {
             create: createMock,
-            findByConversation: jest.fn(),
+            findByConversation: findByConversationMock,
+            findEnvelopeCiphertexts: findEnvelopeCiphertextsMock,
             findMediaUrlsByConversation: jest.fn().mockResolvedValue([]),
             markConversationAsReadFromSender: jest.fn(),
             findByIdWithConversation: jest.fn(),
@@ -1456,6 +1461,140 @@ describe('ChatMessageService', () => {
         conversationId: 10,
         messages: [],
       });
+    });
+  });
+
+  describe('per-device history reads (spec §5.3 + §12 amendment (viii))', () => {
+    /** Caller is user 1; conversation 10 is with user 2. */
+    const arrangeHistory = (rows: unknown[]) => {
+      conversationsService.findById.mockResolvedValue({
+        id: 10,
+        userOne: { id: 1 },
+        userTwo: { id: 2 },
+      } as Conversation);
+      findByConversationMock.mockResolvedValue(rows);
+    };
+
+    /** A row as `findByConversation` returns it. */
+    const row = (fields: Record<string, unknown>) =>
+      ({
+        id: 100,
+        content: '[encrypted]',
+        sender: { id: 2, username: 'bob' },
+        createdAt: new Date(),
+        deliveryStatus: 'SENT',
+        messageType: 'TEXT',
+        encryptedContent: null,
+        originDeviceId: null,
+        sendToken: null,
+        ...fields,
+      }) as unknown as Message;
+
+    /** The single served history row. */
+    const served = () => {
+      const call = (
+        (mockClient.emit as jest.Mock).mock.calls as unknown[][]
+      ).find((c) => c[0] === 'messageHistory');
+      const payload = call?.[1];
+      if (
+        !payload ||
+        typeof payload !== 'object' ||
+        !('messages' in payload) ||
+        !Array.isArray(payload.messages)
+      ) {
+        throw new Error('no messageHistory emitted');
+      }
+      return payload.messages[0] as Record<string, unknown>;
+    };
+
+    const get = () =>
+      service.handleGetMessages(mockClient as Socket, { conversationId: 10 });
+
+    it('serves THIS device its own envelope ciphertext', async () => {
+      arrangeHistory([row({})]);
+      findEnvelopeCiphertextsMock.mockResolvedValue(
+        new Map([[100, '3:mine-only']]),
+      );
+
+      await get();
+
+      expect(findEnvelopeCiphertextsMock).toHaveBeenCalledWith([100], 1, 1);
+      expect(served().encryptedContent).toBe('3:mine-only');
+      expect(served().envelopeStatus).toBeUndefined();
+    });
+
+    it('serves the legacy column to the row session owner (device 1)', async () => {
+      arrangeHistory([row({ encryptedContent: '3:legacy' })]);
+
+      await get();
+
+      expect(served().encryptedContent).toBe('3:legacy');
+      expect(served().envelopeStatus).toBeUndefined();
+    });
+
+    it('marks none_for_device for a linked device with no envelope, and never leaks the legacy ciphertext', async () => {
+      // Device 2 of the RECIPIENT: the legacy ciphertext is bound to device 1's
+      // ratchet, so serving it would fail terminally across all pre-link history.
+      mockClient.data = { user: { id: 1, deviceId: 2 } };
+      arrangeHistory([row({ encryptedContent: '3:legacy' })]);
+
+      await get();
+
+      expect(findEnvelopeCiphertextsMock).toHaveBeenCalledWith([100], 1, 2);
+      expect(served().envelopeStatus).toBe('none_for_device');
+      expect(served().encryptedContent).toBeNull();
+    });
+
+    it('marks own_origin on the sender own row at its origin device, and echoes sendToken there', async () => {
+      arrangeHistory([
+        row({
+          sender: { id: 1, username: 'alice' },
+          originDeviceId: 1,
+          sendToken: 'tok-abcdefgh',
+        }),
+      ]);
+
+      await get();
+
+      expect(served().envelopeStatus).toBe('own_origin');
+      expect(served().encryptedContent).toBeNull();
+      // The origin device's lost-ack reconcile key (amendment (ix)).
+      expect(served().sendToken).toBe('tok-abcdefgh');
+    });
+
+    it('never echoes sendToken to a device that did not originate the row', async () => {
+      arrangeHistory([row({ sendToken: 'tok-abcdefgh' })]);
+      findEnvelopeCiphertextsMock.mockResolvedValue(
+        new Map([[100, '3:mine-only']]),
+      );
+
+      await get();
+
+      expect(served().sendToken).toBeUndefined();
+    });
+
+    it('treats originDeviceId NULL as device 1 for the own-row gate', async () => {
+      arrangeHistory([
+        row({
+          sender: { id: 1, username: 'alice' },
+          originDeviceId: null,
+          encryptedContent: '3:legacy-own',
+        }),
+      ]);
+
+      await get();
+
+      expect(served().encryptedContent).toBe('3:legacy-own');
+      expect(served().envelopeStatus).toBeUndefined();
+    });
+
+    it('never marks a plaintext row — it has no ciphertext for anyone', async () => {
+      arrangeHistory([row({ content: 'hello there', messageType: 'TEXT' })]);
+
+      await get();
+
+      expect(served().envelopeStatus).toBeUndefined();
+      expect(served().content).toBe('hello there');
     });
   });
 

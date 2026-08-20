@@ -351,6 +351,16 @@ export class MessagesService {
     [MessageDeliveryStatus.READ]: 3,
   };
 
+  /**
+   * Project the recipient's delivery state onto the row's single
+   * `deliveryStatus` (spec §4).
+   *
+   * COLUMN-SCOPED by law: a full-entity `save()` here rewrites every column
+   * from a possibly stale in-memory copy, so a concurrent write (a reaction, an
+   * edit, an expiry stamp) can be silently reverted. The monotonic guard lives
+   * in the WHERE clause so two racing reports cannot regress the status.
+   * Mirrors `markConversationAsReadFromSender` below (falsification 19).
+   */
   async updateDeliveryStatus(
     messageId: number,
     status: MessageDeliveryStatus,
@@ -374,8 +384,76 @@ export class MessagesService {
       return message;
     }
 
+    const lowerStatuses = Object.entries(MessagesService.DELIVERY_STATUS_ORDER)
+      .filter(([, order]) => order < newOrder)
+      .map(([name]) => name);
+    await this.msgRepo
+      .createQueryBuilder()
+      .update(Message)
+      .set({ deliveryStatus: status })
+      .where('id = :messageId AND "deliveryStatus" IN (:...lowerStatuses)', {
+        messageId,
+        lowerStatuses,
+      })
+      .execute();
+
     message.deliveryStatus = status;
-    return this.msgRepo.save(message);
+    return message;
+  }
+
+  /**
+   * The ciphertext each of [messageIds] holds for ONE device, keyed by message
+   * id (spec §5.3 per-device history read).
+   *
+   * Reached through the message repository's manager rather than an injected
+   * envelope repository: the fan-out write in [create] does the same, so every
+   * envelope access goes through one seam.
+   */
+  async findEnvelopeCiphertexts(
+    messageIds: number[],
+    recipientUserId: number,
+    recipientDeviceId: number,
+  ): Promise<Map<number, string>> {
+    if (messageIds.length === 0) return new Map();
+    const envelopes = await this.msgRepo.manager
+      .getRepository(MessageEnvelope)
+      .find({
+        where: {
+          messageId: In(messageIds),
+          recipientUserId,
+          recipientDeviceId,
+        },
+      });
+    return new Map(
+      envelopes.map((envelope) => [envelope.messageId, envelope.ciphertext]),
+    );
+  }
+
+  /**
+   * Stamp ONE device's envelope as delivered or read (spec §5.3).
+   *
+   * These stamps are per-device delivery bookkeeping ONLY. They must never
+   * feed message expiry or the read-based disappearing TTL: that countdown
+   * starts solely from the recipient user's `markConversationAsReadFromSender`
+   * over the peer's rows (invariant I9, spec §5.6, durability rider F9).
+   */
+  async stampEnvelope(
+    messageId: number,
+    recipientUserId: number,
+    recipientDeviceId: number,
+    field: 'deliveredAt' | 'readAt',
+  ): Promise<void> {
+    await this.msgRepo.manager
+      .getRepository(MessageEnvelope)
+      .createQueryBuilder()
+      .update(MessageEnvelope)
+      .set({ [field]: () => 'now()' })
+      .where(
+        `"messageId" = :messageId AND "recipientUserId" = :recipientUserId
+           AND "recipientDeviceId" = :recipientDeviceId AND "${field}" IS NULL`,
+        { messageId, recipientUserId, recipientDeviceId },
+      )
+      .execute();
   }
 
   /**

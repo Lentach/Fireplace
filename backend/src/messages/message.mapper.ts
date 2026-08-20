@@ -4,7 +4,31 @@ import { parseReactions } from './message-reactions.util';
 export class MessageMapper {
   static toPayload(
     message: Message,
-    options?: { tempId?: string; conversationId?: number },
+    options?: {
+      tempId?: string;
+      conversationId?: number;
+      /**
+       * The ciphertext THIS device may read (spec §5.3): its own envelope, or
+       * the legacy column when this device is the row's session owner. Rides
+       * the existing `encryptedContent` wire field so older clients are
+       * untouched.
+       */
+      deviceCiphertext?: string | null;
+      /**
+       * Why there is no ciphertext for this device (spec §12 amendment (viii)).
+       * `none_for_device`: the row predates this device's link — render the
+       * honest placeholder, never `[Decryption failed]`. `own_origin`: this
+       * device SENT the row, so no envelope exists for it by design and the
+       * plaintext lives locally. Absent whenever a ciphertext is served.
+       */
+      envelopeStatus?: 'none_for_device' | 'own_origin';
+      /**
+       * Echo the row's `sendToken` (spec §12 amendment (ix)). Only ever set
+       * for the row's ORIGIN device: it is that device's lost-ack reconcile
+       * key, and a new-model row carries no ciphertext for it to match on.
+       */
+      includeSendToken?: boolean;
+    },
   ) {
     const sender = message.sender;
     const convId = options?.conversationId ?? message.conversation?.id ?? null;
@@ -35,11 +59,20 @@ export class MessageMapper {
        */
       originDeviceId: message.originDeviceId ?? null,
       reactions: parseReactions(message.reactions),
-      encryptedContent: message.encryptedContent ?? null,
+      encryptedContent: options?.envelopeStatus
+        ? null
+        : (options?.deviceCiphertext ?? message.encryptedContent ?? null),
       linkPreviewUrl: message.linkPreviewUrl ?? null,
       linkPreviewTitle: message.linkPreviewTitle ?? null,
       linkPreviewImageUrl: message.linkPreviewImageUrl ?? null,
     };
+
+    if (options?.envelopeStatus) {
+      payload.envelopeStatus = options.envelopeStatus;
+    }
+    if (options?.includeSendToken && message.sendToken) {
+      payload.sendToken = message.sendToken;
+    }
 
     if (message.replyTo) {
       const rt = message.replyTo;

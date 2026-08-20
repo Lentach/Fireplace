@@ -220,6 +220,20 @@ export class ChatMessageService {
     return stale;
   }
 
+  /**
+   * The marker for a re-ack of an already-committed row (spec §12 (viii)/(ix)).
+   *
+   * A NEW-MODEL row keeps its ciphertext only in `message_envelopes`, and none
+   * of those belong to the origin device, so the honest answer is `own_origin`
+   * rather than a null ciphertext the client would try to decrypt. A legacy row
+   * still has its column and re-acks exactly as before.
+   */
+  private ackEnvelopeStatus(message: Message): 'own_origin' | undefined {
+    return message.content === '[encrypted]' && message.encryptedContent == null
+      ? 'own_origin'
+      : undefined;
+  }
+
   async handleSendMessage(client: Socket, data: any, server: Server) {
     const senderId: number = client.data.user?.id;
     if (!senderId) return;
@@ -287,6 +301,8 @@ export class ChatMessageService {
         MessageMapper.toPayload(committed, {
           tempId: send.tempId,
           conversationId: conversation.id,
+          includeSendToken: true,
+          envelopeStatus: this.ackEnvelopeStatus(committed),
         }),
       );
       return;
@@ -367,18 +383,34 @@ export class ChatMessageService {
         MessageMapper.toPayload(raced, {
           tempId: send.tempId,
           conversationId: conversation.id,
+          includeSendToken: true,
+          envelopeStatus: this.ackEnvelopeStatus(raced),
         }),
       );
       return;
     }
 
+    // Base for the per-device fan-out below: carries NO `sendToken` (it is the
+    // sender's private reconcile key) and NO `envelopeStatus` (a recipient's
+    // copy has a real ciphertext and must be decrypted).
     const messagePayload = MessageMapper.toPayload(message, {
       tempId: data.tempId,
       conversationId: conversation.id,
     });
 
-    // Emit to sender (confirmation)
-    client.emit('messageSent', messagePayload);
+    // The sender's ack is a DIFFERENT payload: the origin device gets no
+    // envelope by design, so it receives the lost-ack reconcile key instead of
+    // a ciphertext (spec §12 amendment (ix)), consistent with what a history
+    // read later serves that same device.
+    client.emit(
+      'messageSent',
+      MessageMapper.toPayload(message, {
+        tempId: data.tempId,
+        conversationId: conversation.id,
+        includeSendToken: true,
+        envelopeStatus: isNewModel ? 'own_origin' : undefined,
+      }),
+    );
 
     // CIPHERTEXT — addressed PER DEVICE (spec §5.3), never room-broadcast.
     // Every device holds a DIFFERENT ciphertext, and Signal decryption is not
@@ -505,9 +537,59 @@ export class ChatMessageService {
       const now = new Date();
       const active = messages.filter((m) => !isMessageExpired(m, now));
 
-      const mapped = active.map((m) =>
-        MessageMapper.toPayload(m, { conversationId: data.conversationId }),
-      );
+      // Per-device history read (spec §5.3 + §12 amendment (viii)): serve THIS
+      // device its own envelope, else the legacy column when this device owns
+      // the row's session, else an explicit marker. Serving another device's
+      // ciphertext would bind a foreign ratchet and fail terminally across the
+      // whole pre-link history, which is what the gating exists to prevent.
+      const deviceId = socketDeviceId(client) ?? DEFAULT_DEVICE_ID;
+      const ciphertextByMessageId =
+        await this.messagesService.findEnvelopeCiphertexts(
+          active.map((m) => m.id),
+          userId,
+          deviceId,
+        );
+
+      const mapped = active.map((m) => {
+        const options = { conversationId: data.conversationId as number };
+        // A plaintext row (PING, pre-E2E content) has no ciphertext for anyone
+        // and must never be marked.
+        const isE2e = m.content === '[encrypted]' || m.encryptedContent != null;
+        if (!isE2e) return MessageMapper.toPayload(m, options);
+
+        const own = m.sender?.id === userId;
+        // Backfilled and legacy-client rows carry originDeviceId NULL, which
+        // means device 1 (durability rider F5a).
+        const sessionOwnerDeviceId = own
+          ? (m.originDeviceId ?? DEFAULT_DEVICE_ID)
+          : DEFAULT_DEVICE_ID;
+        const isSessionOwner = deviceId === sessionOwnerDeviceId;
+
+        const envelope = ciphertextByMessageId.get(m.id);
+        if (envelope) {
+          return MessageMapper.toPayload(m, {
+            ...options,
+            deviceCiphertext: envelope,
+            includeSendToken: own && isSessionOwner,
+          });
+        }
+        if (isSessionOwner && m.encryptedContent != null) {
+          return MessageMapper.toPayload(m, {
+            ...options,
+            deviceCiphertext: m.encryptedContent,
+            includeSendToken: own && isSessionOwner,
+          });
+        }
+        return MessageMapper.toPayload(m, {
+          ...options,
+          // The origin device of its own new-model row has no envelope BY
+          // DESIGN — self-sync envelopes address the sender's OTHER devices —
+          // and reads the plaintext from its local store.
+          envelopeStatus:
+            own && isSessionOwner ? 'own_origin' : 'none_for_device',
+          includeSendToken: own && isSessionOwner,
+        });
+      });
 
       client.emit('messageHistory', {
         conversationId: data.conversationId,
