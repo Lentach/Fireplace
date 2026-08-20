@@ -1,3 +1,8 @@
+> **⛔ SUPERSEDED 2026-08-20 (evening) by `2026-08-20-HANDOFF-phase2-T4-start-here.md`.**
+> T3 is DONE (built, gate-reviewed, app-proven — closure in the decision record §8). The
+> owner rules and environment traps below remain true and are restated (plus T3's new
+> lessons) in the successor file. Read THAT file, not this one.
+
 # HANDOFF 2026-08-20 — Multi-device program: T1+T2 done, T3 (provisioning SAS) is your job
 
 **You are a fresh agent picking up a multi-session program mid-flight. This file is the
