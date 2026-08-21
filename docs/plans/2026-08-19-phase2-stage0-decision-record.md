@@ -384,3 +384,61 @@ two P2, three P3 — folded as `a64fd76` and settled as spec §12 amendment **(x
   the identity surface.
 - **Verified after the fold:** flutter **1486/10sk**, analyze clean, wire **41/2sk**, backend
   untouched at 920/57 · ratchet 903.
+
+## 11. T6 closure (2026-08-21) — revocation and the §6.2 reset-roster teardown
+
+Spine: `5fee421` settlement (spec §12 **(xxi)–(xxix)**) → `a72f70c` revokeDevice + the two session
+gates + I6 silence → `ac1b4d9` reset roster teardown + replacement enrollment → `e17cb8b`
+accept-side revocation, revoke UI, kicked-device logout → `0ef1e19` wire falsification 7 →
+`b672e1d` review fold → `43cdc67` the fix the app-proof forced.
+
+**Reviewed twice, no P0/P1 either time.** The ticket reviewer returned SHIP-WITH-FIXES with one P2
+(the reset teardown's own docstring claimed "ONE transaction" while `revokeAllForUser` and
+`createToken` ran on the autocommit connection) and one P3 (the revoke UI reads "primary" as device
+1). A second reviewer re-read the fold whole and returned SHIP with zero findings.
+
+**Deviations and rulings worth remembering:**
+
+- **Two findings reshaped the ticket before code.** The push `deviceId` columns existed but were
+  NEVER written, so §5.5's "deletes its push rows" was unimplementable; and `JwtStrategy` never read
+  the `deviceId` claim, so a revoked device kept every guarded REST route — media upload included —
+  for the life of its 24 h token. One change fixed both, which is why the owner ratified the
+  full-HTTP option.
+- **A lockout was found and fixed while building, not after.** Login hardcoded `deviceId = 1`. The
+  moment a reset revokes device 1, that mints a token for a revoked device and both new gates
+  correctly refuse it — the owner locked out with the correct password. Login now resolves the live
+  primary; the regression test names the lockout.
+- **The authorization row is REPLACED, never dropped** (amendment (xxix)). The first draft dropped
+  it, which would have destroyed the `listVersion` (f)(iii) requires be carried forward and made the
+  account read as not-enrolled — which (xix) refuses as a rollback.
+- **The accept-side gate's fail-closed reading is deliberately narrowed** (spec (xxvii) rider): when
+  the verified list FETCH fails, withholding applies to `originDeviceId >= 2` only. The strict
+  reading let one withheld `getDeviceList` answer silence every conversation of a single-device
+  account, and bought ~nothing, since §5.5 refuses to revoke a primary and the one path that revokes
+  device 1 (the reset) also replaces the account identity.
+- **The first version of the accept gate had a real bug the suite caught:** withheld rows were being
+  stamped `[Decryption failed]` by the post-retry sweep and were arming session-rebuild requests
+  against a healthy peer. Withheld ids are now tracked and both paths skip them.
+
+**Owed, recorded rather than claimed:**
+
+- **Falsification 12 (per-device epoch after a reset) is NOT wire-proven.** The harness has no route
+  to complete a §6.2 ceremony (72 h delay, no DB access to age it), so it stays unit-proven by
+  `reset-roster.service.spec.ts` and the `purgeDeviceMaterial` contracts.
+- **`list_device_mismatch` is unit-proven only** — reaching it on the wire needs two linked
+  non-primary devices in one run.
+- **The §6.2 reset teardown itself has never run against a live account.** Every part of it is
+  unit-proven; the app-proof exercised revocation, not recovery.
+
+**App-proof (account 193, two real devices, DB + logs as ground truth).** It earned its keep: the
+revoke button failed live because `revokeDevice` never armed its DAK from the Keystore, and the unit
+suite was green because it pre-armed the engine — a test that could not fail. After `43cdc67`:
+device 2 kicked with the stated Polish reason, its 2 decrypted rows and 30 Signal key entries intact
+across a reload (logout semantics, no remote wipe); device 1 unbroken and still sending; list v2 →
+v3; device 2's bundle, OTPs and refresh token gone while device 1 keeps registrationId 10558, 3
+sessions and 100 OTPs; and on one conversation, message 698 (pre-revocation) carries envelopes
+`(193,2)+(297,1)` while message 775 (post-revocation) carries `(297,1)` ONLY — falsification 7 in
+the app.
+
+**Verified at `43cdc67`:** backend **982/61** · ratchet **900** (floor 906, PASS) · analyze clean ·
+flutter **1510/10sk** · wire **42/2sk**.
