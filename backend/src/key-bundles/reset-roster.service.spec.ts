@@ -113,8 +113,20 @@ describe('ResetRosterService', () => {
   it('drops every pre-reset session and issues one for the new id', async () => {
     const result = await service.applyAfterReset(USER_ID, 1);
 
-    expect(refreshTokensService.revokeAllForUser).toHaveBeenCalledWith(USER_ID);
-    expect(refreshTokensService.createToken).toHaveBeenCalledWith(USER_ID, 4);
+    // BOTH inside the caller's transaction (amendment (xxviii)): a session
+    // wipe that committed while the roster mutation rolled back would leave
+    // the account signed out of an un-revoked roster, with the reset ceremony
+    // already spent.
+    expect(refreshTokensService.revokeAllForUser).toHaveBeenCalledWith(
+      USER_ID,
+      manager,
+    );
+    expect(refreshTokensService.createToken).toHaveBeenCalledWith(
+      USER_ID,
+      4,
+      null,
+      manager,
+    );
     expect(result.refreshToken).toBe('fresh-refresh');
   });
 

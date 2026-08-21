@@ -190,8 +190,14 @@ class _DevicesScreenState extends State<DevicesScreen> {
               entry: entry,
               l10n: l10n,
               // Only the primary may revoke, and never itself (amendment
-              // (xxi)) — the server enforces both, this just does not offer an
-              // action that is guaranteed to be refused.
+              // (xxi)) — the server enforces both; this just does not offer an
+              // action guaranteed to be refused. The signed canonical list
+              // carries NO primary flag (spec §3), so "primary" is read as
+              // device 1, which is exactly true until §6.3 primary migration
+              // ships. When it does, the flag has to reach the client (either
+              // in the canonical list or beside it) and this condition must
+              // move to it — a §6.2 reset already makes the primary a
+              // freshly allocated id server-side.
               onRevoke:
                   entry.revokedAtMs == null &&
                       entry.deviceId != 1 &&

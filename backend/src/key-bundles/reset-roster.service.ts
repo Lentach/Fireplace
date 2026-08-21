@@ -97,15 +97,19 @@ export class ResetRosterService {
         deviceId,
         manager,
       );
-
       // Every pre-reset session dies: those devices no longer hold the
       // account's identity, and a reset is precisely the "I lost control of
       // the old devices" ceremony. The recovering device is then handed the
-      // only live session, carrying its new device id.
-      await this.refreshTokensService.revokeAllForUser(userId);
+      // only live session, carrying its new device id. BOTH ride the caller's
+      // manager: a session wipe that committed while the roster mutation
+      // rolled back would leave the account signed out of an un-revoked
+      // roster, with the reset ceremony already spent.
+      await this.refreshTokensService.revokeAllForUser(userId, manager);
       refreshToken = await this.refreshTokensService.createToken(
         userId,
         deviceId,
+        null,
+        manager,
       );
     });
 

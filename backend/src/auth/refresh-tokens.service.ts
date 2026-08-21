@@ -39,12 +39,16 @@ export class RefreshTokensService {
     userId: number,
     deviceId: number | null = null,
     deviceName: string | null = null,
+    manager?: EntityManager,
   ): Promise<string> {
+    const repo = manager
+      ? manager.getRepository(RefreshToken)
+      : this.refreshRepo;
     const plain = randomBytes(REFRESH_TOKEN_BYTE_LENGTH).toString('base64url');
     const tokenHash = RefreshTokensService.hashToken(plain);
     const expiresAt = this.expiresAtFromNow();
-    await this.refreshRepo.save(
-      this.refreshRepo.create({
+    await repo.save(
+      repo.create({
         userId,
         tokenHash,
         expiresAt,
@@ -99,8 +103,19 @@ export class RefreshTokensService {
     }
   }
 
-  async revokeAllForUser(userId: number): Promise<void> {
-    await this.refreshRepo.delete({ userId });
+  /**
+   * Drops EVERY session of an account. `manager` makes it part of the caller's
+   * transaction — the §6.2 roster teardown needs the session wipe and the
+   * roster mutation to commit or roll back together (amendment (xxviii)).
+   */
+  async revokeAllForUser(
+    userId: number,
+    manager?: EntityManager,
+  ): Promise<void> {
+    const repo = manager
+      ? manager.getRepository(RefreshToken)
+      : this.refreshRepo;
+    await repo.delete({ userId });
   }
 
   /**
