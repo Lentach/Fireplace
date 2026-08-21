@@ -1,3 +1,18 @@
+> ## ⛔ SUPERSEDED 2026-08-21 (B) — read `2026-08-21-HANDOFF-phase2-T6-start-here.md` instead
+>
+> **T5 IS DONE** (built, reviewed twice, wire-proven, self-sync app-proven on two real devices;
+> spec §12 gained amendments (xi)–(xx)). This file's account of T1–T4 and its owner rules and
+> traps remain accurate and are restated in the T6 handoff — but its **numbers, its brief and its
+> line numbers are STALE**, and two of its claims were proven WRONG by T5's research:
+>
+> 1. It says the send half of self-sync is still to build. **It was already shipped in T4** — T5
+>    turned out to be a receive-side ticket.
+> 2. Its "five own-sender guards" table is **INCOMPLETE**. The decisive gate,
+>    `MessageModel.needsDecryption`, is missing from it, and two guards it does not mention must
+>    NEVER be flipped (the receipt emit — falsification 19 — and the edit-echo reconcile).
+>
+> Keep it for its T1–T4 mechanism detail. Do not follow its instructions.
+
 # HANDOFF 2026-08-21 — Multi-device program: T1–T4 done, T5 (self-sync + lost-ack) is your job
 
 **You are a fresh agent picking up a multi-session program mid-flight. This file is the
