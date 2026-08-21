@@ -836,7 +836,27 @@ extension MessagingDecrypt on MessagingProvider {
           // the server withholds the `sendToken` from every non-origin device,
           // which makes such a collision unreachable — this check is what keeps
           // it unreachable if that ever changes.
-          final recordKey = _isSelfSyncRow(msg)
+          //
+          // The same rule has to hold in the window BEFORE `socketReady`
+          // confirms which device we are (amendment (xii)), where
+          // `_isSelfSyncRow` cannot answer yet. Three cases, and only one of
+          // them defers:
+          //  * `own_origin` — the SERVER already compared the origin to this
+          //    session's device and says we sent it (branch 1 of (xi)); no
+          //    local device id is needed, and this is the row whose only key
+          //    IS the token, so it must reconcile immediately;
+          //  * NULL `originDeviceId` — pre-migration or legacy-client, device 1
+          //    by definition. Every production send is this shape until
+          //    enrollment ships, so deferring it would strand real plaintext
+          //    against a server that never echoes a deviceId;
+          //  * an origin CLAIM we cannot yet compare — no record key, because
+          //    consuming on an unevaluated origin is exactly what (xiv) forbids.
+          final serverSaysThisDeviceSentIt = msg.envelopeStatus == 'own_origin';
+          final originUnknowable =
+              !serverSaysThisDeviceSentIt &&
+              msg.originDeviceId != null &&
+              _confirmedOwnDeviceId == null;
+          final recordKey = (_isSelfSyncRow(msg) || originUnknowable)
               ? null
               : msg.encryptedContent ?? msg.sendToken;
           // Peek (never consume-first): the pending record is the ONLY

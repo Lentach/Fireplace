@@ -346,6 +346,59 @@ void main() {
         );
       },
     );
+    test(
+      'review fold: before socketReady, a row CLAIMING an origin device is not '
+      'reconcilable either — but a legacy row still is',
+      () async {
+        // Device id unconfirmed: we cannot yet tell our own send from a
+        // sibling's, so a row that names an origin device must not be able to
+        // reach the pending-send store at all (amendment (xii) + (xiv)).
+        await encryption.savePendingSendRecord(selfSyncCipher, {
+          'content': 'my own in-flight send',
+        });
+
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [
+            _ownRow(
+              id: 7006,
+              encryptedContent: selfSyncCipher,
+              originDeviceId: 1,
+            ),
+          ],
+        });
+        await pump();
+        expect(
+          await encryption.peekPendingSendRecord(selfSyncCipher),
+          isNotNull,
+          reason: 'an unevaluable origin claim gets no record key',
+        );
+
+        // A legacy row carries NO originDeviceId — device 1 by definition — and
+        // must keep reconciling exactly as it does in production today, where
+        // no account is enrolled and no server echo is required.
+        const legacyCipher = '2:legacy-lost-ack';
+        await encryption.savePendingSendRecord(legacyCipher, {
+          'content': 'legacy plaintext survives',
+          'messageType': 'TEXT',
+        });
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [_ownRow(id: 7007, encryptedContent: legacyCipher)],
+        });
+        await pump();
+
+        expect(
+          provider.messages.firstWhere((m) => m.id == 7007).content,
+          'legacy plaintext survives',
+        );
+        expect(
+          await encryption.peekPendingSendRecord(legacyCipher),
+          isNull,
+          reason: 'the legacy reconcile must not regress',
+        );
+      },
+    );
 
     test(
       'a self-sync row NEVER consumes a pending-send record (amendment (xiv))',
