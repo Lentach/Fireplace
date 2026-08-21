@@ -261,3 +261,72 @@ committed, never trusted.
 Next ticket: **T5** (self-sync + lost-ack + client `sendToken`) under its §4 riders. It inherits
 a live `sendToken` path, per-device addressing on both directions, and the own-sender guards
 deliberately left untouched at `decrypt.dart:963/975/1294` and `history.dart:529`.
+
+## 10. T5 closure (2026-08-21) — self-sync receive, exactly-once lost-ack, `senderListInfo`
+
+Spine: `8aa8bd0` research → `64fb6cb` settlement (spec §12 items **(xi)–(xix)**) → `2b50e9a`
+stage 0 → `4fbcda0` stages 1+2 → `8a15b4f` docs → `cb7e1fb` wire falsifications → `b0d193e`
+review fold. **Not merged, not deployed.**
+
+**The research rewrote the ticket before a line was written.** Two findings, both verified in
+code, both contradicting the handoff that opened the ticket:
+
+1. **The SEND half of self-sync had already shipped in T4**, on both tiers — the client already
+   fanned out to its own other devices, the server already accepted a self-envelope for a
+   sender's other device and refused only the origin, and per-device history already served
+   device 2 its own envelope. A green test already asserted it. T5 was therefore a RECEIVE-side
+   ticket, which is not what its brief said.
+2. **The "five own-sender guards" list was incomplete, and the missing one was decisive.** All
+   five named sites existed at their claimed lines, but they all sit downstream of
+   `MessageModel.needsDecryption` (`senderId != currentUserId`), which feeds ~12 callsites and
+   decides whether a row is decrypted at all. Flipping the five without it would have left
+   self-sync dead with no visible cause. Two more guards were missing from the list in the other
+   direction: the receipt emit (`history.dart`) and the edit-echo reconcile, both of which MUST
+   stay account-scoped — device-scoping the first is falsification 19 in red.
+
+**Settled before code (§12 (xi)–(xix)).** The own-row law is **deny-decrypt unless foreign
+origin is PROVEN**, ordered: `own_origin` → never decrypt, reconcile by token;
+`(originDeviceId ?? 1) == ownDeviceId` → same in legacy shape; otherwise self-sync → decrypt as
+inbound against the origin device's session, never touching the pending record. The device-scoped
+branch waits for `socketReady` to CONFIRM `ownDeviceId`, because it defaults to 1 and a real
+device 2 would otherwise treat its own sends as a sibling's and burn the only plaintext copy on
+`[Decryption failed]`. Owner rulings: `senderListInfo` rides EVERY message (not a sample, so
+falsification 16 is deterministic); own-device skew shows a calm inline note; the reinstall gap
+is accepted and documented, matching Signal and Matrix.
+
+**One settlement item is a deliberate REFUSAL to harden.** (xiv): the existing
+`UNIQUE (senderId, sendToken)` was NOT widened with `originDeviceId`, because a wider key would
+PERMIT the same token from two devices — the opposite of the intent. The tuple stays the client's
+match law; the server contributes uniqueness plus the rule that the token reaches only the origin
+device.
+
+**Landed.** `isSelfSyncRow` + a device-scoped `needsDecryption` with every caller routed through
+one helper; `EncryptionProvider.ownDeviceIdConfirmed`; four guards flipped to origin scoping and
+three deliberately left account-scoped; the reconcile record key nulled for a self-sync row
+(asserted, not left to the server withholding the token); `senderListInfo`
+`{ownVersion, ownListHash, peerVersion, peerListHash}` hashed over the byte-exact transported
+`listCanonical`, with a bare claim never alarming, at most ONE rate-limited re-fetch per account,
+and a calm en+pl "syncing your devices" note that borrows nothing from the identity surface;
+`VerifiedDeviceList.listHash`; and the (xix) rollback-pin fix from the pre-T5 review.
+
+**Pre-T5 review (three independent reviewers, no P0).** Spec conformance, backend integrity and
+client durability were each reviewed before the ticket started, on the owner's instruction. Their
+actionable findings were folded INTO T5: the P1 enrolled→not-enrolled device-list downgrade
+became stage 0 and amendment (xix); the P2 (no end-to-end test for the token-keyed lost-ack path)
+became a test in stage 2 — and that test is what caught the first cut of the review fold.
+
+**Ticket review: PASS, one P3, folded (`b0d193e`).** In the unconfirmed-device-id window a
+self-sync row still computed a record key from its inbound ciphertext — unreachable as data loss
+(no record exists under that key on that device) but a weakening of (xiv) in exactly the window
+(xii) exists to protect. The fold distinguishes three cases: `own_origin` reconciles immediately
+(the SERVER already compared the origin), a NULL `originDeviceId` row reconciles as it does today
+(every production send until enrollment ships), and an unevaluable origin claim gets no key at
+all. The first cut deferred `own_origin` too and turned the token-keyed test red.
+
+**Verified:** backend **920/57** · ratchet **PASS 903** (floor still 906) · analyze **clean** ·
+flutter **1479/10sk** · wire **41/2sk** (+ falsifications 6 and 14, zero new registrations).
+Falsifications 16 and 22 landed as units. Root `CLAUDE.md` §3 and §7 updated (the §7 gap for
+`socketReady`'s `deviceId`, shipped since T4 but undocumented, was closed here too).
+
+**Still owed for T5:** the app-proof on account 193's two live devices — the browser tool needs
+the owner's per-session authorization, which had not been granted at the time of writing.
