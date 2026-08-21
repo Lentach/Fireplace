@@ -79,6 +79,90 @@ extension MessagingDecrypt on MessagingProvider {
   bool _isSelfSyncRow(MessageModel m) =>
       m.isSelfSyncRow(_currentUserId, _confirmedOwnDeviceId);
 
+  /// Is the device that PRODUCED this ciphertext still live in the sender's
+  /// verified device list (spec §12 amendments (e)/(xxvii))?
+  ///
+  /// Fail-closed, but only on VERIFIED data, and never with a terminal verdict:
+  /// whichever way this answers false, the row is recorded in
+  /// [_acceptGateWithheldIds] so the post-retry sweep does not stamp
+  /// `[Decryption failed]` over it and the recovery pass does not ask the peer
+  /// to re-key a session that is perfectly healthy. Nothing failed here — we
+  /// either refused a revoked sender or do not yet know.
+  ///
+  /// Own rows never reach here — the (xi) own-row branches run first — so this
+  /// gates genuine inbound envelopes only.
+  Future<bool> _originDeviceIsLive(MessageModel m) async {
+    final enc = _encryptionProvider;
+    if (enc == null) return false;
+    final originDeviceId = m.originDeviceId ?? 1;
+    final cached = enc.cachedDeviceList(m.senderId);
+    if (cached != null) {
+      if (cached.isLiveDevice(originDeviceId)) {
+        _acceptGateWithheldIds.remove(m.id);
+        return true;
+      }
+      _acceptGateWithheldIds.add(m.id);
+      _e2eFlowLog('DECRYPT_REFUSED_REVOKED_ORIGIN', {
+        'msgId': m.id,
+        'senderId': m.senderId,
+        'originDeviceId': originDeviceId,
+        'listVersion': cached.version,
+      });
+      return false;
+    }
+    // No verified list held for this sender yet — the normal state after any
+    // reload, since the cache is memory-only. AWAIT one round trip rather than
+    // deferring the row: deferring would leave the first inbound message of
+    // every session sitting at `[encrypted]` until something else happened to
+    // re-trigger a decrypt pass.
+    try {
+      final fetched = await enc.getVerifiedDeviceList(m.senderId);
+      if (fetched.isLiveDevice(originDeviceId)) {
+        _acceptGateWithheldIds.remove(m.id);
+        return true;
+      }
+      _acceptGateWithheldIds.add(m.id);
+      _e2eFlowLog('DECRYPT_REFUSED_REVOKED_ORIGIN', {
+        'msgId': m.id,
+        'senderId': m.senderId,
+        'originDeviceId': originDeviceId,
+        'listVersion': fetched.version,
+      });
+      return false;
+    } catch (e) {
+      // The fetch itself failed (timeout, no TOFU identity, bad chain — the
+      // fail-closed contract of `getVerifiedDeviceList`). What that means here
+      // depends on WHICH device claims to have sent the message:
+      //
+      //  * `originDeviceId >= 2` exists only under multi-device, so a row we
+      //    cannot verify is withheld — that is the whole point of (e).
+      //  * device 1 keeps its pre-T6 behaviour and decrypts. Refusing it would
+      //    let one broken (or withheld) `getDeviceList` answer silence EVERY
+      //    conversation of a single-device account, and it buys almost nothing:
+      //    §5.5 refuses to revoke a primary at all, and the only path that
+      //    revokes device 1 is the §6.2 reset — which also replaces the
+      //    account identity, so that device's ciphertext no longer decrypts
+      //    for anyone regardless of this check.
+      if (originDeviceId == 1) {
+        _acceptGateWithheldIds.remove(m.id);
+        _e2eFlowLog('ACCEPT_GATE_LIST_UNAVAILABLE_DEVICE1', {
+          'msgId': m.id,
+          'senderId': m.senderId,
+          'error': e.toString(),
+        });
+        return true;
+      }
+      _acceptGateWithheldIds.add(m.id);
+      _e2eFlowLog('DECRYPT_WITHHELD_NO_LIST', {
+        'msgId': m.id,
+        'senderId': m.senderId,
+        'originDeviceId': originDeviceId,
+        'error': e.toString(),
+      });
+      return false;
+    }
+  }
+
   /// Reacts to a peer's in-band device-list claim (spec §12 (xv)/(xvi)).
   ///
   /// Everything here is deliberately modest: at most ONE rate-limited re-fetch,
@@ -180,6 +264,10 @@ extension MessagingDecrypt on MessagingProvider {
   /// SESSION_RESET{historyRetry} loop).
   bool _isUnresolvedEncryptedInbound(MessageModel m) =>
       !_isRetiredMessage(m) &&
+      // A row the accept gate withheld is not "unresolved" in the sense this
+      // predicate means: asking the peer to re-key would not change the answer,
+      // because the refusal is about WHICH DEVICE sent it (amendment (e)).
+      !_acceptGateWithheldIds.contains(m.id) &&
       _needsDecryption(m) &&
       m.displayAsEncryptedPlaceholder &&
       !_hasUsableDecryptedContent(m);
@@ -1025,6 +1113,11 @@ extension MessagingDecrypt on MessagingProvider {
         continue;
       }
       if (!_needsDecryption(m)) continue;
+      // Withheld by the accept-side revocation gate (amendment (e)/(xxvii)):
+      // nothing failed, so it must not be labelled as a failure. A revoked
+      // origin stays a silent placeholder; an undecided one is retried once a
+      // verified list arrives.
+      if (_acceptGateWithheldIds.contains(m.id)) continue;
       if (!_hasUsableDecryptedContent(m) &&
           m.content != _kDecryptionFailedLabel &&
           (m.displayAsEncryptedPlaceholder ||
@@ -1240,6 +1333,17 @@ extension MessagingDecrypt on MessagingProvider {
     await _waitForE2EReady();
     if (!(_encryptionProvider?.isE2EReady ?? false)) {
       return msg.copyWith(content: '[Encryption not initialized]');
+    }
+
+    // Accept-side revocation (spec §12 amendments (e)/(xxvii)). Revocation is
+    // bidirectional: a revoked device's ciphertext must not be accepted just
+    // because a session for it exists. Checked HERE, after the own-row law's
+    // branches, so it only ever gates a genuine inbound envelope.
+    if (!await _originDeviceIsLive(msg)) {
+      // Left RETRYABLE on purpose — no ledger consumption, no terminal
+      // failure. A refusal here is silent (I7: this is a decrypt refusal, not
+      // an alarm surface).
+      return msg;
     }
 
     // hasSession + ciphertext type make every failure self-explaining in the

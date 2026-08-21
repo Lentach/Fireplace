@@ -195,6 +195,14 @@ class _AuthGateState extends State<AuthGate> {
     final auth = context.watch<AuthProvider>();
     final conn = context.read<ConnectionProvider>();
 
+    // The server can end this device's session (multi-device spec §5.5): the
+    // primary revoked it. Wired here because this is the one place that holds
+    // the connection, the auth session and the locale at once. Logout
+    // semantics — the local history and Signal keys stay (spec §1 non-goal).
+    final l10n = AppLocalizations.of(context);
+    conn.onDeviceRevoked = () =>
+        auth.logoutBecauseDeviceRevoked(l10n.deviceRevokedNotice);
+
     // Detect logout transition (true → false) - ensure clean disconnect
     if (!auth.isLoggedIn && _previousLoggedInState) {
       WidgetsBinding.instance.addPostFrameCallback((_) {

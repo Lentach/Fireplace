@@ -198,6 +198,10 @@ void main() {
     test(
       'own-device skew raises the calm flag and re-fetches OUR list',
       () async {
+        // The accept-side gate (amendment (e)) needs a verified list for the
+        // SENDER before it decrypts anything; seeding it keeps this test about
+        // the escalation's own re-fetch budget.
+        encryption.seed(2, _enrolled(7, 'peer'));
         encryption.seed(1, _enrolled(5, 'mine'));
         encryption.claim = const SenderListInfo(peerVersion: 6);
 

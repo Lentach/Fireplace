@@ -17,12 +17,11 @@ class AuthProvider extends ChangeNotifier {
     ApiService? api,
     AuthTokenStore? tokenStore,
     List<Duration>? tokenReadRetryDelays,
-  })
-    : _api = api ?? ApiService(baseUrl: AppConfig.baseUrl),
-      _tokenReadRetryDelays =
-          tokenReadRetryDelays ??
-          const [Duration(seconds: 2), Duration(seconds: 5)],
-      _tokens = tokenStore ?? AuthTokenStore() {
+  }) : _api = api ?? ApiService(baseUrl: AppConfig.baseUrl),
+       _tokenReadRetryDelays =
+           tokenReadRetryDelays ??
+           const [Duration(seconds: 2), Duration(seconds: 5)],
+       _tokens = tokenStore ?? AuthTokenStore() {
     _pushService = PushService(_api);
     _loadSavedToken();
   }
@@ -98,11 +97,7 @@ class AuthProvider extends ChangeNotifier {
         // hydrated profile (profilePhotos, about, profilePictureUrl, ...) and
         // only refresh the identity fields the JWT actually carries. Rebuilding
         // from claims alone would collapse profilePhotos to [] and drop about.
-        _currentUser = existing.copyWith(
-          id: id,
-          username: username,
-          tag: tag,
-        );
+        _currentUser = existing.copyWith(id: id, username: username, tag: tag);
       } else {
         // Cold start or account switch: no fully-hydrated prior profile to
         // trust, so rebuild from claims (preserving prior behavior exactly).
@@ -265,6 +260,27 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The server revoked THIS device (multi-device spec §5.5 + amendment
+  /// (xxvi)): end the session and say why.
+  ///
+  /// Logout semantics, deliberately not a wipe: the local plaintext store and
+  /// the Signal key material are untouched, exactly as on every other logout
+  /// path — remote wipe of a revoked device's data is an explicit non-goal
+  /// (spec §1). Stored tokens DO go, because the server already deleted that
+  /// device's refresh sessions; keeping them would only produce a doomed
+  /// refresh on the next cold boot.
+  ///
+  /// [notice] is the localized explanation, passed in because only the widget
+  /// layer holds the locale.
+  Future<void> logoutBecauseDeviceRevoked(String notice) async {
+    if (_token == null && _currentUser == null) return;
+    await _clearLocalAuthState('device_revoked', source: 'deviceRevoked');
+    // After the clear, which resets the status surface.
+    _statusMessage = notice;
+    _isError = true;
+    notifyListeners();
+  }
+
   /// Keeps access JWT valid using the opaque refresh token (messenger-style session).
   Future<void> ensureSessionReady() async {
     await _ensureSessionReadyBody();
@@ -318,7 +334,11 @@ class AuthProvider extends ChangeNotifier {
       // the tokens may be sitting intact behind a transient plugin fault
       // (handoff §5.4). The store already retried fast; these are the slow
       // second chances before we concede the boot.
-      for (var i = 0; saved.readFailed && i < _tokenReadRetryDelays.length; i++) {
+      for (
+        var i = 0;
+        saved.readFailed && i < _tokenReadRetryDelays.length;
+        i++
+      ) {
         await Future<void>.delayed(_tokenReadRetryDelays[i]);
         saved = await _tokens.read();
       }

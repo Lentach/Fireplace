@@ -102,11 +102,8 @@ class _DevicesScreenState extends State<DevicesScreen> {
           ? const SizedBox.shrink()
           : AnimatedBuilder(
               animation: controller,
-              builder: (context, _) => _buildBody(
-                context,
-                controller,
-                keyless: keyless,
-              ),
+              builder: (context, _) =>
+                  _buildBody(context, controller, keyless: keyless),
             ),
     );
   }
@@ -189,8 +186,65 @@ class _DevicesScreenState extends State<DevicesScreen> {
         if (list == null) return const [];
         return [
           for (final entry in list.devices)
-            _DeviceRow(entry: entry, l10n: l10n),
+            _DeviceRow(
+              entry: entry,
+              l10n: l10n,
+              // Only the primary may revoke, and never itself (amendment
+              // (xxi)) — the server enforces both, this just does not offer an
+              // action that is guaranteed to be refused.
+              onRevoke:
+                  entry.revokedAtMs == null &&
+                      entry.deviceId != 1 &&
+                      entry.deviceId !=
+                          context.read<EncryptionProvider>().ownDeviceId
+                  ? () => _confirmRevoke(context, controller, entry, l10n)
+                  : null,
+              busy: controller.revokingDeviceId == entry.deviceId,
+            ),
+          if (controller.revokeError != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                l10n.devicesRevokeFailed,
+                style: theme.textTheme.bodySmall?.copyWith(color: colors.error),
+              ),
+            ),
         ];
+    }
+  }
+
+  /// Revocation is destructive for the other device's session, so it is
+  /// confirmed — and the copy states the two things users get wrong: the
+  /// device is signed out, and its local history is NOT erased (spec §5.5
+  /// logout semantics, remote wipe is a §1 non-goal).
+  Future<void> _confirmRevoke(
+    BuildContext context,
+    LinkCeremonyController controller,
+    DeviceListEntry entry,
+    AppLocalizations l10n,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l10n.devicesRevokeTitle),
+        content: Text(l10n.devicesRevokeExplainer),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(
+              MaterialLocalizations.of(dialogContext).cancelButtonLabel,
+            ),
+          ),
+          TextButton(
+            key: const Key('devices-revoke-confirm'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(l10n.devicesRevokeAction),
+          ),
+        ],
+      ),
+    );
+    if (confirmed ?? false) {
+      await controller.revokeDevice(entry.deviceId);
     }
   }
 
@@ -297,10 +351,20 @@ class _DevicesScreenState extends State<DevicesScreen> {
 }
 
 class _DeviceRow extends StatelessWidget {
-  const _DeviceRow({required this.entry, required this.l10n});
+  const _DeviceRow({
+    required this.entry,
+    required this.l10n,
+    this.onRevoke,
+    this.busy = false,
+  });
 
   final DeviceListEntry entry;
   final AppLocalizations l10n;
+
+  /// Null when this device may not be revoked from here: itself, the primary,
+  /// or one already revoked (spec §12 amendment (xxi)).
+  final VoidCallback? onRevoke;
+  final bool busy;
 
   @override
   Widget build(BuildContext context) {
@@ -313,7 +377,8 @@ class _DeviceRow extends StatelessWidget {
     final revoked = entry.revokedAtMs != null;
 
     return Semantics(
-      label: 'device ${entry.deviceId} ${entry.platform}'
+      label:
+          'device ${entry.deviceId} ${entry.platform}'
           '${revoked ? ' ${l10n.devicesRevokedBadge}' : ''}',
       child: Container(
         key: Key('device-row-${entry.deviceId}'),
@@ -358,6 +423,22 @@ class _DeviceRow extends StatelessWidget {
                 ],
               ),
             ),
+            if (busy)
+              const Padding(
+                padding: EdgeInsets.only(left: 8),
+                child: SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            else if (onRevoke != null)
+              IconButton(
+                key: Key('device-revoke-${entry.deviceId}'),
+                icon: const Icon(Icons.link_off, size: 20),
+                tooltip: l10n.devicesRevokeAction,
+                onPressed: onRevoke,
+              ),
           ],
         ),
       ),

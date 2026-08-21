@@ -43,6 +43,7 @@ abstract class ProvisioningEventSink {
   void onDeviceAuthorityEnrolled(dynamic data);
   void onDeviceList(dynamic data);
   void onDeviceListChanged(dynamic data);
+  void onDeviceRevocationCompleted(dynamic data);
 }
 
 /// The narrow identity surface the ceremony needs. Production wraps
@@ -445,7 +446,9 @@ class LinkCeremonyController extends ChangeNotifier
           // ignore: avoid_dynamic_calls
           ikPub: base64Encode(identity.getPublicKey().serialize() as List<int>),
           // ignore: avoid_dynamic_calls
-          ikPriv: base64Encode(identity.getPrivateKey().serialize() as List<int>),
+          ikPriv: base64Encode(
+            identity.getPrivateKey().serialize() as List<int>,
+          ),
           dakPub: _authorization!['dakPub'] as String,
           enrollmentCreatedAt: _authorization!['enrollmentCreatedAt'] as int,
           enrollmentSig: _authorization!['enrollmentSig'] as String,
@@ -477,6 +480,84 @@ class LinkCeremonyController extends ChangeNotifier
       primaryStep = PrimaryLinkStep.failed;
       notifyListeners();
     }
+  }
+
+  // ---------- Revocation (spec §5.5, T6) ----------
+
+  /// Device id whose revocation is in flight, or null.
+  int? revokingDeviceId;
+
+  /// Stable refusal code from the last attempt, or null.
+  String? revokeError;
+
+  /// Revokes one of this account's OTHER devices (spec §5.5).
+  ///
+  /// The client signs the mutation because only the primary holds the DAK: the
+  /// staged list is the current one with `revokedAt` stamped on that entry and
+  /// the version advanced, and the server refuses the request outright unless
+  /// those signed bytes really do revoke the device named in it (amendment
+  /// (xxi), `list_device_mismatch`).
+  ///
+  /// Revoked entries STAY on the list — they are what tells every peer to stop
+  /// addressing envelopes to that device, and what lets a receiver refuse its
+  /// ciphertext at decrypt time (amendment (e)).
+  Future<void> revokeDevice(int deviceId) async {
+    final list = verifiedList;
+    if (list == null || revokingDeviceId != null) return;
+    final target = list.devices
+        .where((d) => d.deviceId == deviceId)
+        .firstOrNull;
+    if (target == null || target.revokedAtMs != null) return;
+    revokingDeviceId = deviceId;
+    revokeError = null;
+    notifyListeners();
+    try {
+      final staged = DeviceList(
+        userId: userId,
+        version: list.version + 1,
+        devices: [
+          for (final d in list.devices)
+            if (d.deviceId == deviceId)
+              DeviceListEntry(
+                deviceId: d.deviceId,
+                platform: d.platform,
+                addedAtMs: d.addedAtMs,
+                name: d.name,
+                revokedAtMs: DateTime.now().millisecondsSinceEpoch,
+              )
+            else
+              d,
+        ],
+      );
+      final signed = _engine.signList(staged);
+      _emit('revokeDevice', {
+        'deviceId': deviceId,
+        'listCanonical': signed['listCanonical'],
+        'listSignature': signed['listSignature'],
+      });
+    } catch (e) {
+      revokingDeviceId = null;
+      revokeError = 'sign_failed';
+      notifyListeners();
+    }
+  }
+
+  @override
+  void onDeviceRevocationCompleted(dynamic data) {
+    if (revokingDeviceId == null) return;
+    revokingDeviceId = null;
+    if (data is Map && data['success'] == true) {
+      revokeError = null;
+      // The server broadcasts `deviceListChanged` to the account, which lands
+      // as a refresh — but ask directly too, so the row updates even if this
+      // session somehow missed the broadcast.
+      refreshDeviceList();
+    } else {
+      revokeError = data is Map && data['error'] is String
+          ? data['error'] as String
+          : 'revoke_failed';
+    }
+    notifyListeners();
   }
 
   @override
@@ -649,10 +730,7 @@ class LinkCeremonyController extends ChangeNotifier
         transcript: transcript,
       );
       // MAC verified constant-time BEFORE decrypt inside openLinkBlob.
-      final payload = openLinkBlob(
-        keys: keys,
-        blob: base64Decode(blobB64),
-      );
+      final payload = openLinkBlob(keys: keys, blob: base64Decode(blobB64));
       if (payload.userId != userId) {
         await abortNewDevice('blob_user_mismatch');
         return;
@@ -666,9 +744,7 @@ class LinkCeremonyController extends ChangeNotifier
       _identityAdopted = true;
       newDeviceStep = NewDeviceLinkStep.completing;
       notifyListeners();
-      _emit('provisioningComplete', {
-        'provisioningId': _openProvisioningId,
-      });
+      _emit('provisioningComplete', {'provisioningId': _openProvisioningId});
     } on LinkBlobException catch (e) {
       await abortNewDevice(e.reason);
     } catch (_) {

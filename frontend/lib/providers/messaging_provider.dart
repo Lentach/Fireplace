@@ -157,6 +157,15 @@ class MessagingProvider extends ChangeNotifier {
   final SenderListInfoRefreshLimiter _listRefreshLimiter =
       SenderListInfoRefreshLimiter();
 
+  /// Message ids the accept-side revocation gate WITHHELD (spec §12 amendments
+  /// (e)/(xxvii)): either the sender's verified list shows the origin device
+  /// revoked/absent, or we hold no verified list for that sender yet.
+  ///
+  /// Load-bearing: without it the post-retry sweep would stamp
+  /// `[Decryption failed]` over a row nothing has failed on, and the recovery
+  /// pass would ask the peer to re-key a session that is perfectly healthy.
+  final Set<int> _acceptGateWithheldIds = {};
+
   /// tempIds whose `sendMessage` emit already happened — a second emit for the
   /// same optimistic message would advance the ratchet again and hand the
   /// recipient an undecryptable duplicate. Released on send failure (so user

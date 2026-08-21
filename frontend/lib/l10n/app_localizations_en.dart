@@ -125,6 +125,23 @@ class AppLocalizationsEn extends AppLocalizations {
   String get devicesRevokedBadge => 'revoked';
 
   @override
+  String get devicesRevokeAction => 'Remove device';
+
+  @override
+  String get devicesRevokeTitle => 'Remove this device?';
+
+  @override
+  String get devicesRevokeExplainer =>
+      'It will be signed out and will stop receiving new messages. Messages already on that device are not erased.';
+
+  @override
+  String get devicesRevokeFailed => 'Could not remove that device. Try again.';
+
+  @override
+  String get deviceRevokedNotice =>
+      'This device was removed from your account. Your messages on it were kept — sign in again to keep chatting.';
+
+  @override
   String get devicesPrimaryBadge => 'primary';
 
   @override

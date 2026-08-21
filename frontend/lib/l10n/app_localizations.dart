@@ -314,6 +314,36 @@ abstract class AppLocalizations {
   /// **'cofnięte'**
   String get devicesRevokedBadge;
 
+  /// No description provided for @devicesRevokeAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Usuń urządzenie'**
+  String get devicesRevokeAction;
+
+  /// No description provided for @devicesRevokeTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Usunąć to urządzenie?'**
+  String get devicesRevokeTitle;
+
+  /// No description provided for @devicesRevokeExplainer.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zostanie wylogowane i przestanie odbierać nowe wiadomości. Wiadomości już zapisane na tym urządzeniu nie zostaną usunięte.'**
+  String get devicesRevokeExplainer;
+
+  /// No description provided for @devicesRevokeFailed.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się usunąć tego urządzenia. Spróbuj ponownie.'**
+  String get devicesRevokeFailed;
+
+  /// No description provided for @deviceRevokedNotice.
+  ///
+  /// In pl, this message translates to:
+  /// **'To urządzenie zostało usunięte z Twojego konta. Twoje wiadomości na nim pozostały — zaloguj się ponownie, aby pisać dalej.'**
+  String get deviceRevokedNotice;
+
   /// No description provided for @devicesPrimaryBadge.
   ///
   /// In pl, this message translates to:

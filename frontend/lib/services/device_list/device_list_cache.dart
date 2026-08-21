@@ -71,6 +71,18 @@ class VerifiedDeviceList {
     for (final d in devices)
       if (d.revokedAtMs == null) d.deviceId,
   ];
+
+  /// Is this device present in the list AND not revoked?
+  ///
+  /// The accept-side check of spec §12 amendments (e)/(xxvii): an inbound
+  /// envelope whose origin device is absent-or-revoked here must not be
+  /// decrypted, because revocation is bidirectional — a revoked device's
+  /// ciphertext must not be accepted just because a session for it exists.
+  ///
+  /// A non-enrolled account verifies as the synthesized single device 1, so
+  /// an inbound `originDeviceId >= 2` from one is correctly refused.
+  bool isLiveDevice(int deviceId) =>
+      devices.any((d) => d.deviceId == deviceId && d.revokedAtMs == null);
 }
 
 /// A device-list answer that failed verification. [reason] is the stable

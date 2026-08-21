@@ -126,6 +126,24 @@ class AppLocalizationsPl extends AppLocalizations {
   String get devicesRevokedBadge => 'cofnięte';
 
   @override
+  String get devicesRevokeAction => 'Usuń urządzenie';
+
+  @override
+  String get devicesRevokeTitle => 'Usunąć to urządzenie?';
+
+  @override
+  String get devicesRevokeExplainer =>
+      'Zostanie wylogowane i przestanie odbierać nowe wiadomości. Wiadomości już zapisane na tym urządzeniu nie zostaną usunięte.';
+
+  @override
+  String get devicesRevokeFailed =>
+      'Nie udało się usunąć tego urządzenia. Spróbuj ponownie.';
+
+  @override
+  String get deviceRevokedNotice =>
+      'To urządzenie zostało usunięte z Twojego konta. Twoje wiadomości na nim pozostały — zaloguj się ponownie, aby pisać dalej.';
+
+  @override
   String get devicesPrimaryBadge => 'główne';
 
   @override

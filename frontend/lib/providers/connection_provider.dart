@@ -89,6 +89,11 @@ class ConnectionProvider extends ChangeNotifier {
   MessagingProvider? _messagingProvider;
 
   ProvisioningEventSink? _provisioningSink;
+
+  /// Invoked when the server reports that THIS device was revoked (spec §5.5).
+  /// Set by the widget that owns both this provider and the auth session — the
+  /// notice text needs a locale, and only the auth layer may end a session.
+  void Function()? onDeviceRevoked;
   // ---------- Public Getters ----------
 
   int? get currentUserId => _currentUserId;
@@ -735,7 +740,16 @@ class ConnectionProvider extends ChangeNotifier {
       _provisioningSink?.onDeviceListChanged(data);
       _encryptionProvider?.onDeviceListChanged(data);
     });
-
+    _socketService.on('deviceRevocationCompleted', (data) {
+      _provisioningSink?.onDeviceRevocationCompleted(data);
+    });
+    // THIS device was revoked (spec §5.5 + amendment (xxvi)). The server tells
+    // us, then drops the socket; a later reconnect attempt is refused with the
+    // same event before the socket closes, so this is the only place the app
+    // ever learns WHY instead of showing the generic connection-lost banner.
+    _socketService.on('deviceRevoked', (data) {
+      _onOwnDeviceRevoked(data);
+    });
     // --- Friend events ---
     _socketService.on('friendRequestsList', (data) {
       _friendsProvider?.onFriendRequestsList(data);
@@ -869,6 +883,25 @@ class ConnectionProvider extends ChangeNotifier {
       _messagingProvider?.markSendingMessagesFailed(msg);
       notifyListeners();
     });
+  }
+
+  /// THIS device was revoked (spec §5.5 + amendment (xxvi)).
+  ///
+  /// Stops the reconnect loop FIRST: the server is about to drop the socket,
+  /// and without this the backoff would keep retrying a session the connect
+  /// gate now refuses, ending on a generic "Connection lost" banner instead of
+  /// the real reason. The actual logout is delegated, because only the auth
+  /// layer owns session state — and only the widget layer holds the locale for
+  /// the notice.
+  void _onOwnDeviceRevoked(Object? data) {
+    final deviceId = data is Map ? data['deviceId'] : null;
+    E2eDiagLog.add('DEVICE_REVOKED', {'deviceId': deviceId});
+    _intentionalDisconnect = true;
+    _reconnectManager.resetAttempts();
+    _socketService.disconnect();
+    _isConnected = false;
+    notifyListeners();
+    onDeviceRevoked?.call();
   }
 
   // ---------- Dispose ----------

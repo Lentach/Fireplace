@@ -1012,6 +1012,15 @@ that is the designed outcome).
     is a decrypt refusal, never an alarm surface). A sender that is not enrolled verifies as
     the synthesized single device 1, so an inbound `originDeviceId >= 2` from a non-enrolled
     account is refused, which is the correct fail-closed reading of §5.2.
+    **Rider, forced by implementation (2026-08-21):** when the verified fetch itself FAILS
+    (timeout, no pinned identity, broken chain), the withholding applies to
+    `originDeviceId >= 2` only; a device-1 row keeps its pre-T6 behaviour and decrypts. A
+    strict reading would let one withheld or broken `getDeviceList` answer silence EVERY
+    conversation of a single-device account — a server-side off switch for reading mail — while
+    buying almost nothing: §5.5 refuses to revoke a primary at all, and the one path that
+    revokes device 1 is the §6.2 reset, which also replaces the account identity, so that
+    device's ciphertext stops decrypting for every peer regardless of this check. A list the
+    client DOES hold still refuses a revoked device 1, so the teardown case stays covered.
   - **(xxviii) The §6.2 reset roster teardown (amendment (f)) is ONE transaction at the
     authorized identity change**, which is the moment a reset actually completes (the
     ceremony's consumption point, not the request). In that transaction: the recovering device
