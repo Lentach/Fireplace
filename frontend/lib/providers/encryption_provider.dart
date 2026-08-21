@@ -257,6 +257,22 @@ class EncryptionProvider extends ChangeNotifier {
   final Map<int, Completer<Map<String, dynamic>?>> _pendingDeviceListFetches =
       {};
 
+  /// Which device THIS session is, as the server reported it on `socketReady`
+  /// (spec §5.3). Defaults to 1 — a token predating the claim, and every
+  /// single-device account, is device 1 (§8).
+  int _ownDeviceId = 1;
+
+  int get ownDeviceId => _ownDeviceId;
+
+  /// Records the server's answer. The client cannot derive this itself, and a
+  /// fan-out send needs it: it addresses every OTHER device of the account for
+  /// self-sync and must NEVER address its own origin device (the server
+  /// refuses that as `self_envelope_for_origin_device`).
+  void setOwnDeviceId(int deviceId) {
+    if (deviceId == _ownDeviceId) return;
+    _ownDeviceId = deviceId;
+  }
+
   /// The cached verified list for [userId], or null when none is held.
   VerifiedDeviceList? cachedDeviceList(int userId) =>
       _deviceListCache.cached(userId);

@@ -89,8 +89,8 @@ extension MessagingDecrypt on MessagingProvider {
 
   MessageModel _retiredMessagePlaceholder(MessageModel msg) =>
       msg.content == kRetiredMessageLabel
-          ? msg
-          : msg.copyWith(content: kRetiredMessageLabel);
+      ? msg
+      : msg.copyWith(content: kRetiredMessageLabel);
 
   bool _conversationHasUndecryptedInbound(int conversationId) {
     return _messages.any(
@@ -684,17 +684,25 @@ extension MessagingDecrypt on MessagingProvider {
         } else {
           // Lost-ack reconcile: the `messageSent` ack died with a socket drop,
           // so this own row arrived as '[encrypted]' with nothing persisted
-          // under its real id. Match the durable pending-send record by EXACT
-          // ciphertext equality (unique by ratchet construction — a miss means
-          // stay '[encrypted]', never a heuristic guess; see the 07-08 field
-          // case msg 14667 and docs/runbooks/e2e-decryption-failed.md).
-          final ciphertext = msg.encryptedContent;
+          // under its real id.
+          //
+          // The key is the row's own `sendToken`, which the server echoes ONLY
+          // to the device that originated it (spec §12 amendment (ix)). It has
+          // to be: a new-model row carries no ciphertext for its origin device
+          // (`envelopeStatus: own_origin`), so the old exact-ciphertext match
+          // would never fire again and this plaintext — the ONLY copy — would
+          // be stranded. Exact ciphertext equality REMAINS the fallback for
+          // legacy and pre-migration records already on disk (unique by
+          // ratchet construction; a miss means stay '[encrypted]', never a
+          // heuristic guess — see the 07-08 field case msg 14667 and
+          // docs/runbooks/e2e-decryption-failed.md).
+          final recordKey = msg.sendToken ?? msg.encryptedContent;
           // Peek (never consume-first): the pending record is the ONLY
           // surviving plaintext copy, and saveDecryptedContent swallows
           // failures — so persist, VERIFY by read-back, and only then take.
           // A failed persist leaves the record for the next history pass.
-          final pending = ciphertext != null
-              ? await _encryptionProvider!.peekPendingSendRecord(ciphertext)
+          final pending = recordKey != null
+              ? await _encryptionProvider!.peekPendingSendRecord(recordKey)
               : null;
           if (pending != null) {
             final restoredType = _parseMessageTypeString(
@@ -746,7 +754,7 @@ extension MessagingDecrypt on MessagingProvider {
                 (pendingContent.isNotEmpty ||
                     persisted?['messageType'] != null);
             if (verified) {
-              await _encryptionProvider!.takePendingSendRecord(ciphertext!);
+              await _encryptionProvider!.takePendingSendRecord(recordKey!);
             }
             final idx = _messages.indexWhere((m) => m.id == msg.id);
             if (idx != -1) {
@@ -964,7 +972,6 @@ extension MessagingDecrypt on MessagingProvider {
     }
     return _runDecryptSerialized(msg.senderId, () => _decryptMessageAsync(msg));
   }
-
 
   Future<MessageModel> _decryptMessageAsync(MessageModel msg) async {
     // Defense in depth for any future caller that bypasses the serialized entry
@@ -1198,19 +1205,23 @@ extension MessagingDecrypt on MessagingProvider {
       // (design terminal-duplicate-retirement.md §4). Trailing delimiters in
       // the match substrings stop an id from prefix-matching a longer one;
       // the payload's key order is pinned by a line-format test.
-      E2ePersistentDiag.recordDeduped('DECRYPT_DECISION', {
-        'msgId': msg.id,
-        'senderId': msg.senderId,
-        'kind': kind.name,
-        'rule': decision.rule.name,
-        'isHistory': _decryptingHistory,
-        'idReset': _encryptionProvider?.hadIdentityReset == true,
-        'hadSession': hadSessionAtDecrypt,
-        'persist': decision.persistTerminalFailure,
-        'markFailed': decision.markContentFailed,
-        'retry': decision.retryAction.name,
-        'notifyPeer': decision.notifyPeerRebuild,
-      }, matchAll: ['{msgId: ${msg.id},', ' kind: ${kind.name},']);
+      E2ePersistentDiag.recordDeduped(
+        'DECRYPT_DECISION',
+        {
+          'msgId': msg.id,
+          'senderId': msg.senderId,
+          'kind': kind.name,
+          'rule': decision.rule.name,
+          'isHistory': _decryptingHistory,
+          'idReset': _encryptionProvider?.hadIdentityReset == true,
+          'hadSession': hadSessionAtDecrypt,
+          'persist': decision.persistTerminalFailure,
+          'markFailed': decision.markContentFailed,
+          'retry': decision.retryAction.name,
+          'notifyPeer': decision.notifyPeerRebuild,
+        },
+        matchAll: ['{msgId: ${msg.id},', ' kind: ${kind.name},'],
+      );
       // Terminal-duplicate retirement (design terminal-duplicate-retirement.md
       // §3): a HISTORY row failing `duplicate` with no ledger entry is the
       // retry-forever class the ledger gate cannot reach. Guard (a) — the

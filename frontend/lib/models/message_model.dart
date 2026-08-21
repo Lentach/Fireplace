@@ -61,6 +61,23 @@ class MessageModel {
   final String? linkPreviewImageUrl;
   final String? encryptedContent;
 
+  /// Why the server served no ciphertext for THIS device (spec §5.3 + §12
+  /// amendment (viii)). `none_for_device` = the row predates this device's
+  /// link, so render the honest placeholder, never a decrypt failure.
+  /// `own_origin` = this device sent it, so no envelope exists for it by
+  /// design and the plaintext lives in the local store. Null whenever a
+  /// ciphertext WAS served.
+  final String? envelopeStatus;
+
+  /// The row's own send token, echoed only to the device that ORIGINATED it
+  /// (spec §12 amendment (ix)) — the lost-ack reconcile key, since such a row
+  /// carries no ciphertext this device could match on.
+  final String? sendToken;
+
+  /// True when the server explicitly said this device has no ciphertext for
+  /// this row. Such a row must never enter the decrypt pass.
+  bool get hasNoEnvelopeForThisDevice => envelopeStatus != null;
+
   /// AES-256-GCM key (base64), from E2E envelope — client-only, not from REST.
   final String? mediaKey;
 
@@ -119,6 +136,8 @@ class MessageModel {
     this.linkPreviewTitle,
     this.linkPreviewImageUrl,
     this.encryptedContent,
+    this.envelopeStatus,
+    this.sendToken,
     this.mediaKey,
     this.mediaIv,
     this.editedAt,
@@ -156,6 +175,10 @@ class MessageModel {
       linkPreviewTitle: json['linkPreviewTitle'] as String?,
       linkPreviewImageUrl: json['linkPreviewImageUrl'] as String?,
       encryptedContent: json['encryptedContent'] as String?,
+      // Additive per-device fields (spec §12 (viii)/(ix)); absent on an older
+      // server, and `fromJson` simply reads null.
+      envelopeStatus: json['envelopeStatus'] as String?,
+      sendToken: json['sendToken'] as String?,
       editedAt: json['editedAt'] != null
           ? DateTime.parse(json['editedAt'] as String)
           : null,
@@ -225,6 +248,8 @@ class MessageModel {
     String? linkPreviewTitle,
     String? linkPreviewImageUrl,
     String? encryptedContent,
+    String? envelopeStatus,
+    String? sendToken,
     String? mediaKey,
     String? mediaIv,
     DateTime? editedAt,
@@ -254,6 +279,11 @@ class MessageModel {
       linkPreviewTitle: linkPreviewTitle ?? this.linkPreviewTitle,
       linkPreviewImageUrl: linkPreviewImageUrl ?? this.linkPreviewImageUrl,
       encryptedContent: encryptedContent ?? this.encryptedContent,
+      // Per-device facts of the row, preserved across every merge: dropping
+      // them would resurrect a decrypt attempt on a row that has no ciphertext
+      // for this device, or lose the origin device's reconcile key.
+      envelopeStatus: envelopeStatus ?? this.envelopeStatus,
+      sendToken: sendToken ?? this.sendToken,
       mediaKey: mediaKey ?? this.mediaKey,
       mediaIv: mediaIv ?? this.mediaIv,
       editedAt: editedAt ?? this.editedAt,

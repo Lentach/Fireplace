@@ -29,8 +29,8 @@ class ConnectionProvider extends ChangeNotifier {
   ConnectionProvider({
     SocketService? socketService,
     int? coldStartConversationId,
-  })  : _socketService = socketService ?? SocketService(),
-        _coldStartConversationId = coldStartConversationId;
+  }) : _socketService = socketService ?? SocketService(),
+       _coldStartConversationId = coldStartConversationId;
   final ChatReconnectManager _reconnectManager = ChatReconnectManager();
   late final ApiService _api = ApiService(baseUrl: AppConfig.baseUrl);
   late final PushService _pushService = PushService(_api);
@@ -185,8 +185,8 @@ class ConnectionProvider extends ChangeNotifier {
     _friendsProvider?.setEmitCallback((event, data) => emit(event, data));
     _conversationsProvider?.setEmitCallback((event, data) => emit(event, data));
     _messagingProvider?.setEmitCallback((event, data) => emit(event, data));
-    _encryptionProvider?.onE2EReady =
-        () => _messagingProvider?.retryDecryptActiveConversation();
+    _encryptionProvider?.onE2EReady = () =>
+        _messagingProvider?.retryDecryptActiveConversation();
 
     // 6. Wire cross-provider callbacks (friends -> conversations)
     _friendsProvider?.onRemoveConversationsForUser = (uid) {
@@ -222,26 +222,32 @@ class ConnectionProvider extends ChangeNotifier {
       // ready work so anything downstream that gates on it — above all the
       // expiry purge, which destroys the only copy of a message — runs against
       // a current observation rather than a stale one or none at all.
-      ServerClock.instance.observeIso(
-        data is Map ? data['serverTime'] : null,
+      ServerClock.instance.observeIso(data is Map ? data['serverTime'] : null);
+      // Which device this session is (spec §5.3). The client cannot derive it
+      // — the id lives in the JWT the server validated — and a fan-out send
+      // needs it to address every OTHER own device for self-sync while never
+      // addressing its own origin device. A server predating the field means
+      // device 1, which is exactly what a single-device account is.
+      final readyDeviceId = data is Map ? data['deviceId'] : null;
+      _encryptionProvider?.setOwnDeviceId(
+        readyDeviceId is int ? readyDeviceId : 1,
       );
       _onSocketReady();
     });
 
     // 10. On 'disconnect': handle reconnect
     _socketService.onDisconnect((_) {
-      E2eDiagLog.add('SOCKET_DISCONNECT', {'intentional': _intentionalDisconnect});
+      E2eDiagLog.add('SOCKET_DISCONNECT', {
+        'intentional': _intentionalDisconnect,
+      });
       _isConnected = false;
       notifyListeners();
 
       if (!_intentionalDisconnect) {
-        _reconnectManager.onDisconnect(
-          _scheduleReconnect,
-          (msg) {
-            _errorMessage = msg;
-            notifyListeners();
-          },
-        );
+        _reconnectManager.onDisconnect(_scheduleReconnect, (msg) {
+          _errorMessage = msg;
+          notifyListeners();
+        });
       }
       _socketReadyWatchdog?.cancel();
       _socketReadyWatchdog = null;
@@ -350,8 +356,10 @@ class ConnectionProvider extends ChangeNotifier {
         'activeConvId': activeConvId,
         'socketConnected': _socketService.isConnected,
       });
-      _socketService.getMessages(activeConvId,
-          limit: AppConstants.messagePageSize);
+      _socketService.getMessages(
+        activeConvId,
+        limit: AppConstants.messagePageSize,
+      );
     }
 
     Future.delayed(AppConstants.conversationsRefreshDelay, () {
@@ -462,9 +470,7 @@ class ConnectionProvider extends ChangeNotifier {
   void _sweepPlaintextNow(EncryptionProvider encryption) {
     // Fire-and-forget from a timer/socket handler; a failure means the residue
     // survives to the next tick, which is the safe direction.
-    unawaited(
-      encryption.sweepDestroyablePlaintext().catchError((Object _) {}),
-    );
+    unawaited(encryption.sweepDestroyablePlaintext().catchError((Object _) {}));
   }
 
   /// One `getServedMessageIds` round trip.
@@ -592,8 +598,11 @@ class ConnectionProvider extends ChangeNotifier {
       return;
     }
     if (!claimsConnected) {
-      connect(_currentUserId!, _reconnectManager.tokenForReconnect!,
-          AppConfig.baseUrl);
+      connect(
+        _currentUserId!,
+        _reconnectManager.tokenForReconnect!,
+        AppConfig.baseUrl,
+      );
       return;
     }
     // Socket CLAIMS connected, but iOS suspends the transport in background
@@ -613,8 +622,10 @@ class ConnectionProvider extends ChangeNotifier {
     _socketService.getConversations();
     if (activeConvId != null) {
       _conversationsProvider?.reemitPushClientState();
-      _socketService.getMessages(activeConvId,
-          limit: AppConstants.messagePageSize);
+      _socketService.getMessages(
+        activeConvId,
+        limit: AppConstants.messagePageSize,
+      );
     }
     E2eDiagLog.add('RESUME_RESYNC', {
       'activeConvId': activeConvId ?? -1,
@@ -804,6 +815,13 @@ class ConnectionProvider extends ChangeNotifier {
     });
     _socketService.on('messageSent', (data) {
       _messagingProvider?.onMessageSent(data);
+    });
+    // A refused send: the device list this client used is stale, or it sent the
+    // legacy shape to a party that now has devices (spec §12 (vi)/(x)). The
+    // provider verifies the delivered lists itself — the server's word is never
+    // enough — and resends.
+    _socketService.on('deviceListStale', (data) {
+      _messagingProvider?.onDeviceListStale(data);
     });
     _socketService.on('messageHistory', (data) {
       _serverResponseCounter++;

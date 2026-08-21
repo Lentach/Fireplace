@@ -140,6 +140,25 @@ class MessagingProvider extends ChangeNotifier {
   /// retry works); cleared on connect/logout with [_pendingSendContent].
   final Set<String> _emittedSendTempIds = {};
 
+  /// The `sendToken` minted per tempId (spec §5.4 + §12 amendment (ix)).
+  ///
+  /// One token per SEND, deliberately REUSED by a retry of the same optimistic
+  /// message: the server enforces per-sender uniqueness, so a retry that
+  /// reuses it re-acks the row already committed instead of duplicating the
+  /// message. It is also the lost-ack reconcile key, because a new-model row
+  /// carries no ciphertext for its own origin device. Cleared with
+  /// [_pendingSendContent].
+  final Map<String, String> _sendTokenByTempId = {};
+
+  /// Stale-list resend attempts per tempId (spec §5.2 cap of 3, then a
+  /// surfaced failure). Cleared with [_pendingSendContent].
+  final Map<String, int> _staleResendAttempts = {};
+
+  /// tempIds currently being resent after a `deviceListStale` refusal. The row
+  /// is still SENDING (never flashed as failed), so [retryFailedMessage] needs
+  /// this to know the resend is legitimate.
+  final Set<String> _staleResendTempIds = {};
+
   /// Incremented on each new messageHistory to cancel stale in-flight decrypt loops.
   /// Each loop captures its generation at start and exits when the counter changes.
   int _decryptHistoryGeneration = 0;
@@ -508,6 +527,9 @@ class MessagingProvider extends ChangeNotifier {
       _pendingEdits.clear();
       _pendingSendContent.clear();
       _emittedSendTempIds.clear();
+      _sendTokenByTempId.clear();
+      _staleResendAttempts.clear();
+      _staleResendTempIds.clear();
       _incomingMessageQueue.clear();
       _identityResetRebuildNotified.clear();
       _rebuildRequestedPeers.clear();
@@ -532,6 +554,9 @@ class MessagingProvider extends ChangeNotifier {
       _pendingSendContent
           .clear(); // retry was cancelled; orphaned entries serve no purpose
       _emittedSendTempIds.clear();
+      _sendTokenByTempId.clear();
+      _staleResendAttempts.clear();
+      _staleResendTempIds.clear();
       _cancelDelayedRetryIfAny();
     }
 
@@ -577,6 +602,9 @@ class MessagingProvider extends ChangeNotifier {
     _rebuildRequestedPeers.clear();
     _pingEffectFiredIds.clear();
     _emittedSendTempIds.clear();
+    _sendTokenByTempId.clear();
+    _staleResendAttempts.clear();
+    _staleResendTempIds.clear();
     _cancelDelayedRetryIfAny();
     _currentUserId = null;
     _tokenForReconnect = null;

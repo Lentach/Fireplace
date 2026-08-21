@@ -721,10 +721,52 @@ describe('ChatMessageService', () => {
       expect(createMock).toHaveBeenCalled();
     });
 
-    it('never cross-checks a legacy send — it quotes no versions at all', async () => {
+    it('accepts a legacy send while NEITHER party is enrolled', async () => {
+      arrangeSend();
+
+      await send({
+        recipientId: 2,
+        content: '[encrypted]',
+        encryptedContent: '3:legacy-ciphertext',
+      });
+
+      expect(emittedPayload('deviceListStale')).toBeUndefined();
+      expect(createMock).toHaveBeenCalled();
+    });
+
+    // Amendment (x). A legacy send reaches device 1 only, so once the peer has
+    // a device list, accepting it would silently DROP every other device —
+    // exactly what invariant I5 forbids. Refusing it (and handing back the
+    // signed list) is what upgrades the client to a fan-out, and is what lets
+    // the client skip a device-list round trip on every single-device send.
+    it('REFUSES a legacy send once the recipient is enrolled — never drops a device', async () => {
       arrangeSend();
       getAuthorizationMock.mockImplementation((userId: number) =>
-        Promise.resolve(authorization(userId, 9)),
+        Promise.resolve(userId === 2 ? authorization(2, 4) : null),
+      );
+
+      await send({
+        recipientId: 2,
+        content: '[encrypted]',
+        tempId: 'temp-legacy',
+        encryptedContent: '3:legacy-ciphertext',
+      });
+
+      const payload = emittedPayload('deviceListStale') as {
+        tempId?: string;
+        lists: Array<{ userId: number; version: number }>;
+      };
+      expect(payload.tempId).toBe('temp-legacy');
+      expect(payload.lists).toEqual([
+        expect.objectContaining({ userId: 2, version: 4 }),
+      ]);
+      expect(createMock).not.toHaveBeenCalled();
+    });
+
+    it('REFUSES a legacy send once the SENDER is enrolled — its own devices need the copy', async () => {
+      arrangeSend();
+      getAuthorizationMock.mockImplementation((userId: number) =>
+        Promise.resolve(userId === 1 ? authorization(1, 6) : null),
       );
 
       await send({
@@ -733,7 +775,22 @@ describe('ChatMessageService', () => {
         encryptedContent: '3:legacy-ciphertext',
       });
 
-      expect(getAuthorizationMock).not.toHaveBeenCalled();
+      const payload = emittedPayload('deviceListStale') as {
+        lists: Array<{ userId: number }>;
+      };
+      expect(payload.lists.map((entry) => entry.userId)).toEqual([1]);
+      expect(createMock).not.toHaveBeenCalled();
+    });
+
+    it('never refuses a ciphertext-less send — it has no envelope to fan out', async () => {
+      arrangeSend();
+      getAuthorizationMock.mockImplementation((userId: number) =>
+        Promise.resolve(authorization(userId, 9)),
+      );
+
+      await send({ recipientId: 2, content: '', messageType: 'PING' });
+
+      expect(emittedPayload('deviceListStale')).toBeUndefined();
       expect(createMock).toHaveBeenCalled();
     });
 

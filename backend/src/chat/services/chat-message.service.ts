@@ -177,18 +177,24 @@ export class ChatMessageService {
   }
 
   /**
-   * The parties whose device-list stamp is stale, recipient first (spec §5.2
-   * freshness layer 1 + §12 amendment (vi)).
+   * The parties whose device list the sender must (re)learn before this send
+   * can be delivered, recipient first (spec §5.2 freshness layer 1 + §12
+   * amendments (vi)/(x)).
    *
-   * Only an ENROLLED party is checked: an account with no authorization row is
-   * single-device by construction (rows >= 2 are minted solely by the
-   * provisioning commit), so it has no version to quote. An ABSENT stamp for an
-   * enrolled party counts as a mismatch — fail closed rather than let a client
-   * skip the check by omitting the field.
+   * Only an ENROLLED party is ever reported: an account with no authorization
+   * row is single-device by construction (rows >= 2 are minted solely by the
+   * provisioning commit), so it has no list to be stale against.
+   *
+   * For a NEW-MODEL send the test is the quoted stamp — and an ABSENT stamp
+   * counts as a mismatch, so a client cannot skip the check by omitting the
+   * field. For a LEGACY single-ciphertext send there is no stamp to quote at
+   * all: being enrolled is itself the refusal, because that send would reach
+   * device 1 alone and silently drop every other device (I5).
    */
   private async staleLists(
     send: SendMessageDto,
     senderId: number,
+    isNewModel: boolean,
   ): Promise<StaleListEntry[]> {
     const [recipientAuth, senderAuth] = await Promise.all([
       this.deviceListService.getAuthorization(send.recipientId),
@@ -201,7 +207,8 @@ export class ChatMessageService {
     ];
     const stale: StaleListEntry[] = [];
     for (const [auth, quoted] of parties) {
-      if (!auth || quoted === auth.listVersion) continue;
+      if (!auth) continue;
+      if (isNewModel && quoted === auth.listVersion) continue;
       stale.push({
         userId: auth.userId,
         version: auth.listVersion,
@@ -308,9 +315,9 @@ export class ChatMessageService {
       return;
     }
 
-    // Fan-out shape and freshness (spec §5.2 + §12 amendment (v)/(vi)). Every
-    // check below runs BEFORE any persistence, so a refused send writes zero
-    // message rows and zero envelope rows (falsification 5).
+    // Fan-out shape and freshness (spec §5.2 + §12 amendment (v)/(vi)/(x)).
+    // Every check below runs BEFORE any persistence, so a refused send writes
+    // zero message rows and zero envelope rows (falsification 5).
     const originDeviceId = socketDeviceId(client) ?? DEFAULT_DEVICE_ID;
     const envelopes = this.resolveEnvelopes(send);
     const isNewModel = (send.envelopes?.length ?? 0) > 0;
@@ -325,11 +332,21 @@ export class ChatMessageService {
         client.emit('error', { message: refusal });
         return;
       }
+    }
 
-      const stale = await this.staleLists(send, senderId);
+    // A LEGACY single-ciphertext send reaches device 1 only. That is correct
+    // while neither party is enrolled — a non-enrolled account is
+    // single-device by construction — but the moment either side has a device
+    // list, delivering to device 1 alone would silently DROP a device, which
+    // invariant I5 forbids. So refuse it exactly like a stale send and hand
+    // back both signed lists: the client adopts them and resends as a fan-out
+    // (amendment (x)). This is what keeps the single-device fast path free of
+    // a device-list round trip per send while never dropping a device.
+    if (envelopes.length > 0) {
+      const stale = await this.staleLists(send, senderId, isNewModel);
       if (stale.length > 0) {
         this.logger.warn(
-          `[send] REFUSED stale device list senderId=${senderId} recipientId=${send.recipientId} stale=${stale
+          `[send] REFUSED ${isNewModel ? 'stale device list' : 'legacy send to an enrolled party'} senderId=${senderId} recipientId=${send.recipientId} stale=${stale
             .map((entry) => `${entry.userId}@v${entry.version}`)
             .join(',')}`,
         );

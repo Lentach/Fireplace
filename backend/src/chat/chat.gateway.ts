@@ -163,7 +163,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       // a fast wall clock would otherwise wipe messages still live here. An
       // older client ignores the field; a newer client against an older server
       // sees none and simply never destroys on expiry.
-      client.emit('socketReady', { serverTime: new Date().toISOString() });
+      //
+      // `deviceId` tells the client WHICH device this session is (spec §5.3).
+      // It cannot derive that itself, and it must: a fan-out send addresses
+      // every OTHER device of the account for self-sync and must never
+      // address its own origin device (refused `self_envelope_for_origin_device`).
+      // The server is the authority — the id comes from the JWT claim it just
+      // validated. Additive: an older client ignores it.
+      client.emit('socketReady', {
+        serverTime: new Date().toISOString(),
+        deviceId: payload.deviceId ?? DEFAULT_DEVICE_ID,
+      });
     } catch (error) {
       const errorName =
         error instanceof Error ? error.name : 'UnknownSocketAuthError';

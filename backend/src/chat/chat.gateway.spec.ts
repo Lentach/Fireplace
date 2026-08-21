@@ -113,6 +113,9 @@ describe('ChatGateway handleConnection', () => {
     ).toHaveBeenCalledWith(client);
     expect(client.emit).toHaveBeenCalledWith('socketReady', {
       serverTime: expect.any(String) as unknown,
+      // The client cannot derive which device it is, and a fan-out send must
+      // know: it addresses every OTHER own device and never its own (spec §5.3).
+      deviceId: 1,
     });
     // The client parses this and refuses to destroy expired plaintext when it
     // cannot. An unparseable stamp would silently disable that path forever.
