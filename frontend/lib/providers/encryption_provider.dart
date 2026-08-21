@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../models/message_model.dart';
 import '../services/audio_cache_store.dart';
 import '../services/encryption_service.dart';
+import '../services/device_list/device_list_cache.dart';
 import '../services/server_clock.dart';
 import '../utils/e2e_diag_log.dart';
 import '../utils/e2e_persistent_diag.dart';
@@ -243,6 +244,134 @@ class EncryptionProvider extends ChangeNotifier {
   /// ensureSession.
   void markSessionRebuild(int recipientId, {int deviceId = 1}) {
     _forceSessionRebuild.add((recipientId, deviceId));
+  }
+
+  // ---------- Verified device lists (T4 C2, spec §5.2) ----------
+
+  /// Per-account verified device lists (I7-chain-checked, rollback-pinned).
+  final DeviceListCache _deviceListCache = DeviceListCache();
+
+  /// Pending `getDeviceList` answers, keyed by userId. The completer carries
+  /// the raw `authorization` map (null = non-enrolled) — verification happens
+  /// in [DeviceListCache.adopt], never on the server's bare word.
+  final Map<int, Completer<Map<String, dynamic>?>> _pendingDeviceListFetches =
+      {};
+
+  /// The cached verified list for [userId], or null when none is held.
+  VerifiedDeviceList? cachedDeviceList(int userId) =>
+      _deviceListCache.cached(userId);
+
+  /// Drop the cached list so the next send refetches (e.g. on
+  /// `deviceListChanged` for the own account). The rollback pin survives.
+  void invalidateDeviceList(int userId) => _deviceListCache.invalidate(userId);
+
+  /// The verified device list for [userId] — cached, else fetched via
+  /// `getDeviceList`, I7-verified BEFORE anything is trusted, and cached.
+  ///
+  /// Fail-closed (falsification 9): a timeout, a missing TOFU identity, or a
+  /// failed chain THROWS. The caller must fail the send — an enrolled peer
+  /// must never silently degrade to device 1. The only single-device answer
+  /// is the server's explicit `authorization: null` (non-enrolled account).
+  Future<VerifiedDeviceList> getVerifiedDeviceList(
+    int userId, {
+    bool forceRefresh = false,
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    if (!_e2eInitialized || _currentUserId == null) {
+      throw StateError('E2E not initialized or user not authenticated');
+    }
+    if (!forceRefresh) {
+      final held = _deviceListCache.cached(userId);
+      if (held != null) return held;
+    }
+    final answer = await _fetchDeviceListAnswer(userId, timeout);
+    return _adoptDeviceListAnswer(userId, answer);
+  }
+
+  /// Verifies and adopts a list delivered OUT of the fetch round trip — the
+  /// `deviceListStale` refusal payload (spec §12 (vi)). Same chain, same
+  /// fail-closed contract: an invalid chain throws and caches nothing
+  /// (falsification 4 — never the server's bare word).
+  Future<VerifiedDeviceList> adoptDeliveredDeviceList(
+    int userId,
+    Map<String, dynamic>? authorization,
+  ) => _adoptDeviceListAnswer(userId, authorization);
+
+  Future<VerifiedDeviceList> _adoptDeviceListAnswer(
+    int userId,
+    Map<String, dynamic>? authorization,
+  ) async {
+    // The chain anchors on the identity THIS device holds: own identity for
+    // the own account's list, the TOFU-pinned peer key otherwise.
+    final tofu = userId == _currentUserId
+        ? await _encryptionService.currentIdentityPublicKeyBase64()
+        : await _encryptionService.peerTofuIdentityBase64(userId);
+    try {
+      final verified = _deviceListCache.adopt(
+        userId: userId,
+        authorization: authorization,
+        tofuIdentityKeyBase64: tofu,
+      );
+      _e2eFlowLog('DEVICE_LIST_VERIFIED', {
+        'userId': userId,
+        'enrolled': verified.enrolled,
+        'version': verified.version,
+        'liveDevices': verified.liveDeviceIds,
+      });
+      return verified;
+    } on DeviceListVerificationException catch (e) {
+      E2ePersistentDiag.record('DEVICE_LIST_REJECTED', {
+        'userId': userId,
+        'reason': e.reason,
+      });
+      rethrow;
+    }
+  }
+
+  /// One in-flight `getDeviceList` per userId; concurrent callers share it.
+  Future<Map<String, dynamic>?> _fetchDeviceListAnswer(
+    int userId,
+    Duration timeout,
+  ) {
+    final existing = _pendingDeviceListFetches[userId];
+    if (existing != null) return existing.future;
+    final completer = Completer<Map<String, dynamic>?>();
+    _pendingDeviceListFetches[userId] = completer;
+    _e2eFlowLog('DEVICE_LIST_FETCH_EMIT', {'userId': userId});
+    _emit?.call('getDeviceList', {'userId': userId});
+    return completer.future.timeout(
+      timeout,
+      onTimeout: () {
+        // Fail closed: an unanswered fetch means "cannot verify", never
+        // "no devices" (I5). The caller surfaces a send failure.
+        if (identical(_pendingDeviceListFetches[userId], completer)) {
+          _pendingDeviceListFetches.remove(userId);
+        }
+        throw TimeoutException('Device list fetch timed out for user $userId');
+      },
+    );
+  }
+
+  /// Handler for the `deviceList` server event (answer to `getDeviceList`).
+  /// Runs alongside the provisioning sink's copy of the same event; each
+  /// consumer keys on its own pending state, so double routing is harmless.
+  void onDeviceList(dynamic data) {
+    if (data is! Map) return;
+    final userId = data['userId'];
+    if (userId is! int) return;
+    final completer = _pendingDeviceListFetches.remove(userId);
+    if (completer == null || completer.isCompleted) return;
+    final authorization = data['authorization'];
+    completer.complete(
+      authorization is Map ? authorization.cast<String, dynamic>() : null,
+    );
+  }
+
+  /// Handler for `deviceListChanged` (own-account broadcast): drop the
+  /// cached own list so the next send re-fetches and re-verifies.
+  void onDeviceListChanged(dynamic data) {
+    if (data is! Map || data['userId'] is! int) return;
+    _deviceListCache.invalidate(data['userId'] as int);
   }
 
   /// Whether a Signal session exists with [peerUserId]. Diagnostic + policy
@@ -1634,6 +1763,9 @@ class EncryptionProvider extends ChangeNotifier {
       _forceSessionRebuild.clear();
       _generatingMoreKeys = false;
       _currentUserId = null;
+      // Fresh connect may be a different account: forget verified lists AND
+      // their rollback pins (they are per-account TOFU state).
+      _deviceListCache.clear();
       _cancelPendingFetches();
     }
     // On reconnect: preserve _e2eInitialized and caches
@@ -1714,5 +1846,11 @@ class EncryptionProvider extends ChangeNotifier {
       }
     }
     _pendingPreKeyFetches.clear();
+    for (final completer in _pendingDeviceListFetches.values) {
+      if (!completer.isCompleted) {
+        completer.completeError('Disconnected');
+      }
+    }
+    _pendingDeviceListFetches.clear();
   }
 }

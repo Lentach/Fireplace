@@ -709,9 +709,14 @@ class ConnectionProvider extends ChangeNotifier {
     });
     _socketService.on('deviceList', (data) {
       _provisioningSink?.onDeviceList(data);
+      // T4 C2: the send path's verified-list cache consumes the same answer;
+      // each consumer keys on its own pending state, so double routing is
+      // harmless.
+      _encryptionProvider?.onDeviceList(data);
     });
     _socketService.on('deviceListChanged', (data) {
       _provisioningSink?.onDeviceListChanged(data);
+      _encryptionProvider?.onDeviceListChanged(data);
     });
 
     // --- Friend events ---

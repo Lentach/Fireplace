@@ -1196,6 +1196,39 @@ class EncryptionService {
     }
   }
 
+  /// The TOFU-pinned identity public key of [peerId] (base64 of the
+  /// serialized key), or null when none is stored or the read fails.
+  ///
+  /// This is what the T4 device-list cache verifies a peer's DAK enrollment
+  /// against (I7 chain: their TOFU'd IK → E → DAK → list) — deliberately the
+  /// STORED key, never a fresh network value, for the same reason as the
+  /// fingerprint above: the chain must anchor on the key this device
+  /// actually accepted.
+  Future<String?> peerTofuIdentityBase64(int peerId) async {
+    if (!_initialized) return null;
+    try {
+      final identity = await _identityStore.getIdentity(
+        SignalProtocolAddress(peerId.toString(), _deviceId),
+      );
+      return identity == null ? null : base64Encode(identity.serialize());
+    } catch (_) {
+      // Fail closed at the caller: a null here means "cannot verify", and
+      // the device-list cache refuses to trust anything without the anchor.
+      return null;
+    }
+  }
+
+  /// Test-only: pin [identityBase64] as [peerId]'s TOFU identity, exactly as
+  /// a first inbound bundle would. Lets device-list cache tests anchor the
+  /// I7 chain without running a full X3DH session build.
+  @visibleForTesting
+  Future<void> debugSavePeerIdentity(int peerId, String identityBase64) async {
+    await _identityStore.saveIdentity(
+      SignalProtocolAddress(peerId.toString(), _deviceId),
+      IdentityKey.fromBytes(base64Decode(identityBase64), 0),
+    );
+  }
+
   /// Formats every displayed Signal identity consistently: lowercase hex,
   /// grouped in fours so a human can compare it over another channel.
   String _formatIdentityFingerprint(IdentityKey identity) {
