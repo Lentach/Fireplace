@@ -712,17 +712,23 @@ extension MessagingDecrypt on MessagingProvider {
           // so this own row arrived as '[encrypted]' with nothing persisted
           // under its real id.
           //
-          // The key is the row's own `sendToken`, which the server echoes ONLY
-          // to the device that originated it (spec §12 amendment (ix)). It has
-          // to be: a new-model row carries no ciphertext for its origin device
-          // (`envelopeStatus: own_origin`), so the old exact-ciphertext match
-          // would never fire again and this plaintext — the ONLY copy — would
-          // be stranded. Exact ciphertext equality REMAINS the fallback for
-          // legacy and pre-migration records already on disk (unique by
-          // ratchet construction; a miss means stay '[encrypted]', never a
-          // heuristic guess — see the 07-08 field case msg 14667 and
-          // docs/runbooks/e2e-decryption-failed.md).
-          final recordKey = msg.sendToken ?? msg.encryptedContent;
+          // The key MUST mirror what the send path saved the record under
+          // (`messaging_provider.send.dart`): a legacy send stores it under the
+          // exact ciphertext, a fan-out under the send token. So try the
+          // ciphertext FIRST — a legacy row always has one, and it also carries
+          // an echoed `sendToken` (the server persists the token for its own
+          // idempotency and returns it to the origin device), so preferring the
+          // token here would look up a key the record was never saved under and
+          // strand the plaintext. That plaintext is the ONLY copy: a Signal
+          // sender cannot decrypt its own ciphertext (`frontend/CLAUDE.md` §5).
+          //
+          // A NEW-MODEL row has a NULL ciphertext for its origin device
+          // (`envelopeStatus: own_origin`), so it falls through to the token —
+          // which is exactly the case amendment (ix) added the token for.
+          //
+          // A miss means stay '[encrypted]', never a heuristic guess (the 07-08
+          // field case msg 14667, docs/runbooks/e2e-decryption-failed.md).
+          final recordKey = msg.encryptedContent ?? msg.sendToken;
           // Peek (never consume-first): the pending record is the ONLY
           // surviving plaintext copy, and saveDecryptedContent swallows
           // failures — so persist, VERIFY by read-back, and only then take.

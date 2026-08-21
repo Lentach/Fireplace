@@ -585,10 +585,14 @@ extension MessagingHistory on MessagingProvider {
         _encryptionProvider?.saveDecryptedContent(msg.id, persistData).ignore();
       }
       // Ack arrived — the pending-send record served its purpose; consume it
-      // so normal sends keep the reconcile store self-cleaning.
-      final ackCiphertext = msg.encryptedContent;
-      if (ackCiphertext != null) {
-        _encryptionProvider?.takePendingSendRecord(ackCiphertext).ignore();
+      // so normal sends keep the reconcile store self-cleaning. Same
+      // precedence as the lost-ack reconcile, and for the same reason: the
+      // record was saved under the ciphertext for a legacy send and under the
+      // send token for a fan-out (whose origin copy has a NULL ciphertext), so
+      // consuming by the wrong one would leave it on disk forever.
+      final ackRecordKey = msg.encryptedContent ?? msg.sendToken;
+      if (ackRecordKey != null) {
+        _encryptionProvider?.takePendingSendRecord(ackRecordKey).ignore();
       }
     }
 

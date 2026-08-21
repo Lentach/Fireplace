@@ -698,6 +698,17 @@ export class ChatMessageService {
         : conv.userOne?.id;
     if (userId !== recipientId) return; // Silently ignore — not the intended recipient
 
+    // Per-device bookkeeping (spec §5.3): stamp THIS device's envelope, so
+    // "which of my devices actually received it" is answerable. Deliberately
+    // separate from the row-level projection below, which stays a RECIPIENT-only
+    // projection (§4) — and these stamps never feed expiry or the read TTL (I9).
+    await this.messagesService.stampEnvelope(
+      messageId,
+      userId,
+      socketDeviceId(client) ?? DEFAULT_DEVICE_ID,
+      'deliveredAt',
+    );
+
     const updated = await this.messagesService.updateDeliveryStatus(
       messageId,
       MessageDeliveryStatus.DELIVERED,

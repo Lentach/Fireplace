@@ -124,6 +124,7 @@ describe('ChatMessageService', () => {
         {
           provide: MessagesService,
           useValue: {
+            stampEnvelope: jest.fn().mockResolvedValue(undefined),
             create: createMock,
             findByConversation: findByConversationMock,
             findEnvelopeCiphertexts: findEnvelopeCiphertextsMock,
