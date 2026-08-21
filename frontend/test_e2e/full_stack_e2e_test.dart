@@ -1908,6 +1908,180 @@ void main() {
           );
         }
       }, timeout: const Timeout(Duration(minutes: 3)));
+
+      test('falsification 6: a send fans a SELF-SYNC envelope to the sender\'s '
+          'own other device — its own ciphertext, no sendToken, no marker, and '
+          'the origin device is never sent its own copy', () async {
+        // A second device of ALICE, linked through the real ceremony. Alice is
+        // the enrolled account here (the harness holds her DAK), so she is the
+        // sender for this contract.
+        final aliceDevice2 = E2eClient('aliceSelfSync', baseUrl)
+          ..adoptAccountFrom(alice);
+        await aliceDevice2.connectSocket();
+        addTearDown(aliceDevice2.dispose);
+
+        final ephN = generateLinkEphemeral();
+        final opened = await aliceDevice2.openProvisioning();
+        final provisioningId = opened['provisioningId'] as String;
+        final ephP = generateLinkEphemeral();
+        final ack = await alice.provisioningHello(
+          provisioningId: provisioningId,
+          ephPubP: base64Encode(linkEphemeralPublicBytes(ephP)),
+        );
+        final assignedId = ack['deviceId'] as int;
+        final staged = await signAddedDevice(assignedId);
+        final auth = await currentAuth();
+        final transcript = linkTranscript(
+          provisioningId: provisioningId,
+          ephPubN: linkEphemeralPublicBytes(ephN),
+          ephPubP: linkEphemeralPublicBytes(ephP),
+        );
+        final sdh = linkSharedSecret(
+          theirEphPub: linkEphemeralPublicBytes(ephN),
+          ownEphPriv: ephP.privateKey,
+        );
+        final sealed = sealLinkBlob(
+          keys: deriveLinkBlobKeys(sharedSecret: sdh, transcript: transcript),
+          payload: blobPayloadFor(assignedId, auth),
+        );
+        final acked = await alice.provisionDevice({
+          'provisioningId': provisioningId,
+          'blob': base64Encode(sealed),
+          'listCanonical': staged['listCanonical'],
+          'listSignature': staged['listSignature'],
+        });
+        expect(acked['success'], isTrue, reason: '$acked');
+        final completed = await aliceDevice2.provisioningComplete(
+          provisioningId,
+        );
+        expect(completed['success'], isTrue, reason: '$completed');
+        aliceDevice2.socketService.disconnect();
+        aliceDevice2.accessToken = completed['access_token'] as String;
+        await aliceDevice2.connectSocket();
+
+        // Alice's device 1 sends to bob AND to her own device 2. One ciphertext
+        // per address: sharing one would brick the second decrypt, because
+        // Signal consumes the message key. The self ciphertext is a synthetic
+        // marker — this contract is about ROUTING (which device is handed
+        // which bytes, and what metadata rides along), and the server treats
+        // every ciphertext as opaque.
+        final tempId = 'selfsync-$runTag';
+        final forBob = await alice.encryptText(bob.userId, 'self-sync hello');
+        final forOwnDevice = '3:selfsync-own-$runTag';
+        final senderAuth = await currentAuth();
+
+        bob.events.discard('newMessage');
+        aliceDevice2.events.discard('newMessage');
+        alice.events.discard('newMessage');
+        alice.emitEnvelopeSend(
+          bob.userId,
+          tempId: tempId,
+          envelopes: [
+            {'userId': bob.userId, 'deviceId': 1, 'ciphertext': forBob},
+            {
+              'userId': alice.userId,
+              'deviceId': assignedId,
+              'ciphertext': forOwnDevice,
+            },
+          ],
+          sendToken: 'tok-selfsync-$runTag',
+          senderListVersion: senderAuth['listVersion'] as int,
+        );
+
+        // The sender's own OTHER device receives a real, device-addressed
+        // ciphertext — this is the copy the receive-side law decrypts.
+        final selfCopy = await aliceDevice2.awaitNewMessage(tempId);
+        expect(selfCopy['encryptedContent'], forOwnDevice);
+        expect(selfCopy['senderId'], alice.userId);
+        expect(selfCopy['originDeviceId'], 1);
+        expect(
+          selfCopy.containsKey('sendToken'),
+          isFalse,
+          reason:
+              'the reconcile key reaches ONLY the origin device — a device '
+              'holding it could consume another device\'s pending record',
+        );
+        expect(
+          selfCopy['envelopeStatus'],
+          isNull,
+          reason:
+              'a self-sync row HAS an envelope; own_origin would tell this '
+              'device to reconcile instead of decrypt',
+        );
+        // The recipient still gets exactly its own ciphertext.
+        final peerCopy = await bob.awaitNewMessage(tempId);
+        expect(peerCopy['encryptedContent'], forBob);
+        // And the origin device is never handed its own copy: it could not
+        // decrypt it, and trying would burn its only plaintext.
+        await alice.events.none(
+          'newMessage',
+          within: const Duration(seconds: 2),
+          reason: 'the origin device is excluded from its own fan-out',
+        );
+      }, timeout: const Timeout(Duration(minutes: 3)));
+
+      test('falsification 14: reusing a sendToken re-acks the SAME row and '
+          'delivers nothing twice (spec §5.4 + amendment (ix))', () async {
+        // Envelope-shaped, because amendment (x) refuses a legacy ciphertext
+        // send whenever either party is enrolled — and alice is.
+        final senderAuth = await currentAuth();
+        final token = 'tok-lostack-$runTag';
+        final ciphertext = await alice.encryptText(bob.userId, 'ack me once');
+
+        Future<Map<String, dynamic>> sendWithSameToken(String tempId) async {
+          alice.events.discard('messageSent');
+          bob.events.discard('newMessage');
+          alice.emitEnvelopeSend(
+            bob.userId,
+            tempId: tempId,
+            envelopes: [
+              {'userId': bob.userId, 'deviceId': 1, 'ciphertext': ciphertext},
+            ],
+            sendToken: token,
+            senderListVersion: senderAuth['listVersion'] as int,
+          );
+          final ack =
+              await alice.events.next(
+                    'messageSent',
+                    where: (p) => p is Map && p['tempId'] == tempId,
+                    reason: 'ack for $tempId token=$token',
+                  )
+                  as Map;
+          return ack.cast<String, dynamic>();
+        }
+
+        final first = await sendWithSameToken('lostack-a-$runTag');
+        final rowId = first['id'] as int;
+        expect(
+          first['sendToken'],
+          token,
+          reason:
+              'the token is echoed to its origin device — that echo IS the '
+              'reconcile key for a row whose own copy carries no ciphertext',
+        );
+        expect(
+          first['envelopeStatus'],
+          'own_origin',
+          reason: 'the origin device has no envelope of its own by design',
+        );
+        await bob.awaitNewMessage('lostack-a-$runTag');
+
+        // The ack died on the way back, so the client retries with the SAME
+        // token. The server must re-ack the committed row rather than commit a
+        // second one: a duplicate row would be a second ciphertext for one
+        // logical message, and Signal decrypt is not idempotent.
+        final second = await sendWithSameToken('lostack-b-$runTag');
+        expect(
+          second['id'],
+          rowId,
+          reason: 'the same token must resolve to EXACTLY ONE row',
+        );
+        await bob.events.none(
+          'newMessage',
+          within: const Duration(seconds: 2),
+          reason: 're-ack without re-fan: the recipient already has this row',
+        );
+      }, timeout: const Timeout(Duration(minutes: 2)));
     });
 
     test('no unexpected socket errors surfaced during the run', () {
