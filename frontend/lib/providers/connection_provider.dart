@@ -226,12 +226,18 @@ class ConnectionProvider extends ChangeNotifier {
       // Which device this session is (spec §5.3). The client cannot derive it
       // — the id lives in the JWT the server validated — and a fan-out send
       // needs it to address every OTHER own device for self-sync while never
-      // addressing its own origin device. A server predating the field means
-      // device 1, which is exactly what a single-device account is.
+      // addressing its own origin device.
+      //
+      // A server predating the field sends nothing, and we deliberately do NOT
+      // treat that as "device 1 confirmed" (amendment (xii)): a real device 2
+      // against such a server would then believe it is device 1 and hand its
+      // own ciphertext to the ratchet. Unconfirmed already behaves as device 1
+      // for every send, and it keeps own rows out of the decrypt pass, so the
+      // silence costs nothing and the wrong claim could cost a message.
       final readyDeviceId = data is Map ? data['deviceId'] : null;
-      _encryptionProvider?.setOwnDeviceId(
-        readyDeviceId is int ? readyDeviceId : 1,
-      );
+      if (readyDeviceId is int) {
+        _encryptionProvider?.setOwnDeviceId(readyDeviceId);
+      }
       _onSocketReady();
     });
 

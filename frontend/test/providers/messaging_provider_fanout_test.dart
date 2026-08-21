@@ -1,9 +1,12 @@
+import 'dart:convert';
+
 import 'package:fireplace/models/message_model.dart';
 import 'package:fireplace/providers/conversations_provider.dart';
 import 'package:fireplace/providers/encryption_provider.dart';
 import 'package:fireplace/providers/messaging_provider.dart';
 import 'package:fireplace/services/device_list/device_list_cache.dart';
 import 'package:fireplace/services/device_list/device_list_canonical.dart';
+import 'package:fireplace/services/device_list/sender_list_info.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -24,6 +27,10 @@ class _FanOutEncryption extends EncryptionProvider {
   final Map<int, VerifiedDeviceList> _cache = {};
 
   final List<(int, int)> encryptCalls = [];
+
+  /// Every plaintext handed to [encrypt] — the E2E envelope JSON, which is
+  /// where `senderListInfo` has to appear (spec §12 amendment (xv)).
+  final List<String> encryptedPlaintexts = [];
   int _ownDeviceId = 1;
 
   @override
@@ -77,6 +84,7 @@ class _FanOutEncryption extends EncryptionProvider {
     int deviceId = 1,
   }) async {
     encryptCalls.add((recipientId, deviceId));
+    encryptedPlaintexts.add(plaintext);
     return '2:ct-for-$recipientId-$deviceId';
   }
 
@@ -87,14 +95,18 @@ class _FanOutEncryption extends EncryptionProvider {
   ) async {}
 }
 
-VerifiedDeviceList _enrolled(int version, List<int> deviceIds) =>
-    VerifiedDeviceList.enrolled(
-      version: version,
-      devices: [
-        for (final id in deviceIds)
-          DeviceListEntry(deviceId: id, platform: 'test', addedAtMs: 0),
-      ],
-    );
+VerifiedDeviceList _enrolled(
+  int version,
+  List<int> deviceIds, {
+  String? listHash,
+}) => VerifiedDeviceList.enrolled(
+  version: version,
+  listHash: listHash,
+  devices: [
+    for (final id in deviceIds)
+      DeviceListEntry(deviceId: id, platform: 'test', addedAtMs: 0),
+  ],
+);
 
 Map<String, dynamic> _convJson() => {
   'id': 10,
@@ -218,6 +230,54 @@ void main() {
         // refuses that envelope as self_envelope_for_origin_device.
         expect(addresses, isNot(contains((1, 2))));
         expect(send['senderListVersion'], 7);
+      },
+    );
+
+    test(
+      'every send carries senderListInfo for both parties (amendment (xv))',
+      () async {
+        encryption.served[2] = _enrolled(4, [1], listHash: 'peer-hash');
+        encryption.served[1] = _enrolled(7, [1, 2], listHash: 'own-hash');
+        await encryption.getVerifiedDeviceList(2);
+        await encryption.getVerifiedDeviceList(1);
+
+        await sendAndCapture('hello');
+
+        // The claim rides INSIDE the E2E plaintext — the server never sees it —
+        // so it has to be asserted on what was handed to encrypt().
+        final envelope =
+            jsonDecode(encryption.encryptedPlaintexts.last)
+                as Map<String, dynamic>;
+        final info = SenderListInfo.fromJson(envelope['senderListInfo']);
+        expect(info, isNotNull, reason: 'claim attached to every message');
+        expect(info!.ownVersion, 7, reason: "the sender's own list version");
+        expect(info.ownListHash, 'own-hash');
+        expect(info.peerVersion, 4, reason: "the sender's view of the peer");
+        expect(info.peerListHash, 'peer-hash');
+      },
+    );
+
+    test(
+      'a party we hold no verified list for is ABSENT from the claim, not v0',
+      () async {
+        // Only the recipient is known: a fan-out needs the recipient's list,
+        // and our own account is simply not enrolled here.
+        encryption.served[2] = _enrolled(4, [1], listHash: 'peer-hash');
+        await encryption.getVerifiedDeviceList(2);
+
+        await sendAndCapture('hello');
+
+        final envelope =
+            jsonDecode(encryption.encryptedPlaintexts.last)
+                as Map<String, dynamic>;
+        final raw = envelope['senderListInfo'] as Map<String, dynamic>;
+        expect(raw['peerVersion'], 4);
+        expect(
+          raw.containsKey('ownVersion'),
+          isFalse,
+          reason: '"I do not know" and "you have none" are different claims',
+        );
+        expect(raw.containsKey('ownListHash'), isFalse);
       },
     );
 

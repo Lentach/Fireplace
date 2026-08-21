@@ -1834,6 +1834,16 @@ class EncryptionProvider extends ChangeNotifier {
     _retiredIds.clear();
     _decryptedLedger.clear();
     _forceSessionRebuild.clear();
+    // Which device we are belongs to the SESSION, not the install (spec §12
+    // amendment (xii)). This provider is a process singleton reused across
+    // logins, so a device id confirmed for the previous account must not
+    // survive into the next one: a stale "confirmed" N would make an own row
+    // of a device-1 account look foreign-origin, and the self-sync branch
+    // would hand this device's OWN ciphertext to the ratchet — burning the
+    // only plaintext copy on `[Decryption failed]`. Back to unconfirmed.
+    _ownDeviceId = 1;
+    _ownDeviceIdConfirmed = false;
+    _deviceListCache.clear();
     _cancelPendingFetches();
     notifyListeners();
   }

@@ -109,15 +109,22 @@ extension MessagingDecrypt on MessagingProvider {
       case SenderListInfoOutcome.consistent:
         _setDevicesSyncing(false);
       case SenderListInfoOutcome.ownDevicesSyncing:
-        // Benign: our own devices have not converged yet. Calm state only.
-        _setDevicesSyncing(true);
+        // Benign: our own devices have not converged yet. The calm state is
+        // raised only while we are actually DOING something about it — the peer
+        // controls the claimed version, so raising it on every message would let
+        // it pin "syncing devices…" on forever as a nuisance. Bounded by the
+        // same limiter as the fetch: one window per cooldown, cleared as soon as
+        // our own list comes back.
         if (_listRefreshLimiter.tryBegin(me)) {
+          _setDevicesSyncing(true);
           enc.invalidateDeviceList(me);
           enc
               .getVerifiedDeviceList(me)
-              .then((_) => _setDevicesSyncing(false))
-              .onError((_, _) {})
-              .whenComplete(() => _listRefreshLimiter.end(me));
+              .onError((_, _) => const VerifiedDeviceList.notEnrolled())
+              .whenComplete(() {
+                _setDevicesSyncing(false);
+                _listRefreshLimiter.end(me);
+              });
         }
       case SenderListInfoOutcome.refreshPeerList:
         // The peer claims a newer list than we hold — the common, legitimate
@@ -131,15 +138,24 @@ extension MessagingDecrypt on MessagingProvider {
               .whenComplete(() => _listRefreshLimiter.end(senderId));
         }
       case SenderListInfoOutcome.peerListFrozen:
-        // Our OWN verified data confirms the peer is being served, or is
-        // sending from, a stale view. That is evidence, not a claim — but the
-        // response is still bounded: record it durably for the operator, keep
-        // the calm surface for the user, and never touch trust here.
-        E2ePersistentDiag.record('SENDER_LIST_INFO_FROZEN', {
-          'senderId': senderId,
-          'claimedVersion': claim.ownVersion,
-          'ourVersion': ourPeerView?.version,
-        });
+        // Our OWN verified data disagrees with what the sender claims about its
+        // own list. That is a real inconsistency between two signed views — but
+        // the claimed version and hash are peer-controlled and NOT DAK-signed,
+        // so the durable record is DEDUPED per sender. The ring holds 80 entries
+        // and evicts oldest-first, so recording one row per message would let a
+        // peer forging a mismatch on every message evict every other piece of
+        // forensic evidence (`CONTENT_KEY_LOST`, `OWN_IDENTITY_REPLACED`, …).
+        // One surviving row per peer is all an operator needs; the flow log
+        // (ring-only, not durable) keeps the per-message detail.
+        E2ePersistentDiag.recordDeduped(
+          'SENDER_LIST_INFO_FROZEN',
+          {
+            'senderId': senderId,
+            'claimedVersion': claim.ownVersion,
+            'ourVersion': ourPeerView?.version,
+          },
+          matchAll: ['senderId: $senderId,'],
+        );
         _e2eFlowLog('SENDER_LIST_INFO_FROZEN', {
           'senderId': senderId,
           'claimedVersion': claim.ownVersion,

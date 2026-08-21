@@ -925,4 +925,23 @@ that is the designed outcome).
     durable per §5.2, so the transition is never legitimate; caching it would silently narrow a
     fan-out to device 1 and, once (xi) lands, silently kill self-sync. This fix is T5's first
     stage because self-sync depends on the client's own device list being trustworthy.
+  - **(xx) Three refinements forced by T5's post-build reviews (2026-08-21; three fresh
+    reviewers, no P0). All NORMATIVE.**
+    1. **The confirmed device id is SESSION state, never install state.** It MUST be reset to
+       "device 1, unconfirmed" on logout/account switch, and a `socketReady` that carries NO
+       `deviceId` MUST leave it unconfirmed rather than assert device 1. Both were latent
+       violations of (xii) across sessions: this client is a process singleton, so a device id
+       confirmed as N for one account survived into the next login, where an own row of a
+       device-1 account looks foreign-origin — and the self-sync branch would then hand this
+       device's OWN ciphertext to the ratchet. Unreachable while enrollment is unshipped
+       (`ownDeviceId` is always 1), and fixed before it could ship.
+    2. **The calm skew state of (xvii) is bounded to the re-fetch window.** The peer controls the
+       version it claims about us, so raising the note on every mismatching claim let a hostile
+       peer pin "syncing devices…" on permanently. It is now raised only when a re-fetch actually
+       begins (same one-per-cooldown limiter) and cleared when that fetch settles.
+    3. **The durable split-view record is DEDUPED per sender.** The claimed version and hash are
+       peer-supplied and NOT DAK-signed, so a peer forging a mismatch on every message could
+       append a durable row per message and FIFO-evict every other piece of forensic evidence
+       (`CONTENT_KEY_LOST`, `OWN_IDENTITY_REPLACED`, …) from the 80-entry ring. One surviving row
+       per peer is what an operator needs; per-message detail stays in the ring-only flow log.
 - **Next gate:** per-ticket implementation reviews (T1–T8); Stage 0 is CLOSED 2026-08-19.
