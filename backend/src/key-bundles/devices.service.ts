@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository } from 'typeorm';
+import { EntityManager, IsNull, Repository } from 'typeorm';
 import { Device } from './device.entity';
 import { DEFAULT_DEVICE_ID } from './key-bundles.service';
 
@@ -125,6 +125,30 @@ export class DevicesService {
       .andWhere('"revokedAt" IS NULL')
       .execute();
     return (result.affected ?? 0) > 0;
+  }
+
+  /**
+   * Which device a PASSWORD login belongs to (spec §4 + §12 amendment
+   * (xxii)).
+   *
+   * It must NOT be hardcoded to device 1. A §6.2 reset revokes the whole
+   * pre-reset roster and moves the account onto a freshly allocated id
+   * (amendment (xxviii)), so a login that kept claiming device 1 would mint a
+   * token for a REVOKED device and both session gates would then correctly
+   * refuse it — locking the owner out of their own account with the right
+   * password.
+   *
+   * Order: the live primary, else the lowest live id (a roster mid-handover),
+   * else device 1 — which is the honest answer for every pre-Phase-1 account,
+   * whose row does not exist until its first connect writes one (§8).
+   */
+  async resolveLoginDeviceId(userId: number): Promise<number> {
+    const live = await this.deviceRepo.find({
+      where: { userId, revokedAt: IsNull() },
+      order: { deviceId: 'ASC' },
+    });
+    if (live.length === 0) return DEFAULT_DEVICE_ID;
+    return (live.find((row) => row.isPrimary) ?? live[0]).deviceId;
   }
 
   /**

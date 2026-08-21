@@ -9,6 +9,11 @@ import { ConversationsService } from '../../conversations/conversations.service'
 import { PushNotificationsService } from '../../push-notifications/push-notifications.service';
 import { IdentityResetService } from '../../key-bundles/identity-reset.service';
 import { DevicesService } from '../../key-bundles/devices.service';
+import { ResetRosterService } from '../../key-bundles/reset-roster.service';
+import { UsersService } from '../../users/users.service';
+import { JwtService } from '@nestjs/jwt';
+import { FcmTokensService } from '../../fcm-tokens/fcm-tokens.service';
+import { WebPushSubscriptionsService } from '../../web-push-subscriptions/web-push-subscriptions.service';
 import { Socket, Server } from 'socket.io';
 import { Logger } from '@nestjs/common';
 
@@ -27,6 +32,11 @@ describe('ChatKeyExchangeService', () => {
     setRecoveryKey: jest.Mock;
   };
   let devicesService: { isActive: jest.Mock };
+  let resetRosterService: { applyAfterReset: jest.Mock };
+  let usersService: { findById: jest.Mock };
+  let jwtService: { sign: jest.Mock };
+  let fcmTokensService: { removeByUserId: jest.Mock };
+  let webPushSubscriptionsService: { removeByUserId: jest.Mock };
   let clientRoomEmit: jest.Mock;
 
   /** Nonce the registration lock issues onto a socket session (§6.1). */
@@ -90,6 +100,28 @@ describe('ChatKeyExchangeService', () => {
     devicesService = {
       isActive: jest.fn().mockResolvedValue(true),
     };
+    // §6.2 roster teardown (amendment (xxviii)): only a RESET-authorized
+    // identity change reaches it, so it stays untouched in every other test.
+    resetRosterService = {
+      applyAfterReset: jest.fn().mockResolvedValue({
+        deviceId: 4,
+        revokedDeviceIds: [1],
+        accessDeviceId: 4,
+        refreshToken: 'fresh-refresh',
+      }),
+    };
+    usersService = {
+      findById: jest
+        .fn()
+        .mockResolvedValue({ id: 1, username: 'ann', tag: '0001' }),
+    };
+    jwtService = { sign: jest.fn().mockReturnValue('fresh-access') };
+    fcmTokensService = {
+      removeByUserId: jest.fn().mockResolvedValue(undefined),
+    };
+    webPushSubscriptionsService = {
+      removeByUserId: jest.fn().mockResolvedValue(undefined),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -99,6 +131,7 @@ describe('ChatKeyExchangeService', () => {
           useValue: {
             upsertKeyBundle: jest.fn().mockResolvedValue({
               identityChanged: false,
+              authorizedBy: null,
               previousIdentityPublicKey: null,
             }),
             uploadOneTimePreKeys: jest.fn().mockResolvedValue(undefined),
@@ -115,6 +148,14 @@ describe('ChatKeyExchangeService', () => {
         },
         { provide: IdentityResetService, useValue: identityResetService },
         { provide: DevicesService, useValue: devicesService },
+        { provide: ResetRosterService, useValue: resetRosterService },
+        { provide: UsersService, useValue: usersService },
+        { provide: JwtService, useValue: jwtService },
+        { provide: FcmTokensService, useValue: fcmTokensService },
+        {
+          provide: WebPushSubscriptionsService,
+          useValue: webPushSubscriptionsService,
+        },
       ],
     }).compile();
 
@@ -204,6 +245,8 @@ describe('ChatKeyExchangeService', () => {
     it('identity replacement alarms other sessions, pushes, and flags conversation peers', async () => {
       keyBundlesService.upsertKeyBundle.mockResolvedValue({
         identityChanged: true,
+        // A SIGNED rotation, not a reset: the roster teardown must stay out.
+        authorizedBy: 'signature',
         previousIdentityPublicKey: 'old-identity',
       });
       conversationsService.findByUser.mockResolvedValue([
@@ -247,6 +290,8 @@ describe('ChatKeyExchangeService', () => {
     it('a notify failure never breaks the upload ack', async () => {
       keyBundlesService.upsertKeyBundle.mockResolvedValue({
         identityChanged: true,
+        // A SIGNED rotation, not a reset: the roster teardown must stay out.
+        authorizedBy: 'signature',
         previousIdentityPublicKey: 'old-identity',
       });
       conversationsService.findByUser.mockRejectedValue(new Error('db down'));
@@ -266,6 +311,93 @@ describe('ChatKeyExchangeService', () => {
         'error',
         expect.anything(),
       );
+    });
+
+    describe('§6.2 roster teardown wiring (amendments (f)/(xxviii))', () => {
+      const resetAuthorized = () => {
+        keyBundlesService.upsertKeyBundle.mockResolvedValue({
+          identityChanged: true,
+          authorizedBy: 'reset',
+          previousIdentityPublicKey: 'old-identity',
+        });
+      };
+
+      it('runs the teardown and hands the recovering device its NEW id and session', async () => {
+        resetAuthorized();
+
+        await service.handleUploadKeyBundle(
+          mockClient as Socket,
+          validData,
+          mockServer as Server,
+        );
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(resetRosterService.applyAfterReset).toHaveBeenCalledWith(1, 1);
+        // The client MUST adopt these before uploading one-time pre-keys, or
+        // those keys land in the namespace the teardown just abandoned.
+        expect(mockClient.emit).toHaveBeenCalledWith('keyBundleUploaded', {
+          success: true,
+          identityChanged: true,
+          deviceId: 4,
+          access_token: 'fresh-access',
+          refresh_token: 'fresh-refresh',
+        });
+        expect(jwtService.sign).toHaveBeenCalledWith(
+          expect.objectContaining({ sub: 1, deviceId: 4 }),
+        );
+      });
+
+      it('drops every push endpoint of the account (amendment (xxiv))', async () => {
+        resetAuthorized();
+
+        await service.handleUploadKeyBundle(
+          mockClient as Socket,
+          validData,
+          mockServer as Server,
+        );
+        await new Promise((resolve) => setImmediate(resolve));
+
+        // Each row belonged to a device this teardown just revoked, and a
+        // NULL-deviceId row cannot be attributed to any of them.
+        expect(fcmTokensService.removeByUserId).toHaveBeenCalledWith(1);
+        expect(webPushSubscriptionsService.removeByUserId).toHaveBeenCalledWith(
+          1,
+        );
+      });
+
+      it('a SIGNED rotation never tears the roster down', async () => {
+        keyBundlesService.upsertKeyBundle.mockResolvedValue({
+          identityChanged: true,
+          authorizedBy: 'signature',
+          previousIdentityPublicKey: 'old-identity',
+        });
+
+        await service.handleUploadKeyBundle(
+          mockClient as Socket,
+          validData,
+          mockServer as Server,
+        );
+        await new Promise((resolve) => setImmediate(resolve));
+
+        // That account still holds its other devices — revoking them would be
+        // a data-loss event dressed as a key rotation.
+        expect(resetRosterService.applyAfterReset).not.toHaveBeenCalled();
+        expect(fcmTokensService.removeByUserId).not.toHaveBeenCalled();
+        expect(mockClient.emit).toHaveBeenCalledWith('keyBundleUploaded', {
+          success: true,
+          identityChanged: true,
+        });
+      });
+
+      it('a same-identity re-upload touches nothing', async () => {
+        await service.handleUploadKeyBundle(
+          mockClient as Socket,
+          validData,
+          mockServer as Server,
+        );
+
+        expect(resetRosterService.applyAfterReset).not.toHaveBeenCalled();
+      });
     });
   });
 

@@ -12,6 +12,8 @@ import { KeyBundlesService } from './key-bundles.service';
 import { IdentityResetService } from './identity-reset.service';
 import { DeviceListService } from './device-list.service';
 import { ProvisioningStagesService } from './provisioning-stages.service';
+import { ResetRosterService } from './reset-roster.service';
+import { RefreshTokensModule } from '../auth/refresh-tokens.module';
 
 @Module({
   imports: [
@@ -27,6 +29,10 @@ import { ProvisioningStagesService } from './provisioning-stages.service';
       IdentityResetRequest,
       RecoveryKey,
     ]),
+    // The §6.2 roster teardown re-issues the recovering device's session
+    // (amendment (xxviii)). RefreshTokensModule carries no dependency back
+    // here, so this stays acyclic.
+    RefreshTokensModule,
   ],
   providers: [
     DevicesService,
@@ -34,6 +40,7 @@ import { ProvisioningStagesService } from './provisioning-stages.service';
     IdentityResetService,
     DeviceListService,
     ProvisioningStagesService,
+    ResetRosterService,
   ],
   exports: [
     DevicesService,
@@ -41,6 +48,7 @@ import { ProvisioningStagesService } from './provisioning-stages.service';
     IdentityResetService,
     DeviceListService,
     ProvisioningStagesService,
+    ResetRosterService,
   ],
 })
 export class KeyBundlesModule {}

@@ -218,6 +218,44 @@ describe('DevicesService', () => {
     });
   });
 
+  describe('resolveLoginDeviceId (amendment (xxviii) lockout guard)', () => {
+    it('device 1 when the account has NO rows (every legacy account, §8)', async () => {
+      repo.find.mockResolvedValue([]);
+      await expect(service.resolveLoginDeviceId(7)).resolves.toBe(1);
+    });
+
+    it('the LIVE primary, not the lowest id', async () => {
+      repo.find.mockResolvedValue([
+        { deviceId: 2, isPrimary: false },
+        { deviceId: 4, isPrimary: true },
+      ]);
+      await expect(service.resolveLoginDeviceId(7)).resolves.toBe(4);
+    });
+
+    it('queries LIVE rows only, so a revoked device can never be logged into', async () => {
+      repo.find.mockResolvedValue([{ deviceId: 4, isPrimary: true }]);
+
+      await service.resolveLoginDeviceId(7);
+
+      const [args] = repo.find.mock.calls[0] as [
+        { where: Record<string, unknown> },
+      ];
+      expect(args.where).toHaveProperty('revokedAt');
+      // The whole point: after a reset revokes device 1, a password login that
+      // still claimed device 1 would be refused by both §5.5 session gates —
+      // the owner locked out with the correct password.
+      expect(args.where).toMatchObject({ userId: 7 });
+    });
+
+    it('falls back to the lowest live id when no row claims primary', async () => {
+      repo.find.mockResolvedValue([
+        { deviceId: 3, isPrimary: false },
+        { deviceId: 5, isPrimary: false },
+      ]);
+      await expect(service.resolveLoginDeviceId(7)).resolves.toBe(3);
+    });
+  });
+
   describe('allocateDeviceId', () => {
     // Real Postgres shape for UPDATE ... RETURNING: [rows, rowCount].
     const returning = (allocatedId: number) => [[{ allocatedId }], 1];

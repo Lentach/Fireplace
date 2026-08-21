@@ -157,6 +157,90 @@ describe('DeviceListService', () => {
         service.enroll(V.userId, { ...enrollment(), listCanonical: broken }),
       ).rejects.toThrow(new DeviceListRejectedError('invalid_canonical'));
     });
+
+    describe('replacement after an identity change (amendment (xxix))', () => {
+      /**
+       * A stored record whose enrollment signature no longer verifies under
+       * the account's CURRENT published identity — which is exactly what a
+       * §6.2 reset leaves behind, since `E` was signed by the replaced IK.
+       * Modelled by a stored `dakPub` the signature does not cover.
+       */
+      const orphanedRow = (listVersion = 1) => ({
+        ...storedRow(),
+        dakPub: 'orphaned-dak-pub',
+        listVersion,
+      });
+
+      const replacement = () => ({
+        ...enrollment(),
+        listCanonical: V.v2ListCanonical,
+        listSignature: V.v2ListSignature,
+      });
+
+      it('REPLACES the orphaned row and CONTINUES the version, never restarting at 1', async () => {
+        authRepo.findOne.mockResolvedValue(orphanedRow(1));
+
+        await service.enroll(V.userId, replacement());
+
+        // Never an insert: the row must survive so listVersion is monotonic
+        // across the reset ((f)(iii)).
+        expect(authRepo.insert).not.toHaveBeenCalled();
+        const [sql, params] = authRepo.query.mock.calls[0] as [
+          string,
+          unknown[],
+        ];
+        expect(sql).toContain('UPDATE account_authorizations');
+        // CAS on the retired version, so two concurrent replacements
+        // serialize instead of regressing it.
+        expect(sql).toContain('"listVersion" < $6');
+        expect(params).toEqual([
+          V.dakPub,
+          V.enrollmentSig,
+          new Date(V.createdAtMs),
+          V.v2ListCanonical,
+          V.v2ListSignature,
+          2,
+          V.userId,
+        ]);
+      });
+
+      it('still refuses a second enrollment while the stored record VERIFIES', async () => {
+        // The exception is narrow: only an orphaned record may be replaced, so
+        // a live account keeps first-write-wins (I2).
+        authRepo.findOne.mockResolvedValue(storedRow());
+
+        await expect(service.enroll(V.userId, replacement())).rejects.toThrow(
+          new DeviceListRejectedError('already_enrolled'),
+        );
+        expect(authRepo.query).not.toHaveBeenCalled();
+      });
+
+      it('refuses a replacement that does not ADVANCE the version', async () => {
+        authRepo.findOne.mockResolvedValue(orphanedRow(2));
+
+        await expect(service.enroll(V.userId, replacement())).rejects.toThrow(
+          new DeviceListRejectedError('stale_version'),
+        );
+        expect(authRepo.query).not.toHaveBeenCalled();
+      });
+
+      it('refuses when the CAS matched no row (a concurrent replacement won)', async () => {
+        authRepo.findOne.mockResolvedValue(orphanedRow(1));
+        authRepo.query.mockResolvedValue([[], 0]);
+
+        await expect(service.enroll(V.userId, replacement())).rejects.toThrow(
+          new DeviceListRejectedError('stale_version'),
+        );
+      });
+
+      it('keeps the version-must-be-1 rule for a genuine FIRST enrollment', async () => {
+        authRepo.findOne.mockResolvedValue(null);
+
+        await expect(service.enroll(V.userId, replacement())).rejects.toThrow(
+          new DeviceListRejectedError('enrollment_version_must_be_1'),
+        );
+      });
+    });
   });
 
   describe('applySignedListUpdate (monotonic versions, falsification 3)', () => {

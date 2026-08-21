@@ -6,6 +6,7 @@ import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { RefreshTokensService } from './refresh-tokens.service';
 import { User } from '../users/user.entity';
+import { DevicesService } from '../key-bundles/devices.service';
 
 jest.mock('bcrypt', () => ({
   compare: jest.fn(),
@@ -22,6 +23,7 @@ describe('AuthService', () => {
       'createToken' | 'consumeAndSlide' | 'revokeByPlain'
     >
   >;
+  let devicesService: jest.Mocked<Pick<DevicesService, 'resolveLoginDeviceId'>>;
 
   const mockUser: Partial<User> = {
     id: 1,
@@ -57,6 +59,15 @@ describe('AuthService', () => {
             revokeByPlain: jest.fn(() => Promise.resolve()),
           },
         },
+        {
+          // A login resolves the account's LIVE PRIMARY (amendment (xxviii)) —
+          // device 1 for every single-device account, which is what the login
+          // laws below assume.
+          provide: DevicesService,
+          useValue: {
+            resolveLoginDeviceId: jest.fn(() => Promise.resolve(1)),
+          },
+        },
       ],
     }).compile();
 
@@ -64,6 +75,7 @@ describe('AuthService', () => {
     usersService = module.get(UsersService);
     jwtService = module.get(JwtService);
     refreshTokensService = module.get(RefreshTokensService);
+    devicesService = module.get(DevicesService);
     jest.clearAllMocks();
   });
 
@@ -126,6 +138,25 @@ describe('AuthService', () => {
         access_token: 'mock_jwt_token',
         refresh_token: 'mock_refresh_plain',
       });
+    });
+
+    it('logs in as the account LIVE PRIMARY, not a hardcoded device 1', async () => {
+      // The lockout this prevents: a §6.2 reset revokes the pre-reset roster
+      // and moves the account onto a freshly allocated id (amendment
+      // (xxviii)). A login that kept claiming device 1 would mint a token for
+      // a REVOKED device, which both §5.5 session gates then refuse — the
+      // owner locked out with the correct password and no way back in.
+      usersService.findByUsernameAndTag.mockResolvedValue(mockUser as User);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      devicesService.resolveLoginDeviceId.mockResolvedValue(4);
+
+      await service.login('testuser#0427', 'ValidPass1');
+
+      expect(devicesService.resolveLoginDeviceId).toHaveBeenCalledWith(1);
+      expect(refreshTokensService.createToken).toHaveBeenCalledWith(1, 4);
+      expect(jwtService.sign).toHaveBeenCalledWith(
+        expect.objectContaining({ deviceId: 4 }),
+      );
     });
 
     it('returns the generic failure and still runs a bcrypt compare for ambiguous bare usernames (no enumeration)', async () => {

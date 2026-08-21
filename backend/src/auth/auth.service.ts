@@ -4,6 +4,7 @@ import * as bcrypt from 'bcrypt';
 import { User } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
 import { RefreshTokensService } from './refresh-tokens.service';
+import { DevicesService } from '../key-bundles/devices.service';
 import { DEFAULT_DEVICE_ID } from '../key-bundles/key-bundles.service';
 
 // Precomputed bcrypt hash used for a constant-time comparison when the
@@ -20,6 +21,7 @@ export class AuthService {
     private usersService: UsersService,
     private jwtService: JwtService,
     private refreshTokensService: RefreshTokensService,
+    private devicesService: DevicesService,
   ) {}
 
   async register(username: string, password: string) {
@@ -67,11 +69,14 @@ export class AuthService {
       `login success userId=${user.id} username=${user.username}`,
     );
 
-    // Every session belongs to a device (Phase 1, spec §4). Until provisioning
-    // ships (Phase 2) an account has exactly one device, so every login is
-    // device 1 — the claim exists now so the socket, key material and push
-    // targeting can all key on it without another token migration later.
-    const deviceId = DEFAULT_DEVICE_ID;
+    // Every session belongs to a device (Phase 1, spec §4). This is the
+    // account's LIVE PRIMARY, never a hardcoded 1: a §6.2 reset revokes the
+    // pre-reset roster and moves the account onto a freshly allocated id
+    // (amendment (xxviii)), so claiming device 1 here would hand the owner a
+    // token for a revoked device — which the §5.5 session gates then refuse,
+    // locking them out with the correct password. Legacy accounts with no
+    // rows still resolve to device 1 (§8).
+    const deviceId = await this.devicesService.resolveLoginDeviceId(user.id);
     const payload = {
       sub: user.id,
       username: user.username,

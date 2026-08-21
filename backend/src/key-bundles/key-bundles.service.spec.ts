@@ -149,7 +149,9 @@ describe('KeyBundlesService', () => {
 
       expect(warnSpy).toHaveBeenCalledTimes(1);
       expect(warnSpy).toHaveBeenCalledWith(
-        '[identity-churn] userId=9 deviceId=1 oldIdentityPrefix=old-identity newIdentityPrefix=new-identity',
+        // `via` names the authorization: a RESET is the moment the §6.2 roster
+        // teardown runs, a signature is a plain rotation (amendment (xxviii)).
+        '[identity-churn] userId=9 deviceId=1 via=reset oldIdentityPrefix=old-identity newIdentityPrefix=new-identity',
       );
       // Phase 0a: the churn is durable — a full audit row, not just a log line.
       expect(auditRepo.insert).toHaveBeenCalledTimes(1);
@@ -160,6 +162,7 @@ describe('KeyBundlesService', () => {
       });
       expect(result).toEqual({
         identityChanged: true,
+        authorizedBy: 'reset',
         previousIdentityPublicKey: oldIdentity,
       });
       warnSpy.mockRestore();
@@ -219,6 +222,8 @@ describe('KeyBundlesService', () => {
       expect(auditRepo.insert).not.toHaveBeenCalled();
       expect(result).toEqual({
         identityChanged: false,
+        // Nothing was replaced, so nothing authorized anything.
+        authorizedBy: null,
         previousIdentityPublicKey: null,
       });
     });

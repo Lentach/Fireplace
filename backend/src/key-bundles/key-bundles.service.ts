@@ -47,9 +47,20 @@ export interface PreKeyBundleResponse {
   oneTimePreKeyPublic: string | null;
 }
 
+/**
+ * How an identity replacement was authorized (§6.1/§6.2), or `null` when it
+ * was not. The reset case is load-bearing beyond the audit trail: a COMPLETED
+ * RESET is the moment the §6.2 roster teardown runs (spec §12 amendment
+ * (xxviii)), and a signed rotation deliberately does NOT tear the roster down
+ * — the account still holds its other devices.
+ */
+export type IdentityChangeAuthorization = 'signature' | 'reset' | null;
+
 export interface UpsertKeyBundleResult {
   /** True when the upload REPLACED a stored bundle with a different identity. */
   identityChanged: boolean;
+  /** Which authorization admitted it; `null` when nothing was replaced. */
+  authorizedBy: IdentityChangeAuthorization;
   /** The superseded identity public key when identityChanged, else null. */
   previousIdentityPublicKey: string | null;
 }
@@ -126,14 +137,15 @@ export class KeyBundlesService {
     const identityChanged =
       existingBundle != null &&
       existingBundle.identityPublicKey !== data.identityPublicKey;
+    let authorizedBy: IdentityChangeAuthorization = null;
     if (identityChanged) {
-      const authorized = await this.authorizeIdentityChange(
+      authorizedBy = await this.authorizeIdentityChange(
         userId,
         existingBundle.identityPublicKey,
         data.identityPublicKey,
         proof,
       );
-      if (!authorized) {
+      if (authorizedBy === null) {
         // Loud, and deliberately before any write: an unauthorized replacement
         // attempt is exactly the event this lock exists to stop.
         this.logger.warn(
@@ -142,7 +154,7 @@ export class KeyBundlesService {
         throw new IdentityLockedError();
       }
       this.logger.warn(
-        `[identity-churn] userId=${userId} deviceId=${deviceId} oldIdentityPrefix=${existingBundle.identityPublicKey.slice(0, 12)} newIdentityPrefix=${data.identityPublicKey.slice(0, 12)}`,
+        `[identity-churn] userId=${userId} deviceId=${deviceId} via=${authorizedBy} oldIdentityPrefix=${existingBundle.identityPublicKey.slice(0, 12)} newIdentityPrefix=${data.identityPublicKey.slice(0, 12)}`,
       );
     }
     // Atomic upsert — handles concurrent connections from the same device
@@ -211,6 +223,7 @@ export class KeyBundlesService {
     );
     return {
       identityChanged,
+      authorizedBy,
       previousIdentityPublicKey: identityChanged
         ? existingBundle.identityPublicKey
         : null,
@@ -294,7 +307,7 @@ export class KeyBundlesService {
     storedIdentityPublicKey: string,
     newIdentityPublicKey: string,
     proof?: IdentityChangeProof,
-  ): Promise<boolean> {
+  ): Promise<IdentityChangeAuthorization> {
     if (proof?.signature && proof?.nonce) {
       const signatureValid = verifyIdentityChangeSignature({
         storedIdentityPublicKey,
@@ -303,11 +316,13 @@ export class KeyBundlesService {
         nonce: proof.nonce,
         signature: proof.signature,
       });
-      if (signatureValid) return true;
+      if (signatureValid) return 'signature';
     }
     // No usable signature: only a reset ceremony that already served its full
     // delay can authorize this, and it is spent in the process (single-use).
-    return this.identityResetService.consumeCompletedReset(userId);
+    return (await this.identityResetService.consumeCompletedReset(userId))
+      ? 'reset'
+      : null;
   }
 
   /**

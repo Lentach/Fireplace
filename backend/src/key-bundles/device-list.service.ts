@@ -161,10 +161,13 @@ export class DeviceListService {
     if (list.userId !== userId) {
       throw new DeviceListRejectedError('canonical_user_mismatch');
     }
-    if (list.version !== 1) {
-      // The enrollment IS version 1 by definition; later versions arrive via
-      // signed mutations. (A §6.2 reset re-enrollment continues the version
-      // monotonically — that path is T6 and replaces the row, never inserts.)
+    // Read the stored record before the version rule, because which rule
+    // applies depends on whether this is a FIRST enrollment or the (xxix)
+    // replacement of an orphaned one.
+    const stored = await this.authorizationRepo.findOne({ where: { userId } });
+    if (!stored && list.version !== 1) {
+      // A first enrollment IS version 1 by definition; later versions arrive
+      // via signed mutations.
       throw new DeviceListRejectedError('enrollment_version_must_be_1');
     }
 
@@ -179,6 +182,63 @@ export class DeviceListService {
         `[device-list] REFUSED enrollment with invalid list signature userId=${userId}`,
       );
       throw new DeviceListRejectedError('invalid_list_signature');
+    }
+
+    // First-write-wins (I2), with ONE admitted exception: an enrollment whose
+    // STORED record no longer verifies under the account's CURRENT published
+    // identity is orphaned, and only an identity change can orphan it (§6.2
+    // reset — spec §12 amendment (xxix)). Replacing it keeps `listVersion`
+    // MONOTONIC, which is why the row is replaced and never dropped: dropping
+    // it would restart versions at 1 and make the account read as
+    // not-enrolled, which the (xix) rollback pin correctly refuses.
+    if (stored) {
+      const storedStillValid = verifyEnrollmentSignature({
+        identityPublicKey: published.identityPublicKey,
+        userId,
+        dakPub: stored.dakPub,
+        createdAtMs: stored.enrollmentCreatedAt.getTime(),
+        signature: stored.enrollmentSig,
+      });
+      if (storedStillValid) {
+        this.logger.warn(
+          `[device-list] REFUSED second enrollment (first-write-wins) userId=${userId}`,
+        );
+        throw new DeviceListRejectedError('already_enrolled');
+      }
+      if (list.version <= stored.listVersion) {
+        this.logger.warn(
+          `[device-list] REFUSED replacement enrollment at a non-advancing version userId=${userId} version=${list.version} stored=${stored.listVersion}`,
+        );
+        throw new DeviceListRejectedError('stale_version');
+      }
+      // CAS on the retired version: two concurrent replacements serialize and
+      // the loser is refused rather than silently regressing the version.
+      // repo.query() returns [rows, rowCount] for UPDATE (backend/CLAUDE.md §4).
+      const [, rowCount] = await this.authorizationRepo.query<
+        [unknown[], number]
+      >(
+        `UPDATE account_authorizations
+            SET "dakPub" = $1, "enrollmentSig" = $2, "enrollmentCreatedAt" = $3,
+                "listCanonical" = $4, "listSignature" = $5, "listVersion" = $6,
+                "updatedAt" = now()
+          WHERE "userId" = $7 AND "listVersion" < $6`,
+        [
+          input.dakPub,
+          input.enrollmentSig,
+          new Date(input.createdAt),
+          input.listCanonical,
+          input.listSignature,
+          list.version,
+          userId,
+        ],
+      );
+      if (rowCount !== 1) {
+        throw new DeviceListRejectedError('stale_version');
+      }
+      this.logger.warn(
+        `[device-list] REPLACED orphaned enrollment after an identity change userId=${userId} version=${list.version}`,
+      );
+      return;
     }
 
     try {

@@ -20,6 +20,14 @@ import { UploadOneTimePreKeysDto } from '../dto/upload-one-time-pre-keys.dto';
 import { FetchPreKeyBundleDto } from '../dto/fetch-pre-key-bundle.dto';
 import { RequestSessionRebuildDto } from '../dto/request-session-rebuild.dto';
 import { deviceRoom, userRoom } from '../utils/user-room';
+import { JwtService } from '@nestjs/jwt';
+import { UsersService } from '../../users/users.service';
+import { FcmTokensService } from '../../fcm-tokens/fcm-tokens.service';
+import { WebPushSubscriptionsService } from '../../web-push-subscriptions/web-push-subscriptions.service';
+import {
+  ResetRosterResult,
+  ResetRosterService,
+} from '../../key-bundles/reset-roster.service';
 
 const PRE_KEY_LOW_THRESHOLD = 10;
 const PRE_KEY_FETCH_MIN_INTERVAL_MS = 750;
@@ -80,7 +88,32 @@ export class ChatKeyExchangeService {
     private readonly pushNotificationsService: PushNotificationsService,
     private readonly identityResetService: IdentityResetService,
     private readonly devicesService: DevicesService,
+    private readonly resetRosterService: ResetRosterService,
+    private readonly usersService: UsersService,
+    private readonly jwtService: JwtService,
+    private readonly fcmTokensService: FcmTokensService,
+    private readonly webPushSubscriptionsService: WebPushSubscriptionsService,
   ) {}
+
+  /**
+   * Drops every push endpoint of an account after a §6.2 roster teardown.
+   *
+   * Every row belonged to a device the teardown just revoked, and a
+   * NULL-`deviceId` row cannot be attributed to any of them (amendment
+   * (xxiv)). Fire-and-forget: a failure must not fail the recovery, but it is
+   * loud, because the alternative is pushing an account's notifications to
+   * devices it no longer trusts.
+   */
+  private async dropAccountPushRows(userId: number): Promise<void> {
+    try {
+      await this.fcmTokensService.removeByUserId(userId);
+      await this.webPushSubscriptionsService.removeByUserId(userId);
+    } catch (error) {
+      this.logger.error(
+        `[reset-roster] push teardown FAILED userId=${userId}: ${errorMessage(error)}`,
+      );
+    }
+  }
 
   /**
    * Issues a single-use nonce for a registration-lock proof (§6.1).
@@ -167,6 +200,31 @@ export class ChatKeyExchangeService {
           : undefined,
         deviceId,
       );
+      // A reset that just COMPLETED is the moment the §6.2 roster teardown
+      // runs (spec §12 amendments (f)/(xxviii)): the recovering device is
+      // moved onto a freshly allocated id, every pre-reset device is revoked,
+      // and its session is re-issued because all the old ones were dropped. A
+      // SIGNED rotation deliberately does not do this — that account still
+      // holds its other devices.
+      let roster: ResetRosterResult | null = null;
+      let reissuedAccessToken: string | null = null;
+      if (result.authorizedBy === 'reset') {
+        roster = await this.resetRosterService.applyAfterReset(
+          userId,
+          deviceId,
+        );
+        // The claim set must match login's exactly, so every consumer of it
+        // behaves identically (same rule as the provisioning rebind).
+        const user = await this.usersService.findById(userId);
+        if (user) {
+          reissuedAccessToken = this.jwtService.sign({
+            sub: userId,
+            username: user.username,
+            tag: user.tag,
+            deviceId: roster.deviceId,
+          });
+        }
+      }
       // `identityChanged` tells THIS device that its own upload is what
       // replaced the stored identity — and therefore what wrote the audit row
       // it will read back at the next connect. Without it the device that just
@@ -174,13 +232,31 @@ export class ChatKeyExchangeService {
       // sign-in replaced your keys", which trains people to dismiss the one
       // alarm that detects a real takeover. Additive field: an older client
       // ignores it.
+      //
+      // After a reset the answer additionally carries the device id the
+      // material now lives under plus a fresh session for it. The client MUST
+      // adopt these before uploading one-time pre-keys, or those keys land in
+      // the namespace the teardown just abandoned.
       client.emit('keyBundleUploaded', {
         success: true,
         identityChanged: result.identityChanged,
+        ...(roster && reissuedAccessToken
+          ? {
+              deviceId: roster.deviceId,
+              access_token: reissuedAccessToken,
+              refresh_token: roster.refreshToken,
+            }
+          : {}),
       });
       if (result.identityChanged) {
         // Fire-and-forget: the alarm must never fail or delay the upload ack.
         void this.notifyIdentityChanged(client, userId, server);
+      }
+      if (roster) {
+        // Push endpoints belong to devices this teardown just revoked, and a
+        // NULL-deviceId row cannot be attributed (amendment (xxiv)). The
+        // recovering device re-registers on its next start.
+        void this.dropAccountPushRows(userId);
       }
     } catch (error) {
       if (error instanceof IdentityLockedError) {
