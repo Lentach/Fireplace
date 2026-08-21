@@ -328,5 +328,31 @@ flutter **1479/10sk** · wire **41/2sk** (+ falsifications 6 and 14, zero new re
 Falsifications 16 and 22 landed as units. Root `CLAUDE.md` §3 and §7 updated (the §7 gap for
 `socketReady`'s `deviceId`, shipped since T4 but undocumented, was closed here too).
 
-**Still owed for T5:** the app-proof on account 193's two live devices — the browser tool needs
-the owner's per-session authorization, which had not been granted at the time of writing.
+**APP-PROVEN (browser granted for this proof only) — self-sync works on two real devices.**
+Account 193, devices 1 (:8091) and 2 (:8093), peer 297, conversation 92. Device 1 sent
+"T5 self-sync proof: device 2 must decrypt this". The server wrote **message 698 with TWO
+envelopes and none for the origin**: `(193,2)` = `3:MwgBEiEFcS` (the self-sync copy) and
+`(297,1)` = `2:MwohBY/T/9`, distinct ciphertexts, `encryptedContent` NULL. **Device 2 decrypted
+it and rendered the plaintext once**, as an own-side bubble — not a duplicate, not
+`[Decryption failed]`, not the `none_for_device` placeholder (screenshot
+`t5-device2-selfsync.png`). That is precisely what every guard in (xi)/(xiii) exists to allow,
+and it was impossible before this ticket.
+
+**Falsification 19 verified live:** after device 2 opened the conversation and read its own copy,
+message 698's `deliveryStatus` was still `SENT` and BOTH envelope rows had `deliveredAt` and
+`readAt` NULL, with no `messageDelivered` in the backend log. A sender's own second device
+produces no receipt.
+
+**Origin-side own_origin verified live:** a full reload of device 1 re-served message 698 as its
+own row with no ciphertext for it, and the device still rendered the plaintext — the branch-1
+path (never decrypt, restore locally) surviving a cold start.
+
+**NOT exercised live: the killed-ack reconcile.** Driving a SECOND send needed a fresh compose,
+and the Flutter web release composer would not accept programmatic text after the first send
+(CanvasKit re-creates its text-editing host; `Input.insertText` reached a stale `<textarea>` the
+framework ignored, and `sendCharacter` reached the framework but the run was stopped before a row
+committed). The path itself is covered by wire falsification 14 (a reused `sendToken` re-acks the
+SAME row and re-fans nothing) and by three unit contracts including the token-keyed round trip;
+what is missing is only the live keystroke path. **A future session should either drive the
+composer with `sendCharacter` from a freshly reloaded page or add a test-only send hook — do not
+claim this half is app-proven until it is.**

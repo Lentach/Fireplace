@@ -130,9 +130,37 @@ keep on its first run.
 - `docker compose restart backend` needs patient `/health` polling (~2-3 min) before the wire suite
   will connect; the register throttle being in memory means a restart also refunds it.
 
-## Still owed for T5
+## App-proof (browser granted for this proof only)
 
-The **app-proof on account 193's two live devices** (device 1 sends → device 2 decrypts the
-self-sync copy and renders the same message; a killed ack still recovers the plaintext; no receipt
-from the sender's own device). It needs the browser tool, which requires the owner's per-session
-authorization — not granted at the time of writing.
+**Self-sync works on two real devices.** Account 193, device 1 on origin :8091 and device 2 on
+:8093, peer 297, conversation 92. Device 1 sent "T5 self-sync proof: device 2 must decrypt this";
+the server wrote **message 698 with TWO envelopes and none for the origin** — `(193,2)` =
+`3:MwgBEiEFcS` and `(297,1)` = `2:MwohBY/T/9`, distinct ciphertexts, `encryptedContent` NULL — and
+**device 2 decrypted it and rendered the plaintext once**, as an own-side bubble, not a duplicate
+and not `[Decryption failed]`. Screenshot: `t5-device2-selfsync.png`. Before this ticket that row
+would have stayed `[encrypted]` forever.
+
+**Falsification 19, live:** with device 2 sitting in the conversation having read its own copy,
+message 698 was still `deliveryStatus = SENT` and both envelope rows had `deliveredAt`/`readAt`
+NULL, with no `messageDelivered` in the backend log.
+
+**Origin-side `own_origin`, live:** a full reload of device 1 re-served 698 as its own row with no
+ciphertext for it, and the plaintext still rendered — branch 1 of the law surviving a cold start.
+
+**Not exercised live: the killed-ack reconcile.** The second send needed a fresh compose, and the
+Flutter web release composer refused programmatic text after the first send — CanvasKit re-creates
+its text-editing host, so `Input.insertText` landed in a stale `<textarea>` the framework ignored,
+and `sendCharacter` did reach the framework but the attempt was stopped before a row committed.
+The path is covered by wire falsification 14 and three unit contracts (including the token-keyed
+round trip), but the live keystroke path is NOT proven. Next session: drive the composer with
+`sendCharacter` from a freshly reloaded page, or add a test-only send hook. **Do not claim this
+half is app-proven until it is.**
+
+## Browser-tool trap worth keeping
+
+Two `browser` tab NAMES resolved to the SAME page, so "device 2" was silently device 1 until the
+origins were compared — always assert `location.origin` per page, and create the second page with
+`browser.newPage()`, selecting pages by URL afterwards. The shared browser daemon also refused to
+start (a system Chrome was already running); spawning Chrome with an explicit
+`--user-data-dir` pointed at the daemon's own profile is what preserved both devices' stored
+identities, and the stored origins are `127.0.0.1`, not `localhost`.
