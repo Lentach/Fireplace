@@ -155,6 +155,7 @@
   "decryptingMessage": "Decrypting…",
   "messageNoLongerStoredOnThisDevice": "This message is no longer stored on this device.",
   "messageSentBeforeDeviceLinked": "Sent before this device was linked.",
+  "devicesSyncingNote": "Syncing your devices…",
   "encryptionNotInitialized": "Encryption not initialized",
   "identityDamagedTitle": "Encryption keys missing on this device",
   "identityDamagedBody": "Signed in on a new device or browser? Your account already has encryption keys elsewhere, and this device does not have them. If this is your usual device, its stored keys were lost. Either way nothing was regenerated automatically — doing that silently would destroy your ability to read your history.",

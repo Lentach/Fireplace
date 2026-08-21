@@ -17,6 +17,7 @@
 
 import 'device_authority_engine.dart';
 import 'device_list_canonical.dart';
+import 'sender_list_info.dart';
 
 /// A device list the send path may trust.
 class VerifiedDeviceList {
@@ -24,13 +25,20 @@ class VerifiedDeviceList {
     required this.enrolled,
     required this.version,
     required this.devices,
+    this.listHash,
   });
 
   /// The verified view of an enrolled account.
   const VerifiedDeviceList.enrolled({
     required int version,
     required List<DeviceListEntry> devices,
-  }) : this._(enrolled: true, version: version, devices: devices);
+    String? listHash,
+  }) : this._(
+         enrolled: true,
+         version: version,
+         devices: devices,
+         listHash: listHash,
+       );
 
   /// The server explicitly answered `authorization: null`: no enrollment row
   /// exists, so the account is single-device by construction. No version —
@@ -50,6 +58,13 @@ class VerifiedDeviceList {
   final int? version;
 
   final List<DeviceListEntry> devices;
+
+  /// SHA-256 (base64) of the DAK-signed `listCanonical` bytes exactly as the
+  /// server transported them — the value `senderListInfo` carries in-band
+  /// (spec §12 amendment (xv)). Null for a non-enrolled account, which has no
+  /// signed list to hash. Never recomputed from [devices]: a re-serialization
+  /// would drift and produce phantom mismatches.
+  final String? listHash;
 
   /// Devices a send must address: every entry not revoked.
   List<int> get liveDeviceIds => [
@@ -157,9 +172,14 @@ class DeviceListCache {
       );
     }
     final deviceList = verification.deviceList!;
+    // Hash what was TRANSPORTED and verified, not a re-encoding of it.
+    final canonical = authorization['listCanonical'];
     final verified = VerifiedDeviceList.enrolled(
       version: deviceList.version,
       devices: deviceList.devices,
+      listHash: canonical is String && canonical.isNotEmpty
+          ? SenderListInfo.hashListCanonical(canonical)
+          : null,
     );
     _byUser[userId] = verified;
     if (pinned == null || deviceList.version > pinned) {

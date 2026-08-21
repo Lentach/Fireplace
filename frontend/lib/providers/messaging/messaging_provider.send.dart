@@ -1258,23 +1258,7 @@ extension MessagingSend on MessagingProvider {
         }
       }
 
-      // 3. Build encrypted envelope (content + type + media + optional linkPreview)
-      final envelopeJson = jsonEncode(
-        E2eEnvelope.build(
-          content,
-          messageType: messageType,
-          mediaUrl: mediaUrl,
-          mediaDuration: mediaDuration,
-          mediaKey: mediaKey,
-          mediaIv: mediaIv,
-          mediaWidth: mediaWidth,
-          mediaHeight: mediaHeight,
-          mediaThumbHash: mediaThumbHash,
-          linkPreview: linkPreview,
-        ),
-      );
-
-      // 4. Resolve the addresses this send must reach (spec §5.2 + §12
+      // 3. Resolve the addresses this send must reach (spec §5.2 + §12
       // amendment (x)).
       //
       // A device list is used only when this client ALREADY holds a verified
@@ -1312,6 +1296,39 @@ extension MessagingSend on MessagingProvider {
             if (deviceId != ownDeviceId)
               (userId: ownUserId, deviceId: deviceId),
       ];
+
+      // 4. Build the encrypted envelope (content + type + media + optional
+      // linkPreview + the §5.2 layer-2 cross-check).
+      //
+      // `senderListInfo` states which device-list versions THIS send was
+      // addressed from, and rides inside the plaintext where the server cannot
+      // see or edit it (spec §12 amendment (xv)). It is built from verified
+      // cached lists only — a party we hold nothing for is reported ABSENT
+      // rather than as version 0, because "I do not know your devices" and
+      // "you have no devices" are different claims and only one of them is
+      // true. It is attached to EVERY message (owner ruling 2026-08-21) so a
+      // split view is exposed by the first message rather than a sampled one.
+      final senderListInfo = SenderListInfo(
+        ownVersion: ownList?.version,
+        ownListHash: ownList?.listHash,
+        peerVersion: recipientList?.version,
+        peerListHash: recipientList?.listHash,
+      );
+      final envelopeJson = jsonEncode(
+        E2eEnvelope.build(
+          content,
+          messageType: messageType,
+          mediaUrl: mediaUrl,
+          mediaDuration: mediaDuration,
+          mediaKey: mediaKey,
+          mediaIv: mediaIv,
+          mediaWidth: mediaWidth,
+          mediaHeight: mediaHeight,
+          mediaThumbHash: mediaThumbHash,
+          linkPreview: linkPreview,
+          senderListInfo: senderListInfo.toJson(),
+        ),
+      );
 
       // 5. Encrypt. With the recipient's list known that is ONE ciphertext per
       // address — reusing one across devices is not an option, because Signal

@@ -890,6 +890,12 @@ abstract class AppLocalizations {
   /// **'Wysłana przed połączeniem tego urządzenia.'**
   String get messageSentBeforeDeviceLinked;
 
+  /// No description provided for @devicesSyncingNote.
+  ///
+  /// In pl, this message translates to:
+  /// **'Synchronizowanie urządzeń…'**
+  String get devicesSyncingNote;
+
   /// No description provided for @encryptionNotInitialized.
   ///
   /// In pl, this message translates to:

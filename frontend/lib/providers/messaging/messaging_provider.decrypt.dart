@@ -79,6 +79,81 @@ extension MessagingDecrypt on MessagingProvider {
   bool _isSelfSyncRow(MessageModel m) =>
       m.isSelfSyncRow(_currentUserId, _confirmedOwnDeviceId);
 
+  /// Reacts to a peer's in-band device-list claim (spec §12 (xv)/(xvi)).
+  ///
+  /// Everything here is deliberately modest: at most ONE rate-limited re-fetch,
+  /// a calm "syncing" flag for our own skew, and a durable diagnostic when our
+  /// OWN verified data confirms a peer is frozen. A claim by itself never
+  /// changes trust, never blocks a send, and never raises the identity surface
+  /// (I7) — an injected claim would otherwise be a remote off switch for this
+  /// client's warnings, or a way to make us cry wolf until the user stops
+  /// listening.
+  void _evaluateSenderListInfo(int senderId, Object? rawClaim) {
+    final enc = _encryptionProvider;
+    final me = _currentUserId;
+    if (enc == null || me == null || senderId == me) return;
+    final claim = SenderListInfo.fromJson(rawClaim);
+    if (claim == null) return;
+
+    final ourPeerView = enc.cachedDeviceList(senderId);
+    final ourOwnView = enc.cachedDeviceList(me);
+    final outcome = SenderListInfoChecker.evaluate(
+      claim: claim,
+      ourVersionOfPeer: ourPeerView?.version,
+      ourHashOfPeer: ourPeerView?.listHash,
+      ourOwnVersion: ourOwnView?.version,
+      ourOwnHash: ourOwnView?.listHash,
+    );
+
+    switch (outcome) {
+      case SenderListInfoOutcome.consistent:
+        _setDevicesSyncing(false);
+      case SenderListInfoOutcome.ownDevicesSyncing:
+        // Benign: our own devices have not converged yet. Calm state only.
+        _setDevicesSyncing(true);
+        if (_listRefreshLimiter.tryBegin(me)) {
+          enc.invalidateDeviceList(me);
+          enc
+              .getVerifiedDeviceList(me)
+              .then((_) => _setDevicesSyncing(false))
+              .onError((_, _) {})
+              .whenComplete(() => _listRefreshLimiter.end(me));
+        }
+      case SenderListInfoOutcome.refreshPeerList:
+        // The peer claims a newer list than we hold — the common, legitimate
+        // case (it linked a device). ONE re-fetch, then the claim is discarded;
+        // a parallel re-fetch would let a stale answer overwrite a fresh one.
+        if (_listRefreshLimiter.tryBegin(senderId)) {
+          enc.invalidateDeviceList(senderId);
+          enc
+              .getVerifiedDeviceList(senderId)
+              .onError((_, _) => const VerifiedDeviceList.notEnrolled())
+              .whenComplete(() => _listRefreshLimiter.end(senderId));
+        }
+      case SenderListInfoOutcome.peerListFrozen:
+        // Our OWN verified data confirms the peer is being served, or is
+        // sending from, a stale view. That is evidence, not a claim — but the
+        // response is still bounded: record it durably for the operator, keep
+        // the calm surface for the user, and never touch trust here.
+        E2ePersistentDiag.record('SENDER_LIST_INFO_FROZEN', {
+          'senderId': senderId,
+          'claimedVersion': claim.ownVersion,
+          'ourVersion': ourPeerView?.version,
+        });
+        _e2eFlowLog('SENDER_LIST_INFO_FROZEN', {
+          'senderId': senderId,
+          'claimedVersion': claim.ownVersion,
+          'ourVersion': ourPeerView?.version,
+        });
+    }
+  }
+
+  void _setDevicesSyncing(bool value) {
+    if (_devicesSyncing == value) return;
+    _devicesSyncing = value;
+    notifyListeners();
+  }
+
   /// True for a row that still NEEDS a decrypt pass: shows the "[encrypted]"
   /// placeholder AND has no usable decrypted content. The second check is
   /// load-bearing: restored keyed-media rows (voice/image) legitimately keep
@@ -1165,6 +1240,11 @@ extension MessagingDecrypt on MessagingProvider {
           'msgId': msg.id,
           'contentLength': parsed.content.length,
         });
+        // §5.2 layer 2 (amendment (xv)/(xvi)): the sender told us which
+        // device-list versions it addressed this message from. Evaluate it
+        // against DAK-verified data we already hold. A bare claim NEVER alarms
+        // and NEVER changes trust (I7) — it can only make us re-check.
+        _evaluateSenderListInfo(msg.senderId, parsed.senderListInfo);
         // SSRF: validate imageUrl before storing
         final safeImageUrl =
             parsed.linkPreviewImageUrl != null &&

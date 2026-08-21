@@ -447,6 +447,9 @@ class AppLocalizationsEn extends AppLocalizations {
       'Sent before this device was linked.';
 
   @override
+  String get devicesSyncingNote => 'Syncing your devices…';
+
+  @override
   String get encryptionNotInitialized => 'Encryption not initialized';
 
   @override

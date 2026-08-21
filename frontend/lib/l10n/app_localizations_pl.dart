@@ -448,6 +448,9 @@ class AppLocalizationsPl extends AppLocalizations {
       'Wysłana przed połączeniem tego urządzenia.';
 
   @override
+  String get devicesSyncingNote => 'Synchronizowanie urządzeń…';
+
+  @override
   String get encryptionNotInitialized => 'Szyfrowanie niezainicjowane';
 
   @override

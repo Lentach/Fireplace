@@ -11,6 +11,8 @@ import '../utils/file_utils_stub.dart'
 import '../config/app_config.dart';
 import '../models/message_model.dart';
 import '../services/api_service.dart';
+import '../services/device_list/device_list_cache.dart';
+import '../services/device_list/sender_list_info.dart';
 import '../services/media_crypto_service.dart';
 import '../services/encrypted_media_upload_service.dart';
 import '../services/encryption_service.dart';
@@ -139,6 +141,21 @@ class MessagingProvider extends ChangeNotifier {
   /// Without this, every history pass re-asked the peer to re-key (the
   /// SESSION_RESET{historyRetry} loop), forcing rebuild churn on every send.
   final Set<int> _rebuildRequestedPeers = {};
+
+  /// True when a peer's in-band `senderListInfo` showed that OUR OWN devices
+  /// disagree about our own device list (spec §12 amendment (xvii)). Benign by
+  /// definition — our devices have not converged — so the UI shows a calm
+  /// "syncing devices" note and NEVER the identity-changed surface. Cleared as
+  /// soon as a claim agrees with what we hold.
+  bool _devicesSyncing = false;
+
+  bool get devicesSyncing => _devicesSyncing;
+
+  /// One device-list re-fetch in flight per account, and one per cooldown —
+  /// the rate limit amendment (xvi) requires, so a bogus claim attached to
+  /// every inbound message cannot become a fetch storm.
+  final SenderListInfoRefreshLimiter _listRefreshLimiter =
+      SenderListInfoRefreshLimiter();
 
   /// tempIds whose `sendMessage` emit already happened — a second emit for the
   /// same optimistic message would advance the ratchet again and hand the
