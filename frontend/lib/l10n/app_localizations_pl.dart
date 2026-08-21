@@ -444,6 +444,10 @@ class AppLocalizationsPl extends AppLocalizations {
       'Ta wiadomość nie jest już przechowywana na tym urządzeniu.';
 
   @override
+  String get messageSentBeforeDeviceLinked =>
+      'Wysłana przed połączeniem tego urządzenia.';
+
+  @override
   String get encryptionNotInitialized => 'Szyfrowanie niezainicjowane';
 
   @override

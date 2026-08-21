@@ -884,6 +884,12 @@ abstract class AppLocalizations {
   /// **'Ta wiadomość nie jest już przechowywana na tym urządzeniu.'**
   String get messageNoLongerStoredOnThisDevice;
 
+  /// No description provided for @messageSentBeforeDeviceLinked.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wysłana przed połączeniem tego urządzenia.'**
+  String get messageSentBeforeDeviceLinked;
+
   /// No description provided for @encryptionNotInitialized.
   ///
   /// In pl, this message translates to:

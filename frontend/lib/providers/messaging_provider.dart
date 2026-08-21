@@ -63,6 +63,12 @@ const String _kDecryptionFailedLabel = '[Decryption failed]';
 const String _kEncryptedPlaceholderLabel = '[encrypted]';
 const String kRetiredMessageLabel = '[Message no longer stored on this device]';
 
+/// A row the server marked `none_for_device` (spec §5.3 + §12 amendment
+/// (viii)): it predates this device's link, so no envelope exists for it and
+/// nothing can be decrypted. Distinct from `[Decryption failed]` on purpose —
+/// nothing failed here.
+const String kNotLinkedYetMessageLabel = '[Sent before this device was linked]';
+
 /// MessagingProvider — owns all message state, send/receive handlers,
 /// encryption orchestration, typing/recording indicators, and reactions.
 /// Wired by [ConnectionProvider] and ConversationsScreen (setEncryptionProvider, setConversationsProvider).

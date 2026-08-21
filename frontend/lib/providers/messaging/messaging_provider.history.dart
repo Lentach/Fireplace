@@ -314,13 +314,20 @@ extension MessagingHistory on MessagingProvider {
     }
 
     if (droppedForConversationMismatch(effectiveActive)) return;
-    final newMessages = list
-        .map(
-          (m) => _enrichReplyPreview(
-            MessageModel.fromJson(m as Map<String, dynamic>),
-          ),
-        )
-        .toList();
+    final newMessages = list.map((m) {
+      final row = _enrichReplyPreview(
+        MessageModel.fromJson(m as Map<String, dynamic>),
+      );
+      // The server says this device has no ciphertext for this row by
+      // design — it predates this device's link (spec §12 amendment
+      // (viii)). Stamp the honest placeholder HERE, at ingestion: such a
+      // row carries no ciphertext, so it never enters the decrypt pass
+      // where the other placeholder states are resolved, and it would
+      // otherwise sit on '[encrypted]' forever.
+      return row.envelopeStatus == 'none_for_device'
+          ? row.copyWith(content: kNotLinkedYetMessageLabel)
+          : row;
+    }).toList();
 
     // Fill in plaintext we already hold BEFORE this snapshot reaches _messages.
     // Every E2E row arrives as content "[encrypted]" (the server never sees

@@ -154,6 +154,7 @@
   "decryptionFailed": "Odszyfrowanie nie powiodło się",
   "decryptingMessage": "Odszyfrowywanie…",
   "messageNoLongerStoredOnThisDevice": "Ta wiadomość nie jest już przechowywana na tym urządzeniu.",
+  "messageSentBeforeDeviceLinked": "Wysłana przed połączeniem tego urządzenia.",
   "encryptionNotInitialized": "Szyfrowanie niezainicjowane",
   "identityDamagedTitle": "Brak kluczy szyfrowania na tym urządzeniu",
   "identityDamagedBody": "Logujesz się na nowym urządzeniu lub w nowej przeglądarce? Twoje konto ma już klucze szyfrowania gdzie indziej, a to urządzenie ich nie ma. Jeśli to Twoje dotychczasowe urządzenie, zapisane klucze zostały utracone. Tak czy inaczej nic nie zostało odtworzone automatycznie — zrobienie tego po cichu zniszczyłoby możliwość odczytania historii.",

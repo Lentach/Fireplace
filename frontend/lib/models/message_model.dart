@@ -110,7 +110,8 @@ class MessageModel {
       content != '[encrypted]' &&
       content != '[Decryption failed]' &&
       content != '[Encryption not initialized]' &&
-      content != '[Message no longer stored on this device]';
+      content != '[Message no longer stored on this device]' &&
+      content != '[Sent before this device was linked]';
 
   MessageModel({
     required this.id,

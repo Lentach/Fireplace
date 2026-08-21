@@ -443,6 +443,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'This message is no longer stored on this device.';
 
   @override
+  String get messageSentBeforeDeviceLinked =>
+      'Sent before this device was linked.';
+
+  @override
   String get encryptionNotInitialized => 'Encryption not initialized';
 
   @override

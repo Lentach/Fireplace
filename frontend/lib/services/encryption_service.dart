@@ -1379,6 +1379,10 @@ class EncryptionService {
     '[Decryption failed]',
     '[Encryption not initialized]',
     '[Message no longer stored on this device]',
+    // A row that predates this device's link (spec §12 amendment (viii)). It
+    // must never overwrite real plaintext: a device that DID decrypt this
+    // message keeps its copy even if a later payload arrives marked.
+    '[Sent before this device was linked]',
   };
 
   /// Persist decrypted message content to survive app restart.

@@ -92,6 +92,23 @@ extension MessagingDecrypt on MessagingProvider {
       ? msg
       : msg.copyWith(content: kRetiredMessageLabel);
 
+  /// Stamp the honest "sent before this device was linked" placeholder on a row
+  /// the server marked `none_for_device` (spec §12 amendment (viii)).
+  ///
+  /// Deliberately NOT `[Decryption failed]`: nothing failed. The row simply
+  /// predates this device, and Matrix's `UtdCause::SentBeforeWeJoined` draws
+  /// the same distinction for the same reason.
+  bool _markMessageNotLinkedYet(MessageModel msg) {
+    final idx = _messages.indexWhere((m) => m.id == msg.id);
+    if (idx == -1 || _messages[idx].content == kNotLinkedYetMessageLabel) {
+      return false;
+    }
+    _messages[idx] = _messages[idx].copyWith(
+      content: kNotLinkedYetMessageLabel,
+    );
+    return true;
+  }
+
   bool _conversationHasUndecryptedInbound(int conversationId) {
     return _messages.any(
       (m) =>
@@ -622,6 +639,15 @@ extension MessagingDecrypt on MessagingProvider {
         final rowForDecrypt = idx != -1 ? _messages[idx] : msg;
         if (_isRetiredMessage(rowForDecrypt)) {
           if (_markMessageAsRetired(rowForDecrypt)) changed = true;
+          continue;
+        }
+        // The server said this device has no ciphertext for this row by design
+        // (spec §12 amendment (viii)): it predates this device's link. There is
+        // nothing to decrypt, so it must never enter the pass and degrade into
+        // `[Decryption failed]` — it renders an honest placeholder instead. Not
+        // a destruction trigger either (I8, falsification 13).
+        if (rowForDecrypt.envelopeStatus == 'none_for_device') {
+          if (_markMessageNotLinkedYet(rowForDecrypt)) changed = true;
           continue;
         }
         if (_hasUsableDecryptedContent(rowForDecrypt)) {

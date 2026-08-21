@@ -821,4 +821,31 @@ that is the designed outcome).
     ambiguous match being a no-op that never consumes the record. Exact-ciphertext equality
     REMAINS the fallback for legacy and pre-existing records. The own-sender guard flip,
     self-sync consumption rules, and re-ack-without-re-fan under envelopes stay T5.
+  - **(x) Legacy sends are refused once either party is enrolled; the client
+    fans out only from a list it already holds (forced during T4 implementation;
+    amends (v)'s "legacy normalized sends bypass the cross-check entirely").**
+    Requiring the client to fetch a device list on EVERY send — to prove that a
+    single-device account is single-device — taxes the overwhelmingly common
+    path for nothing. So the client fans out only when it ALREADY holds a
+    verified list for the RECIPIENT (seeded by an explicit `getDeviceList`, a
+    `deviceListChanged`, or a `deviceListStale` refusal) and otherwise sends the
+    legacy single-ciphertext shape, which (v) normalizes to a device-1 envelope
+    at ingest. That is only safe because the SERVER now refuses a legacy
+    ciphertext-bearing send whenever EITHER party has an `account_authorizations`
+    row, answering `deviceListStale` with every enrolled party's signed list:
+    a legacy send reaches device 1 alone, so accepting it for an enrolled peer
+    would silently DROP that peer's other devices, exactly what invariant I5
+    forbids. I5 therefore lands where it cannot be skipped — server-side — and
+    the refusal is what upgrades a client to fan-out. Corollaries: a
+    ciphertext-less send (PING) is never refused, since it has no envelope to
+    fan out; a client MUST NOT fan out when the recipient's list is unknown
+    (envelopes addressing own devices only would commit a row with a NULL legacy
+    column whose recipient reads `none_for_device` forever — the message
+    permanently invisible to the person it was sent to); and the refusal handler
+    MUST explicitly resolve any party ABSENT from `lists[]` (an enrolled sender
+    with a non-enrolled recipient yields a single entry, and without resolving
+    the other party the resend would repeat the legacy shape until the retry cap).
+    The server tells the client which device it is by echoing `deviceId` on
+    `socketReady`: it cannot be derived client-side, and a fan-out must exclude
+    its own origin device.
 - **Next gate:** per-ticket implementation reviews (T1–T8); Stage 0 is CLOSED 2026-08-19.
