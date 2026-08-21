@@ -152,6 +152,31 @@ export class ProvisioningStagesService implements OnModuleDestroy {
     this.stages.delete(provisioningId);
   }
 
+  /**
+   * Drops EVERY stage of one account and returns how many (spec §5.1
+   * "revoke preempts linking" + §12 amendment (xxv)).
+   *
+   * Account-wide, not scoped to the revoked deviceId: every live stage carries
+   * a list mutation signed against the PRE-revocation list, so revocation's
+   * version+1 makes all of them stale by construction. Discarding turns a
+   * guaranteed `stale_version` at commit into an immediate, honest
+   * `unknown_stage`, and a security action never waits on a stuck link.
+   */
+  discardForUser(userId: number): number {
+    let discarded = 0;
+    for (const [id, stage] of this.stages) {
+      if (stage.userId !== userId) continue;
+      this.stages.delete(id);
+      discarded += 1;
+    }
+    if (discarded > 0) {
+      this.logger.log(
+        `[provisioning] ${discarded} stage(s) preempted by revocation userId=${userId}`,
+      );
+    }
+    return discarded;
+  }
+
   /** Periodic hygiene between lazy expiries. */
   sweep(): void {
     const now = Date.now();

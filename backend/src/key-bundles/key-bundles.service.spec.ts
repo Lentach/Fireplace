@@ -680,4 +680,42 @@ describe('KeyBundlesService', () => {
       expect(callOrder).toEqual(['otp', 'keyBundle']);
     });
   });
+
+  describe('purgeDeviceMaterial (§5.5 revocation, falsification 12)', () => {
+    it('deletes the bundle and OTPs of EXACTLY one device', async () => {
+      keyBundleRepo.delete.mockResolvedValue({ affected: 1 });
+      otpRepo.delete.mockResolvedValue({ affected: 40 });
+
+      await service.purgeDeviceMaterial(5, 2);
+
+      // Both scoped by the PAIR: a roster teardown can never reach a
+      // surviving device's material, which is what falsification 12 asserts.
+      expect(keyBundleRepo.delete).toHaveBeenCalledWith({
+        userId: 5,
+        deviceId: 2,
+      });
+      expect(otpRepo.delete).toHaveBeenCalledWith({ userId: 5, deviceId: 2 });
+    });
+
+    it('uses the caller transaction when given a manager', async () => {
+      const bundleDelete = jest.fn().mockResolvedValue({ affected: 1 });
+      const otpDelete = jest.fn().mockResolvedValue({ affected: 1 });
+      const manager = {
+        getRepository: jest.fn((entity: unknown) =>
+          entity === KeyBundle
+            ? { delete: bundleDelete }
+            : { delete: otpDelete },
+        ),
+      };
+
+      await service.purgeDeviceMaterial(5, 2, manager as never);
+
+      expect(bundleDelete).toHaveBeenCalledWith({ userId: 5, deviceId: 2 });
+      expect(otpDelete).toHaveBeenCalledWith({ userId: 5, deviceId: 2 });
+      // The service's own repositories stay untouched, so the delete really
+      // joins the revocation transaction instead of running beside it.
+      expect(keyBundleRepo.delete).not.toHaveBeenCalled();
+      expect(otpRepo.delete).not.toHaveBeenCalled();
+    });
+  });
 });

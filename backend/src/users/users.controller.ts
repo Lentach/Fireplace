@@ -250,9 +250,20 @@ export class UsersController {
   @Post('fcm-token')
   @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 30, ttl: 900000 } })
-  async registerFcmToken(@Body() dto: RegisterFcmTokenDto, @Request() req) {
+  async registerFcmToken(
+    @Body() dto: RegisterFcmTokenDto,
+    // `deviceId` always present since the §5.5 gate landed in JwtStrategy.
+    @Request() req: { user: { id: number; deviceId: number } },
+  ) {
     const userId = req.user.id;
-    await this.fcmTokensService.upsert(userId, dto.token, dto.platform);
+    // Which device owns this endpoint (spec §12 amendment (xxiv)) — without
+    // it a §5.5 revocation cannot stop pushing to the revoked device.
+    await this.fcmTokensService.upsert(
+      userId,
+      dto.token,
+      dto.platform,
+      req.user.deviceId,
+    );
     return { message: 'FCM token registered' };
   }
 
@@ -269,11 +280,13 @@ export class UsersController {
   @Throttle({ default: { limit: 30, ttl: 900000 } })
   async registerWebPushSubscription(
     @Body() dto: RegisterWebPushSubscriptionDto,
-    @Request() req,
+    @Request() req: { user: { id: number; deviceId: number } },
   ) {
     const userId = req.user.id;
     await this.webPushSubscriptionsService.upsert({
       userId,
+      // See the FCM note above (amendment (xxiv)).
+      deviceId: req.user.deviceId,
       endpoint: dto.endpoint,
       p256dh: dto.keys.p256dh,
       auth: dto.keys.auth,

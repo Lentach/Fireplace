@@ -3,8 +3,10 @@ import {
   IsNotEmpty,
   IsPositive,
   IsString,
+  Max,
   MaxLength,
 } from 'class-validator';
+import { MAX_DEVICE_ID } from '../../key-bundles/key-bundles.service';
 
 /**
  * DAK enrollment + signed device list (Phase 2 T2, spec §3/§7 row 424).
@@ -47,6 +49,32 @@ export class EnrollDeviceAuthorityDto {
 }
 
 export class UpdateDeviceListDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(16384)
+  listCanonical: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(128)
+  listSignature: string;
+}
+
+/**
+ * Revocation request (Phase 2 T6, spec §5.5 + §7 row 424).
+ *
+ * Carries the SIGNED list that already shows `deviceId` revoked: the server
+ * never mints a list version, so the mutation and the teardown are the same
+ * act (spec §12 amendment (xxi) — the request's `deviceId` MUST appear revoked
+ * in these canonical bytes).
+ */
+export class RevokeDeviceDto {
+  /** The device to cut off. Never the caller's own, never the primary. */
+  @IsInt()
+  @IsPositive()
+  @Max(MAX_DEVICE_ID)
+  deviceId: number;
+
   @IsString()
   @IsNotEmpty()
   @MaxLength(16384)

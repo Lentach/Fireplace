@@ -136,4 +136,16 @@ describe('RefreshTokensService', () => {
 
     expect(repo.delete).toHaveBeenCalledWith({ userId: 42 });
   });
+
+  it('revokeForDevice deletes ONE device session and leaves the others signed in', async () => {
+    repo.delete.mockResolvedValue({ affected: 2, raw: [] });
+
+    await expect(service.revokeForDevice(42, 2)).resolves.toBe(2);
+
+    // Scoped by the pair, so the primary performing a §5.5 revocation keeps
+    // its own session. A NULL device_id row is deliberately NOT matched:
+    // it cannot be attributed to a device, and matching it would sign out
+    // the pre-Phase-1 session of whoever is revoking.
+    expect(repo.delete).toHaveBeenCalledWith({ userId: 42, deviceId: 2 });
+  });
 });

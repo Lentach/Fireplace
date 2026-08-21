@@ -653,6 +653,24 @@ export class ChatMessageService {
       return;
     }
 
+    // I6 SILENCE (spec §5.5 + amendment (xxiii)). A revoked device must get
+    // NO REPLY — not an error, not an empty list. An empty `messageIds` is a
+    // legitimate "destroy all of them", so any answer-shaped refusal would
+    // remotely wipe the local history §5.5 promises the user keeps. The
+    // connect gate already refuses a revoked session; this covers the request
+    // that was already in flight when the revocation committed.
+    if (
+      await this.devicesService.isRevoked(
+        userId,
+        socketDeviceId(client) ?? DEFAULT_DEVICE_ID,
+      )
+    ) {
+      this.logger.warn(
+        `[revoke] SILENCE on getServedMessageIds userId=${userId} deviceId=${socketDeviceId(client) ?? DEFAULT_DEVICE_ID}`,
+      );
+      return;
+    }
+
     try {
       const messageIds = await this.messagesService.findServedMessageIds(
         dto.messageIds,

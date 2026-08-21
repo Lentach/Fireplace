@@ -1,6 +1,6 @@
 import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { createHash, randomBytes } from 'crypto';
 import { RefreshToken } from './refresh-token.entity';
 
@@ -101,5 +101,27 @@ export class RefreshTokensService {
 
   async revokeAllForUser(userId: number): Promise<void> {
     await this.refreshRepo.delete({ userId });
+  }
+
+  /**
+   * Deletes ONE device's refresh sessions (spec §5.5 revocation), inside the
+   * caller's transaction when given a manager.
+   *
+   * Scoped by `(userId, device_id)`, so every other device stays signed in —
+   * the whole point of the Phase 1 column. Rows with a NULL `device_id`
+   * (pre-Phase-1 sessions) are deliberately NOT matched: they cannot be
+   * attributed to a device, and deleting them would sign out the primary that
+   * is performing the revocation.
+   */
+  async revokeForDevice(
+    userId: number,
+    deviceId: number,
+    manager?: EntityManager,
+  ): Promise<number> {
+    const repo = manager
+      ? manager.getRepository(RefreshToken)
+      : this.refreshRepo;
+    const result = await repo.delete({ userId, deviceId });
+    return result.affected ?? 0;
   }
 }

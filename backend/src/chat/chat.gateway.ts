@@ -23,6 +23,7 @@ import { ChatSearchService } from './services/chat-search.service';
 import { ChatReactionService } from './services/chat-reaction.service';
 import { ChatDeviceListService } from './services/chat-device-list.service';
 import { ChatProvisioningService } from './services/chat-provisioning.service';
+import { ChatDeviceRevocationService } from './services/chat-device-revocation.service';
 import { deviceRoom, userRoom } from './utils/user-room';
 import { DEFAULT_DEVICE_ID } from '../key-bundles/key-bundles.service';
 import { DevicesService } from '../key-bundles/devices.service';
@@ -83,6 +84,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private chatDeviceListService: ChatDeviceListService,
     private chatProvisioningService: ChatProvisioningService,
     private devicesService: DevicesService,
+    private chatDeviceRevocationService: ChatDeviceRevocationService,
   ) {}
 
   // On WebSocket connection — verify the JWT token.
@@ -128,6 +130,35 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           client.disconnect();
           return;
         }
+      }
+
+      // A revoked device may still hold a valid access JWT until natural
+      // expiry (spec §5.5), so the session is refused HERE rather than only
+      // at the handlers: reconnecting is how a kicked device would otherwise
+      // come straight back. Amendment (xxii) — deny ONLY on an explicit
+      // `revokedAt`; a MISSING row must never deny, because every
+      // pre-Phase-1 account has no `devices` row until the `touch` below
+      // writes one (§8), and denying on absence would lock out every legacy
+      // install.
+      if (
+        await this.devicesService.isRevoked(
+          user.id,
+          payload.deviceId ?? DEFAULT_DEVICE_ID,
+        )
+      ) {
+        this.logger.warn(
+          `[auth-access-reject] reason=device_revoked source=socket_connect userId=${user.id} deviceId=${payload.deviceId ?? DEFAULT_DEVICE_ID}`,
+        );
+        // Told, then dropped (amendment (xxvi)): a device that reconnects
+        // after being kicked learns WHY instead of showing the generic
+        // connection-lost banner. Emitted directly on the socket — it has not
+        // joined any room yet.
+        client.emit('deviceRevoked', {
+          userId: user.id,
+          deviceId: payload.deviceId ?? DEFAULT_DEVICE_ID,
+        });
+        client.disconnect();
+        return;
       }
 
       client.data.user = {
@@ -540,6 +571,25 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() data: unknown,
   ) {
     return this.chatDeviceListService.handleGetDeviceList(client, data);
+  }
+
+  /**
+   * Revocation (§5.5) — mutating-action tier, and deliberately as generous as
+   * the list mutation it carries: a protective action must stay available (I4
+   * spirit), and every refusal here is pre-write.
+   */
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 60, ttl: 900000 } })
+  @SubscribeMessage('revokeDevice')
+  async handleRevokeDevice(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: unknown,
+  ) {
+    return this.chatDeviceRevocationService.handleRevokeDevice(
+      client,
+      data,
+      this.server,
+    );
   }
 
   // ========== PROVISIONING CEREMONY (Phase 2 T3, spec §5.1/§7 row 424) ==========

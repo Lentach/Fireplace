@@ -123,6 +123,101 @@ describe('DevicesService', () => {
     });
   });
 
+  describe('isRevoked — the SESSION gate (amendment (xxii))', () => {
+    it('false when NO row exists, so legacy accounts are never locked out', async () => {
+      // Deliberately the inverse of isActive: every pre-Phase-1 account has no
+      // devices row until its first connect writes one (§8), so denying a
+      // session on absence would lock out the entire legacy install base.
+      await expect(service.isRevoked(7, 1)).resolves.toBe(false);
+    });
+
+    it('false for a live row', async () => {
+      repo.findOne.mockResolvedValue({
+        userId: 7,
+        deviceId: 2,
+        revokedAt: null,
+      });
+      await expect(service.isRevoked(7, 2)).resolves.toBe(false);
+    });
+
+    it('true ONLY for an explicitly revoked row', async () => {
+      repo.findOne.mockResolvedValue({
+        userId: 7,
+        deviceId: 2,
+        revokedAt: new Date(),
+      });
+      await expect(service.isRevoked(7, 2)).resolves.toBe(true);
+    });
+  });
+
+  describe('revoke / revokeAllExcept (§5.5, amendment (xxviii))', () => {
+    /** Chainable stand-in for the query builder, capturing every clause. */
+    const builder = (result: { affected?: number; raw?: unknown }) => {
+      const calls: Array<[string, unknown]> = [];
+      const chain: Record<string, jest.Mock> = {
+        update: jest.fn(() => chain),
+        set: jest.fn((patch: unknown) => {
+          calls.push(['set', patch]);
+          return chain;
+        }),
+        where: jest.fn((clause: string, params: unknown) => {
+          calls.push([clause, params]);
+          return chain;
+        }),
+        andWhere: jest.fn((clause: string, params: unknown) => {
+          calls.push([clause, params]);
+          return chain;
+        }),
+        returning: jest.fn((clause: string) => {
+          calls.push(['returning', clause]);
+          return chain;
+        }),
+        execute: jest.fn().mockResolvedValue(result),
+      };
+      return { chain, calls };
+    };
+
+    it('reports true when a live row was stamped', async () => {
+      const { chain, calls } = builder({ affected: 1 });
+      repo.createQueryBuilder = jest.fn(() => chain);
+
+      await expect(service.revoke(7, 2)).resolves.toBe(true);
+      // The IS NULL predicate is what serializes two racing revocations.
+      expect(calls.map(([clause]) => clause)).toContain('"revokedAt" IS NULL');
+    });
+
+    it('reports false when the device was ALREADY revoked (idempotent, no re-teardown)', async () => {
+      const { chain } = builder({ affected: 0 });
+      repo.createQueryBuilder = jest.fn(() => chain);
+
+      await expect(service.revoke(7, 2)).resolves.toBe(false);
+    });
+
+    it('revokeAllExcept returns the ids it stamped, from RETURNING', async () => {
+      const { chain, calls } = builder({
+        raw: [{ deviceId: 1 }, { deviceId: 2 }],
+      });
+      repo.createQueryBuilder = jest.fn(() => chain);
+
+      await expect(service.revokeAllExcept(7, 4)).resolves.toEqual([1, 2]);
+      // Authoritative set, not a re-read: a concurrent revoke between UPDATE
+      // and a follow-up SELECT would hide a device from the teardown.
+      expect(calls).toEqual(
+        expect.arrayContaining([['returning', '"deviceId"']]),
+      );
+      expect(calls.map(([clause]) => clause)).toContain(
+        '"deviceId" != :keepDeviceId',
+      );
+    });
+
+    it('revokeAllExcept answers an empty list when nothing was live', async () => {
+      const { chain } = builder({ raw: [] });
+      repo.createQueryBuilder = jest.fn(() => chain);
+
+      await expect(service.revokeAllExcept(7, 1)).resolves.toEqual([]);
+    });
+  });
+
   describe('allocateDeviceId', () => {
     // Real Postgres shape for UPDATE ... RETURNING: [rows, rowCount].
     const returning = (allocatedId: number) => [[{ allocatedId }], 1];

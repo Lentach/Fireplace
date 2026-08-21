@@ -97,6 +97,7 @@ describe('ChatMessageService', () => {
    */
   let createMock: jest.Mock;
   let isActiveMock: jest.Mock;
+  let isRevokedMock: jest.Mock;
   let getAuthorizationMock: jest.Mock;
   let schedulePushMock: jest.Mock;
   let findByConversationMock: jest.Mock;
@@ -108,6 +109,9 @@ describe('ChatMessageService', () => {
     findServedMessageIdsMock = jest.fn().mockResolvedValue([]);
     createMock = jest.fn();
     isActiveMock = jest.fn().mockResolvedValue(true);
+    // The I6 SILENCE gate (§5.5): live by default, so every existing
+    // getServedMessageIds law below is unchanged.
+    isRevokedMock = jest.fn().mockResolvedValue(false);
     getAuthorizationMock = jest.fn().mockResolvedValue(null);
     schedulePushMock = jest.fn().mockResolvedValue(undefined);
     findByConversationMock = jest.fn().mockResolvedValue([]);
@@ -173,7 +177,7 @@ describe('ChatMessageService', () => {
         },
         {
           provide: DevicesService,
-          useValue: { isActive: isActiveMock },
+          useValue: { isActive: isActiveMock, isRevoked: isRevokedMock },
         },
         {
           // Unenrolled by default: a single-device account quotes no list
@@ -1705,6 +1709,40 @@ describe('ChatMessageService', () => {
       });
 
       expect(emitted()).not.toContain('servedMessageIds');
+    });
+
+    it('gives a REVOKED device silence — never an empty list (I6, amendment (xxiii))', async () => {
+      isRevokedMock.mockResolvedValue(true);
+      findServedMessageIdsMock.mockResolvedValue([2, 4]);
+
+      await service.handleGetServedMessageIds(mockClient as Socket, {
+        requestId: 'abc',
+        messageIds: [1, 2, 3, 4],
+      });
+
+      // An answer-shaped refusal would be read as "destroy all of them",
+      // remotely wiping the local history §5.5 promises a revoked device
+      // keeps. So: no reply, and the lookup is never even run.
+      expect(emitted()).not.toContain('servedMessageIds');
+      expect(emitted()).not.toContain('error');
+      expect(findServedMessageIdsMock).not.toHaveBeenCalled();
+    });
+
+    it('answers a LIVE device truthfully in the same conditions', async () => {
+      // The other half of the falsification: silence must be caused by the
+      // revocation, not by the gate refusing everyone.
+      isRevokedMock.mockResolvedValue(false);
+      findServedMessageIdsMock.mockResolvedValue([7]);
+
+      await service.handleGetServedMessageIds(mockClient as Socket, {
+        requestId: 'abc',
+        messageIds: [7, 8],
+      });
+
+      expect(mockClient.emit).toHaveBeenCalledWith('servedMessageIds', {
+        requestId: 'abc',
+        messageIds: [7],
+      });
     });
 
     it('rejects a malformed batch without answering it', async () => {

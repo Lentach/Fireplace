@@ -18,8 +18,13 @@ function createGateway(): ChatGateway {
   } as any;
   // The device row is touched on every connect (Phase 1, spec §4); it must
   // never be able to break the connection, so it is stubbed and ignored here.
-  const devices: Pick<DevicesService, 'touch'> = {
+  // `isRevoked` is the §5.5 connect gate: the default answer is "not revoked",
+  // and the revocation suite drives the true case.
+  const devices: Pick<DevicesService, 'touch' | 'isRevoked'> = {
     touch: jest.fn(),
+    isRevoked: jest.fn<Promise<boolean>, [number, number]>(() =>
+      Promise.resolve(false),
+    ),
   };
   return new ChatGateway(
     { verify: jest.fn() } as unknown as JwtService,
@@ -35,6 +40,7 @@ function createGateway(): ChatGateway {
     noop,
     noop,
     devices as DevicesService,
+    noop,
   );
 }
 
@@ -144,6 +150,75 @@ describe('ChatGateway handleConnection', () => {
     );
     expect(client.disconnect).toHaveBeenCalled();
     expect(jwtService.verify).not.toHaveBeenCalled();
+  });
+
+  describe('the revoked-device connect gate (§5.5, amendment (xxii))', () => {
+    const devicesOf = (g: ChatGateway) =>
+      (g as unknown as { devicesService: { isRevoked: jest.Mock } })
+        .devicesService;
+
+    it('refuses a revoked device holding a still-valid JWT, and says why', async () => {
+      const client = createMockClient({ token: 'valid-jwt' });
+      jwtService.verify.mockReturnValue({ sub: 42, deviceId: 2 });
+      usersService.findById.mockResolvedValue({
+        id: 42,
+        username: 'alice',
+        tag: '0001',
+      });
+      devicesOf(gateway).isRevoked.mockResolvedValue(true);
+
+      await gateway.handleConnection(client as unknown as Socket);
+
+      // Told, then dropped (amendment (xxvi)) — otherwise a kicked device
+      // shows only the generic connection-lost banner and keeps retrying.
+      expect(client.emit).toHaveBeenCalledWith('deviceRevoked', {
+        userId: 42,
+        deviceId: 2,
+      });
+      expect(client.disconnect).toHaveBeenCalled();
+      expect(client.emit).not.toHaveBeenCalledWith(
+        'socketReady',
+        expect.anything(),
+      );
+      // The session was refused BEFORE any room join or row touch.
+      expect(client.join).not.toHaveBeenCalled();
+      expect(client.data.user).toBeUndefined();
+    });
+
+    it('admits a device whose row does not exist yet (legacy §8 accounts)', async () => {
+      const client = createMockClient({ token: 'valid-jwt' });
+      jwtService.verify.mockReturnValue({ sub: 42 });
+      usersService.findById.mockResolvedValue({
+        id: 42,
+        username: 'alice',
+        tag: '0001',
+      });
+      // A missing row answers false, never true — the whole point of the
+      // predicate's polarity.
+      devicesOf(gateway).isRevoked.mockResolvedValue(false);
+
+      await gateway.handleConnection(client as unknown as Socket);
+
+      expect(client.emit).toHaveBeenCalledWith(
+        'socketReady',
+        expect.objectContaining({ deviceId: 1 }),
+      );
+      expect(client.disconnect).not.toHaveBeenCalled();
+    });
+
+    it('checks the gate for the device named in the claim', async () => {
+      const client = createMockClient({ token: 'valid-jwt' });
+      jwtService.verify.mockReturnValue({ sub: 42, deviceId: 3 });
+      usersService.findById.mockResolvedValue({
+        id: 42,
+        username: 'alice',
+        tag: '0001',
+      });
+
+      await gateway.handleConnection(client as unknown as Socket);
+
+      expect(devicesOf(gateway).isRevoked).toHaveBeenCalledWith(42, 3);
+    });
   });
 
   it('takes the device from the token claim when the session names one', async () => {

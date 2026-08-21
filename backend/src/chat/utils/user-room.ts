@@ -95,6 +95,32 @@ export function newestSocketForDevice(
 }
 
 /**
+ * EVERY live socket of ONE device (spec §5.5 revocation kick).
+ *
+ * Distinct from {@link newestSocketForDevice} on purpose: delivery narrows to
+ * the newest tab because Signal decryption is not idempotent, but a KICK must
+ * reach every tab of the revoked device — leaving an older tab connected would
+ * leave it able to send, which is exactly what revocation removes.
+ */
+export function socketsForDevice(
+  server: Server,
+  userId: number,
+  deviceId: number,
+): Socket[] {
+  const socketIds = server.sockets?.adapter?.rooms?.get(
+    deviceRoom(userId, deviceId),
+  );
+  if (!socketIds) return [];
+  const sockets: Socket[] = [];
+  // Snapshot first: disconnecting mutates the room set the iterator walks.
+  for (const socketId of [...socketIds]) {
+    const socket = server.sockets?.sockets?.get(socketId);
+    if (socket) sockets.push(socket);
+  }
+  return sockets;
+}
+
+/**
  * Deliver to exactly ONE socket of ONE device — the most recently connected
  * (spec §5.3: `emitToNewestTab` survives, demoted to *within one device*).
  *

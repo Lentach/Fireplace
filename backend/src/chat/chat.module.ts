@@ -11,6 +11,7 @@ import { ChatSearchService } from './services/chat-search.service';
 import { ChatReactionService } from './services/chat-reaction.service';
 import { ChatDeviceListService } from './services/chat-device-list.service';
 import { ChatProvisioningService } from './services/chat-provisioning.service';
+import { ChatDeviceRevocationService } from './services/chat-device-revocation.service';
 import { ChatLinkPreviewService } from './services/chat-link-preview.service';
 import { ChatValidationModule } from './chat-validation.module';
 import { LinkPreviewModule } from './services/link-preview.module';
@@ -22,6 +23,8 @@ import { FriendsModule } from '../friends/friends.module';
 import { BlockedModule } from '../blocked/blocked.module';
 import { KeyBundlesModule } from '../key-bundles/key-bundles.module';
 import { PushNotificationsModule } from '../push-notifications/push-notifications.module';
+import { FcmTokensModule } from '../fcm-tokens/fcm-tokens.module';
+import { WebPushSubscriptionsModule } from '../web-push-subscriptions/web-push-subscriptions.module';
 import { ConversationNotificationPreferencesModule } from '../conversation-notification-preferences/conversation-notification-preferences.module';
 
 @Module({
@@ -36,6 +39,11 @@ import { ConversationNotificationPreferencesModule } from '../conversation-notif
     KeyBundlesModule,
     LinkPreviewModule,
     PushNotificationsModule,
+    // Revocation tears down the revoked device's push rows itself (§5.5);
+    // PushNotificationsModule does not re-export these two, so the chat
+    // module imports them directly.
+    FcmTokensModule,
+    WebPushSubscriptionsModule,
     ConversationNotificationPreferencesModule,
   ],
   providers: [
@@ -50,6 +58,7 @@ import { ConversationNotificationPreferencesModule } from '../conversation-notif
     ChatReactionService,
     ChatDeviceListService,
     ChatProvisioningService,
+    ChatDeviceRevocationService,
     ChatLinkPreviewService,
     WsThrottlerGuard,
   ],

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { Device } from './device.entity';
 import { DEFAULT_DEVICE_ID } from './key-bundles.service';
 
@@ -80,6 +80,79 @@ export class DevicesService {
   async isActive(userId: number, deviceId: number): Promise<boolean> {
     const row = await this.deviceRepo.findOne({ where: { userId, deviceId } });
     return row !== null && row.revokedAt === null;
+  }
+
+  /**
+   * Whether this device was EXPLICITLY revoked (spec §12 amendment (xxii)).
+   *
+   * Deliberately the inverse polarity of {@link isActive}: a MISSING row
+   * answers `false` here. `isActive` gates key-material UPLOADS and must fail
+   * closed on absence, but this predicate gates SESSIONS, and every
+   * pre-Phase-1 account has no `devices` row until its first connect writes
+   * one (§8) — denying on absence would lock out the entire legacy install
+   * base. Both predicates are correct for their own call sites; neither may
+   * be swapped for the other.
+   */
+  async isRevoked(userId: number, deviceId: number): Promise<boolean> {
+    const row = await this.deviceRepo.findOne({
+      where: { userId, deviceId },
+      select: { userId: true, deviceId: true, revokedAt: true },
+    });
+    return row !== null && row.revokedAt !== null;
+  }
+
+  /**
+   * Stamps `revokedAt` on ONE device (spec §5.5), inside the caller's
+   * transaction when given a manager.
+   *
+   * The `revokedAt IS NULL` predicate makes this idempotent and makes the
+   * return value meaningful: a second revoke of the same device affects zero
+   * rows and must NOT be reported as a fresh revocation, so the caller can
+   * refuse a duplicate instead of re-running a teardown.
+   */
+  async revoke(
+    userId: number,
+    deviceId: number,
+    manager?: EntityManager,
+  ): Promise<boolean> {
+    const repo = manager ? manager.getRepository(Device) : this.deviceRepo;
+    const result = await repo
+      .createQueryBuilder()
+      .update(Device)
+      .set({ revokedAt: () => 'now()' })
+      .where('"userId" = :userId', { userId })
+      .andWhere('"deviceId" = :deviceId', { deviceId })
+      .andWhere('"revokedAt" IS NULL')
+      .execute();
+    return (result.affected ?? 0) > 0;
+  }
+
+  /**
+   * Stamps `revokedAt` on every still-live device of the account EXCEPT
+   * `keepDeviceId` — the §6.2 reset roster teardown (spec §12 amendments (f)
+   * (ii) and (xxviii)). Returns the revoked device ids so the caller can tear
+   * down each one's material inside its own `(userId, deviceId)` namespace.
+   */
+  async revokeAllExcept(
+    userId: number,
+    keepDeviceId: number,
+    manager?: EntityManager,
+  ): Promise<number[]> {
+    const repo = manager ? manager.getRepository(Device) : this.deviceRepo;
+    // RETURNING makes the set of affected devices authoritative rather than
+    // re-read (a concurrent revoke between UPDATE and SELECT would otherwise
+    // hide a device from the teardown).
+    const result = await repo
+      .createQueryBuilder()
+      .update(Device)
+      .set({ revokedAt: () => 'now()' })
+      .where('"userId" = :userId', { userId })
+      .andWhere('"deviceId" != :keepDeviceId', { keepDeviceId })
+      .andWhere('"revokedAt" IS NULL')
+      .returning('"deviceId"')
+      .execute();
+    const rows = (result.raw ?? []) as Array<{ deviceId: number }>;
+    return rows.map((row) => row.deviceId);
   }
 
   /**

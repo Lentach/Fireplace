@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { KeyBundle } from './key-bundle.entity';
 import { OneTimePreKey } from './one-time-pre-key.entity';
 import { IdentityChangeAudit } from './identity-change-audit.entity';
@@ -248,6 +248,38 @@ export class KeyBundlesService {
         `[identity-churn] dropped ${removed.affected} superseded device bundle(s) userId=${userId} keptDeviceId=${keepDeviceId}`,
       );
     }
+  }
+
+  /**
+   * Drops EXACTLY ONE device's key material — its bundle and its OTPs (spec
+   * §5.5: "the revoked device's OTPs are purged"; only that device could
+   * complete those handshakes and it is no longer served envelopes).
+   *
+   * A sibling of {@link purgeSupersededDevices} rather than a widening of it:
+   * that one is keyed all-EXCEPT-keep for an identity change, and bending it
+   * into "purge exactly this one" would make one method mean two opposite
+   * things at two call sites. Both stay narrow.
+   *
+   * Scoped strictly inside the `(userId, deviceId)` namespace Phase 1 created,
+   * which is what makes the §6.2 roster teardown unable to reach a surviving
+   * device's material (falsification 12).
+   */
+  async purgeDeviceMaterial(
+    userId: number,
+    deviceId: number,
+    manager?: EntityManager,
+  ): Promise<void> {
+    const bundleRepo = manager
+      ? manager.getRepository(KeyBundle)
+      : this.keyBundleRepo;
+    const otpRepo = manager
+      ? manager.getRepository(OneTimePreKey)
+      : this.otpRepo;
+    await bundleRepo.delete({ userId, deviceId });
+    await otpRepo.delete({ userId, deviceId });
+    this.logger.log(
+      `[devices] purged key material userId=${userId} deviceId=${deviceId}`,
+    );
   }
 
   /**
