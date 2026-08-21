@@ -356,3 +356,31 @@ SAME row and re-fans nothing) and by three unit contracts including the token-ke
 what is missing is only the live keystroke path. **A future session should either drive the
 composer with `sendCharacter` from a freshly reloaded page or add a test-only send hook — do not
 claim this half is app-proven until it is.**
+
+**Re-review (three fresh reviewers, 2026-08-21, on the FINAL state at `c937d18`): no P0.** One P1,
+two P2, three P3 — folded as `a64fd76` and settled as spec §12 amendment **(xx)**.
+
+- **P1, latent data loss, fixed before it could ship.** The confirmed device id was install state,
+  not session state: `EncryptionProvider` is a process singleton and `clearAll()` never reset
+  `_ownDeviceId`/`_ownDeviceIdConfirmed`, so a device id confirmed as N for one account survived
+  into the next login. There an own row of a device-1 account looks foreign-origin, `isSelfSyncRow`
+  is true, and the self-sync branch would hand this device its OWN ciphertext to the ratchet —
+  `[Decryption failed]` over the only plaintext copy. The same misjudgement existed for a
+  `socketReady` that carries no `deviceId` (it was treated as "device 1, confirmed"). Both fixed:
+  reset on logout/account switch, and silence never confirms. Unreachable while enrollment is
+  unshipped, which is exactly why it had to be caught now.
+- **P2, security.** The durable split-view record used raw `record()` with peer-supplied,
+  non-DAK-signed fields, on a branch reachable from every inbound message — so a peer forging a
+  mismatch could evict every other forensic row from the 80-entry ring. Now deduped per sender.
+- **P2, coverage.** `senderListInfo` had well-tested pure logic and untested WIRING. Added: the
+  send path attaches the claim for both parties (and omits an unknown party rather than reporting
+  version 0), and five receive-side cases including a claim storm that proves the re-fetch budget
+  holds at exactly one.
+- **P3, fixed anyway.** The calm skew note was raised on every mismatching claim, a value the peer
+  controls, so it could be pinned on permanently; it is now bounded to the re-fetch window.
+- **P3s accepted, not fixed, and recorded rather than claimed:** wire falsification 6 proves
+  self-envelope ROUTING with a synthetic ciphertext but not decryptability (a harness self-session
+  belongs to T8's sweep), and the calm note has no widget test asserting it borrows nothing from
+  the identity surface.
+- **Verified after the fold:** flutter **1486/10sk**, analyze clean, wire **41/2sk**, backend
+  untouched at 920/57 · ratchet 903.
