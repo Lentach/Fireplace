@@ -290,6 +290,61 @@ void main() {
       },
     );
 
+    // Contract 9c (the token-keyed half of amendment (ix), previously untested).
+    // A NEW-MODEL row has a NULL ciphertext for its ORIGIN device — the server
+    // marks it `own_origin` and echoes the send token instead — so the record,
+    // saved under the TOKEN by a fan-out send, can only be found by falling
+    // through to it. Without this case a precedence inversion on the fan-out
+    // branch would ship green (the legacy cases above would still pass).
+    test('lost ack: an own_origin row reconciles by sendToken', () async {
+      const plaintext = 'no ciphertext exists for my own device';
+      const token = 'tok-fanout-9c';
+      // What a fan-out send durably records: keyed by the token, because this
+      // device's own copy of the row will carry no ciphertext at all.
+      await encryption.savePendingSendRecord(token, {
+        'content': plaintext,
+        'messageType': 'TEXT',
+      });
+
+      const realId = 5003;
+      provider.onMessageHistory({
+        'conversationId': 10,
+        'messages': [
+          {
+            'id': realId,
+            'senderId': 1,
+            'senderUsername': 'alice',
+            'content': '[encrypted]',
+            // No `encryptedContent`: the origin device has no envelope.
+            'envelopeStatus': 'own_origin',
+            'originDeviceId': 1,
+            'sendToken': token,
+            'conversationId': 10,
+            'deliveryStatus': 'SENT',
+            'messageType': 'TEXT',
+            'createdAt': DateTime.now().toUtc().toIso8601String(),
+          },
+        ],
+      });
+      await pump();
+
+      final row = provider.messages.firstWhere((m) => m.id == realId);
+      expect(
+        row.content,
+        plaintext,
+        reason: 'the token is the ONLY key such a row can be matched by',
+      );
+      expect(
+        (await encryption.getDecryptedContent(realId))?['content'],
+        plaintext,
+      );
+      expect(
+        await encryption.peekPendingSendRecord(token),
+        isNull,
+        reason: 'consumed after a verified persist',
+      );
+    });
+
     // Contract 11: the normal ack path is self-cleaning. A delivered
     // `messageSent` echo (tempId + encryptedContent) consumes the pending
     // record so the store never accumulates for successfully-acked sends.

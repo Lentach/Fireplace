@@ -57,6 +57,28 @@ extension MessagingDecrypt on MessagingProvider {
     }
   }
 
+  /// Which device this session is, but ONLY once the server has confirmed it on
+  /// `socketReady` (spec §12 amendment (xii)). Null while unconfirmed, which
+  /// makes every device-scoped own-row decision fall back to "treat it as our
+  /// own send" — the safe direction, since the alternative would decrypt a
+  /// ciphertext this device produced and burn the only plaintext copy.
+  int? get _confirmedOwnDeviceId {
+    final enc = _encryptionProvider;
+    if (enc == null || !enc.ownDeviceIdConfirmed) return null;
+    return enc.ownDeviceId;
+  }
+
+  /// The master decrypt gate, device-scoped. Single source of truth for every
+  /// decrypt entry point in this provider.
+  bool _needsDecryption(MessageModel m) =>
+      m.needsDecryption(_currentUserId, ownDeviceId: _confirmedOwnDeviceId);
+
+  /// Our own row produced by ANOTHER of our devices (spec §12 amendment (xi)):
+  /// decrypt it as ordinary inbound, and NEVER let it touch the pending-send
+  /// record — that record belongs to a genuinely in-flight local send.
+  bool _isSelfSyncRow(MessageModel m) =>
+      m.isSelfSyncRow(_currentUserId, _confirmedOwnDeviceId);
+
   /// True for a row that still NEEDS a decrypt pass: shows the "[encrypted]"
   /// placeholder AND has no usable decrypted content. The second check is
   /// load-bearing: restored keyed-media rows (voice/image) legitimately keep
@@ -67,7 +89,7 @@ extension MessagingDecrypt on MessagingProvider {
   /// SESSION_RESET{historyRetry} loop).
   bool _isUnresolvedEncryptedInbound(MessageModel m) =>
       !_isRetiredMessage(m) &&
-      m.needsDecryption(_currentUserId) &&
+      _needsDecryption(m) &&
       m.displayAsEncryptedPlaceholder &&
       !_hasUsableDecryptedContent(m);
 
@@ -225,7 +247,7 @@ extension MessagingDecrypt on MessagingProvider {
         msg.messageType != MessageType.text) {
       return true;
     }
-    if (!msg.needsDecryption(_currentUserId)) {
+    if (!_needsDecryption(msg)) {
       if (msg.content == _kEncryptedPlaceholderLabel ||
           msg.displayAsEncryptedPlaceholder) {
         return false;
@@ -413,7 +435,7 @@ extension MessagingDecrypt on MessagingProvider {
         continue;
       }
       if (_hasUsableDecryptedContent(row)) continue;
-      if (row.needsDecryption(_currentUserId)) {
+      if (_needsDecryption(row)) {
         final cached = provider.getCachedDecryption(row.id);
         if (cached != null &&
             _hasUsableDecryptedContent(cached) &&
@@ -508,9 +530,7 @@ extension MessagingDecrypt on MessagingProvider {
       return;
     }
     final toDecrypt = _messages
-        .where(
-          (m) => m.needsDecryption(_currentUserId) && !_isRetiredMessage(m),
-        )
+        .where((m) => _needsDecryption(m) && !_isRetiredMessage(m))
         .length;
     if (toDecrypt > 0) {
       _e2eFlowLog('HISTORY_DECRYPT_START', {'count': toDecrypt});
@@ -550,7 +570,7 @@ extension MessagingDecrypt on MessagingProvider {
         if (_markMessageAsRetired(msg)) changed = true;
         continue;
       }
-      if (msg.needsDecryption(_currentUserId)) {
+      if (_needsDecryption(msg)) {
         // Cache-first: only skip live decrypt when cache holds real plaintext.
         final cached = _encryptionProvider?.getCachedDecryption(msg.id);
         if (cached != null) {
@@ -666,6 +686,10 @@ extension MessagingDecrypt on MessagingProvider {
           changed = true;
         }
       } else if (msg.senderId == _currentUserId &&
+          // Origin-scoped (amendment (xi)): only the device that SENT the row
+          // holds its plaintext locally, so only that device restores from the
+          // local store. A self-sync copy took the decrypt branch above.
+          !_isSelfSyncRow(msg) &&
           (msg.content == _kEncryptedPlaceholderLabel ||
               _missingEncryptedMediaKeys(msg))) {
         // Own-message branch, same batched snapshot + fall-through.
@@ -728,7 +752,18 @@ extension MessagingDecrypt on MessagingProvider {
           //
           // A miss means stay '[encrypted]', never a heuristic guess (the 07-08
           // field case msg 14667, docs/runbooks/e2e-decryption-failed.md).
-          final recordKey = msg.encryptedContent ?? msg.sendToken;
+          //
+          // ORIGIN-SCOPED, asserted not assumed (spec §12 amendment (xiv)): only
+          // the device that SENT the row may consume its pending record. A
+          // self-sync copy from another of our devices reaches here with a real
+          // ciphertext that is meaningless as a record key, and a lookup under it
+          // could only ever collide with a genuinely in-flight local send. Today
+          // the server withholds the `sendToken` from every non-origin device,
+          // which makes such a collision unreachable — this check is what keeps
+          // it unreachable if that ever changes.
+          final recordKey = _isSelfSyncRow(msg)
+              ? null
+              : msg.encryptedContent ?? msg.sendToken;
           // Peek (never consume-first): the pending record is the ONLY
           // surviving plaintext copy, and saveDecryptedContent swallows
           // failures — so persist, VERIFY by read-back, and only then take.
@@ -878,7 +913,7 @@ extension MessagingDecrypt on MessagingProvider {
         if (_markMessageAsRetired(m)) changed = true;
         continue;
       }
-      if (!m.needsDecryption(_currentUserId)) continue;
+      if (!_needsDecryption(m)) continue;
       if (!_hasUsableDecryptedContent(m) &&
           m.content != _kDecryptionFailedLabel &&
           (m.displayAsEncryptedPlaceholder ||
@@ -910,7 +945,7 @@ extension MessagingDecrypt on MessagingProvider {
     final retryablePeerIds = <int>{
       for (final m in _messages)
         if (peerIds.contains(m.senderId) &&
-            m.needsDecryption(_currentUserId) &&
+            _needsDecryption(m) &&
             !_isRetiredMessage(m))
           m.senderId,
     };
@@ -927,7 +962,7 @@ extension MessagingDecrypt on MessagingProvider {
             .where(
               (m) =>
                   retryablePeerIds.contains(m.senderId) &&
-                  m.needsDecryption(_currentUserId) &&
+                  _needsDecryption(m) &&
                   !_isRetiredMessage(m),
             )
             .toList()
@@ -999,7 +1034,10 @@ extension MessagingDecrypt on MessagingProvider {
     if (_isRetiredMessage(msg)) {
       return Future.value(_retiredMessagePlaceholder(msg));
     }
-    if (msg.senderId == _currentUserId) {
+    // Our OWN send: skip the ratchet (a Signal sender cannot decrypt its own
+    // output). A self-sync copy from another of our devices is NOT our own
+    // send in this sense — it is ordinary inbound and must decrypt (xi).
+    if (msg.senderId == _currentUserId && !_isSelfSyncRow(msg)) {
       return Future.value(msg);
     }
     return _runDecryptSerialized(msg.senderId, () => _decryptMessageAsync(msg));
@@ -1010,8 +1048,9 @@ extension MessagingDecrypt on MessagingProvider {
     // point: retired ciphertext must never reach Signal decryption.
     if (_isRetiredMessage(msg)) return _retiredMessagePlaceholder(msg);
     // Own messages: server stored "[encrypted]" as content but we already
-    // showed plaintext optimistically, so skip decryption for our own messages.
-    if (msg.senderId == _currentUserId) return msg;
+    // showed plaintext optimistically, so skip decryption for our own sends.
+    // Origin-scoped: a self-sync row has no local plaintext to show (xi).
+    if (msg.senderId == _currentUserId && !_isSelfSyncRow(msg)) return msg;
 
     // Already decrypted (e.g. live path) — never re-run ratchet decrypt on the
     // same ciphertext; that advances the session and causes Bad Mac on retry.
@@ -1334,9 +1373,15 @@ extension MessagingDecrypt on MessagingProvider {
     final enc = _encryptionProvider;
     if (enc == null) return null;
     // Belt and braces on guard (d): retired rows short-circuit at the entry
-    // points and own messages return before decrypt, but this rule must hold
-    // even if a future caller bypasses them.
-    if (enc.isRetired(msg.id) || msg.senderId == _currentUserId) return null;
+    // points and our own sends return before decrypt, but this rule must hold
+    // even if a future caller bypasses them. Origin-scoped (amendment (xi)): a
+    // self-sync copy IS a served envelope, so it is eligible for this rule like
+    // any other inbound row — only THIS device's own sends are exempt, because
+    // they never had an envelope to be a duplicate of.
+    if (enc.isRetired(msg.id) ||
+        (msg.senderId == _currentUserId && !_isSelfSyncRow(msg))) {
+      return null;
+    }
     final exists = await enc.recordExists(msg.id);
     final replayable = await enc.rawReplayExists(msg.id);
     if (exists == true || replayable == true) {

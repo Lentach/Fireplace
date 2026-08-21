@@ -271,11 +271,27 @@ class EncryptionProvider extends ChangeNotifier {
 
   int get ownDeviceId => _ownDeviceId;
 
+  /// Whether [ownDeviceId] is the SERVER's answer rather than the §8 default.
+  ///
+  /// Load-bearing for self-sync (spec §12 amendment (xii)): between connect and
+  /// `socketReady` a real device 2 still reads [ownDeviceId] as 1, so any
+  /// device-scoped decision taken in that window mis-scopes. A row whose origin
+  /// cannot yet be compared must be left alone — deferring a render is safe,
+  /// guessing is not, because treating this device's OWN send as a foreign-origin
+  /// row would attempt to decrypt a ciphertext this device produced and burn the
+  /// only plaintext copy on `[Decryption failed]`.
+  bool _ownDeviceIdConfirmed = false;
+
+  bool get ownDeviceIdConfirmed => _ownDeviceIdConfirmed;
+
   /// Records the server's answer. The client cannot derive this itself, and a
   /// fan-out send needs it: it addresses every OTHER device of the account for
   /// self-sync and must NEVER address its own origin device (the server
   /// refuses that as `self_envelope_for_origin_device`).
   void setOwnDeviceId(int deviceId) {
+    // Set BEFORE the no-op guard: device 1 being told it is device 1 is still
+    // the server confirming the value.
+    _ownDeviceIdConfirmed = true;
     if (deviceId == _ownDeviceId) return;
     _ownDeviceId = deviceId;
   }

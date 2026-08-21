@@ -533,7 +533,16 @@ extension MessagingHistory on MessagingProvider {
 
     // If this is our own message (messageSent), replace temp optimistic message
     // and keep plaintext for display (server stores "[encrypted]" as content).
-    if (msg.senderId == _currentUserId && msg.tempId != null) {
+    //
+    // Origin-scoped twice over (amendment (xi)): a `tempId` exists only on the
+    // device that minted it, so a self-sync copy from another of our devices
+    // could never match one — and `!_isSelfSyncRow` states that intent instead
+    // of leaving it to luck, because everything in this branch (consuming
+    // `_pendingSendContent`, removing the optimistic row, consuming the
+    // pending-send record below) belongs to a genuinely in-flight LOCAL send.
+    if (msg.senderId == _currentUserId &&
+        msg.tempId != null &&
+        !_isSelfSyncRow(msg)) {
       final savedData = _pendingSendContent.remove(msg.tempId);
       final savedContent = savedData?['content'];
       final tempIndex = _messages.indexWhere((m) => m.tempId == msg.tempId);

@@ -74,7 +74,7 @@ extension MessagingEvents on MessagingProvider {
     // decrypting history (so history decrypt runs first and session order is preserved).
     if (_decryptingHistory &&
         msg.conversationId == activeConversationId &&
-        msg.needsDecryption(_currentUserId)) {
+        _needsDecryption(msg)) {
       // DIAGNOSTIC (iOS-PWA live-receive drop): message queued behind history decrypt.
       _e2eFlowLog('RECV_QUEUED', {
         'msgId': msg.id,
@@ -95,10 +95,10 @@ extension MessagingEvents on MessagingProvider {
       'decryptingHistory': _decryptingHistory,
       'hasEncryptedContent':
           msg.encryptedContent != null && msg.encryptedContent!.isNotEmpty,
-      'needsDecryption': msg.needsDecryption(_currentUserId),
+      'needsDecryption': _needsDecryption(msg),
     });
     // If encrypted, decrypt async and update in-place
-    if (msg.needsDecryption(_currentUserId)) {
+    if (_needsDecryption(msg)) {
       _addMessageToState(msg);
       final viewingConversationId =
           activeConversationId ?? _paginationConversationId;
@@ -120,7 +120,9 @@ extension MessagingEvents on MessagingProvider {
         if (lastMessages != null &&
             lastMessages[merged.conversationId]?.id == merged.id) {
           _conversationsProvider?.updateLastMessage(
-              merged.conversationId, merged);
+            merged.conversationId,
+            merged,
+          );
         }
         _e2eFlowLog('RECV_DECRYPT_DONE', {
           'msgId': merged.id,
@@ -199,16 +201,21 @@ extension MessagingEvents on MessagingProvider {
         expiresAt: newExpiresAt ?? _messages[index].expiresAt,
       );
     } else if (conversationId != null) {
-      _patchMessageInCache(conversationId, messageId, (m) => m.copyWith(
-            deliveryStatus: newStatus,
-            expiresAt: newExpiresAt ?? m.expiresAt,
-          ));
+      _patchMessageInCache(
+        conversationId,
+        messageId,
+        (m) => m.copyWith(
+          deliveryStatus: newStatus,
+          expiresAt: newExpiresAt ?? m.expiresAt,
+        ),
+      );
     }
 
     // Update _lastMessages so list and re-opened chat show correct status
     if (conversationId != null) {
       final lastMessages = _conversationsProvider?.lastMessages;
-      if (lastMessages != null && lastMessages[conversationId]?.id == messageId) {
+      if (lastMessages != null &&
+          lastMessages[conversationId]?.id == messageId) {
         _conversationsProvider?.updateLastMessage(
           conversationId,
           lastMessages[conversationId]!.copyWith(
@@ -299,7 +306,9 @@ extension MessagingEvents on MessagingProvider {
     // Safe to fire and forget: purgeConversations routes through
     // purgeLocalPlaintext, which writes a durable backlog entry before it
     // touches anything, so an interrupted purge is retried on the next launch.
-    _firePurge(encryption.purgeConversations(targets, ciphertexts: ciphertexts));
+    _firePurge(
+      encryption.purgeConversations(targets, ciphertexts: ciphertexts),
+    );
   }
 
   /// Start a purge without awaiting it, and without letting a failure escape as
@@ -344,10 +353,9 @@ extension MessagingEvents on MessagingProvider {
     final encryption = _encryptionProvider;
     if (encryption != null) {
       _firePurge(
-        encryption.purgeLocalPlaintext(
-          [messageId],
-          ciphertexts: ciphertext == null ? const <String>[] : [ciphertext],
-        ),
+        encryption.purgeLocalPlaintext([
+          messageId,
+        ], ciphertexts: ciphertext == null ? const <String>[] : [ciphertext]),
       );
     }
 
@@ -356,11 +364,15 @@ extension MessagingEvents on MessagingProvider {
     // Update last message preview for conversation list
     final lastMessages = _conversationsProvider?.lastMessages;
     if (lastMessages != null && lastMessages[conversationId]?.id == messageId) {
-      final remaining =
-          _messages.where((msg) => msg.conversationId == conversationId).toList();
+      final remaining = _messages
+          .where((msg) => msg.conversationId == conversationId)
+          .toList();
       if (remaining.isNotEmpty) {
         remaining.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-        _conversationsProvider?.updateLastMessage(conversationId, remaining.last);
+        _conversationsProvider?.updateLastMessage(
+          conversationId,
+          remaining.last,
+        );
       } else {
         _conversationsProvider?.updateLastMessage(conversationId, null);
       }
@@ -375,8 +387,9 @@ extension MessagingEvents on MessagingProvider {
     notifyListeners();
     // Reflect deletion in cache; remove entry entirely if the conversation is now empty.
     if (_conversationCache.containsKey(conversationId)) {
-      final remaining =
-          _messages.where((m) => m.conversationId == conversationId).toList();
+      final remaining = _messages
+          .where((m) => m.conversationId == conversationId)
+          .toList();
       if (remaining.isEmpty) {
         _conversationCache.remove(conversationId);
       } else {
@@ -413,8 +426,9 @@ extension MessagingEvents on MessagingProvider {
     final conversationId = m['conversationId'] as int?;
     final newCipher = m['encryptedContent'] as String?;
     final editedAtRaw = m['editedAt'];
-    final editedAt =
-        editedAtRaw is String ? DateTime.tryParse(editedAtRaw) : null;
+    final editedAt = editedAtRaw is String
+        ? DateTime.tryParse(editedAtRaw)
+        : null;
 
     // Edit-vs-delete race: a deleted row must stay gone.
     if (_deletedMessageIds.contains(messageId)) return;
@@ -443,7 +457,10 @@ extension MessagingEvents on MessagingProvider {
       }
       if (conversationId != null) {
         _patchMessageInCache(
-            conversationId, messageId, (msg) => msg.copyWith(editedAt: editedAt));
+          conversationId,
+          messageId,
+          (msg) => msg.copyWith(editedAt: editedAt),
+        );
       }
       _reEnrichAllReplyQuotes();
       notifyListeners();
@@ -483,19 +500,23 @@ extension MessagingEvents on MessagingProvider {
     final idx = _messages.indexWhere((msg) => msg.id == candidate.id);
     if (idx != -1) _messages[idx] = decrypted;
     _patchMessageInCache(
-        decrypted.conversationId, decrypted.id, (_) => decrypted);
+      decrypted.conversationId,
+      decrypted.id,
+      (_) => decrypted,
+    );
     await _persistDecryptedContent(decrypted);
-    _maybeUpdateLastEdited(
-        decrypted.conversationId, decrypted.id, decrypted);
+    _maybeUpdateLastEdited(decrypted.conversationId, decrypted.id, decrypted);
     _reEnrichAllReplyQuotes();
     notifyListeners();
   }
 
   void _maybeUpdateLastEdited(
-      int conversationId, int messageId, MessageModel updated) {
+    int conversationId,
+    int messageId,
+    MessageModel updated,
+  ) {
     final lastMessages = _conversationsProvider?.lastMessages;
-    if (lastMessages != null &&
-        lastMessages[conversationId]?.id == messageId) {
+    if (lastMessages != null && lastMessages[conversationId]?.id == messageId) {
       _conversationsProvider?.updateLastMessage(conversationId, updated);
     }
   }

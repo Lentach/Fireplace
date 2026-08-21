@@ -95,12 +95,42 @@ class MessageModel {
   /// Server-stamped time of the last edit; null = never edited. From REST/WS payload.
   final DateTime? editedAt;
 
-  /// True if this message has E2E encrypted content and was sent by another
-  /// user (needs decryption before display).
-  bool needsDecryption(int? currentUserId) =>
+  /// True when this row is a SELF-SYNC copy: our own account sent it, but a
+  /// DIFFERENT one of our devices produced it (spec §5.4 + §12 amendment (xi)).
+  ///
+  /// Such a row is an ordinary inbound message — a pairwise session between two
+  /// of our own devices, which libsignal supports as a normal address pair —
+  /// and it MUST decrypt. The two cases that are NOT self-sync, and must never
+  /// be handed to the ratchet, are:
+  ///  * `envelopeStatus == 'own_origin'` — the server says THIS device sent it,
+  ///    so no envelope exists for us by design and the plaintext is local;
+  ///  * `(originDeviceId ?? 1) == ownDeviceId` — the same case in legacy shape,
+  ///    where an own row is served its own ciphertext with no marker.
+  /// A Signal sender cannot decrypt its own output, so attempting either would
+  /// render `[Decryption failed]` over the only plaintext copy we will ever have.
+  ///
+  /// [ownDeviceId] must be null unless the server has CONFIRMED which device
+  /// this is (amendment (xii)); an unconfirmed value defaults to 1 and would
+  /// mis-scope a real device 2. Null therefore answers false — the row keeps
+  /// today's behaviour and is retried once `socketReady` lands.
+  bool isSelfSyncRow(int? currentUserId, int? ownDeviceId) =>
+      currentUserId != null &&
+      ownDeviceId != null &&
+      senderId == currentUserId &&
+      envelopeStatus == null &&
+      (originDeviceId ?? 1) != ownDeviceId;
+
+  /// True if this message has E2E encrypted content that this device must
+  /// decrypt: either another user sent it, or it is a self-sync copy of our own
+  /// send produced by another of our devices ([isSelfSyncRow]).
+  ///
+  /// THE master gate: it feeds every decrypt entry point, live and historical,
+  /// so a row it rejects is never decrypted anywhere. Pass [ownDeviceId] only
+  /// when the server has confirmed it.
+  bool needsDecryption(int? currentUserId, {int? ownDeviceId}) =>
       encryptedContent != null &&
       encryptedContent!.isNotEmpty &&
-      senderId != currentUserId;
+      (senderId != currentUserId || isSelfSyncRow(currentUserId, ownDeviceId));
 
   /// True if this message should show "Encrypted message" placeholder in list.
   bool get displayAsEncryptedPlaceholder =>
