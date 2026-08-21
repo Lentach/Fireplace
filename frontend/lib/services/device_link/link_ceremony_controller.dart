@@ -511,6 +511,17 @@ class LinkCeremonyController extends ChangeNotifier
     revokingDeviceId = deviceId;
     revokeError = null;
     notifyListeners();
+    // Arm the engine from the Keystore FIRST. The controller is rebuilt every
+    // time the devices screen opens, so its engine holds no DAK until this
+    // runs — signing without it throws and the request never leaves the
+    // device. `startPrimaryFlow` does the same thing for the same reason; the
+    // app-proof caught this path missing it.
+    if (await _readDak() == null) {
+      revokingDeviceId = null;
+      revokeError = 'no_dak';
+      notifyListeners();
+      return;
+    }
     try {
       final staged = DeviceList(
         userId: userId,

@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:fireplace/services/device_link/dak_store.dart';
 import 'package:fireplace/services/device_link/link_ceremony_controller.dart';
 import 'package:fireplace/services/device_list/device_authority_engine.dart';
 import 'package:fireplace/services/device_list/device_list_canonical.dart';
@@ -33,6 +34,17 @@ class _NoIdentity implements LinkIdentityGateway {
   Future<void> discardProvisionedIdentity(int userId) async {}
 }
 
+/// A DakStore that answers exactly one record (or none) — the Keystore seam the
+/// controller reads before it may sign anything.
+class _StubDakStore extends DakStore {
+  _StubDakStore(this._record);
+
+  final DakRecord? _record;
+
+  @override
+  Future<DakRecord?> read({required int userId}) async => _record;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -62,6 +74,9 @@ void main() {
       identity: generateIdentityKeyPair(),
       createdAtMs: 1755600000000,
     );
+    // The controller reads the Keystore before it signs, exactly as production
+    // does — so the shared fixture supplies the DAK it just minted.
+    final persisted = engine.exportDakForPersistence();
     controller = LinkCeremonyController(
       userId: userId,
       emit: (event, data) => emitted.add((event, data)),
@@ -69,6 +84,14 @@ void main() {
       adoptSession: (_) async {},
       reconnect: (_) async {},
       engine: engine,
+      dakStore: _StubDakStore(
+        DakRecord(
+          userId: userId,
+          dakPub: persisted['dakPub']!,
+          dakPriv: persisted['dakPriv']!,
+          createdAtMs: 1755600000000,
+        ),
+      ),
     );
     controller.verifiedList = currentList();
   });
@@ -80,6 +103,69 @@ void main() {
       base64Decode(payload['listCanonical'] as String),
     );
   }
+
+  test('arms the DAK from the Keystore before signing', () async {
+    // The regression this pins: the devices screen builds a FRESH controller
+    // every time it opens, so its engine holds no DAK. Signing without one
+    // throws and the request never leaves the device — which is exactly what
+    // the T6 app-proof caught, with the unit suite green because it had
+    // pre-armed the engine.
+    final coldEngine = DeviceAuthorityEngine();
+    final armed = DeviceAuthorityEngine()
+      ..mintEnrollment(
+        userId: userId,
+        identity: generateIdentityKeyPair(),
+        createdAtMs: 1755600000000,
+      );
+    final stored = armed.exportDakForPersistence();
+    final cold = LinkCeremonyController(
+      userId: userId,
+      emit: (event, data) => emitted.add((event, data)),
+      identity: _NoIdentity(),
+      adoptSession: (_) async {},
+      reconnect: (_) async {},
+      engine: coldEngine,
+      dakStore: _StubDakStore(
+        DakRecord(
+          userId: userId,
+          dakPub: stored['dakPub']!,
+          dakPriv: stored['dakPriv']!,
+          createdAtMs: 1755600000000,
+        ),
+      ),
+    );
+    cold.verifiedList = currentList();
+
+    await cold.revokeDevice(2);
+
+    expect(
+      emitted.where((e) => e.$1 == 'revokeDevice').length,
+      1,
+      reason: 'a cold controller must restore the DAK, not fail to sign',
+    );
+    expect(cold.revokeError, isNull);
+  });
+
+  test('refuses cleanly when this device holds NO DAK', () async {
+    final cold = LinkCeremonyController(
+      userId: userId,
+      emit: (event, data) => emitted.add((event, data)),
+      identity: _NoIdentity(),
+      adoptSession: (_) async {},
+      reconnect: (_) async {},
+      engine: DeviceAuthorityEngine(),
+      dakStore: _StubDakStore(null),
+    );
+    cold.verifiedList = currentList();
+
+    await cold.revokeDevice(2);
+
+    // A non-primary device cannot sign a list mutation at all, so it must say
+    // so instead of emitting a request the server would refuse.
+    expect(emitted.where((e) => e.$1 == 'revokeDevice'), isEmpty);
+    expect(cold.revokeError, 'no_dak');
+    expect(cold.revokingDeviceId, isNull);
+  });
 
   test('signs a list that revokes EXACTLY the requested device', () async {
     await controller.revokeDevice(2);
