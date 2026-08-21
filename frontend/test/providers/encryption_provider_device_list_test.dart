@@ -91,8 +91,7 @@ void main() {
   int deviceListFetchCount() =>
       emitted.where((e) => e['event'] == 'getDeviceList').length;
 
-  test('a verified list is cached and reused without a second fetch',
-      () async {
+  test('a verified list is cached and reused without a second fetch', () async {
     provider.setEmitCallback((event, data) {
       emitted.add({'event': event, 'data': data});
       if (event == 'getDeviceList') {
@@ -109,49 +108,60 @@ void main() {
     expect(deviceListFetchCount(), 1);
 
     final second = await provider.getVerifiedDeviceList(peerId);
-    expect(identical(first, second), isTrue,
-        reason: 'cache hit must not refetch');
+    expect(
+      identical(first, second),
+      isTrue,
+      reason: 'cache hit must not refetch',
+    );
     expect(deviceListFetchCount(), 1);
   });
 
-  test('an invalid chain is rejected and NOT cached (falsification 4)',
-      () async {
-    final forged = authorizationV1();
-    // Signature from a DAK the enrollment never authorized.
-    final impostor = DeviceAuthorityEngine();
-    impostor.mintEnrollment(
-      userId: peerId,
-      identity: generateIdentityKeyPair(),
-      createdAtMs: 99,
-    );
-    final resigned = impostor.signList(
-      DeviceList(
+  test(
+    'an invalid chain is rejected and NOT cached (falsification 4)',
+    () async {
+      final forged = authorizationV1();
+      // Signature from a DAK the enrollment never authorized.
+      final impostor = DeviceAuthorityEngine();
+      impostor.mintEnrollment(
         userId: peerId,
-        version: 1,
-        devices: const [
-          DeviceListEntry(deviceId: 1, platform: 'android', addedAtMs: 0),
-        ],
-      ),
-    );
-    forged['listCanonical'] = resigned['listCanonical'];
-    forged['listSignature'] = resigned['listSignature'];
+        identity: generateIdentityKeyPair(),
+        createdAtMs: 99,
+      );
+      final resigned = impostor.signList(
+        DeviceList(
+          userId: peerId,
+          version: 1,
+          devices: const [
+            DeviceListEntry(deviceId: 1, platform: 'android', addedAtMs: 0),
+          ],
+        ),
+      );
+      forged['listCanonical'] = resigned['listCanonical'];
+      forged['listSignature'] = resigned['listSignature'];
 
-    provider.setEmitCallback((event, data) {
-      emitted.add({'event': event, 'data': data});
-      if (event == 'getDeviceList') {
-        provider.onDeviceList({'userId': peerId, 'authorization': forged});
-      }
-    });
-    await expectLater(
-      provider.getVerifiedDeviceList(peerId),
-      throwsA(
-        isA<DeviceListVerificationException>()
-            .having((e) => e.reason, 'reason', 'invalid_list_signature'),
-      ),
-    );
-    expect(provider.cachedDeviceList(peerId), isNull,
-        reason: 'a refused list must never enter the cache');
-  });
+      provider.setEmitCallback((event, data) {
+        emitted.add({'event': event, 'data': data});
+        if (event == 'getDeviceList') {
+          provider.onDeviceList({'userId': peerId, 'authorization': forged});
+        }
+      });
+      await expectLater(
+        provider.getVerifiedDeviceList(peerId),
+        throwsA(
+          isA<DeviceListVerificationException>().having(
+            (e) => e.reason,
+            'reason',
+            'invalid_list_signature',
+          ),
+        ),
+      );
+      expect(
+        provider.cachedDeviceList(peerId),
+        isNull,
+        reason: 'a refused list must never enter the cache',
+      );
+    },
+  );
 
   test('a served ROLLBACK is detected against the pinned version, even '
       'after invalidation (falsification 3)', () async {
@@ -161,8 +171,9 @@ void main() {
       if (event == 'getDeviceList') {
         provider.onDeviceList({
           'userId': peerId,
-          'authorization':
-              serveVersion == 1 ? authorizationV1() : authorizationAt(2),
+          'authorization': serveVersion == 1
+              ? authorizationV1()
+              : authorizationAt(2),
         });
       }
     });
@@ -177,8 +188,11 @@ void main() {
     await expectLater(
       provider.getVerifiedDeviceList(peerId),
       throwsA(
-        isA<DeviceListVerificationException>()
-            .having((e) => e.reason, 'reason', 'version_rollback'),
+        isA<DeviceListVerificationException>().having(
+          (e) => e.reason,
+          'reason',
+          'version_rollback',
+        ),
       ),
     );
     expect(provider.cachedDeviceList(peerId), isNull);
@@ -196,8 +210,10 @@ void main() {
       }
     });
     await provider.getVerifiedDeviceList(peerId);
-    final refreshed =
-        await provider.getVerifiedDeviceList(peerId, forceRefresh: true);
+    final refreshed = await provider.getVerifiedDeviceList(
+      peerId,
+      forceRefresh: true,
+    );
     expect(refreshed.version, 2);
   });
 
@@ -215,6 +231,43 @@ void main() {
     expect(list.liveDeviceIds, [1]);
   });
 
+  test('an authorization:null answer for an ALREADY-ENROLLED party is refused '
+      'as a rollback, not cached as single-device (amendment (xix))', () async {
+    var serveEnrolled = true;
+    provider.setEmitCallback((event, data) {
+      emitted.add({'event': event, 'data': data});
+      if (event == 'getDeviceList') {
+        provider.onDeviceList({
+          'userId': peerId,
+          'authorization': serveEnrolled ? authorizationAt(2) : null,
+        });
+      }
+    });
+    final v2 = await provider.getVerifiedDeviceList(peerId);
+    expect(v2.liveDeviceIds, [1, 2]);
+
+    // Enrollment is durable (§5.2), so "no enrollment row" for a party we
+    // already verified is never legitimate. Caching it would narrow the
+    // fan-out to device 1 and silently drop that party's other devices.
+    provider.invalidateDeviceList(peerId);
+    serveEnrolled = false;
+    await expectLater(
+      provider.getVerifiedDeviceList(peerId),
+      throwsA(
+        isA<DeviceListVerificationException>().having(
+          (e) => e.reason,
+          'reason',
+          'version_rollback',
+        ),
+      ),
+    );
+    expect(
+      provider.cachedDeviceList(peerId),
+      isNull,
+      reason: 'a refused downgrade must never enter the cache',
+    );
+  });
+
   test('an unanswered fetch times out with an error — never a guessed list '
       '(falsification 9)', () async {
     await expectLater(
@@ -227,27 +280,32 @@ void main() {
     expect(provider.cachedDeviceList(peerId), isNull);
   });
 
-  test('an enrolled answer for a peer with NO pinned identity fails closed',
-      () async {
-    const strangerId = 314;
-    provider.setEmitCallback((event, data) {
-      emitted.add({'event': event, 'data': data});
-      if (event == 'getDeviceList') {
-        // A structurally valid record, but this client holds no TOFU key
-        // for the stranger — the chain has no anchor, so nothing verifies.
-        provider.onDeviceList({
-          'userId': strangerId,
-          'authorization': authorizationV1(),
-        });
-      }
-    });
-    await expectLater(
-      provider.getVerifiedDeviceList(strangerId),
-      throwsA(
-        isA<DeviceListVerificationException>()
-            .having((e) => e.reason, 'reason', 'no_tofu_identity'),
-      ),
-    );
-    expect(provider.cachedDeviceList(strangerId), isNull);
-  });
+  test(
+    'an enrolled answer for a peer with NO pinned identity fails closed',
+    () async {
+      const strangerId = 314;
+      provider.setEmitCallback((event, data) {
+        emitted.add({'event': event, 'data': data});
+        if (event == 'getDeviceList') {
+          // A structurally valid record, but this client holds no TOFU key
+          // for the stranger — the chain has no anchor, so nothing verifies.
+          provider.onDeviceList({
+            'userId': strangerId,
+            'authorization': authorizationV1(),
+          });
+        }
+      });
+      await expectLater(
+        provider.getVerifiedDeviceList(strangerId),
+        throwsA(
+          isA<DeviceListVerificationException>().having(
+            (e) => e.reason,
+            'reason',
+            'no_tofu_identity',
+          ),
+        ),
+      );
+      expect(provider.cachedDeviceList(strangerId), isNull);
+    },
+  );
 }

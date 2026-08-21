@@ -120,6 +120,19 @@ class DeviceListCache {
     required String? tofuIdentityKeyBase64,
   }) {
     if (authorization == null) {
+      // Enrollment is DURABLE (spec §5.2: `account_authorizations` rows are
+      // never removed), so enrolled → not-enrolled is never a legitimate
+      // transition. Without this check a forged or stale `authorization: null`
+      // for a party we already verified at version N would be cached as
+      // "device 1 only" and silently NARROW the fan-out — dropping delivery to
+      // that party's other devices, and (once the self-sync law of amendment
+      // (xi) is live) silently killing self-sync to our own devices. It is the
+      // same class of attack as a version rollback, so it is refused with the
+      // same code and, like every other failure here, caches NOTHING.
+      // Amendment (xix).
+      if (_pinnedVersion[userId] != null) {
+        throw DeviceListVerificationException(userId, 'version_rollback');
+      }
       const list = VerifiedDeviceList.notEnrolled();
       _byUser[userId] = list;
       return list;
