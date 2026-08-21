@@ -1,3 +1,13 @@
+> ## ⛔ SUPERSEDED — T4 IS DONE (2026-08-21)
+>
+> **Read `2026-08-21-HANDOFF-phase2-T5-start-here.md` instead.** T4 (envelopes, device rooms,
+> per-device history reads) was built, gate-reviewed (GATE FAIL → folded) and app-proven on
+> 2026-08-21; closure is decision record §9 and the settlement is spec §12 items (v)–(x),
+> including **amendment (x)**, which changed the send path after this file was written.
+>
+> This file is kept for its account of T1–T3 and its trap list. Its §4 numbers
+> (885/57 · 1424/10sk · 35/2sk) and its §7 T4 brief are STALE.
+
 # HANDOFF 2026-08-20 (evening) — Multi-device program: T1+T2+T3 done, T4 (envelopes + device rooms + history reads) is your job
 
 **You are a fresh agent picking up a multi-session program mid-flight. This file is the
