@@ -61,6 +61,14 @@ class MessageModel {
   final String? linkPreviewImageUrl;
   final String? encryptedContent;
 
+  /// Which of the SENDER's devices produced this row (spec §5.4). Null on
+  /// pre-migration rows and legacy-client sends, which means device 1.
+  ///
+  /// Load-bearing on receive: the pairwise session is keyed by the address that
+  /// produced the ciphertext, so decrypting an envelope from a peer's device 2
+  /// against device 1's session is a Bad MAC.
+  final int? originDeviceId;
+
   /// Why the server served no ciphertext for THIS device (spec §5.3 + §12
   /// amendment (viii)). `none_for_device` = the row predates this device's
   /// link, so render the honest placeholder, never a decrypt failure.
@@ -138,6 +146,7 @@ class MessageModel {
     this.linkPreviewImageUrl,
     this.encryptedContent,
     this.envelopeStatus,
+    this.originDeviceId,
     this.sendToken,
     this.mediaKey,
     this.mediaIv,
@@ -179,6 +188,7 @@ class MessageModel {
       // Additive per-device fields (spec §12 (viii)/(ix)); absent on an older
       // server, and `fromJson` simply reads null.
       envelopeStatus: json['envelopeStatus'] as String?,
+      originDeviceId: json['originDeviceId'] as int?,
       sendToken: json['sendToken'] as String?,
       editedAt: json['editedAt'] != null
           ? DateTime.parse(json['editedAt'] as String)
@@ -250,6 +260,7 @@ class MessageModel {
     String? linkPreviewImageUrl,
     String? encryptedContent,
     String? envelopeStatus,
+    int? originDeviceId,
     String? sendToken,
     String? mediaKey,
     String? mediaIv,
@@ -284,6 +295,7 @@ class MessageModel {
       // them would resurrect a decrypt attempt on a row that has no ciphertext
       // for this device, or lose the origin device's reconcile key.
       envelopeStatus: envelopeStatus ?? this.envelopeStatus,
+      originDeviceId: originDeviceId ?? this.originDeviceId,
       sendToken: sendToken ?? this.sendToken,
       mediaKey: mediaKey ?? this.mediaKey,
       mediaIv: mediaIv ?? this.mediaIv,

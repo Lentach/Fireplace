@@ -129,19 +129,26 @@ class EncryptionProvider extends ChangeNotifier {
     }
   }
 
-  /// Decrypt ciphertext from the given sender. [messageId] binds the
-  /// one-shot Signal decrypt to its durable raw replay record.
-  /// Delegates to [EncryptionService.decrypt].
+  /// Decrypt ciphertext from the given sender's [deviceId]. [messageId] binds
+  /// the one-shot Signal decrypt to its durable raw replay record.
+  ///
+  /// [deviceId] is the SENDING device (the row's `originDeviceId`), because the
+  /// pairwise session is keyed by the address that produced the ciphertext.
+  /// Defaulting it to 1 would decrypt a linked device's envelope against the
+  /// wrong ratchet — a Bad MAC, or a PreKey message clobbering the device-1
+  /// session. Delegates to [EncryptionService.decrypt].
   Future<String> decrypt(
     int senderId,
     String ciphertext, {
     int? messageId,
+    int deviceId = 1,
   }) async {
     try {
       return await _encryptionService.decrypt(
         senderId,
         ciphertext,
         messageId: messageId,
+        deviceId: deviceId,
       );
     } catch (e) {
       _error = 'Decryption failed: $e';
@@ -392,9 +399,9 @@ class EncryptionProvider extends ChangeNotifier {
 
   /// Whether a Signal session exists with [peerUserId]. Diagnostic + policy
   /// input; false when E2E is not initialized.
-  Future<bool> hasSessionWith(int peerUserId) async {
+  Future<bool> hasSessionWith(int peerUserId, {int deviceId = 1}) async {
     if (!_e2eInitialized) return false;
-    return _encryptionService.hasSession(peerUserId);
+    return _encryptionService.hasSession(peerUserId, deviceId: deviceId);
   }
 
   /// Delete the local Signal session with [peerUserId] (sender or recipient).

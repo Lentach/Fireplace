@@ -45,6 +45,7 @@ class _ThrowingEncryption extends EncryptionProvider {
     int senderId,
     String ciphertext, {
     int? messageId,
+    int deviceId = 1,
   }) async {
     decryptCalls++;
     throw _error;

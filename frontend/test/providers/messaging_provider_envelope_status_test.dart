@@ -31,6 +31,7 @@ class _NoopEncryption extends EncryptionProvider {
     int senderId,
     String ciphertext, {
     int? messageId,
+    int deviceId = 1,
   }) async {
     decryptCalls++;
     return '{"content":"should never be reached"}';

@@ -1092,10 +1092,12 @@ extension MessagingDecrypt on MessagingProvider {
     // types and booleans only — never plaintext or key material.
     final hadSessionAtDecrypt = await _encryptionProvider!.hasSessionWith(
       msg.senderId,
+      deviceId: msg.originDeviceId ?? 1,
     );
     _e2eFlowLog('DECRYPT_START', {
       'msgId': msg.id,
       'senderId': msg.senderId,
+      'originDeviceId': msg.originDeviceId ?? 1,
       'ctype': _ciphertextType(msg.encryptedContent),
       'hasSession': hadSessionAtDecrypt,
     });
@@ -1104,6 +1106,10 @@ extension MessagingDecrypt on MessagingProvider {
         msg.senderId,
         msg.encryptedContent!,
         messageId: msg.id,
+        // The pairwise session is keyed by the device that PRODUCED this
+        // ciphertext (spec §5.4). A NULL originDeviceId is a pre-migration or
+        // legacy-client row, i.e. device 1.
+        deviceId: msg.originDeviceId ?? 1,
       );
       // Decrypt from this peer works again — allow a future failure to issue
       // a fresh rebuild request.
