@@ -259,6 +259,10 @@ class E2eClient {
     'reactionUpdated',
     'messageDeleted',
     'servedMessageIds',
+    // T4 (§5.2 layer 1 + §12 (vi)/(x)): the refused-send answer. EventLog
+    // records nothing that is not listed here, so a missing entry would make
+    // every refusal assert pass vacuously.
+    'deviceListStale',
   ];
 
   /// Registers a brand-new account. Fresh every run BY DESIGN: reusing
@@ -833,6 +837,43 @@ class E2eClient {
               'messageSent',
               where: (p) => p is Map && p['tempId'] == tempId,
               reason: '$label sendMessage tempId=$tempId token=$sendToken',
+            )
+            as Map;
+    return payload.cast<String, dynamic>();
+  }
+
+  /// Emits an ENVELOPE-shaped `sendMessage` (spec §5.2 + §12 amendment (v)):
+  /// one ciphertext per (recipient user, device), with the device-list stamps
+  /// the server cross-checks.
+  ///
+  /// Raw emit for the same reason as [sendWithToken]: this exercises the
+  /// SERVER's fan-out ingest, independent of the app's send path.
+  void emitEnvelopeSend(
+    int recipientId, {
+    required String tempId,
+    required List<Map<String, dynamic>> envelopes,
+    String? sendToken,
+    int? recipientListVersion,
+    int? senderListVersion,
+  }) {
+    socketService.socket!.emit('sendMessage', <String, dynamic>{
+      'recipientId': recipientId,
+      'content': '[encrypted]',
+      'envelopes': envelopes,
+      'tempId': tempId,
+      'sendToken': ?sendToken,
+      'recipientListVersion': ?recipientListVersion,
+      'senderListVersion': ?senderListVersion,
+    });
+  }
+
+  /// The `deviceListStale` refusal for [tempId] (spec §12 (vi)/(x)).
+  Future<Map<String, dynamic>> awaitDeviceListStale(String tempId) async {
+    final payload =
+        await events.next(
+              'deviceListStale',
+              where: (p) => p is Map && p['tempId'] == tempId,
+              reason: '$label deviceListStale tempId=$tempId',
             )
             as Map;
     return payload.cast<String, dynamic>();

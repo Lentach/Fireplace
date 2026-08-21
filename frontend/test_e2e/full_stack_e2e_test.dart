@@ -1553,7 +1553,10 @@ void main() {
           'provisioningId': provisioningId,
           'blob': base64Encode(
             sealLinkBlob(
-              keys: deriveLinkBlobKeys(sharedSecret: sdh, transcript: transcript),
+              keys: deriveLinkBlobKeys(
+                sharedSecret: sdh,
+                transcript: transcript,
+              ),
               payload: blobPayloadFor(assignedId, auth),
             ),
           ),
@@ -1711,6 +1714,199 @@ void main() {
         final ids = list.devices.map((d) => d.deviceId).toSet();
         expect(ids.contains(deviceA), isTrue);
         expect(ids.contains(deviceB), isTrue);
+      }, timeout: const Timeout(Duration(minutes: 3)));
+
+      // ---- T4: send fan-out + per-device delivery (§5.2/§5.3) ----
+      //
+      // These run LAST in the ceremony group on purpose: by now alice is
+      // enrolled and has real linked devices in her signed list, which is the
+      // substrate a fan-out send needs. Nested here to reuse `currentAuth`.
+
+      test('amendment (x): a LEGACY single-ciphertext send to an enrolled '
+          'account is refused with the signed list — never delivered to '
+          'device 1 alone (I5)', () async {
+        final auth = await currentAuth();
+        final tempId = 'legacy-refused-$runTag';
+        final ciphertext = await bob.encryptText(alice.userId, 'legacy shape');
+
+        alice.events.discard('newMessage');
+        bob.events.discard('deviceListStale');
+        bob.socketService.socket!.emit('sendMessage', <String, dynamic>{
+          'recipientId': alice.userId,
+          'content': '[encrypted]',
+          'encryptedContent': ciphertext,
+          'tempId': tempId,
+        });
+
+        // The refusal carries everything needed to repair in ONE round trip.
+        final refusal = await bob.awaitDeviceListStale(tempId);
+        expect(refusal['success'], isFalse);
+        expect(refusal['error'], 'device_list_stale');
+        final lists = (refusal['lists'] as List).cast<Map>();
+        final aliceEntry = lists.firstWhere((e) => e['userId'] == alice.userId);
+        expect(aliceEntry['version'], auth['listVersion']);
+        expect(aliceEntry['listCanonical'], auth['listCanonical']);
+        expect(aliceEntry['listSignature'], auth['listSignature']);
+        final enrollment = aliceEntry['enrollment'] as Map;
+        expect(enrollment['dakPub'], auth['dakPub']);
+        expect(enrollment['enrollmentSig'], auth['enrollmentSig']);
+
+        // Refused ATOMICALLY: nothing was delivered anywhere.
+        await alice.events.none(
+          'newMessage',
+          within: const Duration(seconds: 2),
+          reason: 'a refused legacy send delivers nothing',
+        );
+      }, timeout: const Timeout(Duration(minutes: 2)));
+
+      test('falsification 5: a send addressed to a STALE list version is '
+          'rejected atomically — zero envelopes written, nothing '
+          'delivered', () async {
+        final auth = await currentAuth();
+        final staleVersion = (auth['listVersion'] as int) - 1;
+        final tempId = 'stale-version-$runTag';
+        final ciphertext = await bob.encryptText(alice.userId, 'stale send');
+
+        alice.events.discard('newMessage');
+        bob.events.discard('deviceListStale');
+        bob.emitEnvelopeSend(
+          alice.userId,
+          tempId: tempId,
+          envelopes: [
+            {'userId': alice.userId, 'deviceId': 1, 'ciphertext': ciphertext},
+          ],
+          recipientListVersion: staleVersion,
+        );
+
+        final refusal = await bob.awaitDeviceListStale(tempId);
+        expect(
+          (refusal['lists'] as List).cast<Map>().firstWhere(
+            (e) => e['userId'] == alice.userId,
+          )['version'],
+          auth['listVersion'],
+          reason: 'the CURRENT version is handed back for the retry',
+        );
+        await alice.events.none(
+          'newMessage',
+          within: const Duration(seconds: 2),
+          reason: 'a stale send is refused before any write',
+        );
+      }, timeout: const Timeout(Duration(minutes: 2)));
+
+      test('a fan-out send with the CURRENT version is accepted and each '
+          'device is addressed exactly once (§5.3 device rooms)', () async {
+        final auth = await currentAuth();
+        final tempId = 'fanout-ok-$runTag';
+        final ciphertext = await bob.encryptText(alice.userId, 'fan-out hello');
+
+        alice.events.discard('newMessage');
+        bob.emitEnvelopeSend(
+          alice.userId,
+          tempId: tempId,
+          envelopes: [
+            {'userId': alice.userId, 'deviceId': 1, 'ciphertext': ciphertext},
+          ],
+          sendToken: 'tok-fanout-$runTag',
+          recipientListVersion: auth['listVersion'] as int,
+        );
+
+        // Device 1's socket receives ITS ciphertext, in its own device room.
+        final delivered = await alice.awaitNewMessage(tempId);
+        expect(delivered['encryptedContent'], ciphertext);
+        expect(delivered['originDeviceId'], 1);
+        // A recipient copy never carries the sender's private reconcile key,
+        // and never claims there is no envelope for it.
+        expect(delivered.containsKey('sendToken'), isFalse);
+        expect(delivered['envelopeStatus'], isNull);
+        // Exactly once — a duplicate would brick the session on decrypt.
+        await alice.events.none(
+          'newMessage',
+          within: const Duration(seconds: 2),
+          reason: 'one envelope per device, delivered once',
+        );
+      }, timeout: const Timeout(Duration(minutes: 2)));
+
+      test('falsification 13: a linked device reads history and gets the '
+          'none_for_device marker for rows that predate its link — never '
+          'the foreign-ratchet legacy ciphertext', () async {
+        // A fresh device of alice, linked AFTER every message above existed.
+        final late = E2eClient('lateDevice', baseUrl)..adoptAccountFrom(alice);
+        await late.connectSocket();
+        addTearDown(late.dispose);
+
+        final ephN = generateLinkEphemeral();
+        final opened = await late.openProvisioning();
+        final provisioningId = opened['provisioningId'] as String;
+        final ephP = generateLinkEphemeral();
+        final ack = await alice.provisioningHello(
+          provisioningId: provisioningId,
+          ephPubP: base64Encode(linkEphemeralPublicBytes(ephP)),
+        );
+        final assignedId = ack['deviceId'] as int;
+        final staged = await signAddedDevice(assignedId);
+        final auth = await currentAuth();
+        final transcript = linkTranscript(
+          provisioningId: provisioningId,
+          ephPubN: linkEphemeralPublicBytes(ephN),
+          ephPubP: linkEphemeralPublicBytes(ephP),
+        );
+        final sdh = linkSharedSecret(
+          theirEphPub: linkEphemeralPublicBytes(ephN),
+          ownEphPriv: ephP.privateKey,
+        );
+        final sealed = sealLinkBlob(
+          keys: deriveLinkBlobKeys(sharedSecret: sdh, transcript: transcript),
+          payload: blobPayloadFor(assignedId, auth),
+        );
+        final acked = await alice.provisionDevice({
+          'provisioningId': provisioningId,
+          'blob': base64Encode(sealed),
+          'listCanonical': staged['listCanonical'],
+          'listSignature': staged['listSignature'],
+        });
+        expect(acked['success'], isTrue, reason: '$acked');
+        final completed = await late.provisioningComplete(provisioningId);
+        expect(completed['success'], isTrue, reason: '$completed');
+
+        // Rebind: only now is this socket authenticated as the new device.
+        late.socketService.disconnect();
+        late.accessToken = completed['access_token'] as String;
+        await late.connectSocket();
+
+        late.events.discard('messageHistory');
+        late.socketService.socket!.emit('getMessages', {
+          'conversationId': conversationId,
+        });
+        final history =
+            await late.events.next(
+                  'messageHistory',
+                  where: (p) =>
+                      p is Map && p['conversationId'] == conversationId,
+                  reason: 'late device history',
+                )
+                as Map;
+        final rows = (history['messages'] as List).cast<Map>();
+        expect(rows, isNotEmpty, reason: 'the conversation has history');
+
+        // Every E2E row predates this device's link, so every one of them is
+        // marked — and NONE of them carries a ciphertext this device would
+        // fail to decrypt across the whole pre-link history.
+        final e2eRows = rows.where((r) => r['content'] == '[encrypted]');
+        expect(e2eRows, isNotEmpty);
+        for (final row in e2eRows) {
+          expect(
+            row['envelopeStatus'],
+            'none_for_device',
+            reason: 'row ${row['id']} predates this device',
+          );
+          expect(
+            row['encryptedContent'],
+            isNull,
+            reason:
+                'serving device 1 ciphertext here is the foreign-ratchet '
+                'decrypt the §5.3 gate exists to prevent',
+          );
+        }
       }, timeout: const Timeout(Duration(minutes: 3)));
     });
 
