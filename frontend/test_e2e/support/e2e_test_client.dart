@@ -241,6 +241,10 @@ class E2eClient {
     'provisioningBlob',
     'provisioningCompleted',
     'provisioningCancelled',
+    // Phase 2 T6: §5.5 revocation. Unlisted events are recorded NOWHERE, so
+    // without these two every revocation assert would pass vacuously.
+    'deviceRevocationCompleted',
+    'deviceRevoked',
     'newFriendRequest',
     'friendRequestSent',
     'friendRequestFailed',
@@ -480,6 +484,21 @@ class E2eClient {
     return (answer as Map).cast<String, dynamic>();
   }
 
+  /// Emits `revokeDevice` (§5.5) and returns the `deviceRevocationCompleted`
+  /// answer. The payload carries the DAK-signed list that ALREADY shows the
+  /// device revoked — the server refuses the pair if they disagree.
+  Future<Map<String, dynamic>> revokeDevice(
+    Map<String, dynamic> payload,
+  ) async {
+    events.discard('deviceRevocationCompleted');
+    socketService.socket!.emit('revokeDevice', payload);
+    final answer = await events.next(
+      'deviceRevocationCompleted',
+      reason: '$label revokeDevice answer',
+    );
+    return (answer as Map).cast<String, dynamic>();
+  }
+
   /// Emits `openProvisioning` (§5.1 — N opens a ceremony) and returns the
   /// `provisioningOpened` answer. The answer deliberately carries NO
   /// deviceId (spec §12 amendment (a)).
@@ -633,6 +652,32 @@ class E2eClient {
     } finally {
       socketService.off('connect_error');
     }
+  }
+
+  /// Connects expecting the §5.5 connect gate to REFUSE this session, and
+  /// returns the `deviceRevoked` notice the server sends before closing it.
+  ///
+  /// Separate from [connectSocket] because that one waits for `socketReady`,
+  /// which by contract never arrives here (amendment (xxii)): a revoked
+  /// device's access JWT stays cryptographically valid, so refusing the
+  /// session is the only thing standing between it and a live socket.
+  Future<Map<String, dynamic>> connectExpectingRevoked() async {
+    events.discard('socketReady');
+    events.discard('deviceRevoked');
+    socketService.connect(baseUrl: baseUrl, token: accessToken);
+    for (final event in _trackedEvents) {
+      socketService.on(event, (payload) => events.record(event, payload));
+    }
+    final notice = await events.next(
+      'deviceRevoked',
+      reason: '$label refused reconnect must say WHY',
+    );
+    await events.none(
+      'socketReady',
+      within: const Duration(seconds: 2),
+      reason: 'a revoked device must never reach an authenticated session',
+    );
+    return (notice as Map).cast<String, dynamic>();
   }
 
   /// Initializes Signal keys (fresh mock storage → always generates) and

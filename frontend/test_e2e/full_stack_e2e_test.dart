@@ -2082,6 +2082,229 @@ void main() {
           reason: 're-ack without re-fan: the recipient already has this row',
         );
       }, timeout: const Timeout(Duration(minutes: 2)));
+
+      test('falsification 7 + §5.5: revoking a device kicks it, refuses its '
+          'reconnect and its uploads, and no later message is addressed to '
+          'it — while every other device keeps working', () async {
+        // A real second device of ALICE through the real ceremony (the harness
+        // holds her DAK, so she is the only account that can sign a mutation).
+        final doomed = E2eClient('revokeTarget', baseUrl)
+          ..adoptAccountFrom(alice);
+        await doomed.connectSocket();
+        addTearDown(doomed.dispose);
+
+        final ephN = generateLinkEphemeral();
+        final opened = await doomed.openProvisioning();
+        final provisioningId = opened['provisioningId'] as String;
+        final ephP = generateLinkEphemeral();
+        final ack = await alice.provisioningHello(
+          provisioningId: provisioningId,
+          ephPubP: base64Encode(linkEphemeralPublicBytes(ephP)),
+        );
+        final doomedId = ack['deviceId'] as int;
+        final staged = await signAddedDevice(doomedId);
+        final auth = await currentAuth();
+        final transcript = linkTranscript(
+          provisioningId: provisioningId,
+          ephPubN: linkEphemeralPublicBytes(ephN),
+          ephPubP: linkEphemeralPublicBytes(ephP),
+        );
+        final sdh = linkSharedSecret(
+          theirEphPub: linkEphemeralPublicBytes(ephN),
+          ownEphPriv: ephP.privateKey,
+        );
+        final acked = await alice.provisionDevice({
+          'provisioningId': provisioningId,
+          'blob': base64Encode(
+            sealLinkBlob(
+              keys: deriveLinkBlobKeys(
+                sharedSecret: sdh,
+                transcript: transcript,
+              ),
+              payload: blobPayloadFor(doomedId, auth),
+            ),
+          ),
+          'listCanonical': staged['listCanonical'],
+          'listSignature': staged['listSignature'],
+        });
+        expect(acked['success'], isTrue, reason: '$acked');
+        final completed = await doomed.provisioningComplete(provisioningId);
+        expect(completed['success'], isTrue, reason: '$completed');
+        doomed.socketService.disconnect();
+        doomed.accessToken = completed['access_token'] as String;
+        await doomed.connectSocket();
+
+        // It is a fully working device first: key material of its own, so a
+        // fan-out to it is possible right up to the revocation.
+        final deviceOne = await bob.fetchBundleFor(alice.userId, deviceId: 1);
+        final identityKey = deviceOne['identityPublicKey'] as String;
+        final live = await doomed.uploadDeviceKeyBundle(
+          deviceId: doomedId,
+          identityPublicKey: identityKey,
+          registrationId: 8811,
+        );
+        expect(live['success'], isTrue, reason: '$live');
+
+        // ---- the revocation itself ----
+        final beforeAuth = await currentAuth();
+        final beforeList = parseCanonicalDeviceList(
+          base64Decode(beforeAuth['listCanonical'] as String),
+        );
+        final versionBefore = beforeAuth['listVersion'] as int;
+        final revokingList = engine.signList(
+          DeviceList(
+            userId: alice.userId,
+            version: versionBefore + 1,
+            devices: [
+              for (final d in beforeList.devices)
+                if (d.deviceId == doomedId)
+                  DeviceListEntry(
+                    deviceId: d.deviceId,
+                    platform: d.platform,
+                    addedAtMs: d.addedAtMs,
+                    name: d.name,
+                    revokedAtMs: DateTime.now().millisecondsSinceEpoch,
+                  )
+                else
+                  d,
+            ],
+          ),
+        );
+
+        // The caller here IS device 1, so asking to revoke device 1 is a
+        // self-revoke — refused before anything else is even looked at
+        // (amendment (xxi)). It is also the primary, and the primary is the
+        // only DAK holder: revoking it would leave the account unable to sign
+        // any future list version, with the §6.2 reset as the only way back.
+        // `list_device_mismatch` needs two linked non-primary devices to
+        // reach, so it stays pinned in the unit spec.
+        final selfRevoke = await alice.revokeDevice({
+          'deviceId': 1,
+          'listCanonical': revokingList['listCanonical'],
+          'listSignature': revokingList['listSignature'],
+        });
+        expect(selfRevoke['success'], isFalse);
+        expect(selfRevoke['error'], 'cannot_revoke_self', reason: '$selfRevoke');
+
+        alice.events.discard('deviceListChanged');
+        doomed.events.discard('deviceRevoked');
+        final result = await alice.revokeDevice({
+          'deviceId': doomedId,
+          'listCanonical': revokingList['listCanonical'],
+          'listSignature': revokingList['listSignature'],
+        });
+        expect(result['success'], isTrue, reason: '$result');
+        expect(result['listVersion'], versionBefore + 1);
+
+        // The kicked device is TOLD (amendment (xxvi)) and the account learns
+        // the list moved.
+        final notice = await doomed.events.next(
+          'deviceRevoked',
+          where: (p) => p is Map && p['deviceId'] == doomedId,
+          reason: 'the revoked device must learn WHY its session ended',
+        );
+        expect((notice as Map)['userId'], alice.userId);
+        final changed = await alice.events.next(
+          'deviceListChanged',
+          where: (p) => p is Map && p['listVersion'] == versionBefore + 1,
+          reason: 'revocation broadcast',
+        );
+        expect((changed as Map)['userId'], alice.userId);
+
+        // The stored list is byte-exactly what the primary signed.
+        final afterAuth = await currentAuth();
+        expect(afterAuth['listCanonical'], revokingList['listCanonical']);
+
+        // A duplicate revocation is refused, not re-run.
+        final again = await alice.revokeDevice({
+          'deviceId': doomedId,
+          'listCanonical': revokingList['listCanonical'],
+          'listSignature': revokingList['listSignature'],
+        });
+        expect(again['success'], isFalse);
+        expect(again['error'], anyOf('already_revoked', 'stale_version'));
+
+        // ---- the session is gone, and stays gone ----
+        // The still-valid access JWT buys nothing: the connect gate refuses it
+        // and says why (amendments (xxii)/(xxvi)).
+        doomed.socketService.disconnect();
+        final refused = await doomed.connectExpectingRevoked();
+        expect(refused['deviceId'], doomedId);
+
+        // ---- falsification 7: no envelope for a revoked device ----
+        // Addressing it is refused outright: the fan-out gate reads the same
+        // `devices` row the revocation just stamped.
+        alice.events.discard('error');
+        alice.emitEnvelopeSend(
+          bob.userId,
+          tempId: 'revoked-target-$runTag',
+          envelopes: [
+            {
+              'userId': bob.userId,
+              'deviceId': 1,
+              'ciphertext': await alice.encryptText(bob.userId, 'to bob'),
+            },
+            {
+              'userId': alice.userId,
+              'deviceId': doomedId,
+              'ciphertext': '3:for-a-revoked-device-$runTag',
+            },
+          ],
+          sendToken: 'tok-revoked-target-$runTag',
+          senderListVersion: versionBefore + 1,
+        );
+        // Drained off `errors` so the end-of-run "no unexpected errors" check
+        // stays meaningful (deliberate refusals must be claimed).
+        await alice.events.takeError(
+          'unknown_recipient_device',
+          reason: 'a revoked device may not be addressed',
+        );
+        await bob.events.none(
+          'newMessage',
+          within: const Duration(seconds: 2),
+          where: (p) => p is Map && p['tempId'] == 'revoked-target-$runTag',
+          reason: 'the refusal is atomic — no row, no envelope for anyone',
+        );
+
+        // And a send that simply omits it SUCCEEDS — revoking one device must
+        // never break the account's messaging.
+        final tempId = 'after-revoke-$runTag';
+        bob.events.discard('newMessage');
+        alice.emitEnvelopeSend(
+          bob.userId,
+          tempId: tempId,
+          envelopes: [
+            {
+              'userId': bob.userId,
+              'deviceId': 1,
+              'ciphertext': await alice.encryptText(
+                bob.userId,
+                'still working',
+              ),
+            },
+          ],
+          sendToken: 'tok-after-revoke-$runTag',
+          senderListVersion: versionBefore + 1,
+        );
+        final delivered = await bob.awaitNewMessage(tempId);
+        expect(delivered['senderId'], alice.userId);
+
+        // ---- its key material is gone, and it cannot publish more ----
+        // T3's `device_not_active` upload rejection: wire-unreachable until
+        // revocation existed, reachable now. The upload rides a session the
+        // gate refuses, so this asserts the durable teardown instead: the
+        // revoked device's bundle no longer exists to serve.
+        final gone = await bob.fetchBundleRawFor(
+          alice.userId,
+          deviceId: doomedId,
+        );
+        expect(
+          gone['success'] == false || gone['registrationId'] == null,
+          isTrue,
+          reason:
+              'the revoked device\'s key bundle was purged with it: $gone',
+        );
+      }, timeout: const Timeout(Duration(minutes: 4)));
     });
 
     test('no unexpected socket errors surfaced during the run', () {
