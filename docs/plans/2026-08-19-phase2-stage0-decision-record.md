@@ -180,5 +180,84 @@ by backend unit specs; it becomes wire-reachable when T6 revocation lands. (3) I
 (4) Flutter web a11y tree lags behind navigation in release builds — screenshots are ground
 truth for browser proofs; snapshot-then-click in one step is the reliable ref pattern.
 
-Next ticket: **T4** (envelopes + device rooms + per-device history reads) under its §4
-riders.
+## 9. T4 closure (2026-08-21) — envelopes, device rooms, per-device history
+
+**Landed** across 11 commits, `31ce335` (research + settlement) → `9c42859` (review fold):
+backend `98ad178`/`bbcfe8b`/`80b6035`, client `c5ddeed`/`1461e9d`/`abae48c`/`1885038`/`b28d268`,
+wire `8c8b12c`. **Per-ticket review: GATE FAIL → all findings folded → closed.**
+
+**Settled BEFORE code** (spec §12, dated 2026-08-20, items (v)–(ix)), grounded in
+`docs/plans/2026-08-20-t4-envelope-fanout-research.md` (three codebase scouts + two
+primary-source librarians): the send DTO growth + legacy→device-1 normalization at ingest;
+`deviceListStale` carrying a `lists[]` array + `tempId` so ONE round trip repairs both views
+(Signal-Server returns device ids only and forces a second `/keys` trip; Sesame §3.3 permits
+the richer answer, so ours is the Sesame shape); `senderListInfo` DEFERRED to T5 (the server is
+blind to it and its falsifications 16/22 are recipient-side); the per-device history join with
+an additive `envelopeStatus`; and **(ix)**, which the research itself forced — a new-model row
+carries no ciphertext for its origin device, so the landed exact-ciphertext lost-ack reconcile
+needed the `sendToken` key or the ONLY plaintext copy would strand.
+
+**Amendment (x), forced during implementation.** Requiring a device-list round trip on EVERY
+send to prove that a single-device account is single-device taxed the common path and hung 19
+existing suites on an unanswered fetch. Resolution: the client fans out only from a list it
+ALREADY holds, and the SERVER refuses a legacy ciphertext send whenever either party is
+enrolled, handing back the signed lists. I5 (never silently drop a device) therefore lands
+server-side where a client cannot skip it. Corollaries pinned in the amendment: never fan out
+without the RECIPIENT's list; resolve parties ABSENT from `lists[]`; `socketReady` echoes
+`deviceId` because the client cannot derive which device it is.
+
+**Riders discharged.** `preKeysLow` routed to `device:<uid>:<did>`; legacy fallback treats
+`originDeviceId IS NULL` as device 1; landmine-2 regression pin (a device-2 bundle under the
+shared IK is not churn — it already held, the branch being identity-keyed, and the test now
+prevents regression); envelope stamps never feed expiry or the read TTL; `updateDeliveryStatus`
+converted from a full-entity `save()` to a column-scoped UPDATE with the monotonic guard in the
+WHERE (falsification 19). **Recipient-FK rider ANSWERED, no FK added:** `deleteAccount` deletes
+every message of every conversation the user participates in (`users.service.ts:371`), and the
+`messageId` FK is ON DELETE CASCADE, so a recipient-user deletion cannot orphan envelopes.
+
+**Two bugs the settlement had not anticipated, found while building:** `preKeyBundleResponse`
+echoed no `deviceId`, so two in-flight per-device fetches for one peer were indistinguishable;
+and the pre-key fetch limiter was keyed `(requester, target user)` with a 750 ms floor, which
+REFUSED the second bundle fetch of a two-device peer outright — multi-device session
+establishment was impossible as landed. Both fixed in `bbcfe8b`.
+
+**Review (fresh reviewer, GATE FAIL → folded as `9c42859`).** One BLOCKER: the lost-ack
+reconcile keyed `sendToken ?? encryptedContent`, but a legacy send saves its record under the
+CIPHERTEXT while the token is emitted on every send, persisted, and echoed back to the origin
+device — so a legacy row carried both, the token won, the lookup missed, and the only plaintext
+copy stranded on EVERY lost ack (every production send is legacy until enrollment ships). Fixed
+by mirroring the save side (`encryptedContent ?? sendToken`); the suite had missed it because
+its own-row helper omitted the echoed token. Two P3s folded with it: the same precedence bug in
+reverse on the success path (a fan-out record was never consumed, leaking on disk), and
+`stampEnvelope` being dead code (now wired into `handleMessageDelivered`, stamping the REPORTING
+device, kept separate from the recipient-only row projection).
+
+**Verified:** backend **920/57**, ratchet **PASS 903** (improved from the 906 baseline; floor
+deliberately not lowered mid-ticket), analyze clean, flutter **1451/10sk**, wire **39/2sk**
+(+4 T4 falsifications: amendment (x), 5, per-device delivery, 13's marker), both count
+verifiers OK.
+
+**APP-PROVEN on account 193's two real devices** (peer 297 on a third origin). One send
+reproduced the whole designed path live: `[send] REFUSED legacy send to an enrolled party
+senderId=297 recipientId=193 stale=193@v2` → client adopted the list and resent as a fan-out →
+`newMessage emitted to recipient 193` → message 649 carries TWO envelope rows, `(193,1)` and
+`(193,2)`, with DIFFERENT ciphertexts (`3:MwgUEiEF` / `3:MwgAEiEF`) and a NULL legacy column →
+**both devices rendered the same plaintext**, each decrypting its own envelope.
+
+**Deviations recorded.** (1) A refusal code not in the amendment, `unknown_envelope_user`:
+without it a client could have the server deliver ciphertext to a third party the send never
+named. (2) A legacy send keeps its `encryptedContent` column as well as getting a device-1
+envelope, so a legacy row stays readable to today's clients for the whole §8 rollout window.
+(3) A ciphertext-less send (PING) keeps single-target delivery to device 1 — without that
+fallback those sends reached nobody. (4) C5 was not in the plan: C1 parameterized only the send
+side, so every inbound decrypt still used address `(sender, 1)` and a peer's device-2 envelope
+would Bad-MAC — fan-out would have been one-directional.
+
+**Process:** BOTH dispatched writers died to the same 429, and a third went silent mid-stage
+while the broker still reported it RUNNING. `hub jobs` status is NOT liveness — compare
+working-file mtimes against the clock. Recovered work was verified with full suites before being
+committed, never trusted.
+
+Next ticket: **T5** (self-sync + lost-ack + client `sendToken`) under its §4 riders. It inherits
+a live `sendToken` path, per-device addressing on both directions, and the own-sender guards
+deliberately left untouched at `decrypt.dart:963/975/1294` and `history.dart:529`.
