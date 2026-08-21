@@ -1,12 +1,16 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import '../utils/file_utils_stub.dart'
     if (dart.library.io) '../utils/file_utils_io.dart'
     as file_utils;
+import '../utils/web_ios_webkit.dart';
+import '../utils/web_file_input.dart';
+import 'input/composer_keyboard_signals.dart';
 import '../models/conversation_model.dart';
 import '../providers/auth_provider.dart';
 import '../providers/conversations_provider.dart';
@@ -52,6 +56,7 @@ class ChatActionTiles extends StatelessWidget {
   /// extension: image → staged-image flow, video → staged-video flow.
   final StageImageCallback? onStageImage;
   final StageVideoCallback? onStageVideo;
+
 
   const ChatActionTiles({
     super.key,
@@ -122,11 +127,13 @@ class ChatActionTiles extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    _ActionTile(
-                      icon: Icons.attach_file,
-                      tooltip: l10n.attachment,
-                      color: iconColor,
-                      onTap: () => _pickAttachment(context),
+                    Builder(
+                      builder: (tileContext) => _ActionTile(
+                        icon: Icons.attach_file,
+                        tooltip: l10n.attachment,
+                        color: iconColor,
+                        onTap: () => _pickAttachment(context, tileContext),
+                      ),
                     ),
                     const SizedBox(width: 12),
                     _ActionTile(
@@ -184,26 +191,82 @@ class ChatActionTiles extends StatelessWidget {
     'csv',
   ];
 
-  /// Paperclip door — ONE bare file input, no in-app sheet (owner ruling
-  /// 2026-08-17, device-proven): on iOS a plain input with this mixed accept
-  /// list makes Safari itself present Photo Library / Take Photo or Video /
-  /// Choose File — camera toggle included — so an in-app chooser is a
-  /// redundant hop. Android/desktop open their system picker (Android loses
-  /// the in-chat camera shortcut; accepted trade-off, iOS-first). The result
-  /// routes by extension: image/video STAGE (send button sends), documents
-  /// send immediately.
-  Future<void> _pickAttachment(BuildContext context) async {
+  static String _dotAccept(List<String> extensions) =>
+      extensions.map((e) => '.$e').join(',');
+
+  /// Paperclip door, per platform (owner rulings 2026-08-19/21):
+  ///
+  /// - iOS PWA: ONE bare file input — Safari itself presents Photo Library /
+  ///   Take Photo or Video / Choose File, so an in-app chooser is a redundant
+  ///   hop. The input is opened ANCHORED at the paperclip tile and stays in
+  ///   the DOM until the menu resolves (see web_file_input.dart): file_picker's
+  ///   display:none + synchronous-detach input left Safari's popover with no
+  ///   source rect — the mid-open dark morph blob / black flash.
+  /// - Android PWA: Chrome's chooser for a mixed image+video accept lists the
+  ///   camera twice (stills + camcorder, emulator-proven s27) and offers no
+  ///   gallery door, so the paperclip opens an in-app glass sheet with three
+  ///   unambiguous doors: Gallery / Camera / File (owner ruling 2026-08-19).
+  /// - Desktop web + native: system picker via file_picker, unchanged.
+  ///
+  /// The result routes by extension: image/video STAGE (send button sends),
+  /// documents send immediately.
+  Future<void> _pickAttachment(
+    BuildContext context,
+    BuildContext tileContext,
+  ) async {
     if (_requireActiveConversation(context) == null) return;
 
-    final pickResult = await FilePicker.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: [
-        ..._galleryImageExtensions,
-        ..._galleryVideoExtensions,
-        ..._documentExtensions,
-      ],
-      withData: true,
-    );
+    if (kIsWeb && webAnchoredFileInputSupported) {
+      final anchor = _tileAnchorRect(tileContext);
+      if (isIOSWebKit()) {
+        // The dialog is about to dismiss the keyboard; that drop is not a
+        // user dismiss — flag the native surface so the viewport collapses
+        // silently instead of running the dismiss slide mid-open. A timed
+        // guard cannot cover this: the drop arrives whenever the OS delivers
+        // it (measured 1.6s after the tap on the emulator).
+        beginComposerNativePicker();
+        WebPickedFile? picked;
+        try {
+          picked = await pickFileViaAnchoredInput(
+            anchorRect: anchor,
+            accept: _dotAccept([
+              ..._galleryImageExtensions,
+              ..._galleryVideoExtensions,
+              ..._documentExtensions,
+            ]),
+          );
+        } finally {
+          endComposerNativePicker();
+        }
+        if (picked == null || !context.mounted) return;
+        await _routePickedFile(
+          context,
+          fileName: picked.name,
+          bytes: picked.bytes,
+        );
+        return;
+      }
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        await _showAndroidAttachmentSheet(context, anchor);
+        return;
+      }
+    }
+
+    beginComposerNativePicker();
+    FilePickerResult? pickResult;
+    try {
+      pickResult = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: [
+          ..._galleryImageExtensions,
+          ..._galleryVideoExtensions,
+          ..._documentExtensions,
+        ],
+        withData: true,
+      );
+    } finally {
+      endComposerNativePicker();
+    }
     if (pickResult == null || pickResult.files.isEmpty) return;
     final file = pickResult.files.single;
     List<int>? bytes;
@@ -215,6 +278,117 @@ class ChatActionTiles extends StatelessWidget {
 
     if (!context.mounted) return;
     await _routePickedFile(context, fileName: file.name, bytes: bytes);
+  }
+
+  static Rect _tileAnchorRect(BuildContext tileContext) {
+    final box = tileContext.findRenderObject();
+    if (box is! RenderBox || !box.hasSize || !box.attached) {
+      // Degenerate but rendered fallback: bottom-center of the screen, where
+      // the composer lives — still a real anchor for Safari.
+      final size = MediaQuery.sizeOf(tileContext);
+      return Rect.fromCenter(
+        center: Offset(size.width / 2, size.height - 100),
+        width: 48,
+        height: 48,
+      );
+    }
+    return box.localToGlobal(Offset.zero) & box.size;
+  }
+
+  /// Android three-door sheet: Gallery / Camera / File. Each door opens the
+  /// anchored input with a door-specific accept, so Chrome never shows its
+  /// ambiguous camera/camcorder/media chooser.
+  Future<void> _showAndroidAttachmentSheet(
+    BuildContext context,
+    Rect anchor,
+  ) async {
+    // The modal sheet route unfocuses the composer and drops the keyboard
+    // before any door is tapped — that drop is not a user dismiss either.
+    // Depth-counted: a door begins its own span synchronously BEFORE this
+    // await resumes, so the flag never flickers between sheet and dialog.
+    beginComposerNativePicker();
+    final l10n = AppLocalizations.of(context);
+    final glass = GlassTheme.of(context);
+    try {
+      await showGlassSheet<void>(
+        context,
+        builder: (sheetContext) => SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              _AttachmentDoorRow(
+                key: const Key('attachment-door-gallery'),
+                icon: Icons.photo_library_outlined,
+                label: l10n.attachmentOptionGallery,
+                color: glass.onGlassAccent,
+                onTap: () => _openDoor(
+                  context,
+                  sheetContext,
+                  anchor,
+                  accept: 'image/*,video/*',
+                ),
+              ),
+              _AttachmentDoorRow(
+                key: const Key('attachment-door-camera'),
+                icon: Icons.photo_camera_outlined,
+                label: l10n.attachmentOptionCamera,
+                color: glass.onGlassAccent,
+                onTap: () => _openDoor(
+                  context,
+                  sheetContext,
+                  anchor,
+                  accept: 'image/*',
+                  capture: 'environment',
+                ),
+              ),
+              _AttachmentDoorRow(
+                key: const Key('attachment-door-file'),
+                icon: Icons.folder_outlined,
+                label: l10n.attachmentOptionFile,
+                color: glass.onGlassAccent,
+                onTap: () => _openDoor(
+                  context,
+                  sheetContext,
+                  anchor,
+                  accept: _dotAccept(_documentExtensions),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      );
+    } finally {
+      endComposerNativePicker();
+    }
+  }
+
+  /// Door tap: pop the sheet and open the input SYNCHRONOUSLY in the same
+  /// gesture stack (a deferred click is silently blocked — 08-19 §3.5), then
+  /// route the result. Fire-and-forget by design: the row's onTap is sync.
+  void _openDoor(
+    BuildContext context,
+    BuildContext sheetContext,
+    Rect anchor, {
+    required String accept,
+    String? capture,
+  }) {
+    beginComposerNativePicker();
+    Navigator.of(sheetContext).pop();
+    pickFileViaAnchoredInput(
+      anchorRect: anchor,
+      accept: accept,
+      capture: capture,
+    ).then((picked) async {
+      if (picked == null || !context.mounted) return;
+      await _routePickedFile(
+        context,
+        fileName: picked.name,
+        bytes: picked.bytes,
+      );
+    }).whenComplete(endComposerNativePicker).ignore();
   }
 
   /// Routes a picked file by extension. Routing is EXPLICIT: whitelisted
@@ -426,6 +600,35 @@ class ChatActionTiles extends StatelessWidget {
     if (context.mounted && Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
     }
+  }
+}
+
+/// One row of the Android attachment sheet: icon + label, full-width tap
+/// target. Android may look like itself (owner ruling 2026-08-19) — this is
+/// deliberately NOT a Cupertino action sheet or a dark iOS UIMenu clone.
+class _AttachmentDoorRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _AttachmentDoorRow({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ListTile(
+      leading: Icon(icon, color: color),
+      title: Text(label, style: theme.textTheme.bodyLarge),
+      onTap: onTap,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+    );
   }
 }
 
