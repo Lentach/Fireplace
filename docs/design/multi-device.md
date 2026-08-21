@@ -848,4 +848,81 @@ that is the designed outcome).
     The server tells the client which device it is by echoing `deviceId` on
     `socketReady`: it cannot be derived client-side, and a fan-out must exclude
     its own origin device.
+- **Amendment 2026-08-21 (T5 pre-implementation settlement, per the Stage-0 "settle before
+  code" rule; grounded in `docs/plans/2026-08-21-t5-self-sync-lost-ack-research.md`, which
+  cites libsignal, Signal-Server, Sesame, Matrix/Synapse, XEP-0198/0359, RFC 9420, CONIKS and
+  Apple CKV from primary source). Items (xi)–(xviii) are NORMATIVE for T5. Two facts found by
+  the research amend §5.4's own account of the work: the SEND half of self-sync already shipped
+  in T4 on both tiers, and §5.4's list of own-sender guards is INCOMPLETE — the decisive gate is
+  `MessageModel.needsDecryption`, and the receipt-emit guard must NEVER be device-scoped.**
+  - **(xi) The own-row decision law — deny-decrypt unless PROVEN foreign-origin.** For a row
+    with `senderId == me`, exactly one branch applies, evaluated in this order: (1)
+    `envelopeStatus == 'own_origin'` → this device is the origin; NEVER decrypt (a Signal sender
+    cannot decrypt its own output, and a failed attempt renders `[Decryption failed]` over the
+    ONLY plaintext copy); reconcile via the pending-send record. (2) `(originDeviceId ?? 1) ==
+    ownDeviceId` → the legacy shape of the same case (a legacy own row is served its own
+    ciphertext with no marker); NEVER decrypt; reconcile. (3) `(originDeviceId ?? 1) !=
+    ownDeviceId` → SELF-SYNC; decrypt as an ordinary inbound message against the session keyed
+    `(myUserId, originDeviceId)`, and NEVER touch the pending-send record. The default is
+    branch (1)/(2) behaviour: a row is decrypted only when its foreign origin is proven.
+  - **(xii) The device-scoped branch requires an AUTHORITATIVE `ownDeviceId`.** `ownDeviceId`
+    defaults to 1 and becomes authoritative only when `socketReady` echoes it, so a real device 2
+    believes it is device 1 in that window. Until it is authoritative, an own row takes branch
+    (1)/(2) — it stays `[encrypted]` and is retried once `socketReady` lands. Deferring the
+    render is acceptable; guessing is not, because branch (3) on a wrongly-scoped row would
+    attempt to decrypt this device's own ciphertext.
+  - **(xiii) The five guards of §5.4 are eight, and one of them must NOT be flipped.** Flip to
+    origin scoping: `MessageModel.needsDecryption` (**the master gate — omitted from §5.4; every
+    other flip is dead code without it**), the history own-message branch, the live-path queue
+    guard, the decrypt guard, and the terminal-duplicate guard (a foreign-origin own row IS a
+    genuine inbound envelope and is eligible for that rule). The optimistic-replace branch keeps
+    `tempId != null`, which already makes it origin-safe because a `tempId` exists only on the
+    device that minted it. **The receipt-emit guard (`messageDelivered` + read-marking) stays
+    ACCOUNT-scoped**: device-scoping it would make the sender's own second device emit a receipt
+    for the account's own message, which §4 and falsification 19 forbid. The edit-echo reconcile
+    and edit-eligibility checks likewise stay account-scoped — an edit is authored by the account.
+  - **(xiv) `sendToken` uniqueness is enforced SENDER-scoped, which is strictly stronger than
+    (ix)'s tuple.** The existing `UNIQUE (senderId, sendToken) WHERE sendToken IS NOT NULL`
+    already makes "two candidate rows" structurally impossible; adding `originDeviceId` to that
+    index would WIDEN the key and thereby PERMIT the same token from two devices, so it MUST NOT
+    be added. (ix)'s `(senderId, originDeviceId, sendToken)` remains the CLIENT-side match law;
+    the server contributes the uniqueness and the rule that the token is echoed ONLY to the row's
+    origin device — so a non-origin device never holds the key that could consume another
+    device's record. An ambiguous or absent match stays a no-op, asserted rather than assumed.
+  - **(xv) `senderListInfo` shape and cadence (settles the (vii) deferral).** The field is
+    `senderListInfo: {ownVersion, ownListHash, peerVersion, peerListHash}` inside the E2E
+    plaintext; the server never sees, stores or validates it. Each hash is SHA-256 over the
+    byte-exact DAK-signed `listCanonical` of that party's list as the SENDER knows it — never a
+    re-serialization, since a non-canonical encoding yields phantom mismatches (Matrix signs
+    canonical JSON for exactly this reason). Versions are the monotonic list versions. **Owner
+    ruling 2026-08-21: it rides EVERY message**, not a sample: detection is immediate on the
+    first message, and a sampled gossip (Apple CKV's approach) would make falsification 16 and
+    the app-proof non-deterministic. A party the sender holds no verified list for is reported as
+    absent, never as version 0.
+  - **(xvi) Escalation discipline — a bare claim NEVER alarms (I7).** `senderListInfo` is
+    untrusted peer-supplied data and may only be compared against the receiver's OWN verified,
+    DAK-signed lists. A claim OLDER than what the receiver knows is a candidate freeze signal
+    that renders only after the receiver independently confirms it against signed data. A claim
+    NEWER than the receiver knows triggers AT MOST ONE re-fetch, rate-limited to one in flight
+    per account with the rest queued (Matrix's rule — a parallel re-fetch lets a stale answer
+    clobber a fresh one), and is then DISCARDED. Skew between the receiver's OWN devices is
+    benign. First-contact TOFU stays unclosable in-band and MUST NOT be presented as if it were
+    closed.
+  - **(xvii) Own-device skew surfaces as a calm inline state (owner ruling 2026-08-21).** A small
+    inline "syncing devices…" note in the conversation, en+pl, that clears itself once the lists
+    agree. It MUST NOT reuse the identity-changed surface, and no security colour, icon or sound
+    is permitted on this path — conflating a benign sync with an attack trains the user to ignore
+    real warnings (Apple CKV: "warnings must be rare and accurate").
+  - **(xviii) The reinstall gap is ACCEPTED, not repaired (owner ruling 2026-08-21).** A device
+    that reinstalls holds no pending-send record and is echoed no `sendToken`, and the server
+    never had the plaintext, so that device's own older rows render the honest
+    `none_for_device`/own-origin placeholder permanently. This matches Signal's and Matrix's
+    behaviour for messages predating the current install. A cross-device plaintext backfill would
+    be a new plaintext-moving path and belongs to §9's Phase 4 if ever, NOT to T5.
+  - **(xix) The device-list rollback pin covers the enrolled→not-enrolled transition.** An
+    `authorization: null` answer for a party the client has already verified as enrolled at some
+    version MUST be refused as a version rollback, not cached as "not enrolled". Enrollment is
+    durable per §5.2, so the transition is never legitimate; caching it would silently narrow a
+    fan-out to device 1 and, once (xi) lands, silently kill self-sync. This fix is T5's first
+    stage because self-sync depends on the client's own device list being trustworthy.
 - **Next gate:** per-ticket implementation reviews (T1–T8); Stage 0 is CLOSED 2026-08-19.
