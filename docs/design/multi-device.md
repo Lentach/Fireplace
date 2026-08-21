@@ -944,4 +944,100 @@ that is the designed outcome).
        append a durable row per message and FIFO-evict every other piece of forensic evidence
        (`CONTENT_KEY_LOST`, `OWN_IDENTITY_REPLACED`, …) from the 80-entry ring. One surviving row
        per peer is what an operator needs; per-message detail stays in the ring-only flow log.
+- **Amendment 2026-08-21 (T6 pre-implementation settlement, per the Stage-0 "settle before
+  code" rule; doc remains frozen — these pin the enforcement points and refusal codes for
+  mechanisms §5.5, §5.1 and amendments (e)/(f) already mandate, changing no protocol law).
+  Owner-ratified 2026-08-21. All NORMATIVE:**
+  - **(xxi) Revocation refuses the primary and refuses self-revoke.** `revokeDevice` is
+    accepted only for a device that is NOT the caller's own (`cannot_revoke_self`) and NOT the
+    account's primary (`cannot_revoke_primary`); the caller's own row must be `isPrimary`
+    (`not_primary`). The cryptographic gate remains the DAK signature on the list mutation —
+    only the primary holds the DAK private key (§3), so the server-side `isPrimary` check is
+    defence in depth, not the authority. Rationale for the two refusals: a primary that
+    revoked itself would leave the account with NO device able to sign any future list
+    version, which no in-band path can repair — the recovery for a lost primary is the §6.2
+    reset, and a non-primary "sign me out" would need a server-signed list version, which §3
+    forbids. A DAK-signed list whose canonical bytes revoke a different set than the request
+    names is not reconciled: the request's `deviceId` MUST appear revoked in the submitted
+    canonical list (`list_device_mismatch`), so the signed bytes and the teardown always agree.
+  - **(xxii) The revoked-session predicate is "EXPLICITLY revoked", never "not active".** Both
+    new gates — the socket connect gate and the HTTP gate — deny only when the `devices` row
+    EXISTS and `revokedAt IS NOT NULL`. A MISSING row must never deny: every pre-Phase-1
+    account has no row until its first connect writes one (§8), so denying on absence would
+    lock out the entire legacy install base. This is deliberately the inverse polarity of
+    `DevicesService.isActive`, which gates key-material UPLOADS and must fail closed on
+    absence; a session gate that fails closed on absence is a mass lockout. Both predicates
+    stay, each at its own call sites.
+  - **(xxiii) I6 SILENCE is a separate rule from rejection, because silence is not an error.**
+    A revoked device's still-valid access JWT is REJECTED by mutating handlers, but
+    `getServedMessageIds` gets NO REPLY AT ALL — never an error answer, never an empty list.
+    An empty `messageIds` is a legitimate "destroy all of them" instruction (I6), so a
+    refusal shaped like an answer would remotely wipe the local history that §5.5 and §1
+    guarantee stays. The revoked device therefore keeps every message it holds and its expiry
+    sweep fails closed forever, which is the accepted over-retention I6 already records.
+  - **(xxiv) The HTTP surface learns `deviceId`, and per-device push becomes real.**
+    `JwtStrategy` now reads the `deviceId` claim (absent ⇒ device 1 per §8, exactly as the
+    socket path already does), applies (xxii), and exposes it on the request principal. That
+    unblocks the §5.5 clause that was unimplementable: the push-registration endpoints persist
+    the caller's `deviceId`, so revocation can delete that device's rows. Rows registered
+    BEFORE this ticket carry `deviceId IS NULL` and cannot be attributed to a device, so
+    revocation deletes the revoked device's rows AND every NULL-`deviceId` row of the account:
+    ambiguity resolves toward cutting the revoked device off, and a surviving device
+    re-registers its endpoint on its next start (self-healing, at most one missed push
+    window). Deleting nothing would keep pushing to the device the user just cut off.
+  - **(xxv) Revocation preempts EVERY pending provisioning stage of the account**, not only a
+    stage holding the revoked id (§5.1 "a security action never waits on a stuck link"). Every
+    live stage carries a list mutation signed against the pre-revocation list, so revocation's
+    version+1 makes all of them stale by construction; discarding them turns a guaranteed
+    `stale_version` at commit into an immediate, honest `unknown_stage`. Stages are in-memory
+    and keyed by `provisioningId` (amendment (iv)), so this is an iteration over the account's
+    stages — nothing durable is touched.
+  - **(xxvi) The kicked device is TOLD before it is dropped, and keeps its data.** The server
+    emits `deviceRevoked { userId, deviceId }` to the revoked device's room and THEN
+    disconnects its sockets. The client treats it as a logout with a stated reason (en+pl):
+    session tokens cleared, local plaintext store and Signal key material UNTOUCHED — which is
+    already what every existing logout path does, and is the §1 non-goal "no remote wipe" held
+    intact. The event is best-effort (an offline device gets nothing); the (xxii) connect gate
+    is the durable enforcement, so the UX must never depend on the event having arrived. A
+    device that reconnects and is refused shows the same stated reason rather than the generic
+    connection-lost banner.
+  - **(xxvii) Accept-side (e) fails closed on VERIFIED data, and a cache miss is not a
+    verdict.** At decrypt time, after the (xi) own-row branches have run, a genuine inbound
+    row's `(senderId, originDeviceId ?? 1)` MUST be present-and-not-revoked in the receiver's
+    verified list for that sender. The client's verified-list cache is memory-only, so a miss
+    is the NORMAL state after every reload: a miss MUST trigger the ordinary rate-limited
+    verified fetch and leave the row RETRYABLE (`[encrypted]`, no ledger consumption, no
+    terminal failure), never refuse it permanently. Only a list that positively shows the
+    origin device absent or revoked refuses the decrypt — and that refusal is silent (I7: it
+    is a decrypt refusal, never an alarm surface). A sender that is not enrolled verifies as
+    the synthesized single device 1, so an inbound `originDeviceId >= 2` from a non-enrolled
+    account is refused, which is the correct fail-closed reading of §5.2.
+  - **(xxviii) The §6.2 reset roster teardown (amendment (f)) is ONE transaction at the
+    authorized identity change**, which is the moment a reset actually completes (the
+    ceremony's consumption point, not the request). In that transaction: the recovering device
+    is ALLOCATED a fresh id from `users.nextDeviceId` and is re-issued its tokens with that
+    claim (the shape `provisioningCompleted` already uses — a reset must never re-mint device
+    1, per (f)(i)); every surviving `devices` row is stamped `revokedAt` (f)(ii); each revoked
+    device's key bundle and OTPs are purged strictly inside its own `(userId, deviceId)`
+    namespace; `users.nextDeviceId` is left untouched (f)(iv). Falsification 12 is precisely
+    the assertion that this teardown cannot reach a surviving device's key material.
+  - **(xxix) The `account_authorizations` row is REPLACED, never dropped, and its version
+    never restarts** (f)(iii). Dropping it would destroy the `listVersion` that (f)(iii)
+    requires be carried forward, contradict the entity's own law ("monotonic — never restarts,
+    even across a §6.2 reset") and make the account read as not-enrolled, which (xix) correctly
+    refuses as a rollback. So the reset transaction leaves the row ALONE: its DAK is now
+    orphaned, because the enrollment record `E` was signed by the identity key the reset just
+    replaced, so no peer can verify the chain and every peer FAILS CLOSED — the honest state
+    for an account whose identity just changed, and one the takeover alarm already surfaces.
+    Recovery is a REPLACEMENT enrollment, admitted by exactly one new rule: an enrollment whose
+    STORED `enrollmentSig` no longer verifies under the account's CURRENT published identity
+    MAY be replaced by a fresh IK-signed enrollment whose list version is strictly GREATER than
+    the stored version (`enrollment_version_must_be_1` continues to govern a genuine first
+    enrollment; first-write-wins is otherwise untouched). The predicate is self-verifying —
+    only an identity change can orphan a stored enrollment, and the fresh `E` must verify under
+    the identity the server currently serves — so no flag, no nullable state and no new
+    trust input is introduced. The recovering device re-enrolls immediately as part of recovery
+    (it holds the fresh IK, mints a fresh DAK, and signs a list naming only its newly allocated
+    deviceId); it needs no new wire field to do so, because `getDeviceList` already serves the
+    stored version it must exceed.
 - **Next gate:** per-ticket implementation reviews (T1–T8); Stage 0 is CLOSED 2026-08-19.
