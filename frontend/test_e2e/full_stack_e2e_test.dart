@@ -2205,8 +2205,6 @@ void main() {
         // (amendment (xxi)). It is also the primary, and the primary is the
         // only DAK holder: revoking it would leave the account unable to sign
         // any future list version, with the §6.2 reset as the only way back.
-        // `list_device_mismatch` needs two linked non-primary devices to
-        // reach, so it stays pinned in the unit spec.
         final selfRevoke = await alice.revokeDevice({
           'deviceId': 1,
           'listCanonical': revokingList['listCanonical'],
@@ -2214,6 +2212,41 @@ void main() {
         });
         expect(selfRevoke['success'], isFalse);
         expect(selfRevoke['error'], 'cannot_revoke_self', reason: '$selfRevoke');
+
+        // `list_device_mismatch`, the other half of (xxi): the request and the
+        // signed bytes must agree, or the teardown would cut off a device the
+        // account's own signed list still calls LIVE — and peers follow the
+        // list, so they would keep addressing envelopes to it.
+        //
+        // The payload is the account's CURRENT stored list, which is genuinely
+        // DAK-signed and still shows `doomed` live. That is the point: an
+        // honest signature over the wrong SET is exactly the case the rung
+        // exists for, and it proves the refusal is not merely a signature
+        // check wearing a different name.
+        //
+        // This reaches the rung with ONE live non-primary device, not two: the
+        // second device the older note asked for is the PRIMARY CALLER, which
+        // every enrolled account already has. It must run BEFORE the real
+        // revocation below — afterwards `doomed` is revoked and `already_revoked`
+        // (an earlier rung) would answer instead.
+        final mismatch = await alice.revokeDevice({
+          'deviceId': doomedId,
+          'listCanonical': beforeAuth['listCanonical'],
+          'listSignature': beforeAuth['listSignature'],
+        });
+        expect(mismatch['success'], isFalse);
+        expect(
+          mismatch['error'],
+          'list_device_mismatch',
+          reason: '$mismatch',
+        );
+        // Refused PRE-WRITE: the stored list did not move, and the very next
+        // block revokes this same device successfully — so a refusal that had
+        // leaked a partial teardown would break the proof that follows it.
+        expect(
+          (await currentAuth())['listCanonical'],
+          beforeAuth['listCanonical'],
+        );
 
         alice.events.discard('deviceListChanged');
         doomed.events.discard('deviceRevoked');
