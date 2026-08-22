@@ -1,3 +1,24 @@
+> # ⛔ SUPERSEDED — T8 CLOSED 2026-08-22. DO NOT USE THIS AS A BRIEF.
+>
+> This file's own expiry clause said to banner it the moment T8 closed and to write **no
+> replacement**. That is what happened; there is no live per-ticket handoff and there should not be
+> one. The permanent handoff is the books — `LATEST.md`, the dated summaries, root `CLAUDE.md`, the
+> frozen spec and the decision record — plus `.planning/multi-device/` in the MAIN checkout.
+>
+> Kept only as a record of what the ticket was briefed to do, and **three of its claims turned out to
+> be WRONG**, which is the most useful thing left in it:
+>
+> - **§4 said 14c was blocked on 14a.** It never was. `list_device_mismatch` needs the PRIMARY as
+>   caller and ONE live non-primary as target; the "second non-primary device" is the primary caller
+>   every enrolled account already has.
+> - **§4 said the ceremony budget was the constraint on a second account.** The real one is
+>   `/auth/register`: **10 per HOUR per IP, shared by the whole `test_e2e/` directory**, already spent
+>   to the edge by the default run.
+> - **§2's counts and §4's line numbers are stale**, as its own lesson 4 predicted.
+>
+> What T8 actually did, and what it left owed: `2026-08-22-session-t8-harness-sweep.md` and decision
+> record §13. Next step is the three-reviewer phase gate.
+
 # HANDOFF — start here for T8 (harness sweep), written 2026-08-22
 
 **Read this once, then work from the books.** This file carries only what the books do not: the T8

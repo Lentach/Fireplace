@@ -513,3 +513,80 @@ this codebase.
 **Verified at `7c297c2`:** backend **990/61** · ratchet **886** real (floor 906, PASS — typing the edit
 handler removed 20 more unsafe-access findings than the ticket added) · analyze clean · flutter
 **1519/10sk** · wire **43/2sk**, both count verifiers OK.
+
+## 13. T8 closure (2026-08-22) — the harness sweep
+
+Seven items, every one of them a proof an earlier ticket left owed. Settled BEFORE code as spec §12
+amendments **(xxxv)–(xxxviii)** (`343fc1a`), after a seven-scout research round. Spine: `343fc1a`
+settlement → `6f746dc` 14f pin refusal → `a85129b` 14e skew-note isolation → `543bd92` 14g stamp
+write-half → `0435ea8` 14c `list_device_mismatch` on the wire → `46622dc` 14b real self-sync decrypt →
+`af90c77` 14d real §6.2 reset + falsification 12 (and 14a) → `cecdf44` review fold. Reviewed twice —
+a ticket reviewer (one P3, folded) and a fresh reviewer on the fold (zero findings) — no P0/P1/P2
+either time.
+
+**Three of the seven items were not what the brief said they were, and saying so is the point of this
+section.**
+
+- **14c was never blocked on 14a.** The T6 comment claiming `list_device_mismatch` "needs two linked
+  non-primary devices" is false: the gauntlet needs the PRIMARY as caller and ONE live non-primary as
+  target, and the second device the note asked for is the primary caller every enrolled account already
+  has. The rung is pre-write and is checked BEFORE the DAK signature, so the probe submits the
+  account's own current signed list — an honest signature over the wrong SET, which is exactly the case
+  (xxi) exists for — and mutates nothing. It costs one `revokeDevice` (limit 60) and zero ceremony
+  budget.
+- **14b needed no second account and no production seam.** It reuses the memoized ceremony fixture and
+  separates the two same-account Signal keystores in TIME (snapshot/restore of the static mock map)
+  around the shipping `adoptProvisionedIdentity`. A `storagePrefix` parameter on `EncryptionService`
+  was considered and rejected: a test-only concept in shipping at-rest key shapes, for no production
+  benefit.
+- **14a's real constraint is the REGISTER budget, not the ceremony budget.** `/auth/register` is 10 per
+  HOUR per IP and — with no nginx locally — the whole `test_e2e/` directory shares one bucket. Measured:
+  the default run already spends it to the edge, and adding a third account to `full_stack_e2e_test.dart`
+  throttles `takeover_alarm_test.dart` into `ThrottlerException`. So the second enrolled account exists
+  **in the opt-in reset probe**, which is its only consumer, rather than in the shared suite. Raising a
+  production anti-abuse cap to fit a test was rejected. This is a NEW cliff, sitting beside the ceremony
+  cliff T7 found, and it will bite the next person who adds an account anywhere in that directory.
+
+**What is now proven that was not.** A sender's second device DECRYPTS a real self-sync envelope on the
+wire (14b) — falsification 6 only ever proved routing, with a synthetic ciphertext. `list_device_mismatch`
+is wire-proven (14c). A real §6.2 reset ran END TO END against a live account for the first time in the
+program, and falsification 12's per-device epoch claim is proven with TWO real `(identityPublicKey,
+deviceId)` partitions (14d): live evidence on user 537 — devices 1 and 2 both `revokedAt`, device 3
+primary and live, `nextDeviceId` 3→4 never reusing 1, `key_bundles` reduced to device 3 under the NEW
+identity, every old-epoch pre-key gone, and `account_authorizations.listCanonical` BYTE-IDENTICAL across
+the reset, which is (xxix).
+
+**A throttled `pinMessage` no longer strands optimistic state (14f).** The obvious fix was a trap and is
+forbidden by (xxxvii): the guard refuses pre-handler holding only `{conversationId, messageId}`, so
+answering `messagePinned` with a null id would unpin a conversation that had a DIFFERENT message pinned,
+and echoing the attempted id would confirm a pin that never happened. The refusal is a dedicated
+`messagePinFailed`, and the device restores what it overwrote from a pre-pin snapshot. Full audit of
+every `@SubscribeMessage` handler found ZERO unreachable `THROTTLE_ANSWERS` entries.
+
+**14g closes by ACCEPTING evidence, deliberately.** Per-device `deliveredAt`/`readAt` are barred from the
+wire — I9 keeps them out of expiry, §5.3 keeps them behind the single §4 projection, and exposing them
+would reveal WHICH recipient device read a message, on a public repo. So survival is pinned by the
+content-only conflict clause plus the recorded SQL check, per (xxxviii). Two real defects were fixed
+while establishing that: the old test's title claimed it protected `readAt`, which is **never written by
+any code path** and therefore trivially "survives"; and `stampEnvelope` had no unit test at all, so its
+column-scoped `set` and its WRITE-ONCE `IS NULL` predicate — the property that makes the first delivery
+time the durable one — were unpinned.
+
+**Every guard added got the two-way proof, in this session, and two of them taught us something.**
+Making `adoptProvisionedIdentity` mint a foreign identity did NOT fail at 14b's identity-equality
+assertion — it died earlier at `uploadKeyBundle` with `identity_locked`, because the §6.1 registration
+lock refuses a linked device publishing an unauthorized identity. Amendment (xxxv) was corrected in
+place rather than left standing on a justification now known to be wrong. And the reset probe's first
+run revealed that the recovering device MUST rebind to the deviceId-bound token the teardown issues:
+without it, 20 fresh-epoch pre-keys landed on the REVOKED device 1's partition.
+
+**Owed, recorded not claimed.** (1) **No app-proof.** T8's only user-visible production change is the
+pin-refusal revert; the browser tool needs a per-session owner grant and none was given, so the pin
+revert is suite-proven only. (2) **`setDisappearingTimer` is the same divergence class as 14f** —
+throttled 60/15 min, writes optimistic state, absent from `THROTTLE_ANSWERS`, not unwound by `error`.
+Found during the 14f audit, deliberately NOT fixed so the ticket stayed single-purpose. (3) The reset
+probe is opt-in and therefore defends nothing in CI until the registration budget has room.
+
+**Verified at `cecdf44`:** backend **1007/61** · ratchet **PASS 889** real (floor 906, not lowered) ·
+analyze clean · flutter **1530/10sk** · wire **44/3sk** · opt-in reset probe **1/1**
+(`--dart-define=RESET_PROBE=true`), both count verifiers OK.
