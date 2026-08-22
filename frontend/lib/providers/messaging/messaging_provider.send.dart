@@ -840,6 +840,17 @@ extension MessagingSend on MessagingProvider {
         }
       }
 
+      // An EDIT refusal is correlated by messageId, not tempId (spec §5.7 +
+      // §12 amendment (xxxi)). It MUST be driven to a conclusion: the edit was
+      // applied optimistically, so returning here would leave this device
+      // showing the new text forever while the server and the peer keep the old
+      // ciphertext — a silent divergence that survives a reopen.
+      final staleEditId = data['messageId'] as int?;
+      if (staleEditId != null) {
+        await _retryStaleEdit(staleEditId);
+        return;
+      }
+
       if (tempId == null) return;
       final index = _messages.indexWhere((m) => m.tempId == tempId);
       if (index == -1) return;
@@ -889,6 +900,51 @@ extension MessagingSend on MessagingProvider {
         );
       }
     }
+  }
+
+  /// Re-drive an edit the server refused as `device_list_stale`, now that the
+  /// signed lists from the refusal have been adopted (spec §5.7, same bounded
+  /// bounce as §5.2).
+  ///
+  /// Bounded for the same reason a send is: three attempts, then the optimistic
+  /// edit is REVERTED rather than left diverging from the server. Retrying
+  /// forever against a list this client cannot verify would strand the row in a
+  /// state only this device believes in.
+  Future<void> _retryStaleEdit(int messageId) async {
+    final index = _messages.indexWhere((m) => m.id == messageId);
+    if (index == -1) return;
+    final row = _messages[index];
+    final conv = (_conversationsProvider?.conversations ?? [])
+        .where((c) => c.id == row.conversationId)
+        .firstOrNull;
+    if (conv == null) return;
+    final recipientId = conv_helpers.getOtherUserId(conv, _currentUserId);
+    final encryption = _encryptionProvider;
+    if (encryption == null) return;
+
+    // Resolve every party the re-fan needs; an `authorization: null` answer
+    // caches "not enrolled, device 1 only", which is what decides the shape.
+    for (final userId in {recipientId, ?_currentUserId}) {
+      if (encryption.cachedDeviceList(userId) == null) {
+        await encryption.getVerifiedDeviceList(userId);
+      }
+    }
+
+    final key = 'edit:$messageId';
+    final attempts = (_staleResendAttempts[key] ?? 0) + 1;
+    _staleResendAttempts[key] = attempts;
+    if (attempts > 3) {
+      _staleResendAttempts.remove(key);
+      _revertPendingEdit(messageId, 'device_list_stale');
+      return;
+    }
+
+    await _encryptAndEmitEdit(
+      messageId: messageId,
+      recipientId: recipientId,
+      // The optimistically applied text — the edit the user actually asked for.
+      content: row.content,
+    );
   }
 
   /// Retry sending a failed message (any type).

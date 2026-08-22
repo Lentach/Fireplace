@@ -305,5 +305,56 @@ void main() {
       // author's own message.
       expect(row.content, contentBeforeEcho);
     });
+    test('a stale-list edit refusal is REPAIRED and re-fanned, not left diverging', () async {
+      await seed(id: 500, senderId: 1);
+      provider.editMessage(500, 'after');
+      await pump();
+      final firstEdit = lastEdit();
+      expect(firstEdit.containsKey('envelopes'), isFalse, reason: 'no list held yet');
+
+      // The server refuses and hands back the signed lists. Without a handler
+      // for this the optimistic edit would stick on this device FOREVER while
+      // the server and the peer keep the old ciphertext.
+      encryption.cache(2, _enrolled(4, [1, 2]));
+      encryption.cache(1, _enrolled(7, [1]));
+      await provider.onDeviceListStale({
+        'success': false,
+        'error': 'device_list_stale',
+        'messageId': 500,
+        'lists': const [],
+      });
+      await pump();
+
+      final repaired = lastEdit();
+      final addresses = (repaired['envelopes'] as List)
+          .cast<Map<String, dynamic>>()
+          .map((e) => (e['userId'], e['deviceId']));
+      expect(addresses, containsAll([(2, 1), (2, 2)]));
+      expect(repaired['recipientListVersion'], 4);
+      // The user's text survives the repair.
+      expect(provider.messages.firstWhere((m) => m.id == 500).content, 'after');
+    });
+
+    test('a stale-list edit that never settles REVERTS instead of diverging', () async {
+      await seed(id: 500, senderId: 1);
+      final original = provider.messages.firstWhere((m) => m.id == 500).content;
+      provider.editMessage(500, 'after');
+      await pump();
+
+      // Four refusals: three retries then a surfaced revert (§5.2 bounded
+      // bounce). Retrying forever would strand the row in a state only this
+      // device believes in.
+      for (var i = 0; i < 4; i++) {
+        await provider.onDeviceListStale({
+          'success': false,
+          'error': 'device_list_stale',
+          'messageId': 500,
+          'lists': const [],
+        });
+        await pump();
+      }
+
+      expect(provider.messages.firstWhere((m) => m.id == 500).content, original);
+    });
   });
 }
