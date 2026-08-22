@@ -442,3 +442,74 @@ the app.
 
 **Verified at `43cdc67`:** backend **982/61** · ratchet **900** (floor 906, PASS) · analyze clean ·
 flutter **1510/10sk** · wire **42/2sk**.
+
+## 12. T7 closure (2026-08-22) — edit re-fan under envelopes
+
+**Settled first, as always: spec §12 (xxx)–(xxxiv), committed at `4a57f74` BEFORE any code.** The owner
+ratified all five recommendations. Four filled gaps; **(xxx) fixed a latent bug in the FROZEN text**,
+found by reading the receive path rather than the spec: §5.7 permits an edit from any of the sender's
+devices, but the receiver keys its Signal session off `messages.originDeviceId`
+(`messaging_provider.decrypt.dart:1354-1355`, whose own comment already defines the field as "the
+device that PRODUCED this ciphertext"), and the edit receive path kept the row's ORIGINAL value. Any
+edit from a second device would therefore have Bad-MAC'd on every receiver — a row that decrypted
+fine before the edit. `originDeviceId` is now defined as *the producer of the ciphertext currently
+stored*, and an edit updates it. Falsification 24 did NOT cover this: it asserts a non-origin edit
+SUCCEEDS, never that a third device DECRYPTS it. T7 adds that assertion.
+
+**The defect was bigger than the ticket's framing.** An edit did not merely miss the peer's other
+devices — it wrote the LEGACY `messages.encryptedContent` column and never touched
+`message_envelopes` at all. Since a new-model row keeps that column NULL and every device reads its
+own envelope, the edited text existed ONLY in the live socket emit: every device, the peer's device 1
+included, re-read the ORIGINAL ciphertext after a reload. T7 is a migration of edits onto the envelope
+table, not just a wider fan-out.
+
+**Spine:** `4a57f74` settlement → `f3baaf7` backend (DTO + the first UPSERT in this codebase + one
+transaction + per-device fan) → `3c9e16e` client (reuse the send fan-out; adopt the producing device;
+split the own-row branch) → `3077d06` wire falsification 24 → `febbbae` the stale-refusal divergence
+fix + docs → `eaf1e78` review fold → `7c297c2` the second fold.
+
+**Reviewed twice, no P0 and no P1 either time.** The ticket reviewer returned SHIP-WITH-FIXES and
+confirmed the conflict clause, the transaction, (xxx) end to end, the guard ordering and the (xxxii)
+discriminator; its four findings (two P2, two P3) were folded. The fold reviewer then caught that the
+test guarding the retry-budget reset **could not fail** — four bounces trip the exhaustion path, which
+clears the counter itself. Three bounces leave it at 3, and the test was then PROVEN to fail with the
+production line removed (1518 passing + 1 failing) and pass with it restored (1519).
+
+**Deviations from the literal spec, both recorded as amendments:** (xxxii) the legacy column is written
+for LEGACY rows only, because `content === '[encrypted]' && encryptedContent == null` IS the server's
+new-model discriminator, so writing it would silently reclassify a row after one edit; and (xxxi) the
+staleness bounce reuses the existing `deviceListStale` event rather than inventing an
+`editMessageFailed` code, which keeps §5.7's "reject paths unchanged" literally true.
+
+**T7 also created a refusal with no listener, and that is the transferable lesson.** Giving the edit
+path a `deviceListStale` answer left the client with no handler: `onDeviceListStale` correlates by
+`tempId` and returned early, while an edit refusal carries `messageId` — so the optimistically applied
+edit would have sat on the editing device forever while the server and the peer kept the old text,
+surviving a reopen. **For every refusal added, name the client code that drives it to a conclusion.**
+
+**Proven live.** Wire falsification 24 passes (43/2sk) and the app-proof ran on account 193 against
+peer 297. Message **1012**: sent, DELIVERED (`deliveredAt 04:41:15.544`, `createdAt 04:41:15.511`),
+then edited from the app at 04:42:25 (`[edit] … deviceId=1 envelopes=1`). Afterwards the row carries
+`editedAt`, its legacy column is still NULL, `deliveryStatus` is still READ, and **the envelope's
+`deliveredAt` and `createdAt` are byte-identical to their pre-edit values** — the content-only UPSERT
+preserved them, which is durability finding F8 observed on a real row rather than asserted through a
+mock. The peer rendered "T7 AFTER refan" with the *edytowano* marker and **still showed it after a
+full reload**, which before T7 would have resurrected the pre-edit text from the envelope. Server-side
+replacement of the envelope ciphertext is proven separately by the wire run (message **1011**:
+`originDeviceId 7` — the EDITING device, not the device 1 that sent it; bob's envelope holds the
+edited bytes with `deliveredAt` still set; alice's device 1, which had NO envelope because it was the
+origin of the send, has an INSERTED one).
+
+**Owed, recorded not claimed:** the wire suite cannot read envelope stamp columns, so falsification 24
+asserts the ROW projection only — its comment now says so explicitly, and the stamp survival rests on
+the unit assertion plus the SQL evidence above. **The harness has NO ceremony headroom left**:
+`provisioningComplete` is throttled 10 per 15 minutes keyed by USER, every ceremony client adopts
+alice's account, and the suite spends exactly that budget — so falsifications 6 and 24 now share one
+linked device via a memoized fixture, and any new ceremony-based test in T8 must do the same. Related
+product wart, NOT fixed and needing an ask: the throttler guard THROWS instead of emitting, so a user
+who burns that cap gets silence and a link UI that hangs with no error, unlike every other refusal in
+this codebase.
+
+**Verified at `7c297c2`:** backend **990/61** · ratchet **886** real (floor 906, PASS — typing the edit
+handler removed 20 more unsafe-access findings than the ticket added) · analyze clean · flutter
+**1519/10sk** · wire **43/2sk**, both count verifiers OK.
