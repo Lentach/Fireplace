@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:fireplace/providers/conversations_provider.dart';
@@ -32,6 +33,11 @@ class _ClaimEncryption extends EncryptionProvider {
   /// The claim the next decrypt will hand back inside the envelope.
   SenderListInfo? claim;
 
+  /// Optional latch: when set, `getVerifiedDeviceList` parks until it is
+  /// completed, so a test can observe the calm flag WHILE the fetch is in
+  /// flight. Every existing test leaves it null and is unaffected.
+  Completer<void>? gate;
+
   @override
   bool get isE2EReady => true;
 
@@ -56,6 +62,7 @@ class _ClaimEncryption extends EncryptionProvider {
     Duration timeout = const Duration(seconds: 10),
   }) async {
     refreshes.add(userId);
+    if (gate != null) await gate!.future;
     // Whatever we re-fetch, our OWN verified truth does not change — that is
     // the point: the peer's claim never rewrites it.
     final resolved = _cache[userId] ?? const VerifiedDeviceList.notEnrolled();
@@ -218,6 +225,40 @@ void main() {
           provider.devicesSyncing,
           isFalse,
           reason: 'cleared after the fetch',
+        );
+      },
+    );
+
+    test(
+      'the calm flag is actually RAISED while our own list is re-fetched',
+      () async {
+        // The sibling test above only ever observes the flag after the fetch
+        // has settled, so deleting `_setDevicesSyncing(true)` from the
+        // escalation would leave it green while DevicesSyncingNote silently
+        // never appeared (spec §12 (xvii)). Hold the fetch open and look.
+        encryption.seed(2, _enrolled(7, 'peer'));
+        encryption.seed(1, _enrolled(5, 'mine'));
+        encryption.claim = const SenderListInfo(peerVersion: 6);
+        final gate = Completer<void>();
+        encryption.gate = gate;
+
+        final inFlight = receive(9004);
+        await pump();
+
+        expect(
+          provider.devicesSyncing,
+          isTrue,
+          reason: 'raised for the duration of the re-fetch',
+        );
+
+        gate.complete();
+        await inFlight;
+        await pump();
+
+        expect(
+          provider.devicesSyncing,
+          isFalse,
+          reason: 'and cleared once it settles',
         );
       },
     );

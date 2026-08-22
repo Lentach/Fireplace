@@ -398,6 +398,35 @@ describe('MessagesService.applyEdit', () => {
 });
 
 /**
+ * The lost-ack reconcile is only exactly-once if the lookup is SENDER-SCOPED
+ * (Phase 1, spec §5.4). A send token is unique per sender, not globally, so a
+ * query that dropped the sender clause would let one account's retry reconcile
+ * onto ANOTHER account's row — re-acking a stranger's message and leaking its
+ * id and conversation back to the wrong client. Nothing pinned the clause.
+ */
+describe('MessagesService.findBySendToken', () => {
+  it('scopes the lookup to the SENDER, not the token alone', async () => {
+    const repo = { findOne: jest.fn().mockResolvedValue(null) };
+    const module = await Test.createTestingModule({
+      providers: [
+        MessagesService,
+        { provide: getRepositoryToken(Message), useValue: repo },
+        mediaCleanupMock(),
+      ],
+    }).compile();
+    const service = module.get(MessagesService);
+
+    await service.findBySendToken(42, 'tok-abcdefgh');
+
+    expect(repo.findOne).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { sender: { id: 42 }, sendToken: 'tok-abcdefgh' },
+      }),
+    );
+  });
+});
+
+/**
  * The WRITE half of envelope-stamp survival (spec §12 (xxxviii)).
  *
  * `applyEdit`'s content-only conflict clause is what stops an EDIT from zeroing

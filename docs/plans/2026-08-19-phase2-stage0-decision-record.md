@@ -560,8 +560,17 @@ the reset, which is (xxix).
 forbidden by (xxxvii): the guard refuses pre-handler holding only `{conversationId, messageId}`, so
 answering `messagePinned` with a null id would unpin a conversation that had a DIFFERENT message pinned,
 and echoing the attempted id would confirm a pin that never happened. The refusal is a dedicated
-`messagePinFailed`, and the device restores what it overwrote from a pre-pin snapshot. Full audit of
-every `@SubscribeMessage` handler found ZERO unreachable `THROTTLE_ANSWERS` entries.
+`messagePinFailed`, and the device restores what it overwrote from a pre-pin snapshot.
+
+That ticket's audit claimed ZERO unreachable `THROTTLE_ANSWERS` entries. **The phase gate corrected
+this.** `updateDeviceList` maps to a `deviceListUpdated` answer that NO production client listens for
+(zero `socket.on('deviceListUpdated')` in `frontend/lib`), and no production code emits
+`updateDeviceList` either — list mutation goes through `provisionDevice`/`revokeDevice`, and only
+`test_e2e/support/e2e_test_client.dart` drives it. So the entry is harness-reachable, not
+production-reachable: benign today precisely because the request is unreachable too, but it MUST be
+wired before Phase 3's device-management UI drives `updateDeviceList`, or that UI stakes state on an
+answer it never receives — the same half-a-feature class as T5's confirmed-device-id and T7's
+`deviceListStale`.
 
 **14g closes by ACCEPTING evidence, deliberately.** Per-device `deliveredAt`/`readAt` are barred from the
 wire — I9 keeps them out of expiry, §5.3 keeps them behind the single §4 projection, and exposing them

@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { IsNull } from 'typeorm';
 import { Device } from './device.entity';
 import { DevicesService } from './devices.service';
 
@@ -240,11 +241,13 @@ describe('DevicesService', () => {
       const [args] = repo.find.mock.calls[0] as [
         { where: Record<string, unknown> },
       ];
-      expect(args.where).toHaveProperty('revokedAt');
+      // `toHaveProperty` alone would survive an IsNull() -> Not(IsNull())
+      // inversion: the property still exists and userId still matches, while
+      // login resolves onto a REVOKED device. Assert the VALUE.
+      expect(args.where).toEqual({ userId: 7, revokedAt: IsNull() });
       // The whole point: after a reset revokes device 1, a password login that
       // still claimed device 1 would be refused by both §5.5 session gates —
       // the owner locked out with the correct password.
-      expect(args.where).toMatchObject({ userId: 7 });
     });
 
     it('falls back to the lowest live id when no row claims primary', async () => {

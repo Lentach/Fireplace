@@ -90,6 +90,7 @@ describe('ChatMessageService', () => {
    * method (unbound-method); the raw fn has no `this` to lose.
    */
   let findServedMessageIdsMock: jest.Mock;
+  let findBySendTokenMock: jest.Mock;
   /**
    * Raw handles for the T4 fan-out asserts, for the same reason as
    * `findServedMessageIdsMock` above: a bare jest.fn has no `this` to lose,
@@ -107,6 +108,9 @@ describe('ChatMessageService', () => {
 
   beforeEach(async () => {
     findServedMessageIdsMock = jest.fn().mockResolvedValue([]);
+    // No committed row by default: every pre-existing send law is unchanged,
+    // because a send without a token never reaches this lookup anyway.
+    findBySendTokenMock = jest.fn().mockResolvedValue(null);
     createMock = jest.fn();
     isActiveMock = jest.fn().mockResolvedValue(true);
     // The I6 SILENCE gate (§5.5): live by default, so every existing
@@ -139,6 +143,7 @@ describe('ChatMessageService', () => {
             deleteById: jest.fn(),
             applyEdit: jest.fn(),
             findServedMessageIds: findServedMessageIdsMock,
+            findBySendToken: findBySendTokenMock,
           },
         },
         {
@@ -458,6 +463,77 @@ describe('ChatMessageService', () => {
         10,
         'alice',
       );
+    });
+
+    /**
+     * The lost-ack reconcile (spec §5.4). Wire falsification 14 covers the
+     * happy re-ack — same token, same conversation, one row. These cover the
+     * two branches nothing exercised: the cross-conversation REFUSAL, and the
+     * fact that a re-ack never re-fans.
+     */
+    describe('sendToken reconcile', () => {
+      it('REFUSES a token already spent on a different conversation', async () => {
+        arrangeSuccessfulTextMessageSend();
+        // A token is unique per SENDER, not per conversation. Re-acking it here
+        // would report success for a message THIS conversation never received,
+        // and writing it would violate UNIQUE(senderId, sendToken).
+        findBySendTokenMock.mockResolvedValue({
+          id: 77,
+          conversation: { id: 999 },
+        });
+
+        await service.handleSendMessage(
+          mockClient as Socket,
+          { recipientId: 2, content: 'hello', sendToken: 'tok-abcdefgh' },
+          mockServer as Server,
+        );
+
+        expect(mockClient.emit).toHaveBeenCalledWith('error', {
+          message: 'duplicate_send_token',
+        });
+        expect(mockClient.emit).not.toHaveBeenCalledWith(
+          'messageSent',
+          expect.anything(),
+        );
+        expect(createMock).not.toHaveBeenCalled();
+      });
+
+      it('re-acks a token committed on THIS conversation without writing again', async () => {
+        arrangeSuccessfulTextMessageSend();
+        findBySendTokenMock.mockResolvedValue({
+          id: 77,
+          content: 'hello',
+          conversation: mockConversation,
+          sender: mockSender,
+        });
+
+        await service.handleSendMessage(
+          mockClient as Socket,
+          { recipientId: 2, content: 'hello', sendToken: 'tok-abcdefgh' },
+          mockServer as Server,
+        );
+
+        // Re-fanning would deliver the same ciphertext twice, and Signal
+        // decryption is not idempotent.
+        expect(createMock).not.toHaveBeenCalled();
+        expect(mockClient.emit).toHaveBeenCalledWith(
+          'messageSent',
+          expect.objectContaining({ id: 77 }),
+        );
+      });
+
+      it('scopes the reconcile lookup to the authenticated sender', async () => {
+        arrangeSuccessfulTextMessageSend();
+
+        await service.handleSendMessage(
+          mockClient as Socket,
+          { recipientId: 2, content: 'hello', sendToken: 'tok-abcdefgh' },
+          mockServer as Server,
+        );
+
+        // The sender comes from the socket, never from the payload.
+        expect(findBySendTokenMock).toHaveBeenCalledWith(1, 'tok-abcdefgh');
+      });
     });
   });
 

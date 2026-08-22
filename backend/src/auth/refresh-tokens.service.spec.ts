@@ -148,4 +148,67 @@ describe('RefreshTokensService', () => {
     // the pre-Phase-1 session of whoever is revoking.
     expect(repo.delete).toHaveBeenCalledWith({ userId: 42, deviceId: 2 });
   });
+
+  // The §6.2 roster teardown (amendment (xxviii)) is atomic ONLY if these
+  // writes ride the caller's transaction. The roster spec pins that a manager
+  // is PASSED; this pins that it is HONOURED. Without it, dropping the
+  // `manager ? … : this.refreshRepo` branch leaves both specs green while the
+  // session wipe silently returns to the autocommit connection — it could then
+  // commit while the roster mutation rolls back, which is the exact false
+  // guarantee the amendment exists to deny.
+  describe('honours a caller-supplied EntityManager', () => {
+    // Raw jest.Mock handles throughout, for the reason the suite already
+    // relies on elsewhere: a bare jest.fn has no `this` to lose, while
+    // asserting through the class-typed repo method trips `unbound-method`.
+    let txSave: jest.Mock<Promise<RefreshToken>, [RefreshToken]>;
+    let txDelete: jest.Mock;
+    let getRepository: jest.Mock;
+    let manager: { getRepository: jest.Mock };
+    let defaultSave: jest.Mock;
+    let defaultDelete: jest.Mock;
+
+    beforeEach(() => {
+      txSave = jest.fn((e: RefreshToken) => Promise.resolve(e));
+      txDelete = jest.fn().mockResolvedValue({ affected: 1, raw: [] });
+      getRepository = jest.fn().mockReturnValue({
+        create: jest.fn((e: RefreshToken) => e),
+        save: txSave,
+        delete: txDelete,
+      });
+      manager = { getRepository };
+      // Re-typed as plain jest.Mock properties: reading them off the
+      // class-typed repo directly is what trips `unbound-method`.
+      const raw = repo as unknown as { save: jest.Mock; delete: jest.Mock };
+      defaultSave = raw.save;
+      defaultDelete = raw.delete;
+    });
+
+    it('createToken writes through the manager, not the default repo', async () => {
+      await service.createToken(42, 4, null, manager as never);
+
+      expect(getRepository).toHaveBeenCalledWith(RefreshToken);
+      const saved = txSave.mock.calls[0][0];
+      expect(saved.userId).toBe(42);
+      expect(saved.deviceId).toBe(4);
+      expect(defaultSave).not.toHaveBeenCalled();
+    });
+
+    it('revokeAllForUser deletes through the manager, not the default repo', async () => {
+      await service.revokeAllForUser(42, manager as never);
+
+      expect(getRepository).toHaveBeenCalledWith(RefreshToken);
+      expect(txDelete).toHaveBeenCalledWith({ userId: 42 });
+      expect(defaultDelete).not.toHaveBeenCalled();
+    });
+
+    it('revokeForDevice deletes through the manager, not the default repo', async () => {
+      await expect(
+        service.revokeForDevice(42, 2, manager as never),
+      ).resolves.toBe(1);
+
+      expect(getRepository).toHaveBeenCalledWith(RefreshToken);
+      expect(txDelete).toHaveBeenCalledWith({ userId: 42, deviceId: 2 });
+      expect(defaultDelete).not.toHaveBeenCalled();
+    });
+  });
 });
