@@ -203,6 +203,13 @@ class _AuthGateState extends State<AuthGate> {
     conn.onDeviceRevoked = () =>
         auth.logoutBecauseDeviceRevoked(l10n.deviceRevokedNotice);
 
+    // The mirror case (spec §6.2): a reset teardown re-homed this account onto
+    // a NEWLY allocated device and handed back the session bound to it. Same
+    // storage path as login and as the §5.1 provisioning rebind — a second
+    // token path would drift. Without this the recovering device publishes its
+    // pre-keys under the device the teardown just revoked.
+    conn.onSessionRebound = auth.adoptProvisionedSession;
+
     // Detect logout transition (true → false) - ensure clean disconnect
     if (!auth.isLoggedIn && _previousLoggedInState) {
       WidgetsBinding.instance.addPostFrameCallback((_) {

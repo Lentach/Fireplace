@@ -12,6 +12,7 @@ import '../services/device_link/link_ceremony_controller.dart'
 import '../services/server_clock.dart';
 import '../services/socket_service.dart';
 import '../utils/e2e_diag_log.dart';
+import '../utils/e2e_persistent_diag.dart';
 import 'chat_reconnect_manager.dart';
 import 'conversations_provider.dart';
 import 'encryption_provider.dart';
@@ -94,6 +95,15 @@ class ConnectionProvider extends ChangeNotifier {
   /// Set by the widget that owns both this provider and the auth session — the
   /// notice text needs a locale, and only the auth layer may end a session.
   void Function()? onDeviceRevoked;
+
+  /// Invoked when a §6.2 reset teardown re-homes this account onto a NEWLY
+  /// allocated device and hands back the session bound to it. Set by the
+  /// widget that owns both this provider and the auth session — only the auth
+  /// layer may write a session, exactly as for [onDeviceRevoked].
+  ///
+  /// MUST complete before the recovering device publishes any key material:
+  /// see `_adoptReboundSession`.
+  Future<void> Function(Map<String, dynamic> tokens)? onSessionRebound;
   // ---------- Public Getters ----------
 
   int? get currentUserId => _currentUserId;
@@ -141,9 +151,19 @@ class ConnectionProvider extends ChangeNotifier {
 
   // ---------- Connect ----------
 
-  Future<void> connect(int userId, String token, String baseUrl) async {
+  /// [immediate] skips the reconnect debounce. Only the §6.2 recovery rebind
+  /// uses it, and it must: the debounce defers the work to a timer and returns
+  /// straight away, so an awaited call would resolve BEFORE the socket carries
+  /// the new device — which is precisely the window the rebind exists to close.
+  /// It is rate-limited by the ceremony itself, not by this cooldown.
+  Future<void> connect(
+    int userId,
+    String token,
+    String baseUrl, {
+    bool immediate = false,
+  }) async {
     final now = DateTime.now();
-    if (_lastConnectStartedAt != null) {
+    if (!immediate && _lastConnectStartedAt != null) {
       final since = now.difference(_lastConnectStartedAt!);
       if (since < AppConstants.reconnectConnectCooldown) {
         final wait = AppConstants.reconnectConnectCooldown - since;
@@ -656,9 +676,92 @@ class ConnectionProvider extends ChangeNotifier {
 
   // ---------- Event Routing ----------
 
+  /// The deviceId-bound session a §6.2 recovery ack carries, or null when this
+  /// is an ordinary key-bundle ack.
+  ///
+  /// The server includes the triple ONLY when a reset teardown re-homed the
+  /// account, so `access_token` is the discriminator. A partial payload is
+  /// treated as absent rather than half-adopted: persisting an access token
+  /// with no refresh token would leave a session that cannot be renewed.
+  Map<String, dynamic>? _reboundSessionFrom(dynamic data) {
+    if (data is! Map) return null;
+    if (data['success'] == false) return null;
+    final access = data['access_token'];
+    final refresh = data['refresh_token'];
+    if (access is! String || access.isEmpty) return null;
+    if (refresh is! String || refresh.isEmpty) return null;
+    return {'access_token': access, 'refresh_token': refresh};
+  }
+
+  /// True while a recovery rebind is running.
+  ///
+  /// Re-entrancy is guarded rather than assumed: the server consumes the reset
+  /// row so it cannot legitimately answer twice, but that invariant lives three
+  /// layers away, and a second pass here would reconnect underneath an
+  /// in-flight one. Cleared when the rebind settles — a later ceremony in the
+  /// same session is a legitimate second rebind, not a duplicate.
+  bool _reboundInFlight = false;
+
+  /// Adopts the recovery session, reconnects under it, and only THEN delivers
+  /// the ack — so the pre-key upload it triggers rides the new device id.
+  ///
+  /// The ack is delivered even when the rebind fails. Dropping it would strand
+  /// the stashed pre-keys forever, which is strictly worse than publishing them
+  /// to a namespace a later successful rebind can re-publish over; the failure
+  /// is recorded so it is visible rather than inferred.
+  Future<void> _adoptReboundSession(
+    Map<String, dynamic> tokens,
+    dynamic data,
+  ) async {
+    if (_reboundInFlight) {
+      _encryptionProvider?.onKeyBundleUploaded(data);
+      return;
+    }
+    _reboundInFlight = true;
+    final userId = _currentUserId;
+    try {
+      if (onSessionRebound == null) {
+        // Only the auth layer may write the session, so an unwired app cannot
+        // complete a recovery. Loud, because the symptom otherwise looks like
+        // "recovered account has no pre-keys" three subsystems away.
+        E2ePersistentDiag.record('RESET_REBIND_UNWIRED', {});
+      } else {
+        await onSessionRebound!(tokens);
+        if (userId != null) {
+          await connect(
+            userId,
+            tokens['access_token'] as String,
+            AppConfig.baseUrl,
+            immediate: true,
+          );
+        }
+      }
+    } catch (error) {
+      E2ePersistentDiag.record('RESET_REBIND_FAILED', {
+        'error': error.runtimeType.toString(),
+      });
+    } finally {
+      _reboundInFlight = false;
+    }
+    _encryptionProvider?.onKeyBundleUploaded(data);
+  }
+
   void _registerEventListeners() {
     // --- Encryption events ---
+    // A §6.2 recovery ack carries the device id the material now lives under
+    // plus a session bound to it, and the client MUST adopt them BEFORE any
+    // one-time pre-key upload (`chat-key-exchange.service.ts` says so at the
+    // emit site). Delivering the ack first is what strands the pool: the
+    // handler replenishes on `identityChanged`, and this socket is still
+    // authenticated as the device the teardown just REVOKED — so the keys land
+    // in the abandoned namespace, peers are served a bundle with no one-time
+    // pre-key, and the next reconnect is refused by the §5.5 gate.
     _socketService.on('keyBundleUploaded', (data) {
+      final rebind = _reboundSessionFrom(data);
+      if (rebind != null) {
+        unawaited(_adoptReboundSession(rebind, data));
+        return;
+      }
       _encryptionProvider?.onKeyBundleUploaded(data);
     });
     _socketService.on('oneTimePreKeysUploaded', (data) {
