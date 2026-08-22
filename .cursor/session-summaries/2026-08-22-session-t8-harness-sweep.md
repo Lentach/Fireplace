@@ -1,6 +1,6 @@
 # 2026-08-22 — T8, the harness sweep
 
-**T8 BUILT, REVIEWED TWICE, WIRE-PROVEN. Not merged, not deployed.** Seven owed items, all closed.
+**T8 BUILT, REVIEWED TWICE, WIRE-PROVEN AND APP-PROVEN. Not merged, not deployed.** Seven owed items, all closed.
 Closure + deviations: decision record §13. Normative settlement: spec §12 **(xxxv)–(xxxviii)**.
 
 Spine: `343fc1a` settlement → `6f746dc` 14f → `a85129b` 14e → `543bd92` 14g → `0435ea8` 14c →
@@ -93,15 +93,38 @@ its column-scoped `set` and its WRITE-ONCE `IS NULL` predicate were unpinned.
   registration and ceremony cost on every default run just to skip. The skip is on the GROUP.
 - `registerFresh()` builds `e2e_<label>_<8hex>` against a 20-char username cap — long labels fail.
 
+## The app-proof, which is a two-way proof at the app level
+
+Owner granted the browser. Account 193 (device 1), conversation 92, real UI throughout.
+
+Pinned message 649 for real, burned 193's `pinMessage` budget (60/15 min, keyed by USER) from a second
+authenticated socket, then pinned a DIFFERENT message from the UI while throttled.
+
+- **With the fix:** server refused it (`REFUSED event=pinMessage userId=193
+  answeredWith=messagePinFailed`), DB stayed at 698, banner showed **698**. Converged.
+- **With `onPinMessageFailed` neutered to pre-T8 behaviour and the bundle rebuilt:** same operation,
+  same refusal, DB still 698 with ZERO successful pins in the window — banner showed **649**, a pin the
+  server never stored. **That divergence is the defect, seen live.**
+
+Restored, rebuilt, re-verified converged. Conversation 92 left unpinned, as found.
+
+**⚠️ It produced a FALSE NEGATIVE first.** The budget was initially burned over a hand-rolled socket.io
+v4 frame; the token never reached `handshake.auth`, the gateway disconnected the socket, and the
+requests were counted under the ANONYMOUS handshake-address tracker. The log said `userId=anon`, the UI
+pin then SUCCEEDED, and it looked exactly like the fix failing. **Read the tracker in the throttle log
+line before believing a throttle result**, and drive the wire with a real `socket.io-client`.
+
+Not observable by screenshot, and worth knowing: the optimistic apply and the refusal are separated by
+single-digit milliseconds on loopback, so no screenshot burst catches the transient — CDP latency
+emulation does not slow an already-open WebSocket either. The steady-state two-way proof above is what
+makes the revert visible.
+
 ## Owed, recorded not claimed
 
-1. **No app-proof.** T8's only user-visible production change is the pin-refusal revert. The browser
-   tool needs a per-session owner grant and none was asked for or given this session, so the pin revert
-   is suite-proven only.
-2. **`setDisappearingTimer` is the same divergence class as 14f** — throttled 60/15 min, writes
+1. **`setDisappearingTimer` is the same divergence class as 14f** — throttled 60/15 min, writes
    optimistic state, absent from `THROTTLE_ANSWERS`, not unwound by `error`. Found during the audit and
    deliberately not fixed, so the ticket stayed single-purpose.
-3. The reset probe is opt-in, so it defends nothing in CI until the registration budget has room.
+2. The reset probe is opt-in, so it defends nothing in CI until the registration budget has room.
 
 ## Verified at `cecdf44`
 

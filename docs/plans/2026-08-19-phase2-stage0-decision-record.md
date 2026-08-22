@@ -580,11 +580,13 @@ place rather than left standing on a justification now known to be wrong. And th
 run revealed that the recovering device MUST rebind to the deviceId-bound token the teardown issues:
 without it, 20 fresh-epoch pre-keys landed on the REVOKED device 1's partition.
 
-**Owed, recorded not claimed.** (1) **No app-proof.** T8's only user-visible production change is the
-pin-refusal revert; the browser tool needs a per-session owner grant and none was given, so the pin
-revert is suite-proven only. (2) **`setDisappearingTimer` is the same divergence class as 14f** —
+**✅ APP-PROVEN 2026-08-22 (owner granted the browser), and it is a TWO-WAY proof at the app level.** Account 193 (device 1) in conversation 92, real UI throughout. Pinned message 649 for real, then burned 193's `pinMessage` budget (60/15 min, keyed by USER) from a second authenticated socket, then pinned a DIFFERENT message from the UI while throttled. **With the fix:** the server refused it (`REFUSED event=pinMessage userId=193 answeredWith=messagePinFailed`), the DB stayed at 698, and the banner showed **698** — converged. **With `onPinMessageFailed` neutered to pre-T8 behaviour and the bundle rebuilt:** same operation, same refusal, DB still 698 and ZERO successful pins in the window — but the banner showed **649**, a pin the server never stored. That divergence IS the defect, seen live. Restored, rebuilt, re-verified converged; conversation 92 left unpinned as found.
+
+**⚠️ The app-proof produced a FALSE NEGATIVE first, and it is worth remembering.** The budget was initially burned over a hand-rolled socket.io v4 frame; the token never landed in `handshake.auth`, the gateway disconnected the socket, and the in-flight requests were counted under the ANONYMOUS handshake-address tracker. The throttle log said `userId=anon`, the UI pin then SUCCEEDED, and it looked exactly like the fix failing. **Read the tracker in the log line before believing a throttle result** — and drive the wire with a real `socket.io-client`, not hand-rolled framing.
+
+**Owed, recorded not claimed.** (1) **`setDisappearingTimer` is the same divergence class as 14f** —
 throttled 60/15 min, writes optimistic state, absent from `THROTTLE_ANSWERS`, not unwound by `error`.
-Found during the 14f audit, deliberately NOT fixed so the ticket stayed single-purpose. (3) The reset
+Found during the 14f audit, deliberately NOT fixed so the ticket stayed single-purpose. (2) The reset
 probe is opt-in and therefore defends nothing in CI until the registration budget has room.
 
 **Verified at `cecdf44`:** backend **1007/61** · ratchet **PASS 889** real (floor 906, not lowered) ·
