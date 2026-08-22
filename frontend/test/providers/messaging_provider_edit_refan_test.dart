@@ -397,5 +397,25 @@ void main() {
         reason: 'the first bounce of a fresh edit must not revert it',
       );
     });
+    test('a RATE-LIMITED edit reverts, because the refusal rides editMessageFailed', () async {
+      await seed(id: 500, senderId: 1);
+      final original = provider.messages.firstWhere((m) => m.id == 500).content;
+
+      provider.editMessage(500, 'after');
+      await pump();
+      expect(provider.messages.firstWhere((m) => m.id == 500).content, 'after');
+
+      // The server's throttle guard answers on the request's OWN response event
+      // rather than a new global one, precisely so this needs no new client
+      // code: silence here would strand the optimistic edit forever.
+      provider.onEditMessageFailed({
+        'messageId': 500,
+        'reason': 'rate_limited',
+        'retryAfterMs': 42000,
+      });
+      await pump();
+
+      expect(provider.messages.firstWhere((m) => m.id == 500).content, original);
+    });
   });
 }
