@@ -43,6 +43,63 @@ void enableRealNetwork() {
   HttpOverrides.global = null;
 }
 
+/// Runs one statement against the harness's own Postgres, out of band.
+///
+/// **This is the only sanctioned out-of-band write in the harness** (spec §12
+/// (xxxvi)), and it exists for exactly one reason: §6.2's reset delay is 72 h,
+/// or 1 h with a valid recovery phrase, and a test may not wait either out. It
+/// AGES the deadline and then lets the real per-minute sweep complete the
+/// ceremony — the production path — rather than forcing the end state.
+///
+/// Deliberately narrow. It is not a general fixture-loading back door: every
+/// other precondition in this suite is built over the wire, because a
+/// precondition built by SQL proves nothing about the code that normally
+/// builds it.
+///
+/// Container and credentials match the harness's own docker-compose stack;
+/// override with `E2E_DB_CONTAINER` when the stack is named differently. If
+/// `docker` is unreachable the caller gets a clear StateError rather than a
+/// mystery timeout — a test that depends on this channel must SKIP or FAIL
+/// loudly, never quietly pass.
+Future<List<List<String>>> e2eSql(String statement) async {
+  final container =
+      Platform.environment['E2E_DB_CONTAINER'] ?? 'fireplace-0a-db-1';
+  final ProcessResult result;
+  try {
+    result = await Process.run('docker', [
+      'exec',
+      container,
+      'psql',
+      '-U',
+      'postgres',
+      '-d',
+      'chatdb',
+      '-At',
+      '-F',
+      '|',
+      '-c',
+      statement,
+    ]);
+  } on ProcessException catch (error) {
+    throw StateError(
+      'e2eSql: could not run docker ($error). The wire harness needs the '
+      'compose stack it is testing against to be locally reachable.',
+    );
+  }
+  if (result.exitCode != 0) {
+    throw StateError(
+      'e2eSql failed (exit ${result.exitCode}) for: $statement\n'
+      '${result.stderr}',
+    );
+  }
+  final out = (result.stdout as String).trim();
+  if (out.isEmpty) return const [];
+  return out
+      .split(RegExp(r'\r?\n'))
+      .map((line) => line.split('|'))
+      .toList(growable: false);
+}
+
 /// Fails fast (clear message instead of a timeout soup) when the backend is
 /// not reachable.
 Future<void> requireBackendUp(String baseUrl) async {
