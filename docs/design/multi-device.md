@@ -1132,6 +1132,18 @@ that is the designed outcome).
     rejection branch, so X3DH admits the shared-account session by construction. A test that
     asserts only "device 2 decrypted" is therefore an ordinary two-party decrypt wearing a
     self-sync label; it MUST additionally assert that device 2's identity key IS the account's.
+    **Measured correction, 2026-08-22, from running that experiment rather than reasoning about
+    it:** when the adopt path was made to mint an unrelated identity, the run did NOT reach the
+    equality assertion at all — it died two steps earlier, at the second device's
+    `uploadKeyBundle`, with `identity_locked`. The §6.1 registration lock refuses a linked
+    device that tries to publish an identity the account has not authorized, so the vacuity this
+    clause guards is also fenced SERVER-side and is not reachable end-to-end today. The
+    assertion stays REQUIRED regardless, for two reasons: it pins the property where the proof
+    makes its claim instead of leaning on a control three subsystems away, and it is the only
+    part of the test that would survive the lock being relaxed for a future recovery path. What
+    changes is the justification — this is defence in depth, not the sole barrier — and the
+    incidental finding is worth keeping: **the registration lock, not the harness, is what makes
+    a foreign-identity second device impossible.**
   - **(xxxvi) §6.2 reset completion is a TWO-STAGE machine, and a proof AGES it rather than
     waiting it out.** The pending ceremony is flipped to `completed` by the per-minute
     `completeDueResets` sweep once `"deadlineAt" <= now()`; the (xxviii) roster teardown does NOT

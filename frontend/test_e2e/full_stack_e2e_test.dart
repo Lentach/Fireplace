@@ -36,6 +36,7 @@ import 'dart:typed_data';
 import 'package:fireplace/services/device_link/link_crypto.dart';
 import 'package:fireplace/services/device_list/device_authority_engine.dart';
 import 'package:fireplace/services/device_list/device_list_canonical.dart';
+import 'package:fireplace/utils/e2e_envelope.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
@@ -2537,6 +2538,154 @@ void main() {
         // `messages.service.spec.ts` ('UPSERTs the named envelopes
         // CONTENT-ONLY') and by a direct SQL check recorded in the T7 session
         // summary. Do not upgrade this comment into a claim.
+      }, timeout: const Timeout(Duration(minutes: 4)));
+
+      test('a REAL self-sync envelope DECRYPTS on the sender\'s own second '
+          'device — same account identity, its own per-device key material '
+          '(spec §12 (xxxv), the decryptability half falsification 6 leaves '
+          'open)', () async {
+        // Falsification 6 proves ROUTING with a synthetic ciphertext, because
+        // the server treats ciphertext as opaque. This proves the other half:
+        // that the bytes routed there are bytes that device can actually open.
+        final (device2, deviceTwoId) = await secondDeviceOfAlice();
+
+        // ---- keystore isolation, and why it is needed ----
+        // Both clients are the SAME account, and `EncryptionService` derives
+        // every Signal storage key from `e2e_<userId>_`. The mock secure
+        // storage is one process-wide map, so device 2 keying itself would
+        // overwrite device 1's signed pre-key and OTPs — and `adopt` refuses
+        // outright while device 1's identity record is present. So the two
+        // keystores are separated in TIME: each device acts with its own map
+        // installed, and the live map is re-snapshotted at every swap so no
+        // side loses ratchet progress made since the last one.
+        const storage = FlutterSecureStorage();
+        final alicePrefix = 'e2e_${alice.userId}_';
+        Future<Map<String, String>> snapshot() async =>
+            Map<String, String>.from(await storage.readAll());
+        void install(Map<String, String> world) {
+          // ignore: invalid_use_of_visible_for_testing_member
+          FlutterSecureStorage.setMockInitialValues(
+            Map<String, String>.from(world),
+          );
+        }
+
+        var deviceOneWorld = await snapshot();
+        // Device 2 starts from the same world MINUS alice's own key material:
+        // bob's rows stay so nothing else in the run is disturbed.
+        var deviceTwoWorld = Map<String, String>.from(deviceOneWorld)
+          ..removeWhere((key, _) => key.startsWith(alicePrefix));
+        addTearDown(() => install(deviceOneWorld));
+
+        // ---- device 2 becomes a real installation ----
+        install(deviceTwoWorld);
+        final auth = await currentAuth();
+        // The production path a linked device takes: it ADOPTS the account's
+        // shared identity key (§5.1 ships `ikPriv` in the sealed blob for
+        // exactly this) and mints its OWN signed pre-key and one-time pre-keys.
+        await device2.encryption.adoptProvisionedIdentity(
+          userId: alice.userId,
+          ikPubBase64: base64Encode(aliceIdentity.getPublicKey().serialize()),
+          ikPrivBase64: base64Encode(aliceIdentity.getPrivateKey().serialize()),
+          dakPubBase64: auth['dakPub'] as String,
+        );
+        final deviceTwoKeys = device2.encryption.getKeysForUpload();
+        expect(
+          deviceTwoKeys,
+          isNotNull,
+          reason: 'adopting must stage this device\'s own upload payload',
+        );
+        // Real material this time, not the opaque `dev<N>-spk-public`
+        // placeholders the other tests use: `processPreKeyBundle` verifies the
+        // signed pre-key signature, so a placeholder cannot build a session.
+        // The socket rebound to deviceId=N at the end of the ceremony and the
+        // server takes the device from the JWT, so these land on (alice, N).
+        await device2.uploadKeyBundle(deviceTwoKeys!);
+        await device2.uploadOneTimePreKeys(deviceTwoKeys, tagIdentityEpoch: true);
+        deviceTwoWorld = await snapshot();
+
+        // ---- device 1 sends a REAL self ciphertext ----
+        install(deviceOneWorld);
+        final bundle = await alice.fetchBundleFor(
+          alice.userId,
+          deviceId: deviceTwoId,
+        );
+        expect(
+          bundle['registrationId'],
+          deviceTwoKeys['keyBundle']['registrationId'],
+          reason: 'the served bundle must be the one device 2 just published',
+        );
+        await alice.encryption.buildSession(
+          alice.userId,
+          bundle,
+          deviceId: deviceTwoId,
+        );
+        const plaintext = 'self-sync that really decrypts';
+        final selfCiphertext = await alice.encryption.encrypt(
+          alice.userId,
+          jsonEncode(E2eEnvelope.build(plaintext)),
+          deviceId: deviceTwoId,
+        );
+        expect(
+          wireType(selfCiphertext),
+          3,
+          reason: 'a first message to a new device address is a PreKey message',
+        );
+
+        final tempId = 'selfdecrypt-$runTag';
+        final forBob = await alice.encryptText(bob.userId, plaintext);
+        final senderAuth = await currentAuth();
+        // EventLog matches the first buffered payload satisfying its predicate,
+        // and falsification 6 left a SYNTHETIC self copy in this device's
+        // buffer. Without the discard this could "decrypt" those bytes instead.
+        device2.events.discard('newMessage');
+        bob.events.discard('newMessage');
+        alice.emitEnvelopeSend(
+          bob.userId,
+          tempId: tempId,
+          envelopes: [
+            {'userId': bob.userId, 'deviceId': 1, 'ciphertext': forBob},
+            {
+              'userId': alice.userId,
+              'deviceId': deviceTwoId,
+              'ciphertext': selfCiphertext,
+            },
+          ],
+          sendToken: 'tok-selfdecrypt-$runTag',
+          senderListVersion: senderAuth['listVersion'] as int,
+        );
+        final selfCopy = await device2.awaitNewMessage(tempId);
+        expect(selfCopy['encryptedContent'], selfCiphertext);
+        expect(selfCopy['originDeviceId'], 1);
+        deviceOneWorld = await snapshot();
+
+        // ---- device 2 opens it ----
+        install(deviceTwoWorld);
+        // Decrypted as ORDINARY INBOUND against the ORIGIN device's session
+        // (§12 (xi)/(xii)) — device 1 produced these bytes, so device 1 is the
+        // address. Signal decrypt is not idempotent: exactly one attempt.
+        final decrypted = await device2.encryption.decrypt(
+          alice.userId,
+          selfCopy['encryptedContent'] as String,
+          deviceId: 1,
+        );
+        expect(E2eEnvelope.parse(decrypted).content, plaintext);
+
+        // THE ANTI-VACUITY ASSERTION (§12 (xxxv)), and it is not decoration.
+        // A Signal session decrypts whether or not the two parties' identity
+        // keys are equal — libsignal_protocol_dart carries no self_session
+        // concept and X3DH has no identity-key-equality branch. So everything
+        // above would pass just as well for an unrelated account borrowing a
+        // device id, which would prove nothing about SELF-sync. This is what
+        // makes the device that decrypted genuinely alice's second device.
+        expect(
+          await device2.exportIdentityPair(),
+          base64Encode(aliceIdentity.serialize()),
+          reason:
+              'device 2 must hold the ACCOUNT identity — otherwise this is an '
+              'ordinary two-party decrypt wearing a self-sync label',
+        );
+        deviceTwoWorld = await snapshot();
+        install(deviceOneWorld);
       }, timeout: const Timeout(Duration(minutes: 4)));
 
     });
