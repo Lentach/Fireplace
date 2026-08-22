@@ -1049,4 +1049,64 @@ that is the designed outcome).
     (it holds the fresh IK, mints a fresh DAK, and signs a list naming only its newly allocated
     deviceId); it needs no new wire field to do so, because `getDeviceList` already serves the
     stored version it must exceed.
+- **Amendment 2026-08-22 (T7 pre-implementation settlement, per the Stage-0 "settle before
+  code" rule; ratified by the owner 2026-08-22).** §5.7 and falsification 24 leave five things
+  open. Four are gaps; the first is a latent CORRECTNESS BUG in the frozen text, found by
+  reading the receive path rather than the spec.
+  - **(xxx) An edit UPDATES `messages.originDeviceId` to the EDITING device.** §5.7 permits an
+    edit from any of the sender's devices, and that edit's ciphertext is bound to the EDITING
+    device's ratchet — but the receiver selects its Signal session by
+    `originDeviceId ?? 1` (`messaging_provider.decrypt.dart:1354-1355`, `:1372`, whose own
+    comment already defines the field as "the device that PRODUCED this ciphertext"), and the
+    accept-side (e)/(xxvii) gate keys on the same field. Since the edit receive path swaps in
+    the new ciphertext while KEEPING the row's original `originDeviceId`
+    (`messaging_provider.events.dart:472-476`), an edit from a non-origin device would make
+    every receiver decrypt against the WRONG device and fail with a Bad-MAC on a row that
+    decrypted fine before the edit. The field is therefore defined as **the device that
+    produced the ciphertext currently stored**, not "the device that first sent the row": every
+    envelope of one row is always produced by exactly ONE device (all of them at send, all of
+    them at edit), so a single per-row field remains sufficient and no second device-id column
+    is introduced. Consequences, all already legal under existing rules: the sender's ORIGINAL
+    origin device now receives an edited envelope like any other device, which is the (R10)
+    placeholder-upgrade path, and it loses its `own_origin` marker for that row because it is no
+    longer the producer; edit ELIGIBILITY and the edit ECHO stay ACCOUNT-scoped per (xiii), so
+    nothing about authorship depends on this field. Rejected alternatives: a separate
+    `editorDeviceId` (two device-id fields that can disagree, and every decrypt site must learn
+    which to prefer), and restricting edits to the original device (contradicts §5.7 outright
+    and would silently remove the edit action on a second device).
+    **Falsification 24 does not cover this** — it asserts a non-origin edit SUCCEEDS, never that
+    a third device DECRYPTS it; T7 adds that assertion.
+  - **(xxxi) The edit's staleness bounce reuses the `deviceListStale` event of (vi) verbatim**,
+    emitted to the caller only and BEFORE any write, with the same ≤3 retry cap as §5.2. To feed
+    the (v) per-enrolled-party version cross-check, `editMessage` additionally carries
+    `senderListVersion` / `recipientListVersion` (present only for an ENROLLED party, an absent
+    stamp counting as a mismatch exactly as in (v)) — fields §5.7's short example omits although
+    its own "same staleness bounce as §5.2" requires them. `editMessageFailed` keeps its four
+    existing bare codes untouched, so §5.7's "reject paths unchanged" holds: staleness is a
+    DIFFERENT event, not a new code. The (v) envelope-shape refusals
+    (`duplicate_envelope_device`, `unknown_envelope_user`, `unknown_recipient_device`,
+    `self_envelope_for_origin_device`) are inherited by the edit path and answered on
+    `editMessageFailed` as `reason`, since they are client-shape faults rather than a repairable
+    staleness condition and carry no lists to repair with.
+  - **(xxxii) The legacy `encryptedContent` column is updated on LEGACY rows ONLY, never on a
+    new-model row.** §5.7's "legacy `encryptedContent` is updated too while mixed-model rows
+    exist" is refined, because a new-model send deliberately stores NULL there
+    (`chat-message.service.ts:380`) and the server's own new-model/legacy discriminator is
+    `content === '[encrypted]' && encryptedContent == null` (`ackEnvelopeStatus`,
+    `chat-message.service.ts:238-241`). Writing the column on a new-model row would silently
+    reclassify that row as LEGACY after a single edit, changing the behaviour of every path
+    keyed on the discriminator. The clause's intent — a mixed-model row stays readable to a
+    client that only knows the column — is served exactly by writing it where the column is the
+    row's only ciphertext.
+  - **(xxxiii) Envelopes of devices dropped from the list between send and edit are LEFT in
+    place.** They are unreachable: a revoked device cannot connect (xxii), is served silence by
+    I6 (xxiii), and holds no valid session material after its teardown. Deleting them would
+    introduce a SECOND envelope destruction path, whereas (g) names the message-delete CASCADE
+    as the sole one, and would add a delete to the edit transaction for no observable benefit.
+    Such a row keeps the pre-edit text and dies with its message.
+  - **(xxxiv) An edited envelope carries `senderListInfo`**, per (xv)'s "rides EVERY message".
+    An edit is a ciphertext-bearing message; omitting the block would leave exactly one message
+    shape with no E2E cross-check of the device lists the server served, and the (xvi)/(xvii)
+    escalation discipline governs the receive side unchanged. The builder already exists in the
+    send path (`messaging_provider.send.dart:1300-1338`).
 - **Next gate:** per-ticket implementation reviews (T1–T8); Stage 0 is CLOSED 2026-08-19.
