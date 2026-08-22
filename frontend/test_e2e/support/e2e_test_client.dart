@@ -260,6 +260,10 @@ class E2eClient {
     'messageHistory',
     'messageEdited',
     'editMessageFailed',
+    // T7 (§5.7): the delivery/read projection an edit must never regress.
+    // Both statuses ride this ONE event. Unlisted events are recorded NOWHERE,
+    // so without it the F8 stamp-preservation assert would pass vacuously.
+    'messageDelivered',
     'reactionUpdated',
     'messageDeleted',
     'servedMessageIds',
@@ -946,6 +950,36 @@ class E2eClient {
       'content': '[encrypted]',
       'encryptedContent': newCiphertext,
     });
+  }
+
+  /// Emits an ENVELOPE-shaped `editMessage` (spec §5.7 + §12 amendment (xxxi)):
+  /// one edited ciphertext per (user, device), with the device-list stamps the
+  /// server cross-checks. Raw emit for the same reason as [emitEditMessage].
+  void emitEnvelopeEdit(
+    int messageId, {
+    required List<Map<String, dynamic>> envelopes,
+    int? recipientListVersion,
+    int? senderListVersion,
+  }) {
+    socketService.socket!.emit('editMessage', <String, dynamic>{
+      'messageId': messageId,
+      'content': '[encrypted]',
+      'envelopes': envelopes,
+      'recipientListVersion': ?recipientListVersion,
+      'senderListVersion': ?senderListVersion,
+    });
+  }
+
+  /// Waits for a `messageEdited` for [messageId] on THIS device's socket.
+  Future<Map<String, dynamic>> awaitMessageEdited(int messageId) async {
+    final payload =
+        await events.next(
+              'messageEdited',
+              where: (p) => p is Map && p['messageId'] == messageId,
+              reason: '$label messageEdited messageId=$messageId',
+            )
+            as Map;
+    return payload.cast<String, dynamic>();
   }
 
   /// Emits `deleteMessage`. Like `editMessage`, the app sends this through

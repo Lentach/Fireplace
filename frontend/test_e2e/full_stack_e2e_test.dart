@@ -477,23 +477,25 @@ void main() {
         );
         alice.emitEditMessage(messageId, newCiphertext);
 
-        for (final client in [alice, bob]) {
-          final edited =
-              await client.events.next(
-                    'messageEdited',
-                    where: (p) => p is Map && p['messageId'] == messageId,
-                    reason: '${client.label} messageEdited',
-                  )
-                  as Map;
-          expect(edited['conversationId'], conversationId);
-          expect(edited['content'], '[encrypted]');
-          expect(edited['encryptedContent'], newCiphertext);
-          expect(
-            DateTime.tryParse(edited['editedAt'] as String),
-            isNotNull,
-            reason: 'editedAt must be an ISO timestamp',
-          );
-        }
+        // The PEER gets the new ciphertext, normalized into its device-1
+        // envelope at ingest (§8 compat).
+        final peerEdit = await bob.awaitMessageEdited(messageId);
+        expect(peerEdit['conversationId'], conversationId);
+        expect(peerEdit['content'], '[encrypted]');
+        expect(peerEdit['encryptedContent'], newCiphertext);
+        expect(
+          DateTime.tryParse(peerEdit['editedAt'] as String),
+          isNotNull,
+          reason: 'editedAt must be an ISO timestamp',
+        );
+
+        // The EDITING device is the PRODUCER of that ciphertext (amendment
+        // (xxx)), so its echo carries none: it holds the plaintext already and
+        // must never be handed a ciphertext of its own to decrypt.
+        final ownEcho = await alice.awaitMessageEdited(messageId);
+        expect(ownEcho['encryptedContent'], isNull);
+        expect(ownEcho['originDeviceId'], 1);
+        expect(DateTime.tryParse(ownEcho['editedAt'] as String), isNotNull);
 
         expect(
           await bob.decryptText(alice.userId, newCiphertext),
@@ -1293,6 +1295,73 @@ void main() {
             enrollmentSig: auth['enrollmentSig'] as String,
           );
 
+      /// ONE extra device of alice, linked through the real ceremony and shared
+      /// by every contract that needs a non-primary own device.
+      ///
+      /// Deliberately memoized, and the reason is a hard budget: the server
+      /// throttles `provisioningComplete` to 10 per 15 minutes keyed by USER
+      /// (`WsThrottlerGuard.getTracker`), and every ceremony client here adopts
+      /// ALICE's account. This suite already spends exactly that budget on the
+      /// refusal contracts above, so one more full ceremony gets no answer at
+      /// all — the guard throws instead of emitting, so the 11th caller just
+      /// times out. Sharing the device keeps the suite inside the cap.
+      E2eClient? sharedDeviceClient;
+      int? sharedDeviceId;
+
+      Future<(E2eClient, int)> secondDeviceOfAlice() async {
+        final existing = sharedDeviceClient;
+        if (existing != null) return (existing, sharedDeviceId!);
+
+        final device = E2eClient('aliceSecondDevice', baseUrl)
+          ..adoptAccountFrom(alice);
+        await device.connectSocket();
+
+        final ephN = generateLinkEphemeral();
+        final opened = await device.openProvisioning();
+        final provisioningId = opened['provisioningId'] as String;
+        final ephP = generateLinkEphemeral();
+        final ack = await alice.provisioningHello(
+          provisioningId: provisioningId,
+          ephPubP: base64Encode(linkEphemeralPublicBytes(ephP)),
+        );
+        final assignedId = ack['deviceId'] as int;
+        final staged = await signAddedDevice(assignedId);
+        final auth = await currentAuth();
+        final transcript = linkTranscript(
+          provisioningId: provisioningId,
+          ephPubN: linkEphemeralPublicBytes(ephN),
+          ephPubP: linkEphemeralPublicBytes(ephP),
+        );
+        final sdh = linkSharedSecret(
+          theirEphPub: linkEphemeralPublicBytes(ephN),
+          ownEphPriv: ephP.privateKey,
+        );
+        final sealed = sealLinkBlob(
+          keys: deriveLinkBlobKeys(sharedSecret: sdh, transcript: transcript),
+          payload: blobPayloadFor(assignedId, auth),
+        );
+        final acked = await alice.provisionDevice({
+          'provisioningId': provisioningId,
+          'blob': base64Encode(sealed),
+          'listCanonical': staged['listCanonical'],
+          'listSignature': staged['listSignature'],
+        });
+        expect(acked['success'], isTrue, reason: '$acked');
+        final completed = await device.provisioningComplete(provisioningId);
+        expect(completed['success'], isTrue, reason: '$completed');
+
+        // Rebind: only now is this socket authenticated as the new device.
+        device.socketService.disconnect();
+        device.accessToken = completed['access_token'] as String;
+        await device.connectSocket();
+
+        sharedDeviceClient = device;
+        sharedDeviceId = assignedId;
+        return (device, assignedId);
+      }
+
+      tearDownAll(() => sharedDeviceClient?.dispose());
+
       test('full link: open → OOB code → hello → equal SAS → staged blob+list '
           '→ one-shot session-bound commit → rebind → keys land on the new '
           'device, device 1 untouched (§5.1, falsification 8, amendments '
@@ -1914,50 +1983,10 @@ void main() {
           'the origin device is never sent its own copy', () async {
         // A second device of ALICE, linked through the real ceremony. Alice is
         // the enrolled account here (the harness holds her DAK), so she is the
-        // sender for this contract.
-        final aliceDevice2 = E2eClient('aliceSelfSync', baseUrl)
-          ..adoptAccountFrom(alice);
-        await aliceDevice2.connectSocket();
-        addTearDown(aliceDevice2.dispose);
-
-        final ephN = generateLinkEphemeral();
-        final opened = await aliceDevice2.openProvisioning();
-        final provisioningId = opened['provisioningId'] as String;
-        final ephP = generateLinkEphemeral();
-        final ack = await alice.provisioningHello(
-          provisioningId: provisioningId,
-          ephPubP: base64Encode(linkEphemeralPublicBytes(ephP)),
-        );
-        final assignedId = ack['deviceId'] as int;
-        final staged = await signAddedDevice(assignedId);
-        final auth = await currentAuth();
-        final transcript = linkTranscript(
-          provisioningId: provisioningId,
-          ephPubN: linkEphemeralPublicBytes(ephN),
-          ephPubP: linkEphemeralPublicBytes(ephP),
-        );
-        final sdh = linkSharedSecret(
-          theirEphPub: linkEphemeralPublicBytes(ephN),
-          ownEphPriv: ephP.privateKey,
-        );
-        final sealed = sealLinkBlob(
-          keys: deriveLinkBlobKeys(sharedSecret: sdh, transcript: transcript),
-          payload: blobPayloadFor(assignedId, auth),
-        );
-        final acked = await alice.provisionDevice({
-          'provisioningId': provisioningId,
-          'blob': base64Encode(sealed),
-          'listCanonical': staged['listCanonical'],
-          'listSignature': staged['listSignature'],
-        });
-        expect(acked['success'], isTrue, reason: '$acked');
-        final completed = await aliceDevice2.provisioningComplete(
-          provisioningId,
-        );
-        expect(completed['success'], isTrue, reason: '$completed');
-        aliceDevice2.socketService.disconnect();
-        aliceDevice2.accessToken = completed['access_token'] as String;
-        await aliceDevice2.connectSocket();
+        // sender for this contract. Shared with falsification 24 because the
+        // ceremony's completion budget is capped per user — see
+        // [secondDeviceOfAlice].
+        final (aliceDevice2, assignedId) = await secondDeviceOfAlice();
 
         // Alice's device 1 sends to bob AND to her own device 2. One ciphertext
         // per address: sharing one would brick the second decrypt, because
@@ -2305,6 +2334,168 @@ void main() {
               'the revoked device\'s key bundle was purged with it: $gone',
         );
       }, timeout: const Timeout(Duration(minutes: 4)));
+
+      test('falsification 24: an edit from a NON-ORIGIN own device re-fans every '
+          'current device, INSERTS a row for one that had none, re-points '
+          'originDeviceId at the editor, preserves the delivery projection and '
+          'mints no sendToken (spec §5.7 + amendments (xxx)-(xxxiv))', () async {
+        // The EDITING device: a real, non-primary device of alice, linked through
+        // the ceremony and shared with falsification 6 (the ceremony's
+        // completion budget is capped per user — see [secondDeviceOfAlice]).
+        final (editor, editorDeviceId) = await secondDeviceOfAlice();
+
+        // 1. Alice's device 1 sends. Note what it does NOT address: its own
+        //    device 1 (it is the origin) — so device 1 has NO envelope for this
+        //    row, which is exactly the placeholder case the edit must INSERT.
+        final tempId = 'editrefan-$runTag';
+        final forBob = await alice.encryptText(bob.userId, 'before the edit');
+        final senderAuth = await currentAuth();
+        bob.events.discard('newMessage');
+        alice.emitEnvelopeSend(
+          bob.userId,
+          tempId: tempId,
+          envelopes: [
+            {'userId': bob.userId, 'deviceId': 1, 'ciphertext': forBob},
+            {
+              'userId': alice.userId,
+              'deviceId': editorDeviceId,
+              'ciphertext': '3:editrefan-self-$runTag',
+            },
+          ],
+          sendToken: 'tok-editrefan-$runTag',
+          senderListVersion: senderAuth['listVersion'] as int,
+        );
+        final delivered = await bob.awaitNewMessage(tempId);
+        final messageId = delivered['id'] as int;
+
+        // 2. Bob DELIVERS and READS it, which stamps his envelope and drives the
+        //    row-level projection to READ. This is the state an edit must not
+        //    destroy: an edit is not an un-delivery (durability finding F8).
+        alice.events.discard('messageDelivered');
+        bob.socketService.socket!.emit('messageDelivered', {
+          'messageId': messageId,
+        });
+        await alice.events.next(
+          'messageDelivered',
+          where: (p) => p is Map && p['messageId'] == messageId,
+          reason: 'delivery projection before the edit',
+        );
+        // The read projection rides the SAME `messageDelivered` event with a
+        // READ status — there is no separate read event.
+        alice.events.discard('messageDelivered');
+        bob.socketService.socket!.emit('markConversationRead', {
+          'conversationId': conversationId,
+        });
+        await alice.events.next(
+          'messageDelivered',
+          where: (p) =>
+              p is Map &&
+              p['messageId'] == messageId &&
+              p['deliveryStatus'] == 'READ',
+          reason: 'read projection before the edit',
+        );
+
+        // 3. The EDIT, issued from alice's device 2 — a device that did NOT send
+        //    the row. Its ciphertexts are bound to ITS ratchet, so the server
+        //    must re-point originDeviceId at it or every receiver would decrypt
+        //    against device 1 and fail with a Bad-MAC (amendment (xxx)).
+        // Synthetic ciphertexts, for the same reason falsification 6 uses them:
+        // this contract is about ROUTING, ATTRIBUTION and STAMP PRESERVATION —
+        // which device is handed which bytes, who the server says produced
+        // them, and what survives the UPSERT. The server treats every
+        // ciphertext as opaque, and the editing device holds no Signal state of
+        // its own here (it adopted the account, it did not install keys).
+        final editedForBob = '3:editrefan-bob-$runTag';
+        final editedForOwnDevice1 = '3:editrefan-upgrade-$runTag';
+        final editorAuth = await currentAuth();
+        bob.events.discard('messageEdited');
+        alice.events.discard('messageEdited');
+        editor.events.discard('messageEdited');
+        editor.emitEnvelopeEdit(
+          messageId,
+          envelopes: [
+            {'userId': bob.userId, 'deviceId': 1, 'ciphertext': editedForBob},
+            {
+              'userId': alice.userId,
+              'deviceId': 1,
+              'ciphertext': editedForOwnDevice1,
+            },
+          ],
+          recipientListVersion: null,
+          senderListVersion: editorAuth['listVersion'] as int,
+        );
+
+        // The peer's device gets its OWN edited ciphertext, attributed to the
+        // device that produced it.
+        final peerEdit = await bob.awaitMessageEdited(messageId);
+        expect(peerEdit['encryptedContent'], editedForBob);
+        expect(
+          peerEdit['originDeviceId'],
+          editorDeviceId,
+          reason:
+              'the receiver keys its Signal session off this field, so an edit '
+              'from a non-origin device MUST re-point it',
+        );
+        expect(
+          peerEdit.containsKey('sendToken'),
+          isFalse,
+          reason: 'an edit never mints or consumes a sendToken (§5.4)',
+        );
+
+        // The sender's device 1 had NO envelope for this row (it was the origin
+        // of the send). The edit INSERTS one: the placeholder upgrades, and the
+        // upgrade is one-way.
+        final upgraded = await alice.awaitMessageEdited(messageId);
+        expect(
+          upgraded['encryptedContent'],
+          editedForOwnDevice1,
+          reason:
+              'a device with no prior envelope is addressed by the re-fan and '
+              'upgrades its none_for_device placeholder',
+        );
+
+        // The EDITING device produced every ciphertext, so it holds the
+        // plaintext and is handed none of them back.
+        final echo = await editor.awaitMessageEdited(messageId);
+        expect(echo['encryptedContent'], isNull);
+        expect(echo['editedAt'], isNotNull);
+
+        // 4. THE F8 ASSERTION. Re-read history as bob: his envelope was
+        //    delivered AND read before the edit, and a content-only UPSERT must
+        //    leave both stamps intact — so the row-level projection may not
+        //    regress from READ. A full-row replace would zero them here.
+        bob.events.discard('messageHistory');
+        bob.socketService.socket!.emit('getMessages', {
+          'conversationId': conversationId,
+        });
+        final history =
+            await bob.events.next(
+                  'messageHistory',
+                  where: (p) =>
+                      p is Map && p['conversationId'] == conversationId,
+                  reason: 'bob re-reads history after the edit',
+                )
+                as Map;
+        final row = (history['messages'] as List)
+            .cast<Map>()
+            .firstWhere((m) => m['id'] == messageId);
+        expect(
+          row['encryptedContent'],
+          editedForBob,
+          reason:
+              'the edit must be DURABLE: before T7 it lived only in the socket '
+              'emit while the envelope kept the ORIGINAL ciphertext',
+        );
+        expect(
+          row['deliveryStatus'],
+          'READ',
+          reason:
+              'an edit is not an un-delivery — the §4 projection never '
+              'regresses on edit (falsification 24 / durability F8)',
+        );
+        expect(row['editedAt'], isNotNull);
+      }, timeout: const Timeout(Duration(minutes: 4)));
+
     });
 
     test('no unexpected socket errors surfaced during the run', () {
