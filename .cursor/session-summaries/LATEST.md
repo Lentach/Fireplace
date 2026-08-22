@@ -1,3 +1,20 @@
+> ## ⚠️ ON MASTER THIS FILE IS TWO TICKETS BEHIND — the multi-device program is on a BRANCH
+>
+> If you are here to work on **multi-device / Phase 2 (T1–T8)**, stop and switch directories. That work
+> lives on `feat/takeover-alarm-0a` in a **separate worktree**, and this file — `master`'s copy — knows
+> nothing about T6, T7 or T7.5. Nothing below this banner mentions them, which is the point.
+>
+> - **Books (current):** `C:/Users/Lentach/Desktop/fireplace-0a/.cursor/session-summaries/LATEST.md`, then
+>   the dated summary its top entry names, then that worktree's `CLAUDE.md` §3/§7, the frozen spec
+>   `docs/design/multi-device.md` (§12 amendments run (a)–(xxxiv)) and
+>   `docs/plans/2026-08-19-phase2-stage0-decision-record.md`.
+> - **What is OWED:** `C:/Users/Lentach/Desktop/Fireplace/.planning/multi-device/task_plan.md` — gitignored
+>   and main-checkout-only by owner instruction, so it can never be read from the worktree or pushed. T8's
+>   scope is rows 14a–14g. `.planning/START-HERE.md` says the same thing at more length.
+>
+> Everything below this banner is the master/production line (deploys, versions, the 0.1.19 notification
+> work) and remains accurate FOR THAT. Nothing is merged or deployed from the multi-device branch.
+
 # Latest session summary
 
 Entries are newest-first. Each one links its dated file, which holds the full account.
