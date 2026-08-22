@@ -237,6 +237,14 @@ jobs:
         working-directory: frontend
         run: flutter pub get
 
+      # The opt-in §6.2 reset probe drives Postgres out of band through
+      # `e2eSql`, whose container default is a developer's local compose
+      # project name and is therefore WRONG on a runner. Resolve it from
+      # compose itself so the coupling is explicit and correct the day that
+      # probe is enabled here (it is skipped by default, so this is inert now).
+      - name: Resolve the db container for the opt-in SQL channel
+        run: echo "E2E_DB_CONTAINER=$(docker compose ps -q db)" >> "$GITHUB_ENV"
+
       # test_e2e is a sibling of test/, so the fast lane never picks it up.
       # Fresh accounts every run is BY DESIGN - see frontend/CLAUDE.md 1.
       - name: Run the wire harness
