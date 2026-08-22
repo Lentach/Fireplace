@@ -579,6 +579,35 @@ void main() {
 
         expect(only(provider).pinnedMessageId, isNull);
       });
+
+      test('an authoritative refresh supersedes a stranded snapshot', () {
+        final provider = seeded();
+        provider.setPinnedPreviewOptimistic(10, 77, preview(77));
+        // The settling event never arrives — the socket dropped between the
+        // server committing and emitting, or the pin was rejected on the bare
+        // `error` event that no pin code listens to. The snapshot is stranded.
+        provider.onConversationsList([
+          {
+            'id': 10,
+            'userOne': {'id': 1, 'username': 'alice', 'tag': '0001'},
+            'userTwo': {'id': 2, 'username': 'bob', 'tag': '0002'},
+            'createdAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+            'pinnedMessageId': 55,
+          },
+        ]);
+        expect(only(provider).pinnedMessageId, 55);
+
+        // A LATER refusal must not rewind past the refresh.
+        provider.onPinMessageFailed({'conversationId': 10});
+
+        expect(
+          only(provider).pinnedMessageId,
+          55,
+          reason:
+              'the server list is authoritative over any optimistic pin still '
+              'waiting for an answer, so its snapshot is superseded',
+        );
+      });
     });
 
     group('mute survives unrelated conversation mutations', () {

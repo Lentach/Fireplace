@@ -215,6 +215,13 @@ class ConversationsProvider extends ChangeNotifier {
 
     _conversations = newConvs;
     _unreadCounts.clear();
+    // The server list is AUTHORITATIVE over any optimistic pin still waiting
+    // for its answer, so every pre-pin snapshot is now superseded. Keeping one
+    // is how a refusal much later reverts a conversation to state that predates
+    // this refresh — reachable when the settling event never arrives at all
+    // (a socket drop between the server's commit and its emit, or a non-throttle
+    // pin rejection, which rides the bare `error` event that no pin code reads).
+    _prePinState.clear();
 
     for (final c in list) {
       final m = c as Map<String, dynamic>;
@@ -601,6 +608,7 @@ class ConversationsProvider extends ChangeNotifier {
       _activeConversationId = null;
       _lastMessages.clear();
       _unreadCounts.clear();
+      _prePinState.clear();
       _pendingOpenConversationId = null;
       _pendingNotificationConversationId = null;
       _activeConversationDeletedByOther = false;
@@ -629,6 +637,7 @@ class ConversationsProvider extends ChangeNotifier {
     _currentUserId = null;
     _lastMessages.clear();
     _unreadCounts.clear();
+    _prePinState.clear();
     _pendingOpenConversationId = null;
     _pendingNotificationConversationId = null;
     _activeConversationDeletedByOther = false;
