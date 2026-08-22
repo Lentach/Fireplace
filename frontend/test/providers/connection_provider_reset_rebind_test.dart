@@ -1,3 +1,5 @@
+import 'package:clock/clock.dart';
+import 'package:fireplace/constants/app_constants.dart';
 import 'package:fireplace/providers/connection_provider.dart';
 import 'package:fireplace/providers/conversations_provider.dart';
 import 'package:fireplace/providers/encryption_provider.dart';
@@ -24,13 +26,21 @@ class _FakeSocket extends SocketService {
   @override
   bool get isConnected => true;
 
+  /// Faithful to the real [SocketService], which DISPOSES `_socket` and builds
+  /// a fresh one — so every previously registered listener goes with it. A fake
+  /// that kept them would accumulate handlers across the rebind's reconnect and
+  /// report duplicate deliveries that production cannot produce.
   @override
   void connect({required String baseUrl, required String token}) {
+    handlers.clear();
     connects++;
   }
 
   @override
-  void disconnect() => disconnects++;
+  void disconnect() {
+    handlers.clear();
+    disconnects++;
+  }
 
   @override
   void on(String event, void Function(dynamic) callback) {
@@ -186,14 +196,24 @@ void main() {
     );
   });
 
-  test('a SECOND recovery in the same session still rebinds', () async {
+  test('a SECOND recovery LATER in the same session still rebinds', () async {
     var adoptCalls = 0;
     conn.onSessionRebound = (_) async => adoptCalls++;
 
     socket.emitServer('keyBundleUploaded', recoveryAck());
     await Future<void>.delayed(Duration.zero);
-    socket.emitServer('keyBundleUploaded', recoveryAck());
-    await Future<void>.delayed(Duration.zero);
+
+    // Past the floor: a later ceremony is a legitimate second recovery, and the
+    // latch must not have closed for the lifetime of the provider.
+    await withClock(
+      Clock.fixed(
+        DateTime.now().add(AppConstants.reconnectConnectCooldown * 2),
+      ),
+      () async {
+        socket.emitServer('keyBundleUploaded', recoveryAck());
+        await Future<void>.delayed(Duration.zero);
+      },
+    );
 
     expect(
       adoptCalls,
@@ -201,6 +221,26 @@ void main() {
       reason:
           'the in-flight latch guards concurrency, not the lifetime of the '
           'provider — a later ceremony is a legitimate second rebind',
+    );
+  });
+
+  test('a REPEATED ack inside the floor is throttled, not re-adopted', () async {
+    var adoptCalls = 0;
+    conn.onSessionRebound = (_) async => adoptCalls++;
+
+    // This ack is entirely server-driven and its rebind bypasses the reconnect
+    // cooldown, so a flapping or hostile server must not be able to drive
+    // unbounded socket churn and token rewrites by repeating it.
+    for (var i = 0; i < 5; i++) {
+      socket.emitServer('keyBundleUploaded', recoveryAck());
+      await Future<void>.delayed(Duration.zero);
+    }
+
+    expect(adoptCalls, 1);
+    expect(
+      order.where((e) => e == 'ack').length,
+      5,
+      reason: 'every ack is still delivered — throttling must not swallow it',
     );
   });
 }

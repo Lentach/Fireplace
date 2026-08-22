@@ -702,6 +702,15 @@ class ConnectionProvider extends ChangeNotifier {
   /// same session is a legitimate second rebind, not a duplicate.
   bool _reboundInFlight = false;
 
+  /// When the last recovery rebind started.
+  ///
+  /// The latch above only stops CONCURRENT rebinds. This ack is entirely
+  /// server-driven and its rebind bypasses the reconnect cooldown, so without a
+  /// floor a flapping or hostile server could drive unbounded socket churn and
+  /// token rewrites just by repeating the answer. It grants no new authority —
+  /// that server issues the tokens anyway — but the churn is worth denying.
+  DateTime? _lastReboundAt;
+
   /// Adopts the recovery session, reconnects under it, and only THEN delivers
   /// the ack — so the pre-key upload it triggers rides the new device id.
   ///
@@ -713,11 +722,19 @@ class ConnectionProvider extends ChangeNotifier {
     Map<String, dynamic> tokens,
     dynamic data,
   ) async {
-    if (_reboundInFlight) {
+    // clock.now() (package:clock), not DateTime.now(): fake_async patches the
+    // former, so the rebind floor is deterministic under test.
+    final now = clock.now();
+    final since = _lastReboundAt == null
+        ? null
+        : now.difference(_lastReboundAt!);
+    if (_reboundInFlight ||
+        (since != null && since < AppConstants.reconnectConnectCooldown)) {
       _encryptionProvider?.onKeyBundleUploaded(data);
       return;
     }
     _reboundInFlight = true;
+    _lastReboundAt = now;
     final userId = _currentUserId;
     try {
       if (onSessionRebound == null) {
@@ -734,6 +751,13 @@ class ConnectionProvider extends ChangeNotifier {
             AppConfig.baseUrl,
             immediate: true,
           );
+        } else {
+          // Adopted but NOT reconnected: the replenish this ack triggers would
+          // ride whatever socket exists, which is a weaker form of the very
+          // defect this path closes. Unreachable in a real recovery (the
+          // ceremony completes on a connected session), so it is recorded
+          // rather than handled — invisible is what would make it dangerous.
+          E2ePersistentDiag.record('RESET_REBIND_NO_SESSION', {});
         }
       }
     } catch (error) {
