@@ -104,3 +104,52 @@ device 1, which had no envelope because it was the origin, has an INSERTED one).
 backend **990/61** · ratchet **886** real (floor 906, PASS — typing the edit handler removed 20 more
 unsafe-access findings than the ticket added) · analyze clean · flutter **1519/10sk** · wire **43/2sk** ·
 both count verifiers OK.
+
+
+---
+
+# T7.5 — a throttled WS request answers instead of going silent
+
+**Status: BUILT, REVIEWED (SHIP-WITH-FIXES, no P0/P1), FOLDED, PUSHED.** `e859b6f` + `64b55c2`.
+Authorized by the owner mid-session ("decide what's best, no cheap fixes we regret").
+
+**The hole.** `WsThrottlerGuard` threw; there is no WS exception filter in `backend/src`; Nest emits
+`exception`; the client wires ~60 named listeners plus `error` (`connection_provider.dart:878`) and
+NOTHING for `exception`. So a throttled request was answered by nothing, and any client state staked on
+the answer was stranded. `editMessage` is throttled 60/15min, so a throttled edit left an optimistically
+applied edit on that device forever while the server and peer kept the old text — the same divergence
+`febbbae` closed for `deviceListStale`, reached by volume instead of by staleness.
+
+**The design, and the one I talked myself out of.** My first recommendation was a new global
+`rateLimited` event. That is the cheap fix we would have regretted: a SECOND refusal convention beside
+the established one, plus a client-side map from that event to whichever optimistic state to unwind.
+Answering in each request's OWN contract is house style AND less code, because every one of those paths
+already settles: a rate-limited `editMessageFailed` reverts through the existing `onEditMessageFailed`
+with **zero new client code**. One table (`THROTTLE_ANSWERS`) holds the mapping; unmapped handlers fall
+back to the `error` event the client already listens to and which already marks in-flight sends failed —
+so an unlisted handler degrades to a visible error, never to silence. The guard emits and then STILL
+throws, so the limit keeps its teeth.
+
+**⚠️ A THIRD VACUOUS TEST, again caught by a reviewer and not by me.** The two tests guarding the core
+safety property set `threw = true` unconditionally after the await, so dropping the guard's
+`return super.throwThrottlingException(...)` — telling a caller it is rate limited and then serving it —
+would have kept them green. Fixed, then proven two-way: with that return dropped exactly those two fail
+(2 failed / 17 passed); restored, 19 pass. **Three vacuous tests in one program now. Every test whose
+whole value is being a guard gets the two-way proof.**
+
+**Also folded:** the `uploadKeyBundle` mapping was DEAD (that handler carries no throttle guard, so the
+branch was unreachable and the §7 bullet misdescribed the contract), and one warn per refusal let a
+flood amplify itself through the logs (now one warn per (tracker, event) per minute, rest at debug, with
+the bookkeeping map pruned).
+
+**⚠️ I nearly destroyed existing coverage.** My first pass WROTE OVER `ws-throttler.guard.spec.ts`, a
+tracked file last touched by a commit titled "fix false-positive tests, close coverage gaps". Caught
+only because the suite FILE count stayed at 61 while the test count rose by 6. Restored from git and
+merged. **When a spec for a file you are changing already exists, read it before writing it.**
+
+**Owed, recorded not fixed:** a throttled `pinMessage` still leaves optimistic pin state until a later
+authoritative event. Pre-existing, strictly improved (it used to be silence), same class as the edit
+divergence — so it belongs on the owed list, not in this diff.
+
+**Verified at `64b55c2`:** backend **1002/61** · ratchet **889** real (floor 906, PASS) · analyze clean ·
+flutter **1520/10sk** · both count verifiers OK.
