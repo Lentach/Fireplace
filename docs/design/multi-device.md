@@ -1109,4 +1109,77 @@ that is the designed outcome).
     shape with no E2E cross-check of the device lists the server served, and the (xvi)/(xvii)
     escalation discipline governs the receive side unchanged. The builder already exists in the
     send path (`messaging_provider.send.dart:1300-1338`).
+- **Amendment 2026-08-22 (T8 pre-implementation settlement, per the Stage-0 "settle before
+  code" rule).** T8 is the harness sweep: every item is a proof an earlier ticket left owed, so
+  the settlement fixes what an HONEST proof must show rather than changing any wire law. Three
+  of the seven items need no amendment — the second harness account and the parameterized
+  ceremony helpers are test-only; `list_device_mismatch` on the wire exercises a clause (xxi)
+  already makes normative; and the calm-skew widget test proves a rule (xvii)/(xx) already
+  states. The four below each pin something a future implementer would otherwise re-derive
+  wrongly, and three of them exist because the obvious version of the proof CANNOT FAIL.
+  - **(xxxv) A self-sync decrypt proof is VACUOUS unless it also asserts identity-key equality.**
+    Falsification 6 proves ROUTING only: its self ciphertext is synthetic and the server treats
+    every ciphertext as opaque, so nothing yet shows a sender's second device can decrypt its own
+    copy. The proof T5 owes is: a real, ceremony-provisioned second device adopts the account's
+    shared identity key (§5.1 ships `ikPriv` in the blob for exactly this), mints and uploads its
+    OWN signed pre-key and one-time pre-keys under its `(userId, deviceId)` partition, and the
+    origin device fetches THAT bundle, builds a session addressed to `(own userId, deviceId=N)`
+    and encrypts a real ciphertext which the §5.2 fan-out routes to device N, which decrypts it
+    as ORDINARY INBOUND against the ORIGIN device's session (xi)/(xii) and never touches a
+    pending-send record. The anti-vacuity clause is binding and is the reason this amendment
+    exists: **a Signal session decrypts whether or not the two parties' identity keys are equal**
+    — `libsignal_protocol_dart` 0.8.2 carries no `self_session` concept and no IK-equality
+    rejection branch, so X3DH admits the shared-account session by construction. A test that
+    asserts only "device 2 decrypted" is therefore an ordinary two-party decrypt wearing a
+    self-sync label; it MUST additionally assert that device 2's identity key IS the account's.
+  - **(xxxvi) §6.2 reset completion is a TWO-STAGE machine, and a proof AGES it rather than
+    waiting it out.** The pending ceremony is flipped to `completed` by the per-minute
+    `completeDueResets` sweep once `"deadlineAt" <= now()`; the (xxviii) roster teardown does NOT
+    run then. It runs LAZILY at the next authorized bundle upload, which spends the completed row
+    through `consumeCompletedReset` (conditional on `"consumedAt" IS NULL` and `"completedAt"`
+    inside the 24 h grant TTL). Nothing completes "on the next request", which is the recurring
+    misreading. A falsification-12 proof therefore runs request → age
+    `identity_reset_requests."deadlineAt"` into the past by a direct SQL UPDATE (the owner's
+    "delays in SECONDS, never wait out the window" rule; this is the ONLY sanctioned out-of-band
+    write) → let the REAL sweep complete it → upload the recovering bundle to fire the REAL
+    teardown. SQL-flipping `status` straight to `completed` skips the sweep and does NOT satisfy
+    this item. Two further clauses, both anti-vacuity: falsification 12 claims the three re-keyed
+    sites purge, claim and count **strictly within `(identityPublicKey, deviceId)`**, so a proof
+    MUST establish at least TWO such partitions on one account BEFORE the reset — with a single
+    partition the claim is trivially true and the test cannot fail; and the teardown leaves
+    `account_authorizations` in place per (xxix), so a test expecting the reset to clear, drop or
+    version-restart that row is asserting a spec violation and MUST fail.
+  - **(xxxvii) A throttled `pinMessage` answers on its own `messagePinFailed` event, and the
+    revert is CLIENT-driven from a pre-pin snapshot.** A throttled pin is the same divergence
+    class (xxxi) and T7.5 closed for edits: the optimistic pin is applied locally, the refusal
+    arrives as the bare `error` fallback which no pin code listens to, and the device keeps a pin
+    the server and the peer never saw. Reusing `messagePinned` for the refusal is FORBIDDEN,
+    because the guard refuses PRE-handler holding only the inbound `{conversationId, messageId}`
+    and so cannot author the prior state: `pinnedMessageId: null` reverts a conversation that had
+    a DIFFERENT message pinned to unpinned, and echoing the attempted id CONFIRMS a pin that
+    never happened. The refusal is therefore `messagePinFailed {conversationId, reason, retryAfterMs}`,
+    and the pinning device restores the pin it OVERWROTE from a snapshot captured at
+    optimistic-apply time — the same discipline the edit path uses — cleared whenever an
+    authoritative `messagePinned`/`messageUnpinned` settles it. `unpinMessage` writes no
+    optimistic state, so it keeps the `error` fallback: an entry for it would be an answer with no
+    client driver, the unreachable-code case the throttle table's own rule forbids. An older
+    client that ignores `messagePinFailed` is left exactly where the `error` fallback leaves it
+    today, so the change cannot regress it.
+  - **(xxxviii) Envelope stamp survival is proven by the content-only conflict clause plus a
+    recorded SQL check — the wire deliberately cannot observe it.** Per-device `deliveredAt` /
+    `readAt` are bookkeeping behind the single §4 row projection (§5.3), are barred from feeding
+    expiry or the read TTL (I9), and appear in no wire payload; exposing them would reveal WHICH
+    recipient device received or read a message, a strictly finer delivery-metadata surface than
+    the deliberately coarse projection. Falsification 24 therefore asserts the ROW projection
+    only, and that assertion CANNOT detect a zeroed stamp because the row projection is
+    maintained independently of the envelope. Survival is pinned instead by (1) the unit
+    assertion that the envelope UPSERT's conflict clause names `ciphertext` and nothing else, and
+    (2) the direct SQL evidence recorded in the T7 close. This is an accepted proof of record,
+    not an owed wire test, and it stands only while the columns stay off the wire — if a future
+    feature ever reads them onto it, this amendment is superseded and a real end-to-end survival
+    test becomes owed. Corollary, stated so it cannot be silently relied upon: **`readAt` is never
+    written by any code path** — `stampEnvelope`'s sole call site passes `'deliveredAt'`, and
+    `markConversationRead` drives the ROW projection without touching the envelope — so any
+    assertion that `readAt` "survives" is vacuous. The guard MUST target `deliveredAt` and MUST
+    exercise a PRE-EXISTING non-null stamp rather than the insert-time null.
 - **Next gate:** per-ticket implementation reviews (T1–T8); Stage 0 is CLOSED 2026-08-19.
