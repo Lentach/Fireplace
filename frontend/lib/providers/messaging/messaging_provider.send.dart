@@ -17,7 +17,81 @@ Future<MediaPreviewMetadata?> _extractMediaPreviewMetadata(
   }
 }
 
+/// The addresses one ciphertext-bearing message must reach, plus the
+/// device-list stamps that message quotes.
+///
+/// Shared by a SEND (spec §5.2) and an EDIT (§5.7): an edit is a full re-fan
+/// over the same address set, so resolving it twice in two places is how the
+/// two paths would silently drift apart.
+typedef FanOutPlan = ({
+  bool fanOut,
+  List<({int userId, int deviceId})> targets,
+  VerifiedDeviceList? recipientList,
+  VerifiedDeviceList? ownList,
+  SenderListInfo senderListInfo,
+});
+
 extension MessagingSend on MessagingProvider {
+  /// Resolve who a ciphertext-bearing message to [recipientId] must address.
+  ///
+  /// A device list is used only when this client ALREADY holds a verified one —
+  /// seeded by an explicit fetch, a `deviceListChanged`, or a `deviceListStale`
+  /// refusal. It deliberately does NOT fetch: an account with no enrollment is
+  /// single-device by construction, and paying a device-list round trip on
+  /// every send to prove that would slow the overwhelmingly common path for
+  /// nothing. Nothing is dropped by the omission, because the SERVER refuses a
+  /// legacy send whenever either party is enrolled and hands back both signed
+  /// lists — which is what upgrades this client to fan-out (I5 is enforced
+  /// server-side).
+  FanOutPlan _resolveFanOut(int recipientId) {
+    final ownUserId = _currentUserId;
+    final recipientList = _encryptionProvider!.cachedDeviceList(recipientId);
+    final ownList = ownUserId == null
+        ? null
+        : _encryptionProvider!.cachedDeviceList(ownUserId);
+    final ownDeviceId = _encryptionProvider!.ownDeviceId;
+
+    // Fan out ONLY when the RECIPIENT's list is known. Without it a fan-out
+    // would address own devices alone: the server would accept it (every
+    // envelope valid, recipient not enrolled so nothing stale), commit the row
+    // with a NULL legacy column, and the recipient's history read would answer
+    // `none_for_device` forever — the message permanently invisible to the
+    // person it was sent to. Own-device self-sync rides along only once the
+    // recipient is addressable.
+    final fanOut = recipientList != null;
+    final targets = <({int userId, int deviceId})>[
+      if (recipientList != null)
+        for (final deviceId in recipientList.liveDeviceIds)
+          (userId: recipientId, deviceId: deviceId),
+      if (fanOut && ownList != null && ownUserId != null)
+        for (final deviceId in ownList.liveDeviceIds)
+          // NEVER this device: it holds the plaintext already, and the server
+          // refuses that envelope as self_envelope_for_origin_device.
+          if (deviceId != ownDeviceId) (userId: ownUserId, deviceId: deviceId),
+    ];
+
+    // `senderListInfo` states which device-list versions this message was
+    // addressed from, and rides inside the plaintext where the server cannot
+    // see or edit it (spec §12 amendment (xv), extended to edits by (xxxiv)).
+    // It is built from verified cached lists only — a party we hold nothing for
+    // is reported ABSENT rather than as version 0, because "I do not know your
+    // devices" and "you have no devices" are different claims and only one of
+    // them is true. It rides EVERY message (owner ruling 2026-08-21) so a split
+    // view is exposed by the first message rather than a sampled one.
+    return (
+      fanOut: fanOut,
+      targets: targets,
+      recipientList: recipientList,
+      ownList: ownList,
+      senderListInfo: SenderListInfo(
+        ownVersion: ownList?.version,
+        ownListHash: ownList?.listHash,
+        peerVersion: recipientList?.version,
+        peerListHash: recipientList?.listHash,
+      ),
+    );
+  }
+
   void sendMessage(String content, {int? expiresIn, int? replyToMessageId}) {
     final activeConversationId = _conversationsProvider?.activeConversationId;
     if (activeConversationId == null || _currentUserId == null) return;
@@ -1270,50 +1344,12 @@ extension MessagingSend on MessagingProvider {
       // omission, because the SERVER refuses a legacy send whenever either
       // party is enrolled and hands back both signed lists — which is what
       // upgrades this client to fan-out (I5 is enforced server-side).
-      final ownUserId = _currentUserId;
-      final recipientList = _encryptionProvider!.cachedDeviceList(recipientId);
-      final ownList = ownUserId == null
-          ? null
-          : _encryptionProvider!.cachedDeviceList(ownUserId);
-      final ownDeviceId = _encryptionProvider!.ownDeviceId;
-
-      // Fan out ONLY when the RECIPIENT's list is known. Without it a fan-out
-      // would address own devices alone: the server would accept it (every
-      // envelope valid, recipient not enrolled so nothing stale), commit the
-      // row with a NULL legacy column, and the recipient's history read would
-      // answer `none_for_device` forever — the message permanently invisible to
-      // the person it was sent to. Own-device self-sync rides along only once
-      // the recipient is addressable.
-      final fanOut = recipientList != null;
-      final targets = <({int userId, int deviceId})>[
-        if (recipientList != null)
-          for (final deviceId in recipientList.liveDeviceIds)
-            (userId: recipientId, deviceId: deviceId),
-        if (fanOut && ownList != null && ownUserId != null)
-          for (final deviceId in ownList.liveDeviceIds)
-            // NEVER the origin device: it holds the plaintext already, and the
-            // server refuses that envelope as self_envelope_for_origin_device.
-            if (deviceId != ownDeviceId)
-              (userId: ownUserId, deviceId: deviceId),
-      ];
-
-      // 4. Build the encrypted envelope (content + type + media + optional
-      // linkPreview + the §5.2 layer-2 cross-check).
-      //
-      // `senderListInfo` states which device-list versions THIS send was
-      // addressed from, and rides inside the plaintext where the server cannot
-      // see or edit it (spec §12 amendment (xv)). It is built from verified
-      // cached lists only — a party we hold nothing for is reported ABSENT
-      // rather than as version 0, because "I do not know your devices" and
-      // "you have no devices" are different claims and only one of them is
-      // true. It is attached to EVERY message (owner ruling 2026-08-21) so a
-      // split view is exposed by the first message rather than a sampled one.
-      final senderListInfo = SenderListInfo(
-        ownVersion: ownList?.version,
-        ownListHash: ownList?.listHash,
-        peerVersion: recipientList?.version,
-        peerListHash: recipientList?.listHash,
-      );
+      final resolved = _resolveFanOut(recipientId);
+      final recipientList = resolved.recipientList;
+      final ownList = resolved.ownList;
+      final fanOut = resolved.fanOut;
+      final targets = resolved.targets;
+      final senderListInfo = resolved.senderListInfo;
       final envelopeJson = jsonEncode(
         E2eEnvelope.build(
           content,
@@ -1406,8 +1442,8 @@ extension MessagingSend on MessagingProvider {
         'tempId': tempId,
         'replyToMessageId': effectiveReplyToId,
       };
-      if (fanOut && recipientList.version != null) {
-        emitPayload['recipientListVersion'] = recipientList.version;
+      if (fanOut && recipientList?.version != null) {
+        emitPayload['recipientListVersion'] = recipientList!.version;
       }
       if (fanOut && ownList?.version != null) {
         emitPayload['senderListVersion'] = ownList!.version;

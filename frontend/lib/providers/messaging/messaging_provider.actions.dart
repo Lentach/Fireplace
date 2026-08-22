@@ -75,7 +75,9 @@ extension MessagingActions on MessagingProvider {
     );
   }
 
-  /// Encrypt [content] for [recipientId] and emit the `editMessage` event.
+  /// Encrypt [content] for every live device of both parties and emit
+  /// `editMessage` (spec §5.7 full re-fan).
+  ///
   /// On any failure the optimistic update is reverted. TEXT only; link preview
   /// is intentionally not regenerated in v1 (kept as-is).
   Future<void> _encryptAndEmitEdit({
@@ -88,27 +90,73 @@ extension MessagingActions on MessagingProvider {
       return;
     }
     try {
-      final envelopeJson = jsonEncode(E2eEnvelope.build(content));
-      await _encryptionProvider!.ensureSession(recipientId);
-      final ciphertext =
-          await _encryptionProvider!.encrypt(recipientId, envelopeJson);
-      // Mirror send: enforce the server's encryptedContent cap so an over-long
-      // edit fails clearly here instead of bouncing back from validation.
-      if (ciphertext.length > 65536) {
-        _revertPendingEdit(messageId, 'Message is too long to send');
-        return;
+      // The SAME address resolution a send runs: an edit re-fans over the
+      // CURRENT device list, so a device linked after the original send is
+      // addressed here and has its `none_for_device` placeholder upgraded.
+      final plan = _resolveFanOut(recipientId);
+      final envelopeJson = jsonEncode(
+        E2eEnvelope.build(
+          content,
+          // An edit is a ciphertext-bearing message, so it carries the layer-2
+          // cross-check like every other one (§12 amendment (xxxiv)).
+          senderListInfo: plan.senderListInfo.toJson(),
+        ),
+      );
+
+      final envelopes = <Map<String, dynamic>>[];
+      String? legacyCiphertext;
+      for (final target in plan.fanOut
+          ? plan.targets
+          : [(userId: recipientId, deviceId: 1)]) {
+        await _encryptionProvider!.ensureSession(
+          target.userId,
+          deviceId: target.deviceId,
+        );
+        final ciphertext = await _encryptionProvider!.encrypt(
+          target.userId,
+          envelopeJson,
+          deviceId: target.deviceId,
+        );
+        // Mirror send: enforce the server's per-ciphertext cap so an over-long
+        // edit fails clearly here instead of bouncing back from validation.
+        if (ciphertext.length > 65536) {
+          _revertPendingEdit(messageId, 'Message is too long to send');
+          return;
+        }
+        if (plan.fanOut) {
+          envelopes.add({
+            'userId': target.userId,
+            'deviceId': target.deviceId,
+            'ciphertext': ciphertext,
+          });
+        } else {
+          legacyCiphertext = ciphertext;
+        }
       }
+
       _emit?.call('editMessage', {
         'messageId': messageId,
         'content': '[encrypted]',
-        'encryptedContent': ciphertext,
+        if (plan.fanOut) 'envelopes': envelopes,
+        if (!plan.fanOut) 'encryptedContent': legacyCiphertext,
+        // Quoted only for an ENROLLED party: the server treats an absent stamp
+        // as a mismatch, and an unenrolled party has no list to be stale
+        // against (spec §12 amendments (v)/(xxxi)).
+        if (plan.recipientList?.version != null)
+          'recipientListVersion': plan.recipientList!.version,
+        if (plan.ownList?.version != null)
+          'senderListVersion': plan.ownList!.version,
       });
       // Sender owns plaintext: persist the FULL edited row (content + editedAt +
       // kept link preview) so reloads (own-message restore) show the edit and
       // nothing is silently dropped.
       final i = _messages.indexWhere((m) => m.id == messageId);
       if (i != -1) await _persistDecryptedContent(_messages[i]);
-      _e2eFlowLog('EDIT_EMIT', {'messageId': messageId});
+      _e2eFlowLog('EDIT_EMIT', {
+        'messageId': messageId,
+        'fanOut': plan.fanOut,
+        'envelopes': envelopes.length,
+      });
     } catch (e) {
       _e2eFlowLog('EDIT_FAILED', {'messageId': messageId});
       _revertPendingEdit(messageId, 'Edit failed');
