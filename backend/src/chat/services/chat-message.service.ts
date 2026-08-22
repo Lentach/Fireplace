@@ -1103,11 +1103,19 @@ export class ChatMessageService {
       // the data consistent, but the CALLER must still be told: its edit was
       // applied optimistically, and an unanswered request leaves that device
       // showing text no one else has.
-      this.logger.warn(
-        `[edit] write failed messageId=${messageId} userId=${userId}: ${
-          (error as Error).message
-        }`,
-      );
+      // A raced CASCADE delete is an ordinary race and belongs at warn; ANY
+      // other throw is an unexpected server fault and must not hide inside the
+      // same line, or a systemic DB problem under load looks like users editing
+      // deleted messages. 23503 is Postgres' foreign_key_violation.
+      const racedDelete = (error as { code?: string }).code === '23503';
+      const detail = `[edit] write failed messageId=${messageId} userId=${userId}: ${
+        (error as Error).message
+      }`;
+      if (racedDelete) {
+        this.logger.warn(`${detail} (raced delete)`);
+      } else {
+        this.logger.error(detail);
+      }
       client.emit('editMessageFailed', { messageId, reason: 'not_found' });
       return;
     }

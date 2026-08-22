@@ -369,10 +369,14 @@ void main() {
         await pump();
       }
 
-      // Spend the budget on a first edit, right up to the revert.
+      // Spend the budget on a first edit, up to but NOT PAST the cap. Three
+      // bounces leave the counter at 3 without tripping the exhaustion path —
+      // which clears the key itself, and would therefore hand the next edit a
+      // fresh budget even with the production reset removed, making this test
+      // unable to fail.
       provider.editMessage(500, 'first');
       await pump();
-      for (var i = 0; i < 4; i++) {
+      for (var i = 0; i < 3; i++) {
         await bounce();
       }
 
