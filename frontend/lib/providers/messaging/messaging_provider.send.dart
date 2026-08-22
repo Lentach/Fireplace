@@ -911,16 +911,29 @@ extension MessagingSend on MessagingProvider {
   /// forever against a list this client cannot verify would strand the row in a
   /// state only this device believes in.
   Future<void> _retryStaleEdit(int messageId) async {
+    // Every early return below means the edit can no longer be re-driven, so
+    // the optimistic snapshot must not be left behind: `_pendingEdits` would
+    // hold that row forever, and a later revert would restore text from an edit
+    // the user has long forgotten.
     final index = _messages.indexWhere((m) => m.id == messageId);
-    if (index == -1) return;
+    if (index == -1) {
+      _revertPendingEdit(messageId, 'device_list_stale');
+      return;
+    }
     final row = _messages[index];
     final conv = (_conversationsProvider?.conversations ?? [])
         .where((c) => c.id == row.conversationId)
         .firstOrNull;
-    if (conv == null) return;
+    if (conv == null) {
+      _revertPendingEdit(messageId, 'device_list_stale');
+      return;
+    }
     final recipientId = conv_helpers.getOtherUserId(conv, _currentUserId);
     final encryption = _encryptionProvider;
-    if (encryption == null) return;
+    if (encryption == null) {
+      _revertPendingEdit(messageId, 'device_list_stale');
+      return;
+    }
 
     // Resolve every party the re-fan needs; an `authorization: null` answer
     // caches "not enrolled, device 1 only", which is what decides the shape.

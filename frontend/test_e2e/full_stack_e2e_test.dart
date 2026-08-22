@@ -2490,10 +2490,20 @@ void main() {
           row['deliveryStatus'],
           'READ',
           reason:
-              'an edit is not an un-delivery — the §4 projection never '
-              'regresses on edit (falsification 24 / durability F8)',
+              'an edit is not an un-delivery — the §4 ROW projection never '
+              'regresses on edit',
         );
         expect(row['editedAt'], isNotNull);
+        // NOTE ON WHAT THIS DOES *NOT* PROVE. `deliveryStatus` is a
+        // messages-ROW column, maintained by `updateDeliveryStatus`
+        // independently of the per-device envelope stamps that
+        // `stampEnvelope` writes — and `applyEdit` touches neither. So this
+        // assertion would still pass if the UPSERT zeroed
+        // `deliveredAt`/`readAt`. The wire has no read path for those columns,
+        // so the content-only conflict clause is pinned by
+        // `messages.service.spec.ts` ('UPSERTs the named envelopes
+        // CONTENT-ONLY') and by a direct SQL check recorded in the T7 session
+        // summary. Do not upgrade this comment into a claim.
       }, timeout: const Timeout(Duration(minutes: 4)));
 
     });

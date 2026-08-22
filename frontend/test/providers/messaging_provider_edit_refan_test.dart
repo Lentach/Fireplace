@@ -356,5 +356,42 @@ void main() {
 
       expect(provider.messages.firstWhere((m) => m.id == 500).content, original);
     });
+    test('each new edit gets a FULL staleness budget', () async {
+      await seed(id: 500, senderId: 1);
+
+      Future<void> bounce() async {
+        await provider.onDeviceListStale({
+          'success': false,
+          'error': 'device_list_stale',
+          'messageId': 500,
+          'lists': const [],
+        });
+        await pump();
+      }
+
+      // Spend the budget on a first edit, right up to the revert.
+      provider.editMessage(500, 'first');
+      await pump();
+      for (var i = 0; i < 4; i++) {
+        await bounce();
+      }
+
+      // A SECOND, independent edit of the same row. The retry counter is keyed
+      // by messageId (an edit has no tempId), so without a per-edit reset this
+      // edit would inherit the spent budget and be reverted immediately.
+      provider.editMessage(500, 'second');
+      await pump();
+      final beforeBounce = provider.messages
+          .firstWhere((m) => m.id == 500)
+          .content;
+      expect(beforeBounce, 'second');
+      await bounce();
+
+      expect(
+        provider.messages.firstWhere((m) => m.id == 500).content,
+        'second',
+        reason: 'the first bounce of a fresh edit must not revert it',
+      );
+    });
   });
 }

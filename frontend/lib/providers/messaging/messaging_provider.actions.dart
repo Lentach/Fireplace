@@ -53,6 +53,12 @@ extension MessagingActions on MessagingProvider {
       return;
     }
 
+    // A NEW user-initiated edit gets a FULL staleness budget. The retry counter
+    // is keyed by messageId (an edit has no tempId to make it unique), so
+    // without this reset a row that bounced earlier would carry that spent
+    // budget forever and a later, perfectly repairable edit would be reverted
+    // after fewer than three attempts — possibly none.
+    _staleResendAttempts.remove('edit:$messageId');
     _pendingEdits[messageId] = original;
     final edited = original.copyWith(content: trimmed, editedAt: DateTime.now());
     _messages[idx] = edited;

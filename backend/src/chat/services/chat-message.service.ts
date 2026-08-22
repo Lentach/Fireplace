@@ -1086,13 +1086,31 @@ export class ChatMessageService {
     // (`ackEnvelopeStatus`), so writing it would silently reclassify the row as
     // legacy after a single edit.
     const rowIsNewModel = this.ackEnvelopeStatus(message) === 'own_origin';
-    const updated = await this.messagesService.applyEdit(messageId, userId, {
-      encryptedContent:
-        isNewModel || rowIsNewModel ? undefined : (edit.encryptedContent ?? null),
-      content: '[encrypted]',
-      originDeviceId: editingDeviceId,
-      envelopes: envelopes.length > 0 ? envelopes : undefined,
-    });
+    let updated: Message | null;
+    try {
+      updated = await this.messagesService.applyEdit(messageId, userId, {
+        encryptedContent:
+          isNewModel || rowIsNewModel
+            ? undefined
+            : (edit.encryptedContent ?? null),
+        content: '[encrypted]',
+        originDeviceId: editingDeviceId,
+        envelopes: envelopes.length > 0 ? envelopes : undefined,
+      });
+    } catch (error) {
+      // A delete racing this edit CASCADE-removes the row between the read and
+      // the envelope write, so the write fails on the FK. The transaction keeps
+      // the data consistent, but the CALLER must still be told: its edit was
+      // applied optimistically, and an unanswered request leaves that device
+      // showing text no one else has.
+      this.logger.warn(
+        `[edit] write failed messageId=${messageId} userId=${userId}: ${
+          (error as Error).message
+        }`,
+      );
+      client.emit('editMessageFailed', { messageId, reason: 'not_found' });
+      return;
+    }
     if (!updated || !updated.editedAt) {
       client.emit('editMessageFailed', { messageId, reason: 'not_found' });
       return;
