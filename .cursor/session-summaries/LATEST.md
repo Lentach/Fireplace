@@ -2,6 +2,16 @@
 
 Entries are newest-first. Each one links its dated file, which holds the full account.
 
+**📍 WHERE THINGS LIVE (multi-device program, 2026-08-22).** You are reading the WORKTREE copy, which is
+the current one: `C:/Users/Lentach/Desktop/fireplace-0a` on branch `feat/takeover-alarm-0a`. **The MAIN
+checkout's copy of this file is STALE** — `C:/Users/Lentach/Desktop/Fireplace` sits on `master`, so its
+`.cursor/session-summaries/LATEST.md` stops at 2026-08-20 and knows nothing of T6/T7/T7.5. The program's
+task plan, findings and progress live ONLY in the main checkout at
+`C:/Users/Lentach/Desktop/Fireplace/.planning/multi-device/`, are **gitignored** (`.gitignore:58`) by
+owner instruction, and therefore cannot be read from this worktree or pushed anywhere: the books here say
+what happened, those say what is OWED, and both are required. A cold agent landing in the main checkout
+first is caught by `.planning/START-HERE.md`.
+
 **🗺 START HERE IF YOU ARE LOST: `2026-08-05-HANDOFF-audit-state.md`** — plain-language map of the 2026-08-04/05 full-codebase audit: what was found, what merged, what is deliberately parked, and the three owner-only decisions. The two ordered task queues are `.planning/full-audit/REMAINING-WORK.md` (backend) and `.planning/full-audit/frontend/REMAINING-WORK.md` (frontend), both local-only/gitignored. Older long-form: `2026-08-03-HANDOFF-post-b2b-state.md` (B2b gate detail + traps; **its work queue is DONE**) and `2026-08-03-HANDOFF-signal-grade-queue.md` (dated addenda).
 
 **✅ DEPLOY STATE — FRONTEND `0.1.16 / c7c2d0e` LIVE 2026-08-18, BACKEND `0.1.11 / 91535317` (unchanged since 08-16 14:20Z; every release after it was frontend-only — the lag is CORRECT). Master == prod. Smoke 5/5; live `main.dart.js` md5 `bae5fc6d8a69d665b065d03bb11eb426` == local, Giphy key present in the live bundle.** Release train: 0.1.10 (identity guard + forensics) → 0.1.11 (video batch + migration 0012) → 0.1.12 (media picker; also carries §5.4 PRs #137/#138/#139) → 0.1.13 (§5.4 post-deploy-review followups, PR #141) → 0.1.14 (attachment sheet, PR #142) → 0.1.15 (flattened picker, PR #143) → 0.1.16 (iOS popover anchored to the paperclip, PR #145). **⚠️ Post-deploy follow-up still owed from 0.1.11:** the owner overrode the device-A/B gate on the composer motion — verify on his real iOS/Android PWA and be ready to revert the two motion commits (see the video entry below). **⚠️ Also owed from 0.1.16:** only the owner's iPhone can confirm the attachment popover now opens AT the paperclip — desktop cannot reproduce popover anchoring. **⚠️ `deploy-web.ps1` exit-21 silent publish halt** — build succeeds, log dies at the "Publish via ssh/scp" banner; manual staged publish is the workaround (10 releases running) and worktrees need the gitignored `deploy-web.config.ps1` copied in before building.
