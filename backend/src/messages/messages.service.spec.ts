@@ -320,7 +320,7 @@ describe('MessagesService.applyEdit', () => {
     expect(result!.encryptedContent).toBeNull();
   });
 
-  it('UPSERTs the named envelopes CONTENT-ONLY, so deliveredAt/readAt survive (F8)', async () => {
+  it('UPSERTs the named envelopes CONTENT-ONLY, so an existing deliveredAt survives (F8)', async () => {
     repo.findOne.mockResolvedValue({
       id: 5,
       sender: { id: 1 },
@@ -366,8 +366,16 @@ describe('MessagesService.applyEdit', () => {
       },
     ]);
     // THE ticket's core assertion: the conflict clause overwrites `ciphertext`
-    // and NOTHING else. Listing deliveredAt/readAt here — or using save() —
-    // would zero a delivered envelope's stamps and regress the §4 projection.
+    // and NOTHING else. This is load-bearing precisely BECAUSE `values()` above
+    // passes `deliveredAt: null` — listing the column here (or using save())
+    // would push that null over a delivered envelope's real stamp and regress
+    // the §4 projection.
+    //
+    // Scope, per spec §12 (xxxviii): the surviving column that MATTERS is
+    // `deliveredAt`. `readAt` is never written by any code path — `stampEnvelope`'s
+    // sole call site passes 'deliveredAt', and `markConversationRead` drives the
+    // message ROW without touching the envelope — so claiming this test protects
+    // `readAt` would be claiming an always-NULL column trivially survives.
     expect(envelopeQb.orUpdate).toHaveBeenCalledWith(
       ['ciphertext'],
       ['messageId', 'recipientUserId', 'recipientDeviceId'],
@@ -386,6 +394,97 @@ describe('MessagesService.applyEdit', () => {
 
     expect(messageUpdate).toHaveBeenCalledTimes(1);
     expect(envelopeQb.execute).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The WRITE half of envelope-stamp survival (spec §12 (xxxviii)).
+ *
+ * `applyEdit`'s content-only conflict clause is what stops an EDIT from zeroing
+ * a stamp; this is what stops a second DELIVERY from moving one. Nothing pinned
+ * either property of `stampEnvelope` before — it was mocked out everywhere it
+ * was used — even though the columns are unreadable over the wire, so a
+ * regression here would be invisible until a per-device delivery feature
+ * eventually reads them.
+ */
+describe('MessagesService.stampEnvelope', () => {
+  type UpdateBuilder = {
+    update: jest.Mock;
+    set: jest.Mock;
+    where: jest.Mock;
+    execute: jest.Mock;
+  };
+  let builder: UpdateBuilder;
+  let service: MessagesService;
+
+  beforeEach(async () => {
+    builder = {
+      update: jest.fn().mockReturnThis(),
+      set: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      execute: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
+    const module = await Test.createTestingModule({
+      providers: [
+        MessagesService,
+        {
+          provide: getRepositoryToken(Message),
+          useValue: {
+            manager: {
+              getRepository: jest.fn(() => ({
+                createQueryBuilder: jest.fn(() => builder),
+              })),
+            },
+          },
+        },
+        mediaCleanupMock(),
+      ],
+    }).compile();
+    service = module.get(MessagesService);
+  });
+
+  /** The `set` payload, with the SQL-function values resolved to strings. */
+  function assignedColumns(): Record<string, string> {
+    const [patch] = builder.set.mock.calls[0] as [
+      Record<string, () => string>,
+    ];
+    return Object.fromEntries(
+      Object.entries(patch).map(([column, value]) => [column, value()]),
+    );
+  }
+
+  it('assigns ONLY the named column, so stamping delivery cannot touch readAt', async () => {
+    await service.stampEnvelope(5, 7, 2, 'deliveredAt');
+
+    expect(assignedColumns()).toEqual({ deliveredAt: 'now()' });
+  });
+
+  it('is WRITE-ONCE: an already-stamped envelope is excluded by the predicate', async () => {
+    await service.stampEnvelope(5, 7, 2, 'deliveredAt');
+
+    const [predicate] = builder.where.mock.calls[0] as [string];
+    // This is the survival property expressible without a database: a second
+    // `messageDelivered` — a reconnect, or a second socket of the same device —
+    // must not move an existing stamp forward, so the first delivery time is
+    // the durable one.
+    expect(predicate).toContain('"deliveredAt" IS NULL');
+  });
+
+  it('is scoped to exactly one (message, recipient, device) — no cross-device bleed', async () => {
+    await service.stampEnvelope(5, 7, 2, 'deliveredAt');
+
+    const [predicate, params] = builder.where.mock.calls[0] as [
+      string,
+      Record<string, number>,
+    ];
+    expect(predicate).toContain('"messageId" = :messageId');
+    expect(predicate).toContain('"recipientUserId" = :recipientUserId');
+    expect(predicate).toContain('"recipientDeviceId" = :recipientDeviceId');
+    expect(params).toEqual({
+      messageId: 5,
+      recipientUserId: 7,
+      recipientDeviceId: 2,
+    });
   });
 });
 
