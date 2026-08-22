@@ -49,6 +49,27 @@ const THROTTLE_ANSWERS: Record<
       retryAfterMs,
     },
   ],
+  // Reverts the optimistic pin through `onPinMessageFailed` (spec §12 (xxxvii)).
+  //
+  // A DEDICATED event, deliberately not `messagePinned`. This guard refuses
+  // BEFORE the handler runs, so it holds only the inbound payload and cannot
+  // know what was pinned before: answering `messagePinned` with a null id would
+  // unpin a conversation that had a DIFFERENT message pinned, and echoing the
+  // attempted id would confirm a pin that never happened. Only the pinning
+  // device knows the state it overwrote, so only it can restore it — this
+  // refusal is the trigger, not the new state.
+  //
+  // `unpinMessage` is deliberately ABSENT: it writes no optimistic state, so an
+  // entry for it would be an answer no client code drives to a conclusion.
+  pinMessage: (data, retryAfterMs) => [
+    'messagePinFailed',
+    {
+      conversationId: (data as { conversationId?: number } | null)
+        ?.conversationId,
+      reason: RATE_LIMITED,
+      retryAfterMs,
+    },
+  ],
   // The link ceremony: each stage answers its own ack, so a throttled stage
   // surfaces in the link UI instead of hanging it.
   openProvisioning: (_data, retryAfterMs) => [

@@ -182,6 +182,40 @@ describe('WsThrottlerGuard — a throttled request answers in its own contract',
     });
   });
 
+  it('answers a throttled pinMessage on messagePinFailed, carrying the conversation it was asked about', async () => {
+    const { context, emit } = contextFor('pinMessage', {
+      conversationId: 91,
+      messageId: 77,
+    });
+
+    await guard().refuse(context);
+
+    // The conversation id must come FROM THE REQUEST: the client keys its
+    // pre-pin snapshot by conversation, so a hardcoded or absent id reverts
+    // nothing. 91 is deliberately unlike the 7 the fixture uses for the user.
+    expect(emit).toHaveBeenCalledWith('messagePinFailed', {
+      conversationId: 91,
+      reason: RATE_LIMITED,
+      retryAfterMs: 42_000,
+    });
+  });
+
+  it('never answers a throttled unpinMessage in-contract — it stakes no optimistic state', async () => {
+    const { context, emit } = contextFor('unpinMessage', { conversationId: 91 });
+
+    await guard().refuse(context);
+
+    // An `unpinMessage` entry would be an answer no client code drives to a
+    // conclusion, which is the unreachable-code case the table forbids (it is
+    // why `uploadKeyBundle` was removed). The visible `error` fallback is the
+    // whole contract here.
+    expect(emit).toHaveBeenCalledWith('error', {
+      message: RATE_LIMITED,
+      event: 'unpinMessage',
+      retryAfterMs: 42_000,
+    });
+  });
+
   it.each([
     ['openProvisioning', 'provisioningOpened'],
     ['provisioningHello', 'provisioningHelloAck'],

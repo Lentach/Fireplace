@@ -825,6 +825,13 @@ class ConnectionProvider extends ChangeNotifier {
     _socketService.on('messageUnpinned', (data) {
       _conversationsProvider?.onMessageUnpinned(data);
     });
+    // A refused pin (today: rate limited). The optimistic pin overwrote this
+    // device's pin state and nothing else will correct it until the next
+    // conversations snapshot, so the provider restores what it overwrote
+    // (spec §12 (xxxvii)).
+    _socketService.on('messagePinFailed', (data) {
+      _conversationsProvider?.onPinMessageFailed(data);
+    });
     _socketService.on('chatHistoryCleared', (data) {
       _messagingProvider?.onChatHistoryCleared(data);
     });

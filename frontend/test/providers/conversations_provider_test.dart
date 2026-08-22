@@ -104,28 +104,30 @@ void main() {
     });
 
     test(
-        'requestNavigateToConversationFromNotification pending is consumed and cleared',
-        () {
-      final provider = ConversationsProvider();
-      provider.requestNavigateToConversationFromNotification(42);
-      expect(provider.pendingNotificationConversationId, 42);
-      expect(provider.consumePendingNotificationConversationId(), 42);
-      expect(provider.pendingNotificationConversationId, isNull);
-      expect(provider.consumePendingNotificationConversationId(), isNull);
-    });
+      'requestNavigateToConversationFromNotification pending is consumed and cleared',
+      () {
+        final provider = ConversationsProvider();
+        provider.requestNavigateToConversationFromNotification(42);
+        expect(provider.pendingNotificationConversationId, 42);
+        expect(provider.consumePendingNotificationConversationId(), 42);
+        expect(provider.pendingNotificationConversationId, isNull);
+        expect(provider.consumePendingNotificationConversationId(), isNull);
+      },
+    );
 
     test(
-        'requestNavigateToConversationFromNotification ignores duplicate same id',
-        () {
-      final provider = ConversationsProvider();
-      var notifies = 0;
-      provider.addListener(() => notifies++);
-      provider.requestNavigateToConversationFromNotification(7);
-      expect(notifies, 1);
-      provider.requestNavigateToConversationFromNotification(7);
-      expect(notifies, 1);
-      expect(provider.pendingNotificationConversationId, 7);
-    });
+      'requestNavigateToConversationFromNotification ignores duplicate same id',
+      () {
+        final provider = ConversationsProvider();
+        var notifies = 0;
+        provider.addListener(() => notifies++);
+        provider.requestNavigateToConversationFromNotification(7);
+        expect(notifies, 1);
+        provider.requestNavigateToConversationFromNotification(7);
+        expect(notifies, 1);
+        expect(provider.pendingNotificationConversationId, 7);
+      },
+    );
 
     test('onConnect(false) clears pending notification conversation id', () {
       final provider = ConversationsProvider();
@@ -134,107 +136,123 @@ void main() {
       expect(provider.pendingNotificationConversationId, isNull);
     });
 
-    test('onConnect(true) preserves conversations and active chat (no flicker)', () {
-      final provider = buildProviderWithSampleData();
-      provider.openConversation(10);
+    test(
+      'onConnect(true) preserves conversations and active chat (no flicker)',
+      () {
+        final provider = buildProviderWithSampleData();
+        provider.openConversation(10);
 
-      provider.onConnect(true);
+        provider.onConnect(true);
 
-      expect(provider.conversations, isNotEmpty);
-      expect(provider.activeConversationId, 10);
-      expect(provider.activeConversationDeletedByOther, isFalse);
-      expect(provider.errorMessage, isNull);
-    });
+        expect(provider.conversations, isNotEmpty);
+        expect(provider.activeConversationId, 10);
+        expect(provider.activeConversationDeletedByOther, isFalse);
+        expect(provider.errorMessage, isNull);
+      },
+    );
 
-    test('removeConversationsForUser removes conversations and clears active if needed', () {
-      final provider = ConversationsProvider();
-      final userA = UserModel(id: 1, username: 'alice', tag: '0001');
-      final userB = UserModel(id: 2, username: 'bob', tag: '0002');
+    test(
+      'removeConversationsForUser removes conversations and clears active if needed',
+      () {
+        final provider = ConversationsProvider();
+        final userA = UserModel(id: 1, username: 'alice', tag: '0001');
+        final userB = UserModel(id: 2, username: 'bob', tag: '0002');
 
-      final conv1 = ConversationModel(
-        id: 10,
-        userOne: userA,
-        userTwo: userB,
-        createdAt: DateTime.utc(2026, 1, 1),
-      );
-      final conv2 = ConversationModel(
-        id: 11,
-        userOne: userA,
-        userTwo: userA,
-        createdAt: DateTime.utc(2026, 1, 2),
-      );
+        final conv1 = ConversationModel(
+          id: 10,
+          userOne: userA,
+          userTwo: userB,
+          createdAt: DateTime.utc(2026, 1, 1),
+        );
+        final conv2 = ConversationModel(
+          id: 11,
+          userOne: userA,
+          userTwo: userA,
+          createdAt: DateTime.utc(2026, 1, 2),
+        );
 
-      provider.onConversationsList([
-        {
-          'id': conv1.id,
-          'userOne': {
-            'id': userA.id,
-            'username': userA.username,
-            'tag': userA.tag,
+        provider.onConversationsList([
+          {
+            'id': conv1.id,
+            'userOne': {
+              'id': userA.id,
+              'username': userA.username,
+              'tag': userA.tag,
+            },
+            'userTwo': {
+              'id': userB.id,
+              'username': userB.username,
+              'tag': userB.tag,
+            },
+            'createdAt': conv1.createdAt.toIso8601String(),
+            'unreadCount': 0,
           },
-          'userTwo': {
-            'id': userB.id,
-            'username': userB.username,
-            'tag': userB.tag,
+          {
+            'id': conv2.id,
+            'userOne': {
+              'id': userA.id,
+              'username': userA.username,
+              'tag': userA.tag,
+            },
+            'userTwo': {
+              'id': userA.id,
+              'username': userA.username,
+              'tag': userA.tag,
+            },
+            'createdAt': conv2.createdAt.toIso8601String(),
+            'unreadCount': 0,
           },
-          'createdAt': conv1.createdAt.toIso8601String(),
-          'unreadCount': 0,
-        },
-        {
-          'id': conv2.id,
-          'userOne': {
-            'id': userA.id,
-            'username': userA.username,
-            'tag': userA.tag,
-          },
-          'userTwo': {
-            'id': userA.id,
-            'username': userA.username,
-            'tag': userA.tag,
-          },
-          'createdAt': conv2.createdAt.toIso8601String(),
-          'unreadCount': 0,
-        },
-      ]);
+        ]);
 
-      provider.openConversation(conv1.id);
-      provider.removeConversationsForUser(userB.id);
+        provider.openConversation(conv1.id);
+        provider.removeConversationsForUser(userB.id);
 
-      expect(provider.conversations.length, 1);
-      expect(provider.conversations.first.id, conv2.id);
-      expect(provider.activeConversationId, isNull);
-    });
+        expect(provider.conversations.length, 1);
+        expect(provider.conversations.first.id, conv2.id);
+        expect(provider.activeConversationId, isNull);
+      },
+    );
 
-    test('deleteConversation removes conversation optimistically and emits', () {
-      final provider = buildProviderWithSampleData();
-      final emitted = <Map<String, dynamic>>[];
-      provider.setEmitCallback((event, data) {
-        if (event == 'deleteConversationOnly') {
-          emitted.add(Map<String, dynamic>.from(data as Map));
-        }
-      });
+    test(
+      'deleteConversation removes conversation optimistically and emits',
+      () {
+        final provider = buildProviderWithSampleData();
+        final emitted = <Map<String, dynamic>>[];
+        provider.setEmitCallback((event, data) {
+          if (event == 'deleteConversationOnly') {
+            emitted.add(Map<String, dynamic>.from(data as Map));
+          }
+        });
 
-      provider.deleteConversation(10);
+        provider.deleteConversation(10);
 
-      expect(provider.conversations.length, 1);
-      expect(provider.conversations.first.id, 11);
-      expect(provider.lastMessages.containsKey(10), isFalse);
-      expect(emitted.length, 1);
-      expect(emitted.first['conversationId'], 10);
-    });
+        expect(provider.conversations.length, 1);
+        expect(provider.conversations.first.id, 11);
+        expect(provider.lastMessages.containsKey(10), isFalse);
+        expect(emitted.length, 1);
+        expect(emitted.first['conversationId'], 10);
+      },
+    );
 
-    test('onConversationsList ignores empty snapshot when local list is populated',
-        () {
-      final provider = buildProviderWithSampleData();
-      expect(provider.conversations, isNotEmpty);
+    test(
+      'onConversationsList ignores empty snapshot when local list is populated',
+      () {
+        final provider = buildProviderWithSampleData();
+        expect(provider.conversations, isNotEmpty);
 
-      provider.onConversationsList([]);
+        provider.onConversationsList([]);
 
-      expect(provider.conversations, isNotEmpty);
-      expect(provider.conversations.length, 2);
-    });
+        expect(provider.conversations, isNotEmpty);
+        expect(provider.conversations.length, 2);
+      },
+    );
 
-    Map<String, dynamic> convJson(int id, UserModel a, UserModel b, int unread) {
+    Map<String, dynamic> convJson(
+      int id,
+      UserModel a,
+      UserModel b,
+      int unread,
+    ) {
       return {
         'id': id,
         'userOne': {'id': a.id, 'username': a.username, 'tag': a.tag},
@@ -245,19 +263,20 @@ void main() {
     }
 
     test(
-        'onConversationsList trusts server unread so a read clears a stale-high count',
-        () {
-      final provider = ConversationsProvider();
-      final userA = UserModel(id: 1, username: 'alice', tag: '0001');
-      final userB = UserModel(id: 2, username: 'bob', tag: '0002');
-      provider.onConnect(false);
-      provider.onConversationsList([convJson(10, userA, userB, 3)]);
-      expect(provider.getUnreadCount(10), 3);
-      // Read on the server (unread -> 0) must clear the badge, not stick at 3
-      // (the old max() merge left it stuck — the reported bug).
-      provider.onConversationsList([convJson(10, userA, userB, 0)]);
-      expect(provider.getUnreadCount(10), 0);
-    });
+      'onConversationsList trusts server unread so a read clears a stale-high count',
+      () {
+        final provider = ConversationsProvider();
+        final userA = UserModel(id: 1, username: 'alice', tag: '0001');
+        final userB = UserModel(id: 2, username: 'bob', tag: '0002');
+        provider.onConnect(false);
+        provider.onConversationsList([convJson(10, userA, userB, 3)]);
+        expect(provider.getUnreadCount(10), 3);
+        // Read on the server (unread -> 0) must clear the badge, not stick at 3
+        // (the old max() merge left it stuck — the reported bug).
+        provider.onConversationsList([convJson(10, userA, userB, 0)]);
+        expect(provider.getUnreadCount(10), 0);
+      },
+    );
 
     test('onConversationsList keeps the active conversation badge at 0', () {
       final provider = ConversationsProvider();
@@ -271,93 +290,114 @@ void main() {
     });
 
     test(
-        'onConversationsList surfaces unread received after reading (no missed mail)',
-        () {
-      final provider = ConversationsProvider();
-      final userA = UserModel(id: 1, username: 'alice', tag: '0001');
-      final userB = UserModel(id: 2, username: 'bob', tag: '0002');
-      provider.onConnect(false);
-      // Opened & read, then left the conversation.
-      provider
-        ..openConversation(10)
-        ..closeConversation();
-      expect(provider.getUnreadCount(10), 0);
-      // A message arrives while backgrounded (surfaced only via a snapshot, no
-      // live newMessage event): the badge MUST show it, never be held at 0.
-      provider.onConversationsList([convJson(10, userA, userB, 1)]);
-      expect(provider.getUnreadCount(10), 1);
-    });
+      'onConversationsList surfaces unread received after reading (no missed mail)',
+      () {
+        final provider = ConversationsProvider();
+        final userA = UserModel(id: 1, username: 'alice', tag: '0001');
+        final userB = UserModel(id: 2, username: 'bob', tag: '0002');
+        provider.onConnect(false);
+        // Opened & read, then left the conversation.
+        provider
+          ..openConversation(10)
+          ..closeConversation();
+        expect(provider.getUnreadCount(10), 0);
+        // A message arrives while backgrounded (surfaced only via a snapshot, no
+        // live newMessage event): the badge MUST show it, never be held at 0.
+        provider.onConversationsList([convJson(10, userA, userB, 1)]);
+        expect(provider.getUnreadCount(10), 1);
+      },
+    );
 
-    test('openConversation(notify: false) sets active id without notifying listeners', () {
-      final provider = ConversationsProvider();
-      var listenerCalls = 0;
-      provider.addListener(() => listenerCalls++);
+    test(
+      'openConversation(notify: false) sets active id without notifying listeners',
+      () {
+        final provider = ConversationsProvider();
+        var listenerCalls = 0;
+        provider.addListener(() => listenerCalls++);
 
-      provider.openConversation(10, notify: false);
+        provider.openConversation(10, notify: false);
 
-      expect(listenerCalls, 0);
-      expect(provider.activeConversationId, 10);
-      expect(provider.getUnreadCount(10), 0);
+        expect(listenerCalls, 0);
+        expect(provider.activeConversationId, 10);
+        expect(provider.getUnreadCount(10), 0);
 
-      provider.notifyActiveConversationChanged();
-      expect(listenerCalls, 1);
-    });
+        provider.notifyActiveConversationChanged();
+        expect(listenerCalls, 1);
+      },
+    );
 
-    test('setDisappearingTimer updates conversationDisappearingTimer immediately', () {
-      final provider = buildProviderWithSampleData();
-      provider.openConversation(10);
+    test(
+      'setDisappearingTimer updates conversationDisappearingTimer immediately',
+      () {
+        final provider = buildProviderWithSampleData();
+        provider.openConversation(10);
 
-      provider.setDisappearingTimer(10, 86400);
+        provider.setDisappearingTimer(10, 86400);
 
-      expect(provider.conversationDisappearingTimer, 86400);
-    });
+        expect(provider.conversationDisappearingTimer, 86400);
+      },
+    );
 
-    test('onDisappearingTimerUpdated updates conversationDisappearingTimer', () {
-      final provider = buildProviderWithSampleData();
-      provider.openConversation(10);
+    test(
+      'onDisappearingTimerUpdated updates conversationDisappearingTimer',
+      () {
+        final provider = buildProviderWithSampleData();
+        provider.openConversation(10);
 
-      provider.onDisappearingTimerUpdated({
-        'conversationId': 10,
-        'seconds': 300,
-      });
+        provider.onDisappearingTimerUpdated({
+          'conversationId': 10,
+          'seconds': 300,
+        });
 
-      expect(provider.conversationDisappearingTimer, 300);
-    });
+        expect(provider.conversationDisappearingTimer, 300);
+      },
+    );
 
-    test('onDisappearingTimerUpdated turning OFF (seconds null) clears the timer',
-        () {
-      final provider = buildProviderWithSampleData();
-      provider.openConversation(10);
+    test(
+      'onDisappearingTimerUpdated turning OFF (seconds null) clears the timer',
+      () {
+        final provider = buildProviderWithSampleData();
+        provider.openConversation(10);
 
-      // Peer turns it ON, then OFF. Before the copyWith clear-flag fix the OFF
-      // echo (seconds: null) was swallowed by the null-merge idiom and the old
-      // timer persisted locally — the non-initiating device kept stamping TTLs.
-      provider.onDisappearingTimerUpdated({'conversationId': 10, 'seconds': 300});
-      expect(provider.conversationDisappearingTimer, 300);
+        // Peer turns it ON, then OFF. Before the copyWith clear-flag fix the OFF
+        // echo (seconds: null) was swallowed by the null-merge idiom and the old
+        // timer persisted locally — the non-initiating device kept stamping TTLs.
+        provider.onDisappearingTimerUpdated({
+          'conversationId': 10,
+          'seconds': 300,
+        });
+        expect(provider.conversationDisappearingTimer, 300);
 
-      provider.onDisappearingTimerUpdated({'conversationId': 10, 'seconds': null});
-      expect(provider.conversationDisappearingTimer, isNull);
-    });
+        provider.onDisappearingTimerUpdated({
+          'conversationId': 10,
+          'seconds': null,
+        });
+        expect(provider.conversationDisappearingTimer, isNull);
+      },
+    );
 
     group('pushClientState (server push suppression)', () {
-      test('setClientVisible false emits pushClientState with clientVisible false', () {
-        final provider = ConversationsProvider();
-        final pushStates = <Map<String, dynamic>>[];
-        provider.setEmitCallback((event, data) {
-          if (event == 'pushClientState') {
-            pushStates.add(Map<String, dynamic>.from(data as Map));
-          }
-        });
-        provider.onConnect(false);
-        provider.openConversation(42);
-        pushStates.clear();
+      test(
+        'setClientVisible false emits pushClientState with clientVisible false',
+        () {
+          final provider = ConversationsProvider();
+          final pushStates = <Map<String, dynamic>>[];
+          provider.setEmitCallback((event, data) {
+            if (event == 'pushClientState') {
+              pushStates.add(Map<String, dynamic>.from(data as Map));
+            }
+          });
+          provider.onConnect(false);
+          provider.openConversation(42);
+          pushStates.clear();
 
-        provider.setClientVisible(false);
+          provider.setClientVisible(false);
 
-        expect(pushStates, hasLength(1));
-        expect(pushStates.single['clientVisible'], isFalse);
-        expect(pushStates.single['activeConversationId'], 42);
-      });
+          expect(pushStates, hasLength(1));
+          expect(pushStates.single['clientVisible'], isFalse);
+          expect(pushStates.single['activeConversationId'], 42);
+        },
+      );
 
       test('setClientVisible false is idempotent (no duplicate emits)', () {
         final provider = ConversationsProvider();
@@ -374,63 +414,171 @@ void main() {
         expect(pushAfterSetup, 1);
       });
 
-      test('closeConversation emits activeConversationId null for pushClientState', () {
+      test(
+        'closeConversation emits activeConversationId null for pushClientState',
+        () {
+          final provider = ConversationsProvider();
+          final pushStates = <Map<String, dynamic>>[];
+          provider.setEmitCallback((event, data) {
+            if (event == 'pushClientState') {
+              pushStates.add(Map<String, dynamic>.from(data as Map));
+            }
+          });
+          provider.onConnect(false);
+          provider.openConversation(99);
+          pushStates.clear();
+
+          provider.closeConversation();
+
+          expect(pushStates, hasLength(1));
+          expect(pushStates.single['activeConversationId'], isNull);
+          expect(pushStates.single['clientVisible'], isTrue);
+        },
+      );
+
+      test(
+        'closeConversation(notify: false) clears active id without notifying',
+        () {
+          final provider = ConversationsProvider();
+          var listenerCalls = 0;
+          provider.addListener(() => listenerCalls++);
+          provider.onConnect(false);
+          provider.openConversation(42);
+          listenerCalls = 0;
+
+          provider.closeConversation(notify: false);
+
+          expect(listenerCalls, 0);
+          expect(provider.activeConversationId, isNull);
+
+          provider.notifyActiveConversationChanged();
+          expect(listenerCalls, 1);
+        },
+      );
+      test(
+        'posts active conversation to the push SW; background posts null',
+        () {
+          final channel = _RecordingPushSwChannel();
+          final provider = ConversationsProvider(pushSwChannel: channel);
+          provider.onConnect(false);
+          channel.messages.clear();
+
+          provider.openConversation(42);
+          provider.setClientVisible(false);
+          provider.setClientVisible(true);
+
+          final active = channel.messages
+              .where((m) => m['type'] == 'active-conversation')
+              .toList();
+          expect(active.first['conversationId'], 42);
+          expect(
+            active.any((m) => m['conversationId'] == null),
+            isTrue,
+            reason: 'backgrounded (clientVisible=false) must post null',
+          );
+          expect(active.last['conversationId'], 42);
+        },
+      );
+    });
+
+    // Spec §12 (xxxvii). A throttled `pinMessage` is refused BEFORE the server
+    // handler runs, so the server cannot say what was pinned before — only this
+    // device knows what its optimistic pin overwrote.
+    group('a refused pin restores what the optimistic pin overwrote', () {
+      MessageModel preview(int id) => MessageModel(
+        id: id,
+        content: 'msg $id',
+        senderId: 1,
+        senderUsername: 'alice',
+        conversationId: 10,
+        createdAt: DateTime.utc(2026, 1, 1, 12),
+      );
+
+      ConversationsProvider seeded() {
         final provider = ConversationsProvider();
-        final pushStates = <Map<String, dynamic>>[];
-        provider.setEmitCallback((event, data) {
-          if (event == 'pushClientState') {
-            pushStates.add(Map<String, dynamic>.from(data as Map));
-          }
+        provider.onConnect(false);
+        provider.onConversationsList([
+          {
+            'id': 10,
+            'userOne': {'id': 1, 'username': 'alice', 'tag': '0001'},
+            'userTwo': {'id': 2, 'username': 'bob', 'tag': '0002'},
+            'createdAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+          },
+        ]);
+        return provider;
+      }
+
+      ConversationModel only(ConversationsProvider p) =>
+          p.conversations.firstWhere((c) => c.id == 10);
+
+      test('restores the PREVIOUS pin, not "unpinned"', () {
+        final provider = seeded();
+        // A different message was already pinned. This is the whole point of
+        // the test: reverting to null would look correct on a conversation
+        // that started unpinned, and would silently destroy this pin.
+        provider.onMessagePinned({
+          'conversationId': 10,
+          'pinnedMessageId': 41,
+          'pinnedMessage': {
+            'id': 41,
+            'content': 'msg 41',
+            'senderId': 1,
+            'conversationId': 10,
+            'createdAt': DateTime.utc(2026, 1, 1, 12).toIso8601String(),
+          },
         });
-        provider.onConnect(false);
-        provider.openConversation(99);
-        pushStates.clear();
 
-        provider.closeConversation();
+        provider.setPinnedPreviewOptimistic(10, 77, preview(77));
+        expect(only(provider).pinnedMessageId, 77);
 
-        expect(pushStates, hasLength(1));
-        expect(pushStates.single['activeConversationId'], isNull);
-        expect(pushStates.single['clientVisible'], isTrue);
+        provider.onPinMessageFailed({
+          'conversationId': 10,
+          'reason': 'rate_limited',
+        });
+
+        expect(only(provider).pinnedMessageId, 41);
+        expect(only(provider).pinnedMessagePreview?.id, 41);
       });
 
-      test('closeConversation(notify: false) clears active id without notifying', () {
-        final provider = ConversationsProvider();
-        var listenerCalls = 0;
-        provider.addListener(() => listenerCalls++);
-        provider.onConnect(false);
-        provider.openConversation(42);
-        listenerCalls = 0;
+      test('restores UNPINNED when nothing was pinned before', () {
+        final provider = seeded();
+        provider.setPinnedPreviewOptimistic(10, 77, preview(77));
+        expect(only(provider).pinnedMessageId, 77);
 
-        provider.closeConversation(notify: false);
+        provider.onPinMessageFailed({'conversationId': 10});
 
-        expect(listenerCalls, 0);
-        expect(provider.activeConversationId, isNull);
-
-        provider.notifyActiveConversationChanged();
-        expect(listenerCalls, 1);
+        expect(only(provider).pinnedMessageId, isNull);
+        expect(only(provider).pinnedMessagePreview, isNull);
       });
-      test('posts active conversation to the push SW; background posts null', () {
-        final channel = _RecordingPushSwChannel();
-        final provider = ConversationsProvider(pushSwChannel: channel);
-        provider.onConnect(false);
-        channel.messages.clear();
 
-        provider.openConversation(42);
-        provider.setClientVisible(false);
-        provider.setClientVisible(true);
+      test('a settled pin is not undone by a LATER unrelated refusal', () {
+        final provider = seeded();
+        provider.setPinnedPreviewOptimistic(10, 77, preview(77));
+        // The server accepted it, so the snapshot has nothing left to undo.
+        provider.onMessagePinned({'conversationId': 10, 'pinnedMessageId': 77});
 
-        final active = channel.messages
-            .where((m) => m['type'] == 'active-conversation')
-            .toList();
-        expect(active.first['conversationId'], 42);
+        provider.onPinMessageFailed({'conversationId': 10});
+
         expect(
-          active.any((m) => m['conversationId'] == null),
-          isTrue,
-          reason: 'backgrounded (clientVisible=false) must post null',
+          only(provider).pinnedMessageId,
+          77,
+          reason:
+              'a stale snapshot must not survive the authoritative event that '
+              'settled it, or an unrelated later refusal reverts a real pin',
         );
-        expect(active.last['conversationId'], 42);
       });
 
+      test('two optimistic pins in a row still revert to the SERVER state', () {
+        final provider = seeded();
+        provider.setPinnedPreviewOptimistic(10, 77, preview(77));
+        // Second tap before the first settles: the snapshot must still hold
+        // the server-known state (unpinned), never the first optimistic pin.
+        provider.setPinnedPreviewOptimistic(10, 88, preview(88));
+
+        provider.onPinMessageFailed({'conversationId': 10});
+
+        expect(only(provider).pinnedMessageId, isNull);
+      });
     });
 
     group('mute survives unrelated conversation mutations', () {
@@ -455,10 +603,7 @@ void main() {
 
       test('onMessagePinned keeps muted and mutedUntil', () {
         final provider = mutedProvider();
-        provider.onMessagePinned({
-          'conversationId': 10,
-          'pinnedMessageId': 77,
-        });
+        provider.onMessagePinned({'conversationId': 10, 'pinnedMessageId': 77});
 
         expect(only(provider).pinnedMessageId, 77);
         expect(only(provider).muted, isTrue);
@@ -467,10 +612,7 @@ void main() {
 
       test('onMessageUnpinned clears the pin and keeps mute', () {
         final provider = mutedProvider();
-        provider.onMessagePinned({
-          'conversationId': 10,
-          'pinnedMessageId': 77,
-        });
+        provider.onMessagePinned({'conversationId': 10, 'pinnedMessageId': 77});
         provider.onMessageUnpinned({'conversationId': 10});
 
         expect(only(provider).pinnedMessageId, isNull);
@@ -503,4 +645,3 @@ void main() {
     });
   });
 }
-
