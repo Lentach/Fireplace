@@ -1,3 +1,8 @@
+> **⚠️ SUPERSEDED 2026-08-22 — DO NOT START HERE.** This handoff is spent: its ticket closed, and every
+> line number and count in it has since moved. The current entry point is
+> `2026-08-22-HANDOFF-T8-start-here.md`, and the permanent record is `LATEST.md` plus the dated summary it
+> names. Kept only for its historical account of the session that wrote it.
+
 > ## ⛔ SUPERSEDED 2026-08-21 (B) — read `2026-08-21-HANDOFF-phase2-T6-start-here.md` instead
 >
 > **T5 IS DONE** (built, reviewed twice, wire-proven, self-sync app-proven on two real devices;

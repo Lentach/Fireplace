@@ -1,3 +1,8 @@
+> **⚠️ SUPERSEDED 2026-08-22 — DO NOT START HERE.** This handoff is spent: its ticket closed, and every
+> line number and count in it has since moved. The current entry point is
+> `2026-08-22-HANDOFF-T8-start-here.md`, and the permanent record is `LATEST.md` plus the dated summary it
+> names. Kept only for its historical account of the session that wrote it.
+
 > **⛔ SUPERSEDED 2026-08-20 (evening) by `2026-08-20-HANDOFF-phase2-T4-start-here.md`.**
 > T3 is DONE (built, gate-reviewed, app-proven — closure in the decision record §8). The
 > owner rules and environment traps below remain true and are restated (plus T3's new

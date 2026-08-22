@@ -2,6 +2,11 @@
 
 Entries are newest-first. Each one links its dated file, which holds the full account.
 
+**➡ STARTING T8, OR PICKING THIS PROGRAM UP COLD? READ `2026-08-22-HANDOFF-T8-start-here.md` FIRST** —
+the T8 execution brief: all seven owed items with their blockers and acceptance, the owner rules, the
+verification commands and current counts, every environment trap, and the five lessons that cost this
+program the most. It carries an EXPIRY: delete or banner it when T8 closes, and write no replacement.
+
 **📍 WHERE THINGS LIVE (multi-device program, 2026-08-22).** You are reading the WORKTREE copy, which is
 the current one: `C:/Users/Lentach/Desktop/fireplace-0a` on branch `feat/takeover-alarm-0a`. **The MAIN
 checkout's copy of this file is STALE** — `C:/Users/Lentach/Desktop/Fireplace` sits on `master`, so its

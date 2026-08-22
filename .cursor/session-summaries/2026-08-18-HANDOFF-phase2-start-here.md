@@ -1,3 +1,8 @@
+> **⚠️ SUPERSEDED 2026-08-22 — DO NOT START HERE.** This handoff is spent: its ticket closed, and every
+> line number and count in it has since moved. The current entry point is
+> `2026-08-22-HANDOFF-T8-start-here.md`, and the permanent record is `LATEST.md` plus the dated summary it
+> names. Kept only for its historical account of the session that wrote it.
+
 > **⚠️ SUPERSEDED 2026-08-19 — read `2026-08-19-HANDOFF-phase2-start-here.md` FIRST.**
 > HEAD has moved on (`edd3bb4` → `573458b`): a Phase-1 finding was found, fixed and
 > app-proven (one-time pre-keys now wait for their identity to be published), test

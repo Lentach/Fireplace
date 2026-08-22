@@ -1,3 +1,8 @@
+> **⚠️ SUPERSEDED 2026-08-22 — DO NOT START HERE.** This handoff is spent: its ticket closed, and every
+> line number and count in it has since moved. The current entry point is
+> `2026-08-22-HANDOFF-T8-start-here.md`, and the permanent record is `LATEST.md` plus the dated summary it
+> names. Kept only for its historical account of the session that wrote it.
+
 > ## ⛔ SUPERSEDED 2026-08-20 — read `2026-08-20-HANDOFF-phase2-T3-start-here.md` instead.
 > Everything below predates: both owner decisions (now LOCKED), the cooldown carve-out
 > (`94d030d`, live-fired), Stage 0 (CLOSED, amendments (a)–(h)), T1 (`584f2d3`) and T2

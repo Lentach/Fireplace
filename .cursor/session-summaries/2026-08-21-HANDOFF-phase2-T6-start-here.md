@@ -1,3 +1,8 @@
+> **⚠️ SUPERSEDED 2026-08-22 — DO NOT START HERE.** This handoff is spent: its ticket closed, and every
+> line number and count in it has since moved. The current entry point is
+> `2026-08-22-HANDOFF-T8-start-here.md`, and the permanent record is `LATEST.md` plus the dated summary it
+> names. Kept only for its historical account of the session that wrote it.
+
 # HANDOFF 2026-08-21 (B) — Multi-device: T1–T5 done, T6 (revocation) is your job
 
 **You are a fresh agent picking up a multi-session program mid-flight. This file is the
