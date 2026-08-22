@@ -137,7 +137,7 @@ describe('ChatMessageService', () => {
             findByIdWithConversation: jest.fn(),
             updateDeliveryStatus: jest.fn(),
             deleteById: jest.fn(),
-            editMessage: jest.fn(),
+            applyEdit: jest.fn(),
             findServedMessageIds: findServedMessageIdsMock,
           },
         },
@@ -1329,7 +1329,7 @@ describe('ChatMessageService', () => {
   });
 
   describe('handleEditMessage', () => {
-    it('updates the row and emits messageEdited to both sockets when sender edits within the window', async () => {
+    it('normalizes a legacy edit to the peer device-1 envelope and echoes the editor', async () => {
       const conv = { id: 10, userOne: { id: 1 }, userTwo: { id: 2 } };
       const msg = {
         id: 100,
@@ -1337,10 +1337,14 @@ describe('ChatMessageService', () => {
         conversation: conv,
         createdAt: new Date(),
         messageType: 'TEXT',
+        // A LEGACY row: its ciphertext lives in the column, so the column must
+        // keep being written (amendment (xxxii)).
+        content: '[encrypted]',
+        encryptedContent: 'old-cipher',
       } as unknown as Message;
       const editedAt = new Date('2026-06-22T12:00:00Z');
       messagesService.findByIdWithConversation.mockResolvedValue(msg);
-      messagesService.editMessage.mockResolvedValue({
+      messagesService.applyEdit.mockResolvedValue({
         id: 100,
         editedAt,
       } as Message);
@@ -1356,22 +1360,275 @@ describe('ChatMessageService', () => {
         mockServer as Server,
       );
 
-      expect(messagesService.editMessage).toHaveBeenCalledWith(100, 1, {
+      expect(messagesService.applyEdit).toHaveBeenCalledWith(100, 1, {
         encryptedContent: 'new-cipher',
         content: '[encrypted]',
+        originDeviceId: 1,
+        envelopes: [{ userId: 2, deviceId: 1, ciphertext: 'new-cipher' }],
       });
-      const expectedPayload = {
+      // The editing device produced the ciphertext, so its echo carries none.
+      expect(mockClient.emit).toHaveBeenCalledWith('messageEdited', {
         messageId: 100,
         conversationId: 10,
         content: '[encrypted]',
-        encryptedContent: 'new-cipher',
         editedAt: '2026-06-22T12:00:00.000Z',
-      };
-      expect(mockClient.emit).toHaveBeenCalledWith(
-        'messageEdited',
-        expectedPayload,
+        originDeviceId: 1,
+        encryptedContent: null,
+      });
+      expect(bob.emit).toHaveBeenCalledWith('messageEdited', {
+        messageId: 100,
+        conversationId: 10,
+        content: '[encrypted]',
+        editedAt: '2026-06-22T12:00:00.000Z',
+        originDeviceId: 1,
+        encryptedContent: 'new-cipher',
+      });
+    });
+
+    it('fans one edited ciphertext PER DEVICE and re-points originDeviceId at the editing device', async () => {
+      const conv = { id: 10, userOne: { id: 1 }, userTwo: { id: 2 } };
+      messagesService.findByIdWithConversation.mockResolvedValue({
+        id: 100,
+        sender: { id: 1 },
+        conversation: conv,
+        createdAt: new Date(),
+        messageType: 'TEXT',
+        // A NEW-MODEL row: ciphertext lives only in envelopes.
+        content: '[encrypted]',
+        encryptedContent: null,
+        originDeviceId: 1,
+      } as unknown as Message);
+      messagesService.applyEdit.mockResolvedValue({
+        id: 100,
+        editedAt: new Date('2026-06-22T12:00:00Z'),
+      } as Message);
+      isActiveMock.mockResolvedValue(true);
+      const bob1 = installSocket(mockServer, 2, 'sock-bob-1');
+      const bob2 = installSocket(mockServer, 2, 'sock-bob-2', {}, 2);
+      const ownDevice3 = installSocket(mockServer, 1, 'sock-me-3', {}, 3);
+      // The edit is issued from device 2 of the sender — a device that did NOT
+      // send the row. Its ciphertexts are bound to ITS ratchet.
+      const editor = { ...mockClient, data: { user: { id: 1, deviceId: 2 } } };
+
+      await service.handleEditMessage(
+        editor as unknown as Socket,
+        {
+          messageId: 100,
+          content: '[encrypted]',
+          envelopes: [
+            { userId: 2, deviceId: 1, ciphertext: '3:bob-1' },
+            { userId: 2, deviceId: 2, ciphertext: '3:bob-2' },
+            { userId: 1, deviceId: 3, ciphertext: '2:self-3' },
+          ],
+        },
+        mockServer as Server,
       );
-      expect(bob.emit).toHaveBeenCalledWith('messageEdited', expectedPayload);
+
+      // The row is re-pointed at the EDITING device: the receiver selects its
+      // Signal session from this field, so leaving it at 1 would Bad-MAC every
+      // copy (amendment (xxx)).
+      expect(messagesService.applyEdit).toHaveBeenCalledWith(100, 1, {
+        // A new-model row's legacy column is never written.
+        encryptedContent: undefined,
+        content: '[encrypted]',
+        originDeviceId: 2,
+        envelopes: [
+          { userId: 2, deviceId: 1, ciphertext: '3:bob-1' },
+          { userId: 2, deviceId: 2, ciphertext: '3:bob-2' },
+          { userId: 1, deviceId: 3, ciphertext: '2:self-3' },
+        ],
+      });
+      // Each device gets exactly ITS OWN ciphertext — Signal decrypt is not
+      // idempotent, so a shared payload would brick a ratchet.
+      expect(bob1.emit).toHaveBeenCalledWith(
+        'messageEdited',
+        expect.objectContaining({ encryptedContent: '3:bob-1', originDeviceId: 2 }),
+      );
+      expect(bob2.emit).toHaveBeenCalledWith(
+        'messageEdited',
+        expect.objectContaining({ encryptedContent: '3:bob-2' }),
+      );
+      expect(ownDevice3.emit).toHaveBeenCalledWith(
+        'messageEdited',
+        expect.objectContaining({ encryptedContent: '2:self-3' }),
+      );
+    });
+
+    it('refuses two envelopes for one device on an edit', async () => {
+      const conv = { id: 10, userOne: { id: 1 }, userTwo: { id: 2 } };
+      messagesService.findByIdWithConversation.mockResolvedValue({
+        id: 100,
+        sender: { id: 1 },
+        conversation: conv,
+        createdAt: new Date(),
+        messageType: 'TEXT',
+        content: '[encrypted]',
+        encryptedContent: null,
+      } as unknown as Message);
+      isActiveMock.mockResolvedValue(true);
+
+      await service.handleEditMessage(
+        mockClient as Socket,
+        {
+          messageId: 100,
+          content: '[encrypted]',
+          envelopes: [
+            { userId: 2, deviceId: 2, ciphertext: '3:first' },
+            { userId: 2, deviceId: 2, ciphertext: '3:second' },
+          ],
+        },
+        mockServer as Server,
+      );
+
+      expect(mockClient.emit).toHaveBeenCalledWith('editMessageFailed', {
+        messageId: 100,
+        reason: 'duplicate_envelope_device',
+      });
+      expect(messagesService.applyEdit).not.toHaveBeenCalled();
+    });
+
+    it('refuses a self-sync envelope addressed to the EDITING device', async () => {
+      const conv = { id: 10, userOne: { id: 1 }, userTwo: { id: 2 } };
+      messagesService.findByIdWithConversation.mockResolvedValue({
+        id: 100,
+        sender: { id: 1 },
+        conversation: conv,
+        createdAt: new Date(),
+        messageType: 'TEXT',
+        content: '[encrypted]',
+        encryptedContent: null,
+      } as unknown as Message);
+      isActiveMock.mockResolvedValue(true);
+
+      await service.handleEditMessage(
+        mockClient as Socket,
+        {
+          messageId: 100,
+          content: '[encrypted]',
+          envelopes: [{ userId: 1, deviceId: 1, ciphertext: '2:to-myself' }],
+        },
+        mockServer as Server,
+      );
+
+      expect(mockClient.emit).toHaveBeenCalledWith('editMessageFailed', {
+        messageId: 100,
+        reason: 'self_envelope_for_origin_device',
+      });
+      expect(messagesService.applyEdit).not.toHaveBeenCalled();
+    });
+
+    it('refuses an envelope for a device that is not live', async () => {
+      const conv = { id: 10, userOne: { id: 1 }, userTwo: { id: 2 } };
+      messagesService.findByIdWithConversation.mockResolvedValue({
+        id: 100,
+        sender: { id: 1 },
+        conversation: conv,
+        createdAt: new Date(),
+        messageType: 'TEXT',
+        content: '[encrypted]',
+        encryptedContent: null,
+      } as unknown as Message);
+      isActiveMock.mockResolvedValue(false);
+
+      await service.handleEditMessage(
+        mockClient as Socket,
+        {
+          messageId: 100,
+          content: '[encrypted]',
+          envelopes: [{ userId: 2, deviceId: 4, ciphertext: '3:ghost' }],
+        },
+        mockServer as Server,
+      );
+
+      expect(mockClient.emit).toHaveBeenCalledWith('editMessageFailed', {
+        messageId: 100,
+        reason: 'unknown_recipient_device',
+      });
+      expect(messagesService.applyEdit).not.toHaveBeenCalled();
+    });
+
+    it('bounces a stale device list with deviceListStale and writes NOTHING', async () => {
+      const conv = { id: 10, userOne: { id: 1 }, userTwo: { id: 2 } };
+      messagesService.findByIdWithConversation.mockResolvedValue({
+        id: 100,
+        sender: { id: 1 },
+        conversation: conv,
+        createdAt: new Date(),
+        messageType: 'TEXT',
+        content: '[encrypted]',
+        encryptedContent: null,
+      } as unknown as Message);
+      isActiveMock.mockResolvedValue(true);
+      getAuthorizationMock.mockImplementation((userId: number) =>
+        Promise.resolve(
+          userId === 2
+            ? ({
+                userId: 2,
+                listVersion: 7,
+                listCanonical: 'canon',
+                listSignature: 'sig',
+                dakPub: 'dak',
+                enrollmentSig: 'esig',
+                enrollmentCreatedAt: new Date(0),
+              } as never)
+            : null,
+        ),
+      );
+
+      await service.handleEditMessage(
+        mockClient as Socket,
+        {
+          messageId: 100,
+          content: '[encrypted]',
+          envelopes: [{ userId: 2, deviceId: 1, ciphertext: '3:bob-1' }],
+          // Quoting v6 against the live v7.
+          recipientListVersion: 6,
+        },
+        mockServer as Server,
+      );
+
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        'deviceListStale',
+        expect.objectContaining({
+          success: false,
+          error: 'device_list_stale',
+          messageId: 100,
+        }),
+      );
+      // Falsification-5 shape: a refused edit mutates nothing at all.
+      expect(messagesService.applyEdit).not.toHaveBeenCalled();
+    });
+
+    it('never mints or consumes a sendToken on an edit', async () => {
+      const conv = { id: 10, userOne: { id: 1 }, userTwo: { id: 2 } };
+      messagesService.findByIdWithConversation.mockResolvedValue({
+        id: 100,
+        sender: { id: 1 },
+        conversation: conv,
+        createdAt: new Date(),
+        messageType: 'TEXT',
+        content: '[encrypted]',
+        encryptedContent: null,
+      } as unknown as Message);
+      messagesService.applyEdit.mockResolvedValue({
+        id: 100,
+        editedAt: new Date('2026-06-22T12:00:00Z'),
+      } as Message);
+      isActiveMock.mockResolvedValue(true);
+
+      await service.handleEditMessage(
+        mockClient as Socket,
+        {
+          messageId: 100,
+          content: '[encrypted]',
+          envelopes: [{ userId: 2, deviceId: 1, ciphertext: '3:bob-1' }],
+        },
+        mockServer as Server,
+      );
+
+      expect(
+        JSON.stringify(messagesService.applyEdit.mock.calls[0]),
+      ).not.toContain('sendToken');
     });
 
     it('emits editMessageFailed with reason not_sender when caller is not the sender', async () => {
@@ -1383,7 +1640,7 @@ describe('ChatMessageService', () => {
         createdAt: new Date(),
       } as unknown as Message;
       messagesService.findByIdWithConversation.mockResolvedValue(msg);
-      messagesService.editMessage.mockResolvedValue(null);
+      messagesService.applyEdit.mockResolvedValue(null);
 
       await service.handleEditMessage(
         mockClient as Socket,
@@ -1395,7 +1652,7 @@ describe('ChatMessageService', () => {
         mockServer as Server,
       );
 
-      expect(messagesService.editMessage).not.toHaveBeenCalled();
+      expect(messagesService.applyEdit).not.toHaveBeenCalled();
       expect(mockClient.emit).toHaveBeenCalledWith('editMessageFailed', {
         messageId: 100,
         reason: 'not_sender',
@@ -1411,7 +1668,7 @@ describe('ChatMessageService', () => {
         createdAt: new Date(Date.now() - 16 * 60 * 1000),
       } as unknown as Message;
       messagesService.findByIdWithConversation.mockResolvedValue(msg);
-      messagesService.editMessage.mockResolvedValue(null);
+      messagesService.applyEdit.mockResolvedValue(null);
 
       await service.handleEditMessage(
         mockClient as Socket,
@@ -1423,7 +1680,7 @@ describe('ChatMessageService', () => {
         mockServer as Server,
       );
 
-      expect(messagesService.editMessage).not.toHaveBeenCalled();
+      expect(messagesService.applyEdit).not.toHaveBeenCalled();
       expect(mockClient.emit).toHaveBeenCalledWith('editMessageFailed', {
         messageId: 100,
         reason: 'window_expired',
@@ -1432,7 +1689,7 @@ describe('ChatMessageService', () => {
 
     it('emits editMessageFailed with reason not_found when the message does not exist', async () => {
       messagesService.findByIdWithConversation.mockResolvedValue(null);
-      messagesService.editMessage.mockResolvedValue(null);
+      messagesService.applyEdit.mockResolvedValue(null);
 
       await service.handleEditMessage(
         mockClient as Socket,
@@ -1444,7 +1701,7 @@ describe('ChatMessageService', () => {
         mockServer as Server,
       );
 
-      expect(messagesService.editMessage).not.toHaveBeenCalled();
+      expect(messagesService.applyEdit).not.toHaveBeenCalled();
       expect(mockClient.emit).toHaveBeenCalledWith('editMessageFailed', {
         messageId: 100,
         reason: 'not_found',
@@ -1461,7 +1718,7 @@ describe('ChatMessageService', () => {
         messageType: 'IMAGE',
       } as unknown as Message;
       messagesService.findByIdWithConversation.mockResolvedValue(msg);
-      messagesService.editMessage.mockResolvedValue(null);
+      messagesService.applyEdit.mockResolvedValue(null);
 
       await service.handleEditMessage(
         mockClient as Socket,
@@ -1473,7 +1730,7 @@ describe('ChatMessageService', () => {
         mockServer as Server,
       );
 
-      expect(messagesService.editMessage).not.toHaveBeenCalled();
+      expect(messagesService.applyEdit).not.toHaveBeenCalled();
       expect(mockClient.emit).toHaveBeenCalledWith('editMessageFailed', {
         messageId: 100,
         reason: 'not_text',

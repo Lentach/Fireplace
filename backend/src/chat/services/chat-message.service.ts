@@ -9,6 +9,7 @@ import { PushNotificationCoalescingService } from '../../push-notifications/push
 import { validateDto } from '../utils/dto.validator';
 import {
   SendMessageDto,
+  SendEnvelopeDto,
   GetMessagesDto,
   ClearChatHistoryDto,
   DeleteMessageDto,
@@ -30,6 +31,22 @@ import { DEFAULT_DEVICE_ID } from '../../key-bundles/key-bundles.service';
 import { DevicesService } from '../../key-bundles/devices.service';
 import { DeviceListService } from '../../key-bundles/device-list.service';
 import { AccountAuthorization } from '../../key-bundles/account-authorization.entity';
+
+/**
+ * The envelope-bearing subset of an inbound fan-out, shared by a send (spec
+ * §5.2) and an EDIT (§5.7 + §12 amendment (xxxi)).
+ *
+ * Both shapes run the SAME shape and freshness checks, so the checks read this
+ * narrow type rather than either DTO: an edit derives `recipientId` from the
+ * conversation instead of quoting it, and carries no `tempId`.
+ */
+type EnvelopeCarrier = {
+  recipientId: number;
+  envelopes?: SendEnvelopeDto[];
+  encryptedContent?: string | null;
+  senderListVersion?: number;
+  recipientListVersion?: number;
+};
 
 /** One (recipient user, device) ciphertext of a fan-out send (spec §5.2). */
 type ResolvedEnvelope = {
@@ -108,7 +125,7 @@ export class ChatMessageService {
    * carrying no ciphertext at all (PING and today's plaintext shapes) yields
    * no envelope and keeps its historical behaviour.
    */
-  private resolveEnvelopes(send: SendMessageDto): ResolvedEnvelope[] {
+  private resolveEnvelopes(send: EnvelopeCarrier): ResolvedEnvelope[] {
     if (send.envelopes?.length) {
       return send.envelopes.map((envelope) => ({
         userId: envelope.userId,
@@ -192,7 +209,7 @@ export class ChatMessageService {
    * device 1 alone and silently drop every other device (I5).
    */
   private async staleLists(
-    send: SendMessageDto,
+    send: EnvelopeCarrier,
     senderId: number,
     isNewModel: boolean,
   ): Promise<StaleListEntry[]> {
@@ -943,19 +960,24 @@ export class ChatMessageService {
     }
   }
 
-  async handleEditMessage(client: Socket, data: any, server: Server) {
-    const userId: number = client.data.user?.id;
+  async handleEditMessage(client: Socket, data: unknown, server: Server) {
+    const userId: number | undefined = (
+      client.data as { user?: { id?: number } }
+    ).user?.id;
     if (!userId) return;
 
+    // Read every field off the VALIDATED dto, never off the raw payload: an
+    // envelope-bearing edit is trusted to fan ciphertext at other devices, so
+    // the shape it is trusted for is the one class-validator just checked.
+    let edit: EditMessageDto;
     try {
-      const dto = validateDto(EditMessageDto, data);
-      data = dto;
+      edit = validateDto(EditMessageDto, data);
     } catch (error) {
-      client.emit('error', { message: error.message });
+      client.emit('error', { message: (error as Error).message });
       return;
     }
 
-    const { messageId } = data;
+    const { messageId } = edit;
 
     const message =
       await this.messagesService.findByIdWithConversation(messageId);
@@ -1001,39 +1023,122 @@ export class ChatMessageService {
       conv.userOne.id === userId ? conv.userTwo.id : conv.userOne.id;
     const conversationId = conv.id;
 
-    // Server stays blind: store the new ciphertext, keep content as the placeholder.
-    // Expiry / deliveryStatus are intentionally left untouched.
-    const updated = await this.messagesService.editMessage(messageId, userId, {
-      encryptedContent: data.encryptedContent ?? null,
+    // Fan-out shape and freshness, exactly as a send runs them (spec §5.7
+    // "same staleness bounce as §5.2", pinned by §12 amendment (xxxi)). Every
+    // check below runs BEFORE any write, so a refused edit leaves the row and
+    // every envelope byte-identical.
+    //
+    // The EDITING device is the producer of these ciphertexts, so it is what
+    // `self_envelope_for_origin_device` is keyed on and what the row's
+    // `originDeviceId` becomes (amendment (xxx)) — the receiving side selects
+    // its Signal session from that field, so an edit from a second device MUST
+    // re-point it or every peer would decrypt against the wrong ratchet.
+    const editingDeviceId = socketDeviceId(client) ?? DEFAULT_DEVICE_ID;
+    const carrier: EnvelopeCarrier = {
+      recipientId: otherUserId,
+      envelopes: edit.envelopes,
+      encryptedContent: edit.encryptedContent ?? null,
+      senderListVersion: edit.senderListVersion,
+      recipientListVersion: edit.recipientListVersion,
+    };
+    const envelopes = this.resolveEnvelopes(carrier);
+    const isNewModel = (edit.envelopes?.length ?? 0) > 0;
+    if (isNewModel) {
+      const refusal = await this.envelopeRefusal(
+        envelopes,
+        userId,
+        otherUserId,
+        editingDeviceId,
+      );
+      if (refusal) {
+        // The edit path answers shape faults on its OWN refusal event: they are
+        // client-shape bugs carrying nothing to repair with, unlike the
+        // staleness bounce below which hands back both signed lists.
+        client.emit('editMessageFailed', { messageId, reason: refusal });
+        return;
+      }
+    }
+
+    if (envelopes.length > 0) {
+      const stale = await this.staleLists(carrier, userId, isNewModel);
+      if (stale.length > 0) {
+        this.logger.warn(
+          `[edit] REFUSED ${isNewModel ? 'stale device list' : 'legacy edit to an enrolled party'} senderId=${userId} messageId=${messageId} stale=${stale
+            .map((entry) => `${entry.userId}@v${entry.version}`)
+            .join(',')}`,
+        );
+        client.emit('deviceListStale', {
+          success: false,
+          error: 'device_list_stale',
+          messageId,
+          lists: stale,
+        });
+        return;
+      }
+    }
+
+    // Server stays blind: store the new ciphertext, keep content as the
+    // placeholder. Expiry / deliveryStatus are intentionally left untouched.
+    //
+    // The legacy column is written ONLY for a legacy row (amendment (xxxii)):
+    // a new-model row keeps it NULL, because `content === '[encrypted]' &&
+    // encryptedContent == null` IS this file's new-model discriminator
+    // (`ackEnvelopeStatus`), so writing it would silently reclassify the row as
+    // legacy after a single edit.
+    const rowIsNewModel = this.ackEnvelopeStatus(message) === 'own_origin';
+    const updated = await this.messagesService.applyEdit(messageId, userId, {
+      encryptedContent:
+        isNewModel || rowIsNewModel ? undefined : (edit.encryptedContent ?? null),
       content: '[encrypted]',
+      originDeviceId: editingDeviceId,
+      envelopes: envelopes.length > 0 ? envelopes : undefined,
     });
     if (!updated || !updated.editedAt) {
       client.emit('editMessageFailed', { messageId, reason: 'not_found' });
       return;
     }
 
-    const payload = {
+    const basePayload = {
       messageId,
       conversationId,
       content: '[encrypted]',
-      encryptedContent: data.encryptedContent ?? null,
       editedAt: updated.editedAt.toISOString(),
+      // The producer of every ciphertext of this row, now the editing device.
+      originDeviceId: editingDeviceId,
     };
 
-    client.emit('messageEdited', payload);
-    // CIPHERTEXT — per device, same reason as newMessage (spec §5.3): an edit
-    // carries a fresh Signal payload over the existing session, so a second
-    // socket decrypting it would consume a key the first already used. T7
-    // turns this into a full per-device re-fan (§5.7); until then the edit
-    // reaches the peer's device 1, which is where a legacy edit already went.
-    emitToDeviceNewestSocket(
-      server,
-      otherUserId,
-      DEFAULT_DEVICE_ID,
-      'messageEdited',
-      payload,
+    // The editing device holds the plaintext already and gets NO envelope, so
+    // its echo carries no ciphertext to decrypt — it reconciles `editedAt`.
+    client.emit('messageEdited', { ...basePayload, encryptedContent: null });
+
+    // CIPHERTEXT — per device (spec §5.3/§5.7): an edit carries a fresh Signal
+    // payload over the existing session, so a second socket decrypting it would
+    // consume a key the first already used. Each device therefore receives
+    // exactly ITS OWN envelope, at its newest socket.
+    if (envelopes.length > 0) {
+      for (const envelope of envelopes) {
+        emitToDeviceNewestSocket(
+          server,
+          envelope.userId,
+          envelope.deviceId,
+          'messageEdited',
+          { ...basePayload, encryptedContent: envelope.ciphertext },
+        );
+      }
+    } else {
+      // No ciphertext at all (a plaintext-shaped edit): historical behaviour,
+      // named explicitly as the peer's device 1.
+      emitToDeviceNewestSocket(
+        server,
+        otherUserId,
+        DEFAULT_DEVICE_ID,
+        'messageEdited',
+        { ...basePayload, encryptedContent: null },
+      );
+    }
+    this.logger.debug(
+      `User ${userId} edited message ${messageId} deviceId=${editingDeviceId} envelopes=${envelopes.length}`,
     );
-    this.logger.debug(`User ${userId} edited message ${messageId}`);
   }
 
   /**

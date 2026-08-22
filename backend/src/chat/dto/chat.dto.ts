@@ -15,12 +15,14 @@ import {
   IsIn,
   IsArray,
   ArrayMinSize,
+  ArrayMaxSize,
 } from 'class-validator';
 import {
   DISAPPEARING_MAX_SECONDS,
   DISAPPEARING_MIN_SECONDS,
 } from '../../messages/disappearing.constants';
 import { MessageType } from '../../messages/message.entity';
+import { MAX_DEVICE_ID } from '../../key-bundles/key-bundles.service';
 
 /** Cloudinary (https only) or self-hosted media under MEDIA_BASE_URL — prevents SSRF */
 const _mediaOriginEscaped = (
@@ -32,6 +34,17 @@ const _mediaOriginEscaped = (
 export const MEDIA_URL_REGEX = new RegExp(
   `^(https://res\\.cloudinary\\.com/[a-zA-Z0-9_-]+/(video|image|raw)/upload/.+|${_mediaOriginEscaped}/media/(avatars|msgs)/[A-Za-z0-9_-]+\\.[A-Za-z0-9]+)$`,
 );
+
+/**
+ * The most per-device ciphertexts one message may carry.
+ *
+ * A fan-out addresses the recipient's live devices plus the sender's OTHER
+ * live devices, and each account's device ids are bounded by
+ * `MAX_DEVICE_ID` — so two accounts can never legitimately need more than
+ * twice that. The bound exists so a crafted client cannot make one send
+ * allocate unbounded envelope rows.
+ */
+export const MAX_ENVELOPES_PER_MESSAGE = 2 * MAX_DEVICE_ID;
 
 /**
  * One recipient device's ciphertext in a fan-out send (spec §5.2 + §12
@@ -49,6 +62,7 @@ export class SendEnvelopeDto {
 
   @IsInt()
   @IsPositive()
+  @Max(MAX_DEVICE_ID)
   deviceId: number;
 
   @IsString()
@@ -135,6 +149,7 @@ export class SendMessageDto {
   @IsOptional()
   @IsArray()
   @ArrayMinSize(1)
+  @ArrayMaxSize(MAX_ENVELOPES_PER_MESSAGE)
   @ValidateNested({ each: true })
   @Type(() => SendEnvelopeDto)
   envelopes?: SendEnvelopeDto[];

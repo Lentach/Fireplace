@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Not, Repository } from 'typeorm';
+import { EntityManager, In, Not, Repository } from 'typeorm';
+import type { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 import { Message, MessageDeliveryStatus, MessageType } from './message.entity';
 import { MessageEnvelope } from './message-envelope.entity';
 import { User } from '../users/user.entity';
@@ -152,13 +153,26 @@ export class MessagesService {
   }
 
   /**
-   * Replace an existing message in place with new (E2E) content and stamp `editedAt`.
-   * Sender-only: returns null when the message is missing or the caller is not the sender.
+   * Apply an EDIT in one transaction: stamp `editedAt`, re-point the row at the
+   * device that produced the new ciphertext, and rewrite every target device's
+   * envelope (spec §5.7 + §12 amendments (xxx)/(xxxii)).
+   *
+   * Sender-only: returns null when the message is missing or the caller is not
+   * the sender, exactly as before.
+   *
+   * A half-written re-fan would leave some devices reading the OLD text and
+   * others the new one, with no way for either to tell which it holds — so the
+   * row update and all envelope writes share one transaction.
    */
-  async editMessage(
+  async applyEdit(
     messageId: number,
     userId: number,
-    fields: { encryptedContent?: string | null; content?: string },
+    fields: {
+      encryptedContent?: string | null;
+      content?: string;
+      originDeviceId?: number | null;
+      envelopes?: { userId: number; deviceId: number; ciphertext: string }[];
+    },
   ): Promise<Message | null> {
     const msg = await this.msgRepo.findOne({
       where: { id: messageId },
@@ -167,11 +181,80 @@ export class MessagesService {
       },
     });
     if (!msg || msg.sender?.id !== userId) return null;
+
+    const editedAt = new Date();
+    const patch: QueryDeepPartialEntity<Message> = { editedAt };
     if (fields.encryptedContent !== undefined)
-      msg.encryptedContent = fields.encryptedContent;
-    if (fields.content !== undefined) msg.content = fields.content;
-    msg.editedAt = new Date();
-    return this.msgRepo.save(msg);
+      patch.encryptedContent = fields.encryptedContent;
+    if (fields.content !== undefined) patch.content = fields.content;
+    if (fields.originDeviceId !== undefined)
+      patch.originDeviceId = fields.originDeviceId;
+
+    const envelopes = fields.envelopes;
+    await this.msgRepo.manager.transaction(async (manager) => {
+      // A COLUMN-SCOPED update, never a full-entity save: the row carries
+      // `deliveryStatus` and the disappearing-message stamps, and an edit must
+      // not write back whatever those held when this method loaded the row.
+      await manager
+        .getRepository(Message)
+        .update({ id: messageId }, patch);
+      if (envelopes?.length) {
+        await this.upsertEnvelopeCiphertexts(messageId, envelopes, manager);
+      }
+    });
+
+    Object.assign(msg, patch);
+    return msg;
+  }
+
+  /**
+   * Rewrite each named device's envelope ciphertext, INSERTing one for a device
+   * that has none yet (spec §5.7).
+   *
+   * CONTENT-ONLY on conflict, and that is the whole point (durability finding
+   * F8, falsification 24): `deliveredAt`/`readAt` SURVIVE the rewrite, because
+   * an edit is not an un-delivery — the §4 delivery projection reads those
+   * stamps and must never regress from `read` back to `sent` just because the
+   * author fixed a typo. A `save()` or a delete-then-insert would silently zero
+   * them, so the conflict clause names `ciphertext` and nothing else.
+   *
+   * A device that had no row is exactly the §5.7 case of one linked AFTER the
+   * original send: its `none_for_device` placeholder upgrades to real
+   * ciphertext. The reverse never happens here — this method only ever writes a
+   * ciphertext, so a real envelope cannot regress to a placeholder.
+   */
+  async upsertEnvelopeCiphertexts(
+    messageId: number,
+    envelopes: { userId: number; deviceId: number; ciphertext: string }[],
+    manager?: EntityManager,
+  ): Promise<void> {
+    if (envelopes.length === 0) return;
+    const repo = (manager ?? this.msgRepo.manager).getRepository(
+      MessageEnvelope,
+    );
+    await repo
+      .createQueryBuilder()
+      .insert()
+      .into(MessageEnvelope)
+      .values(
+        envelopes.map((envelope) => ({
+          messageId,
+          recipientUserId: envelope.userId,
+          recipientDeviceId: envelope.deviceId,
+          ciphertext: envelope.ciphertext,
+          deliveredAt: null,
+          readAt: null,
+        })),
+      )
+      // Conflict target = the entity's UNIQUE (messageId, recipientUserId,
+      // recipientDeviceId). `orUpdate` lists ONLY `ciphertext`, so every other
+      // column of an existing row — both stamps and `createdAt` — is untouched.
+      .orUpdate(['ciphertext'], [
+        'messageId',
+        'recipientUserId',
+        'recipientDeviceId',
+      ])
+      .execute();
   }
 
   /** Parse hiddenByUserIds string "1,2,3" to number[] */
