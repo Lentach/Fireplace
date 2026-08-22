@@ -8,7 +8,7 @@ map and the record of what was CONFIRMED (so nobody re-reviews it).
 
 Inputs: frozen spec v5 + two 2026-08-19 §12 amendments; prior-art research
 (`2026-08-19-multi-device-prior-art-research.md`); Phase-2 handoff
-(`.cursor/session-summaries/2026-08-19-HANDOFF-phase2-start-here.md`).
+(its pickup brief was deleted when its ticket landed, per `.cursor/session-summaries/README.md` §Handoffs).
 
 ## 1. Independent convergence (the strongest signal)
 
