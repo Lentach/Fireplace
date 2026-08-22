@@ -21,6 +21,7 @@ import '../models/message_model.dart';
 import '../models/user_model.dart';
 import '../widgets/hex_avatar.dart';
 import '../widgets/chat_background_pattern.dart';
+import '../widgets/devices_syncing_note.dart';
 import '../widgets/ping_effect_overlay.dart';
 import '../widgets/top_snackbar.dart';
 import '../widgets/message/pinned_message_banner.dart';
@@ -829,29 +830,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     );
   }
 
-  /// The calm own-device-skew state (multi-device spec §12 amendment (xvii)).
-  ///
-  /// Shown when a peer's in-band `senderListInfo` revealed that our OWN devices
-  /// disagree about our own device list — which just means they have not
-  /// finished syncing. It deliberately borrows NOTHING from the identity-changed
-  /// surface: no security colour, no icon, no sound. Conflating a benign sync
-  /// with an attack is how users learn to ignore real warnings.
-  Widget _buildDevicesSyncingNote(BuildContext context) {
-    final mutedColor = RpgTheme.isDark(context)
-        ? RpgTheme.mutedDark
-        : RpgTheme.textSecondaryLight;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      child: Text(
-        AppLocalizations.of(context).devicesSyncingNote,
-        textAlign: TextAlign.center,
-        style: Theme.of(
-          context,
-        ).textTheme.bodySmall?.copyWith(color: mutedColor),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final messaging = context.watch<MessagingProvider>();
@@ -963,7 +941,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
       // Embedded header/banner are in-flow — no floating chrome to clear.
       body = Column(
         children: [
-          if (messaging.devicesSyncing) _buildDevicesSyncingNote(context),
+          if (messaging.devicesSyncing) const DevicesSyncingNote(),
           Expanded(
             child: _buildMessagesArea(
               listBottomPadding: 0,
@@ -992,7 +970,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
             SafeArea(
               bottom: false,
               top: pinnedBanner == null,
-              child: _buildDevicesSyncingNote(context),
+              child: const DevicesSyncingNote(),
             ),
           Expanded(
             child: ChatComposerViewport(
