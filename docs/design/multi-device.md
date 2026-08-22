@@ -1194,4 +1194,81 @@ that is the designed outcome).
     `markConversationRead` drives the ROW projection without touching the envelope — so any
     assertion that `readAt` "survives" is vacuous. The guard MUST target `deliveredAt` and MUST
     exercise a PRE-EXISTING non-null stamp rather than the insert-time null.
-- **Next gate:** per-ticket implementation reviews (T1–T8); Stage 0 is CLOSED 2026-08-19.
+- **Amendment 2026-08-22 (T9 pre-implementation settlement, filed BEFORE code per the Stage-0
+  "settle before you build" rule). Origin: the T1–T8 phase gate, three independent reviewers.**
+  Two of the four defects below were mis-stated when first raised; the research round refuted
+  those premises and they are recorded here corrected, not as first written.
+  - **(xxxix) A peer device's bundle identity key MUST be checked against the account's verified
+    identity key before a session is built, and the anchor MUST come from the verified device
+    list — never from a fixed device slot.** §3 says every device of an account shares ONE
+    identity key, and the I7 chain already verifies a peer's device list against that key. But
+    nothing bound the PER-DEVICE bundle to it: `isTrustedIdentity` pins TOFU per Signal address
+    `(peerId, deviceId)` and alarms only when a key CHANGES at an address already seen, so a
+    peer's newly linked device is a fresh address and is trusted SILENTLY. A server that cannot
+    forge the DAK-signed list can still serve any bundle it likes for a device the list
+    legitimately names, which is precisely the capability the §2 matrix denies to S alone.
+    Severity qualifier, established by the research and stated so it is not overclaimed: the
+    §6.1 registration lock forces every STORED bundle of an account onto one identity key
+    (verbatim in (xxxv)), so an HONEST server cannot serve a divergent one — this requires a
+    COMPROMISED server. The check is therefore defence against server compromise, which §2
+    already promises. Behaviour is FAIL CLOSED: a mismatch refuses the session and raises the
+    identity alarm rather than encrypting to the key. Building-and-warning is rejected — a
+    dismissible toast on a MITM is worse than a refusal the user can act on. The anchor MUST be
+    read from the I7-verified list, NOT from `peerTofuIdentityBase64`'s hard-coded
+    `(peerId, deviceId=1)` slot: ids are never reused and a post-§6.2 account has no device 1,
+    so the fixed slot is empty exactly for the accounts that most recently survived a takeover.
+    A first contact with a legitimately new device of a known peer is UNAFFECTED — the bundle
+    carries the same account key, so the check passes silently.
+  - **(xl) Binding the account identity key into the DAK-signed device list is the durable fix
+    and is DEFERRED to its own ticket.** (xxxix) rests on a TOFU-acquired anchor; putting the
+    account IK (or a commitment to it) inside the signed canonical bytes would make the binding
+    verifiable offline from data the client already fetches, with no trust in the bundle at all.
+    It is not folded into T9 because it changes the canonical bytes governed by (d) and needs a
+    list-version migration on every enrolled account. (xxxix) is not a stopgap that (xl)
+    discards — it stays as defence in depth.
+  - **(xli) The §6.2 reset teardown MUST evict the superseded devices it revokes, and it runs
+    where the socket server is already in scope.** `applyAfterReset` revokes the device rows and
+    every refresh token in one transaction, but never emits `deviceRevoked` and never disconnects
+    — while T6's `revokeDevice` does both. Both session gates are CONNECT-time only and
+    `getServedMessageIds` is the sole per-event revocation re-check, so a superseded device
+    holding ONE continuous socket keeps the whole remaining gateway surface after the ceremony
+    whose purpose is to evict it. The eviction is a CALLER-side addition: `applyAfterReset` is
+    invoked lazily from `handleUploadKeyBundle`, which already holds the socket.io `Server` and
+    the revoked ids — the originally-alleged "runs from a cron with no server handle" is a FALSE
+    PREMISE, refuted by (xxxii) and the call site. Eviction is best-effort POST-commit, matching
+    T6: a failed kick must never roll back a committed teardown.
+    **The companion claim that the teardown wrongly leaves the DAK-signed list alone is ALSO a
+    FALSE PREMISE and is REJECTED.** Not touching `account_authorizations` is mandated by
+    (f)(iii)/(xxix) — the recovering CLIENT republishes the list — and the reset probe already
+    asserts that a test expecting the server to touch it would be asserting a spec violation.
+  - **(xlii) A recovery phrase may only SHORTEN the reset delay once it has aged; enrolment is
+    never silent; and replacing a phrase restarts its clock.** I4 says the recovery key shortens
+    the delay but is never silent — yet the ENROLMENT that determines the delay was silent:
+    `setRecoveryKey` needs only an authenticated socket, with no re-auth, no delay and no
+    notification, and `requestReset` honours a brand-new phrase immediately with `shortened`.
+    Framing correction from the research, because it decides the fix: the RESET itself is NOT
+    silent (`identityResetPending` goes to the user room and to push on BOTH paths), so the
+    defect is a silently SHRUNK window, not a missing alarm. And the actor is a password thief,
+    who can already run the 72 h credentials-only reset — so password re-authentication does NOT
+    defend this, and is rejected as the primary control. The load-bearing rule is a MINIMUM
+    ENROLMENT AGE: a phrase minted after the compromise cannot buy the shortcut and is forced
+    onto the full 72 h path, while a user who enrolled a key in advance — the case the feature
+    exists for — still recovers fast. Enrolment MUST additionally notify every session and push
+    endpoint, restoring I4's "never silent" to the step that actually sets the delay.
+    Corollary, and a real trap the research caught: `setRecoveryKey` does NOT touch `createdAt`
+    when REPLACING a phrase, so an age gate that reads it naively is bypassed by replacing onto
+    an aged row. Replacement MUST reset the age clock.
+  - **(xliii) A device roster is served only to a caller who may already message that account,
+    with a narrow carve-out for decrypting history.** `getDeviceList` used the requester id only
+    for an auth-presence check and then served any account's full signed roster — device count,
+    platform, `addedAt`, `revokedAt`, plus enrolled-vs-not — to any authenticated caller, at 300
+    requests / 15 min, on a repository public since 2026-08-18. That is a precise profiling
+    oracle in an app whose premise is metadata minimisation. The predicate is the one the gateway
+    already uses for "may A talk to B" (`validateCanMessage`: friends and not blocked either
+    way); no new authorisation concept is introduced. The carve-out is REQUIRED, not a
+    convenience: a client must still resolve the list of a peer who sent it a message and later
+    unfriended or blocked it, or previously received history becomes permanently undecryptable —
+    a fix that silently destroys readable history is worse than the leak it closes.
+- **Next gate:** T9 implementation review, then the T1–T8 + T9 merge decision. The T1–T8 phase
+  gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the
+  test-integrity findings are folded at `4c0e0bf`; the four security findings are this ticket.
