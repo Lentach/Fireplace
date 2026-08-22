@@ -27,6 +27,11 @@ export const RATE_LIMITED = 'rate_limited';
  * optimistic state to unwind. In-contract needs no such map: these payloads
  * flow into the settle/revert paths the client ALREADY has.
  *
+ * Only handlers that ACTUALLY carry `@UseGuards(WsThrottlerGuard)` belong here:
+ * an entry for an unthrottled handler is unreachable code that misrepresents the
+ * wire contract. `uploadKeyBundle` was in this table for exactly that reason and
+ * was removed.
+ *
  * A handler that is not listed falls back to `error { message }`, which the
  * client already listens to and which already marks in-flight sends failed. So
  * an unlisted handler degrades to a visible error, never to silence.
@@ -74,15 +79,25 @@ const THROTTLE_ANSWERS: Record<
     'deviceListUpdated',
     { success: false, error: RATE_LIMITED, retryAfterMs },
   ],
-  uploadKeyBundle: (_data, retryAfterMs) => [
-    'keyBundleUploaded',
-    { success: false, error: RATE_LIMITED, retryAfterMs },
-  ],
 };
+
+/** One warn per (tracker, event) per this long; the rest go to debug. */
+const REFUSAL_LOG_INTERVAL_MS = 60_000;
 
 @Injectable()
 export class WsThrottlerGuard extends ThrottlerGuard {
   private readonly wsLogger = new Logger(WsThrottlerGuard.name);
+
+  /**
+   * When each (tracker, event) pair was last logged at warn.
+   *
+   * Once a tracker crosses its limit, EVERY further request in the window is
+   * refused — so logging each one at warn lets a flood amplify itself through
+   * our logs, and the tracker falls back to a handshake address when the socket
+   * is unauthenticated. The first refusal of a window is the interesting one;
+   * the rest are debug.
+   */
+  private readonly lastRefusalLog = new Map<string, number>();
 
   protected getRequestResponse(context: ExecutionContext) {
     const client = context.switchToWs().getClient<Socket>();
@@ -135,9 +150,22 @@ export class WsThrottlerGuard extends ThrottlerGuard {
         ? answer(context.switchToWs().getData(), retryAfterMs)
         : ['error', { message: RATE_LIMITED, event, retryAfterMs }];
       const userId = (client.data?.user as { id?: number } | undefined)?.id;
-      this.wsLogger.warn(
-        `[throttle] REFUSED event=${event ?? 'unknown'} userId=${userId ?? 'anon'} answeredWith=${name} retryAfterMs=${retryAfterMs}`,
-      );
+      const line = `[throttle] REFUSED event=${event ?? 'unknown'} userId=${userId ?? 'anon'} answeredWith=${name} retryAfterMs=${retryAfterMs}`;
+      const logKey = `${detail.tracker}:${event ?? 'unknown'}`;
+      const now = Date.now();
+      const lastLogged = this.lastRefusalLog.get(logKey) ?? 0;
+      if (now - lastLogged >= REFUSAL_LOG_INTERVAL_MS) {
+        this.lastRefusalLog.set(logKey, now);
+        // Bound the map: a flood from many trackers must not grow it forever.
+        if (this.lastRefusalLog.size > 1000) {
+          for (const [key, at] of this.lastRefusalLog) {
+            if (now - at >= REFUSAL_LOG_INTERVAL_MS) this.lastRefusalLog.delete(key);
+          }
+        }
+        this.wsLogger.warn(line);
+      } else {
+        this.wsLogger.debug(line);
+      }
       client.emit(name, payload);
     } catch (error) {
       // Never let the courtesy answer mask the refusal itself.

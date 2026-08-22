@@ -127,10 +127,13 @@ describe('WsThrottlerGuard — a throttled request answers in its own contract',
       context: ExecutionContext,
       d: ThrottlerLimitDetail,
     ): Promise<void> {
+      // ONLY the rejection may set this. Setting it unconditionally after the
+      // await made both refusal tests unable to fail: dropping the guard's
+      // `return super.…` — i.e. telling the caller it is rate limited and then
+      // SERVING it — would have kept them green.
       await super.throwThrottlingException(context, d).catch(() => {
         this.threw = true;
       });
-      this.threw = true;
     }
 
     async refuse(context: ExecutionContext) {
@@ -187,7 +190,6 @@ describe('WsThrottlerGuard — a throttled request answers in its own contract',
     ['cancelProvisioning', 'provisioningCancelled'],
     ['revokeDevice', 'deviceRevocationCompleted'],
     ['updateDeviceList', 'deviceListUpdated'],
-    ['uploadKeyBundle', 'keyBundleUploaded'],
   ])('answers %s on its own %s event', async (request, answer) => {
     const { context, emit } = contextFor(request, {});
 
