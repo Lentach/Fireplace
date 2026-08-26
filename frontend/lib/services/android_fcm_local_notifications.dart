@@ -168,6 +168,30 @@ Future<void> showFireplaceMessageNotificationWithPlugin({
     );
     return;
   }
+  // The account's recovery phrase was set or replaced (spec §12 amendment
+  // (xlii)). Arming a phrase is what buys a SHORTENED reset delay, so it is a
+  // security-relevant act and must not be silent — a thief on a stolen session
+  // would otherwise pre-arm one unobserved. Its own tag and id: this must
+  // neither replace nor be replaced by a live reset countdown.
+  if (data['type'] == 'recovery_key_enrolled') {
+    const androidDetails = AndroidNotificationDetails(
+      _androidChannelId,
+      'Fireplace',
+      channelDescription: _androidChannelDescription,
+      importance: Importance.high,
+      priority: Priority.high,
+      icon: '@drawable/ic_stat_fireplace',
+      tag: 'recovery-key-enrolled',
+    );
+    await plugin.show(
+      id: 0x40000002,
+      title: 'Fireplace',
+      body: 'A recovery phrase was set for your account. If this was not '
+          'you, change your password now.',
+      notificationDetails: const NotificationDetails(android: androidDetails),
+    );
+    return;
+  }
   if (data['type'] != 'new_message') return;
 
   final convRaw = data['conversationId'];

@@ -65,14 +65,14 @@ void main() {
     test('sessions to (peer,1) and (peer,2) are independent: distinct '
         'ciphertexts, each decrypts only on its own device, and building '
         'device 2 never disturbs device 1', () async {
-      await alice.buildSession(bobId, flatBundleFrom(bobDev1));
+      await alice.buildSession(bobId, flatBundleFrom(bobDev1), expectedIdentityBase64: null);
       const first = 'to device 1 before device 2 exists';
       final wireBefore = await alice.encrypt(bobId, first);
       expect(await bobDev1.decrypt(aliceId, wireBefore), first);
 
       // Device 2 appears; its session is built at the SAME userId under
       // deviceId 2 — the device-1 record must be untouched.
-      await alice.buildSession(bobId, flatBundleFrom(bobDev2), deviceId: 2);
+      await alice.buildSession(bobId, flatBundleFrom(bobDev2), deviceId: 2, expectedIdentityBase64: null);
       expect(await alice.hasSession(bobId), isTrue);
       expect(await alice.hasSession(bobId, deviceId: 2), isTrue);
 
@@ -100,8 +100,8 @@ void main() {
     test(
       'deleteSession of device 2 leaves the device-1 record standing',
       () async {
-        await alice.buildSession(bobId, flatBundleFrom(bobDev1));
-        await alice.buildSession(bobId, flatBundleFrom(bobDev2), deviceId: 2);
+        await alice.buildSession(bobId, flatBundleFrom(bobDev1), expectedIdentityBase64: null);
+        await alice.buildSession(bobId, flatBundleFrom(bobDev2), deviceId: 2, expectedIdentityBase64: null);
         await alice.deleteSession(bobId, deviceId: 2);
         expect(await alice.hasSession(bobId, deviceId: 2), isFalse);
         expect(await alice.hasSession(bobId), isTrue);
@@ -121,8 +121,8 @@ void main() {
         aliceId,
         checkServerBundleExists: () async => false,
       );
-      await locked.buildSession(bobId, flatBundleFrom(bobDev1));
-      await locked.buildSession(bobId, flatBundleFrom(bobDev2), deviceId: 2);
+      await locked.buildSession(bobId, flatBundleFrom(bobDev1), expectedIdentityBase64: null);
+      await locked.buildSession(bobId, flatBundleFrom(bobDev2), deviceId: 2, expectedIdentityBase64: null);
       // Legacy name EXACTLY for device 1: an old PWA tab still locks it
       // during a rollout window, and a rename would let two builds
       // interleave on the same persisted device-1 record.

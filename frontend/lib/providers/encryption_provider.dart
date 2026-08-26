@@ -227,6 +227,10 @@ class EncryptionProvider extends ChangeNotifier {
       recipientId,
       bundle,
       deviceId: deviceId,
+      expectedIdentityBase64: await _accountIdentityAnchor(
+        recipientId,
+        skipDeviceId: deviceId,
+      ),
     );
     debugPrint(
       '[E2E] Session established with userId=$recipientId deviceId=$deviceId',
@@ -235,6 +239,45 @@ class EncryptionProvider extends ChangeNotifier {
       'recipientId': recipientId,
       'deviceId': deviceId,
     });
+  }
+
+  /// The identity key already trusted for [recipientId] on ANY of its devices
+  /// other than [skipDeviceId], or null if the account is unknown to us.
+  ///
+  /// This is the anchor [EncryptionService.buildSession] checks the served
+  /// bundle against (spec §12 amendment (xxxix)). §3 guarantees every device of
+  /// an account shares one identity key, so ANY device we have already trusted
+  /// answers for all of them.
+  ///
+  /// Sourced from the VERIFIED device list, never from a fixed device slot:
+  /// ids are never reused and a post-§6.2 account has no device 1, so anchoring
+  /// on device 1 would find nothing exactly for the accounts that just survived
+  /// a takeover — handing the attacker back the silent-trust path this check
+  /// exists to close. Falls back to the cached list only; deliberately does NOT
+  /// fetch, because this runs inside session setup and a network round trip
+  /// here would deadlock against the fetch that triggered it.
+  ///
+  /// [skipDeviceId] is excluded because that is the very address being built:
+  /// on a REBUILD it already holds the old key, and comparing the bundle to
+  /// itself would make the check vacuous while also blocking the legitimate
+  /// account-wide key rotation that the same-address alarm exists to report.
+  Future<String?> _accountIdentityAnchor(
+    int recipientId, {
+    required int skipDeviceId,
+  }) async {
+    final verified = cachedDeviceList(recipientId);
+    final candidates = <int>[
+      for (final device in verified?.devices ?? const [])
+        if (device.deviceId != skipDeviceId) device.deviceId,
+    ];
+    for (final candidateId in candidates) {
+      final identity = await _encryptionService.peerIdentityAt(
+        recipientId,
+        candidateId,
+      );
+      if (identity != null) return identity;
+    }
+    return null;
   }
 
   /// Whether the session for [recipientId]'s [deviceId] should be force-rebuilt.

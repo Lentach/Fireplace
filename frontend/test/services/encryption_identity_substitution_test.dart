@@ -63,21 +63,21 @@ void main() {
       final warned = <int>[];
       alice.onPeerIdentityChanged = warned.add;
 
-      await alice.buildSession(bobId, flatBundleFrom(bob));
+      await alice.buildSession(bobId, flatBundleFrom(bob), expectedIdentityBase64: null);
 
       expect(alice.peersWithChangedIdentity, isEmpty);
       expect(warned, isEmpty, reason: 'TOFU first contact is silent by design');
     });
 
     test('a substituted identity for a known peer WARNS', () async {
-      await alice.buildSession(bobId, flatBundleFrom(bob));
+      await alice.buildSession(bobId, flatBundleFrom(bob), expectedIdentityBase64: null);
       expect(alice.peersWithChangedIdentity, isEmpty);
 
       final warned = <int>[];
       alice.onPeerIdentityChanged = warned.add;
 
       // The server now answers a bundle fetch for Bob with Mallory's identity.
-      await alice.buildSession(bobId, flatBundleFrom(mallory));
+      await alice.buildSession(bobId, flatBundleFrom(mallory), expectedIdentityBase64: null);
 
       expect(
         alice.peersWithChangedIdentity,
@@ -88,8 +88,8 @@ void main() {
     });
 
     test('the warning survives a restart until acknowledged', () async {
-      await alice.buildSession(bobId, flatBundleFrom(bob));
-      await alice.buildSession(bobId, flatBundleFrom(mallory));
+      await alice.buildSession(bobId, flatBundleFrom(bob), expectedIdentityBase64: null);
+      await alice.buildSession(bobId, flatBundleFrom(mallory), expectedIdentityBase64: null);
       expect(alice.peersWithChangedIdentity, contains(bobId));
 
       // Same user, fresh process: the persisted warning must come back, or a
@@ -102,8 +102,8 @@ void main() {
 
     test('acknowledging clears it, and it stays cleared after a restart',
         () async {
-      await alice.buildSession(bobId, flatBundleFrom(bob));
-      await alice.buildSession(bobId, flatBundleFrom(mallory));
+      await alice.buildSession(bobId, flatBundleFrom(bob), expectedIdentityBase64: null);
+      await alice.buildSession(bobId, flatBundleFrom(mallory), expectedIdentityBase64: null);
       expect(alice.peersWithChangedIdentity, contains(bobId));
 
       await alice.acknowledgePeerIdentity(bobId);
@@ -120,16 +120,101 @@ void main() {
       final carol = EncryptionService();
       await carol.initialize(carolId, checkServerBundleExists: () async => false);
 
-      await alice.buildSession(bobId, flatBundleFrom(bob));
-      await alice.buildSession(carolId, flatBundleFrom(carol));
-      await alice.buildSession(bobId, flatBundleFrom(mallory));
-      await alice.buildSession(carolId, flatBundleFrom(mallory));
+      await alice.buildSession(bobId, flatBundleFrom(bob), expectedIdentityBase64: null);
+      await alice.buildSession(carolId, flatBundleFrom(carol), expectedIdentityBase64: null);
+      await alice.buildSession(bobId, flatBundleFrom(mallory), expectedIdentityBase64: null);
+      await alice.buildSession(carolId, flatBundleFrom(mallory), expectedIdentityBase64: null);
       expect(alice.peersWithChangedIdentity, containsAll(<int>[bobId, carolId]));
 
       await alice.acknowledgePeerIdentity(bobId);
 
       expect(alice.peersWithChangedIdentity, contains(carolId));
       expect(alice.peersWithChangedIdentity, isNot(contains(bobId)));
+    });
+  });
+
+  /// The SECOND hole, closed by spec §12 amendment (xxxix).
+  ///
+  /// The group above defends the SAME address: a key that changes where one was
+  /// already known. It cannot see this one. §3 says every device of an account
+  /// shares ONE identity key, but TOFU is keyed per `(peer, deviceId)`, so a
+  /// peer's NEWLY LINKED device is a fresh address — `existing == null`, nothing
+  /// to compare, trusted in silence. A server that cannot forge the DAK-signed
+  /// device list could still serve its own identity for a device that list
+  /// legitimately names, which is a silent MITM slot on every link.
+  group('account-wide identity binding (amendment (xxxix))', () {
+    test('a NEW device of a known peer carrying a foreign identity is REFUSED',
+        () async {
+      // Alice knows Bob's device 1 the honest way.
+      await alice.buildSession(
+        bobId,
+        flatBundleFrom(bob),
+        expectedIdentityBase64: null,
+      );
+      final anchor = await alice.peerIdentityAt(bobId, 1);
+      expect(anchor, isNotNull, reason: 'device 1 is the account anchor here');
+
+      // The server now claims Bob linked device 2, and serves MALLORY's key
+      // for it. The device list would happily name device 2; only the identity
+      // binding can tell that this bundle is not Bob's.
+      await expectLater(
+        alice.buildSession(
+          bobId,
+          flatBundleFrom(mallory),
+          deviceId: 2,
+          expectedIdentityBase64: anchor,
+        ),
+        throwsA(isA<AccountIdentityMismatch>()),
+      );
+
+      // Fail CLOSED: nothing was trusted and nothing was stored, so a retry
+      // cannot find the attacker's key already in place.
+      expect(await alice.peerIdentityAt(bobId, 2), isNull);
+    });
+
+    test('a NEW device carrying the ACCOUNT identity is accepted, silently',
+        () async {
+      await alice.buildSession(
+        bobId,
+        flatBundleFrom(bob),
+        expectedIdentityBase64: null,
+      );
+      final anchor = await alice.peerIdentityAt(bobId, 1);
+
+      final warned = <int>[];
+      alice.onPeerIdentityChanged = warned.add;
+
+      // The legitimate case the feature exists for: Bob linked a real second
+      // device, so the bundle carries the SAME account identity key.
+      await alice.buildSession(
+        bobId,
+        flatBundleFrom(bob),
+        deviceId: 2,
+        expectedIdentityBase64: anchor,
+      );
+
+      expect(await alice.peerIdentityAt(bobId, 2), anchor);
+      expect(
+        warned,
+        isEmpty,
+        reason: 'linking a device is normal and must not cry wolf',
+      );
+      expect(alice.peersWithChangedIdentity, isEmpty);
+    });
+
+    test('a null anchor still means TOFU — first contact with an ACCOUNT',
+        () async {
+      // No anchor exists because Alice has never met this account on any
+      // device. That is irreducibly trust-on-first-use and must keep working,
+      // or no one could ever start a conversation.
+      await alice.buildSession(
+        bobId,
+        flatBundleFrom(bob),
+        deviceId: 3,
+        expectedIdentityBase64: null,
+      );
+
+      expect(await alice.peerIdentityAt(bobId, 3), isNotNull);
     });
   });
 }

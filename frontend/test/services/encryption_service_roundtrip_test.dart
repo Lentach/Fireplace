@@ -61,7 +61,7 @@ void main() {
   group('EncryptionService two-party round trip', () {
     test('A builds session from B\'s bundle; first message is a PreKey (3:) '
         'and B decrypts it to the exact plaintext', () async {
-      await alice.buildSession(bobId, flatBundleFrom(bob));
+      await alice.buildSession(bobId, flatBundleFrom(bob), expectedIdentityBase64: null);
 
       const plaintext = 'hello Bob, this is the X3DH opener';
       final wire = await alice.encrypt(bobId, plaintext);
@@ -73,7 +73,7 @@ void main() {
 
     test('B replies over the established session and messages settle to '
         'whisper (2:) once both directions have flowed', () async {
-      await alice.buildSession(bobId, flatBundleFrom(bob));
+      await alice.buildSession(bobId, flatBundleFrom(bob), expectedIdentityBase64: null);
 
       // A -> B: X3DH handshake carrier.
       final opener = await alice.encrypt(bobId, 'opener');
@@ -100,7 +100,7 @@ void main() {
 
     test('multiple sequential messages in both directions decrypt correctly '
         '(ratchet advances)', () async {
-      await alice.buildSession(bobId, flatBundleFrom(bob));
+      await alice.buildSession(bobId, flatBundleFrom(bob), expectedIdentityBase64: null);
 
       // Complete the handshake first.
       expect(await bob.decrypt(aliceId, await alice.encrypt(bobId, 'ping')),
@@ -134,7 +134,7 @@ void main() {
 
     test('non-ASCII and emoji plaintext survives the round trip (utf8)',
         () async {
-      await alice.buildSession(bobId, flatBundleFrom(bob));
+      await alice.buildSession(bobId, flatBundleFrom(bob), expectedIdentityBase64: null);
 
       const samples = <String>[
         'Zażółć gęślą jaźń — ЁЖИК — 你好世界',

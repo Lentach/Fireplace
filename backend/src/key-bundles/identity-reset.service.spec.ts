@@ -11,6 +11,7 @@ import {
   RECOVERY_MAX_FAILED_ATTEMPTS,
   RESET_DELAY_MS,
   RESET_DELAY_RECOVERY_MS,
+  RECOVERY_MIN_AGE_MS,
 } from './identity-reset.service';
 import { IdentityResetRequest } from './identity-reset-request.entity';
 import { RecoveryKey } from './recovery-key.entity';
@@ -278,6 +279,9 @@ describe('IdentityResetService (reset ceremony §6.2 / recovery key §6.2.1)', (
         verifierHash = await argon2.hash(phrase, RECOVERY_ARGON2_OPTIONS);
       });
 
+      // Enrolled long ago by default, so every pre-existing law below keeps
+      // describing the same account: a phrase old enough to shorten the
+      // window (amendment (xlii)). The age cases are their own tests.
       const enrolled = (overrides: Record<string, unknown> = {}) => ({
         id: 3,
         userId: 7,
@@ -285,6 +289,7 @@ describe('IdentityResetService (reset ceremony §6.2 / recovery key §6.2.1)', (
         usedAt: null,
         failedAttempts: 0,
         lockedUntil: null,
+        createdAt: new Date(Date.now() - RECOVERY_MIN_AGE_MS - 60_000),
         ...overrides,
       });
 
@@ -306,6 +311,60 @@ describe('IdentityResetService (reset ceremony §6.2 / recovery key §6.2.1)', (
         expect(resetRepo.insert).toHaveBeenCalledWith(
           expect.objectContaining({ shortened: true }),
         );
+      });
+
+      // Amendment (xlii). The actor is a PASSWORD thief, who can already run
+      // the ordinary 72 h ceremony — that is the documented lost-device path.
+      // What they must not also get is the SHORTCUT: enrol a phrase of their
+      // own and spend it immediately, cutting the owner's cancel window from
+      // 72 h to 1 h. A password re-prompt would not stop them; the age does.
+      it('a phrase younger than the minimum age does NOT shorten the window', async () => {
+        recoveryRepo.findOne.mockResolvedValue(
+          enrolled({ createdAt: new Date(Date.now() - 60_000) }),
+        );
+
+        const result = await service.requestReset(7, phrase);
+
+        // The ceremony still STARTS — refusing would break the lost-device
+        // path §6.2 exists to serve — but at the full delay.
+        expect(result.status).toBe('pending');
+        expect(result.shortened).toBe(false);
+        const remaining = (result.deadlineAt?.getTime() ?? 0) - Date.now();
+        expect(remaining).toBeGreaterThan(RESET_DELAY_MS - 5000);
+        expect(resetRepo.insert).toHaveBeenCalledWith(
+          expect.objectContaining({ shortened: false }),
+        );
+      });
+
+      it('and leaves that young phrase UNSPENT', async () => {
+        recoveryRepo.findOne.mockResolvedValue(
+          enrolled({ createdAt: new Date(Date.now() - 60_000) }),
+        );
+
+        await service.requestReset(7, phrase);
+
+        // It was the user's own phrase and it verified. Burning it here would
+        // cost a legitimate owner their key for nothing; it simply could not
+        // buy the shortcut yet.
+        expect(recoveryRepo.update).not.toHaveBeenCalled();
+      });
+
+      it('a WRONG phrase still costs an attempt even when it is young', async () => {
+        recoveryRepo.findOne.mockResolvedValue(
+          enrolled({ createdAt: new Date(Date.now() - 60_000) }),
+        );
+        recoveryBuilder.execute.mockResolvedValue({
+          affected: 1,
+          raw: [{ failedAttempts: 1 }],
+        });
+
+        const result = await service.requestReset(7, 'not the phrase at all');
+
+        // The age is checked AFTER verification on purpose: otherwise the
+        // ordering would turn the age gate into a free oracle for probing
+        // whether a phrase is enrolled, without spending an attempt.
+        expect(result.status).toBe('invalid_phrase');
+        expect(setSql(recoveryBuilder.set)).toContain('"failedAttempts" + 1');
       });
 
       it('rolls the phrase spend back when a concurrent request wins the race', async () => {
@@ -645,6 +704,41 @@ describe('IdentityResetService (reset ceremony §6.2 / recovery key §6.2.1)', (
         }),
       );
       expect(recoveryRepo.insert).not.toHaveBeenCalled();
+    });
+
+    // Amendment (xlii). `createdAt` is a @CreateDateColumn, so an UPDATE
+    // leaves it at the ORIGINAL enrollment. Without this the age gate is
+    // trivially bypassed: a thief REPLACES the phrase on a long-standing row
+    // and their brand-new secret inherits an age it never had, buying the 1 h
+    // window the gate exists to deny. The gate governs the SECRET, not the row.
+    it('replacing a phrase RESTARTS the age clock', async () => {
+      const enrolledLongAgo = new Date(Date.now() - 400 * 24 * 3600 * 1000);
+      recoveryRepo.findOne.mockResolvedValue({
+        id: 3,
+        userId: 7,
+        createdAt: enrolledLongAgo,
+      });
+
+      const before = Date.now();
+      await service.setRecoveryKey(7, phrase);
+
+      // `rowArg` reads the FIRST argument; an update's patch is the second.
+      const calls = recoveryRepo.update.mock.calls as Array<
+        [unknown, { createdAt?: Date }]
+      >;
+      const patch = calls[0][1];
+      expect(patch.createdAt).toBeInstanceOf(Date);
+      expect(patch.createdAt!.getTime()).toBeGreaterThanOrEqual(before);
+    });
+
+    it('reports whether the enrollment REPLACED an existing phrase', async () => {
+      // The caller words the notification from this, so a replacement is not
+      // announced as a first enrollment.
+      recoveryRepo.findOne.mockResolvedValue(null);
+      await expect(service.setRecoveryKey(7, phrase)).resolves.toBe(false);
+
+      recoveryRepo.findOne.mockResolvedValue({ id: 3, userId: 7 });
+      await expect(service.setRecoveryKey(7, phrase)).resolves.toBe(true);
     });
   });
 });

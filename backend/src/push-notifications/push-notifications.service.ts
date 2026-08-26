@@ -130,7 +130,7 @@ export class PushNotificationsService implements OnModuleInit {
    */
   async notifyIdentityReset(
     userId: number,
-    type: 'identity_reset_pending' | 'identity_reset_cancelled',
+    type: 'identity_reset_pending' | 'identity_reset_cancelled' | 'recovery_key_enrolled',
   ): Promise<void> {
     await Promise.all([
       this.notifyIdentityResetFcm(userId, type),
@@ -140,7 +140,7 @@ export class PushNotificationsService implements OnModuleInit {
 
   private async notifyIdentityResetFcm(
     userId: number,
-    type: 'identity_reset_pending' | 'identity_reset_cancelled',
+    type: 'identity_reset_pending' | 'identity_reset_cancelled' | 'recovery_key_enrolled',
   ): Promise<void> {
     if (!this.fcmInitialized) return;
     const tokens = await this.fcmTokensService.findTokensByUserId(userId, [

@@ -366,7 +366,7 @@ void main() {
           isNotNull,
           reason: 'fresh account must have unused one-time pre-keys',
         );
-        await alice.encryption.buildSession(bob.userId, bundle);
+        await alice.encryption.buildSession(bob.userId, bundle, expectedIdentityBase64: null);
 
         await roundTrip(
           alice,
@@ -433,7 +433,7 @@ void main() {
         // process over its existing session state.
         await alice.encryption.deleteSession(bob.userId);
         final bundle = await alice.fetchBundleFor(bob.userId);
-        await alice.encryption.buildSession(bob.userId, bundle);
+        await alice.encryption.buildSession(bob.userId, bundle, expectedIdentityBase64: null);
 
         await roundTrip(
           alice,
@@ -2618,7 +2618,7 @@ void main() {
           alice.userId,
           bundle,
           deviceId: deviceTwoId,
-        );
+         expectedIdentityBase64: null,);
         const plaintext = 'self-sync that really decrypts';
         final selfCiphertext = await alice.encryption.encrypt(
           alice.userId,

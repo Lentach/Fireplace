@@ -19,7 +19,7 @@ import {
 import { UploadOneTimePreKeysDto } from '../dto/upload-one-time-pre-keys.dto';
 import { FetchPreKeyBundleDto } from '../dto/fetch-pre-key-bundle.dto';
 import { RequestSessionRebuildDto } from '../dto/request-session-rebuild.dto';
-import { deviceRoom, userRoom } from '../utils/user-room';
+import { deviceRoom, socketsForDevice, userRoom } from '../utils/user-room';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../../users/users.service';
 import { FcmTokensService } from '../../fcm-tokens/fcm-tokens.service';
@@ -113,6 +113,58 @@ export class ChatKeyExchangeService {
         `[reset-roster] push teardown FAILED userId=${userId}: ${errorMessage(error)}`,
       );
     }
+  }
+
+  /**
+   * Tells every device the §6.2 teardown just revoked, then drops its sockets
+   * (amendment (xli)).
+   *
+   * The database half of the teardown is atomic; this is the half that makes
+   * it take effect on a connection that is ALREADY open. Both §5.5 session
+   * gates run at connect time only, and `getServedMessageIds` is the sole
+   * per-event revocation re-check, so without this a superseded device that
+   * never disconnects keeps the entire remaining gateway surface — reading
+   * and sending on the account whose takeover this ceremony just undid.
+   *
+   * Deliberately mirrors T6 `revokeDevice`: announce on the device room FIRST
+   * so a live client can log itself out cleanly (amendment (xxvi)), then
+   * disconnect. Synchronous and best-effort — it runs AFTER the teardown has
+   * committed, so a throw here must not surface as a failed recovery. An
+   * offline device receives nothing and meets the connect gate instead, which
+   * is the durable enforcement.
+   *
+   * The recovering device is NOT in `revokedDeviceIds` — it was moved to a
+   * freshly allocated id before the revocation stamp — so it cannot kick
+   * itself.
+   */
+  private evictSupersededDevices(
+    userId: number,
+    revokedDeviceIds: number[],
+    server: Server,
+    exceptSocketId: string,
+  ): void {
+    let kicked = 0;
+    for (const revokedDeviceId of revokedDeviceIds) {
+      try {
+        server
+          .to(deviceRoom(userId, revokedDeviceId))
+          .emit('deviceRevoked', { userId, deviceId: revokedDeviceId });
+        const sockets = socketsForDevice(server, userId, revokedDeviceId);
+        for (const socket of sockets) {
+          // Never the recovering caller — see the call site.
+          if (socket.id === exceptSocketId) continue;
+          socket.disconnect();
+          kicked += 1;
+        }
+      } catch (error) {
+        this.logger.error(
+          `[reset-roster] eviction FAILED userId=${userId} deviceId=${revokedDeviceId}: ${errorMessage(error)}`,
+        );
+      }
+    }
+    this.logger.log(
+      `[reset-roster] evicted userId=${userId} devices=[${revokedDeviceIds.join(',')}] kickedSockets=${kicked}`,
+    );
   }
 
   /**
@@ -257,6 +309,35 @@ export class ChatKeyExchangeService {
         // NULL-deviceId row cannot be attributed (amendment (xxiv)). The
         // recovering device re-registers on its next start.
         void this.dropAccountPushRows(userId);
+      }
+      if (roster) {
+        // Evict what the teardown revoked (amendment (xli)). The transaction
+        // stamps `revokedAt` and drops every refresh token, but BOTH §5.5
+        // session gates are connect-time only and `getServedMessageIds` is the
+        // sole per-event revocation re-check — so a superseded device holding
+        // ONE continuous socket would keep the whole remaining gateway surface
+        // after the very ceremony meant to evict it.
+        //
+        // STRICTLY AFTER THE ACK, AND NEVER THIS SOCKET. The recovering client
+        // is still authenticated as its PRE-reset device id, so it sits in a
+        // room this teardown just revoked: evicting first would disconnect the
+        // caller before the ack carrying its new deviceId and session could be
+        // written, and socket.io marks a socket disconnected synchronously, so
+        // that emit would silently no-op. Its old refresh token is already
+        // revoked and its old JWT already gated, so the recovery would strand
+        // on every single run — and it would quietly undo the whole point of
+        // the reissued-session contract this ack exists to deliver.
+        //
+        // Sparing the caller costs nothing: the client adopts the session and
+        // reconnects immediately, which disposes this socket anyway, and a
+        // client that ignores the ack meets the connect gate on its next
+        // reconnect — the same durable enforcement an offline device meets.
+        this.evictSupersededDevices(
+          userId,
+          roster.revokedDeviceIds,
+          server,
+          client.id,
+        );
       }
     } catch (error) {
       if (error instanceof IdentityLockedError) {
@@ -553,20 +634,70 @@ export class ChatKeyExchangeService {
    * Enrolls or replaces the account's recovery phrase (§6.2.1). The phrase is
    * generated and shown on the client; the server keeps only a memory-hard
    * verifier and never returns it.
+   *
+   * Enrolment is LOUD (amendment (xlii)). I4 says the recovery key shortens
+   * the reset delay but is never silent — yet the step that DETERMINES that
+   * delay used to happen with no announcement at all, so a thief holding a
+   * session could arm their own phrase unobserved. The ceremony itself was
+   * always announced; this closes the gap one step earlier, at the moment the
+   * account's recovery secret changes.
+   *
+   * Fire-and-forget after the ack, exactly like the reset alarm: the alarm
+   * must never fail or delay the operation it reports on.
    */
-  async handleSetRecoveryKey(client: Socket, data: unknown): Promise<void> {
+  async handleSetRecoveryKey(
+    client: Socket,
+    data: unknown,
+    server: Server,
+  ): Promise<void> {
     const userId = socketData(client).user?.id;
     if (!userId) return;
 
     try {
       const dto = validateDto(SetRecoveryKeyDto, data);
-      await this.identityResetService.setRecoveryKey(userId, dto.phrase);
+      const replaced = await this.identityResetService.setRecoveryKey(
+        userId,
+        dto.phrase,
+      );
       client.emit('recoveryKeySet', { success: true });
+      void this.notifyRecoveryKeyEnrolled(userId, replaced, server);
     } catch (error) {
       this.logger.error(
         `setRecoveryKey failed userId=${userId}: ${errorMessage(error)}`,
       );
       client.emit('recoveryKeySet', { success: false });
+    }
+  }
+
+  /**
+   * Tells every session and every push endpoint that the account's recovery
+   * phrase was set or replaced (amendment (xlii)).
+   *
+   * Goes to the whole user room INCLUDING the device that did it: that device
+   * already knows, and suppressing it would mean the fan-out has to reason
+   * about which socket originated the change — the kind of exception that
+   * later turns into a hole. Push reaches the devices whose app is closed,
+   * which is the only channel that catches a thief acting while the owner's
+   * phone is in a pocket.
+   */
+  private async notifyRecoveryKeyEnrolled(
+    userId: number,
+    replaced: boolean,
+    server: Server,
+  ): Promise<void> {
+    try {
+      server.to(userRoom(userId)).emit('recoveryKeyEnrolled', {
+        replaced,
+        occurredAt: new Date().toISOString(),
+      });
+      await this.pushNotificationsService.notifyIdentityReset(
+        userId,
+        'recovery_key_enrolled',
+      );
+    } catch (error) {
+      this.logger.error(
+        `recovery-key enrolment notify failed userId=${userId}: ${errorMessage(error)}`,
+      );
     }
   }
 

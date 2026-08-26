@@ -509,7 +509,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: any,
   ) {
-    return this.chatKeyExchangeService.handleSetRecoveryKey(client, data);
+    return this.chatKeyExchangeService.handleSetRecoveryKey(
+      client,
+      data,
+      this.server,
+    );
   }
 
   @UseGuards(WsThrottlerGuard)

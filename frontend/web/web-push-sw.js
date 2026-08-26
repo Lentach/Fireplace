@@ -230,6 +230,26 @@ self.addEventListener('push', function (event) {
     return;
   }
 
+  // The account's recovery phrase was set or replaced (spec §12 amendment
+  // (xlii)). A recovery phrase is what shortens the reset delay, so arming one
+  // is a security-relevant act in its own right and must not happen silently:
+  // a thief holding a stolen session would otherwise pre-arm a phrase with the
+  // owner none the wiser. Its OWN tag, never the 'identity-reset' one — this
+  // must not replace, or be replaced by, a live countdown warning.
+  if (payload.type === 'recovery_key_enrolled') {
+    event.waitUntil(
+      self.registration.showNotification('Fireplace', {
+        body: 'A recovery phrase was set for your account. If this was not you, change your password now.',
+        icon: '/icons/notification-icon-512.png',
+        badge: '/icons/notification-badge-96.png',
+        tag: 'recovery-key-enrolled',
+        data: payload,
+        requireInteraction: true,
+      })
+    );
+    return;
+  }
+
   var convId = payload.conversationId != null ? Number(payload.conversationId) : null;
   // Per-conversation unread — card text only.
   var unreadCount = typeof payload.unreadCount === 'number'

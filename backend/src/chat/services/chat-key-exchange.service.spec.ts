@@ -71,6 +71,7 @@ describe('ChatKeyExchangeService', () => {
   beforeEach(async () => {
     clientRoomEmit = jest.fn();
     mockClient = {
+      id: 'sock-caller',
       data: { user: { id: 1 } },
       emit: jest.fn(),
       to: jest.fn().mockReturnValue({ emit: clientRoomEmit }),
@@ -345,6 +346,146 @@ describe('ChatKeyExchangeService', () => {
         expect(jwtService.sign).toHaveBeenCalledWith(
           expect.objectContaining({ sub: 1, deviceId: 4 }),
         );
+      });
+
+      // Amendment (xli). The teardown's database half is atomic, but BOTH
+      // §5.5 session gates run at CONNECT time only and `getServedMessageIds`
+      // is the sole per-event revocation re-check — so a superseded device
+      // that never disconnects would keep the whole remaining gateway surface
+      // after the very ceremony meant to evict it.
+      it('EVICTS every device the teardown revoked', async () => {
+        resetAuthorized();
+        resetRosterService.applyAfterReset.mockResolvedValue({
+          deviceId: 4,
+          revokedDeviceIds: [1, 2],
+          accessDeviceId: 4,
+          refreshToken: 'fresh-refresh',
+        });
+        const kickedOne = { disconnect: jest.fn() };
+        const kickedTwo = { disconnect: jest.fn() };
+        roomsAdapter.set('device:1:1', new Set(['sock-a']));
+        roomsAdapter.set('device:1:2', new Set(['sock-b']));
+        const sockets = mockServer.sockets as unknown as {
+          sockets: Map<string, unknown>;
+        };
+        sockets.sockets.set('sock-a', kickedOne);
+        sockets.sockets.set('sock-b', kickedTwo);
+
+        await service.handleUploadKeyBundle(
+          mockClient as Socket,
+          validData,
+          mockServer as Server,
+        );
+        await new Promise((resolve) => setImmediate(resolve));
+
+        // Told FIRST, so a live client can log itself out cleanly (xxvi)...
+        expect(mockServer.to).toHaveBeenCalledWith('device:1:1');
+        expect(mockServer.to).toHaveBeenCalledWith('device:1:2');
+        expect(mockServer.emit).toHaveBeenCalledWith('deviceRevoked', {
+          userId: 1,
+          deviceId: 1,
+        });
+        // ...then dropped, which is what actually ends the access.
+        expect(kickedOne.disconnect).toHaveBeenCalled();
+        expect(kickedTwo.disconnect).toHaveBeenCalled();
+
+        // And strictly AFTER the ack. Order is the contract here, not just the
+        // outcome: socket.io marks a socket disconnected synchronously, so any
+        // eviction that runs first silently swallows the reissued session the
+        // recovering client must adopt.
+        const ackAt = (mockClient.emit as jest.Mock).mock
+          .invocationCallOrder[0];
+        const kickAt = kickedOne.disconnect.mock.invocationCallOrder[0];
+        expect(ackAt).toBeLessThan(kickAt);
+      });
+
+      // THE ORDERING THAT MAKES RECOVERY WORK AT ALL. The recovering client is
+      // still authenticated as its PRE-reset device id, so its own socket sits
+      // in a room this teardown just revoked. Evicting before the ack would
+      // disconnect the caller, and socket.io marks a socket disconnected
+      // synchronously — so the emit carrying its new deviceId and session
+      // would silently no-op. With its old refresh token revoked and its old
+      // JWT gated, the recovery would strand on EVERY run.
+      it('acks the recovering caller even though its OWN device id was revoked',
+        async () => {
+        resetAuthorized();
+        resetRosterService.applyAfterReset.mockResolvedValue({
+          deviceId: 4,
+          // Device 1 is the caller's own pre-reset id.
+          revokedDeviceIds: [1],
+          accessDeviceId: 4,
+          refreshToken: 'fresh-refresh',
+        });
+        const callerSocket = { id: 'sock-caller', disconnect: jest.fn() };
+        roomsAdapter.set('device:1:1', new Set(['sock-caller']));
+        const sockets = mockServer.sockets as unknown as {
+          sockets: Map<string, unknown>;
+        };
+        sockets.sockets.set('sock-caller', callerSocket);
+
+        await service.handleUploadKeyBundle(
+          mockClient as Socket,
+          validData,
+          mockServer as Server,
+        );
+        await new Promise((resolve) => setImmediate(resolve));
+
+        // The caller keeps its socket: it adopts the session and reconnects
+        // itself, which disposes this socket anyway, and a client that ignores
+        // the ack meets the connect gate on its next reconnect.
+        expect(callerSocket.disconnect).not.toHaveBeenCalled();
+        expect(mockClient.emit).toHaveBeenCalledWith('keyBundleUploaded', {
+          success: true,
+          identityChanged: true,
+          deviceId: 4,
+          access_token: 'fresh-access',
+          refresh_token: 'fresh-refresh',
+        });
+      });
+
+      it('does not evict the RECOVERING device', async () => {
+        resetAuthorized();
+        const survivor = { disconnect: jest.fn() };
+        // The recovering device was moved to the freshly allocated id 4 before
+        // the revocation stamp, so it is absent from revokedDeviceIds ([1])
+        // and must not kick itself off the session it just recovered.
+        roomsAdapter.set('device:1:4', new Set(['sock-new']));
+        const sockets = mockServer.sockets as unknown as {
+          sockets: Map<string, unknown>;
+        };
+        sockets.sockets.set('sock-new', survivor);
+
+        await service.handleUploadKeyBundle(
+          mockClient as Socket,
+          validData,
+          mockServer as Server,
+        );
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(survivor.disconnect).not.toHaveBeenCalled();
+      });
+
+      it('a SIGNED rotation evicts nothing — that account keeps its devices', async () => {
+        keyBundlesService.upsertKeyBundle.mockResolvedValue({
+          identityChanged: true,
+          authorizedBy: 'signature',
+          previousIdentityPublicKey: 'old-identity',
+        });
+        const untouched = { disconnect: jest.fn() };
+        roomsAdapter.set('device:1:1', new Set(['sock-a']));
+        const sockets = mockServer.sockets as unknown as {
+          sockets: Map<string, unknown>;
+        };
+        sockets.sockets.set('sock-a', untouched);
+
+        await service.handleUploadKeyBundle(
+          mockClient as Socket,
+          validData,
+          mockServer as Server,
+        );
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(untouched.disconnect).not.toHaveBeenCalled();
       });
 
       it('drops every push endpoint of the account (amendment (xxiv))', async () => {
@@ -1296,7 +1437,11 @@ describe('ChatKeyExchangeService', () => {
       'legal winner thank year wave sausage worth useful legal winner thank yellow';
 
     it('stores the phrase verifier and confirms', async () => {
-      await service.handleSetRecoveryKey(mockClient as Socket, { phrase });
+      await service.handleSetRecoveryKey(
+        mockClient as Socket,
+        { phrase },
+        mockServer as Server,
+      );
 
       expect(identityResetService.setRecoveryKey).toHaveBeenCalledWith(
         1,
@@ -1312,7 +1457,11 @@ describe('ChatKeyExchangeService', () => {
         new Error('db down'),
       );
 
-      await service.handleSetRecoveryKey(mockClient as Socket, { phrase });
+      await service.handleSetRecoveryKey(
+        mockClient as Socket,
+        { phrase },
+        mockServer as Server,
+      );
 
       expect(mockClient.emit).toHaveBeenCalledWith('recoveryKeySet', {
         success: false,
@@ -1320,9 +1469,11 @@ describe('ChatKeyExchangeService', () => {
     });
 
     it('rejects a too-short phrase', async () => {
-      await service.handleSetRecoveryKey(mockClient as Socket, {
-        phrase: 'short',
-      });
+      await service.handleSetRecoveryKey(
+        mockClient as Socket,
+        { phrase: 'short' },
+        mockServer as Server,
+      );
 
       expect(identityResetService.setRecoveryKey).not.toHaveBeenCalled();
       expect(mockClient.emit).toHaveBeenCalledWith('recoveryKeySet', {

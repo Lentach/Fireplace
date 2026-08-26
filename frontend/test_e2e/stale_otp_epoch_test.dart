@@ -189,7 +189,7 @@ void main() {
   ) async {
     await bob.encryption.deleteSession(alice.userId); // force a fresh X3DH
     final bundle = await bob.fetchBundleFor(alice.userId);
-    await bob.encryption.buildSession(alice.userId, bundle);
+    await bob.encryption.buildSession(alice.userId, bundle, expectedIdentityBase64: null);
     final ct = await bob.encryptText(alice.userId, content);
     expect(
       wireType(ct),
@@ -267,7 +267,7 @@ void main() {
         // 4. Reverse direction: alice -> bob (bob never rotated) must also work.
         await bob.encryption.deleteSession(alice.userId);
         final bobBundle = await alice.fetchBundleFor(bob.userId);
-        await alice.encryption.buildSession(bob.userId, bobBundle);
+        await alice.encryption.buildSession(bob.userId, bobBundle, expectedIdentityBase64: null);
         final ct = await alice.encryptText(bob.userId, 'reverse-$runTag');
         expect(wireType(ct), 3);
         await alice.sendEncrypted(bob.userId, ct, tempId: 's-a2b-$runTag');

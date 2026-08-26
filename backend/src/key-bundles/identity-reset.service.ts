@@ -40,6 +40,30 @@ export const RECOVERY_MAX_FAILED_ATTEMPTS = 5;
 export const RECOVERY_LOCKOUT_MS = 60 * 60 * 1000;
 
 /**
+ * How long a recovery phrase must have been enrolled before it may SHORTEN a
+ * reset (spec §12 amendment (xlii)).
+ *
+ * The actor this defends against is a PASSWORD thief, and the point that
+ * decides the design is that such a thief can already run the ordinary 72 h
+ * credentials-only ceremony — that is the documented lost-device path. What
+ * they must not also get is the SHORTCUT: enrol a phrase they chose, spend it
+ * in the next message, and cut the owner's cancel window from 72 h to 1 h.
+ * Password re-authentication would not stop them (they have the password), so
+ * the age is the control that actually bites: any phrase minted after the
+ * compromise is younger than this and buys nothing.
+ *
+ * Set to the full reset delay. A phrase old enough to shorten the window is
+ * one that predates a same-session compromise by at least as long as the
+ * window it removes. The genuine case — a careful user who enrolled a key in
+ * advance, which is the entire point of the feature — is untouched.
+ *
+ * A phrase younger than this is NOT rejected and NOT spent: the ceremony still
+ * starts, at the full delay. Refusing would break the lost-device path, and
+ * spending would burn the user's key for nothing.
+ */
+export const RECOVERY_MIN_AGE_MS = RESET_DELAY_MS;
+
+/**
  * Argon2id parameters for the recovery-key verifier. Memory-hard on purpose:
  * a database dump must not turn into an offline guessing exercise. Values are
  * the current OWASP Password Storage profile (19 MiB, 2 iterations, 1 lane).
@@ -169,10 +193,15 @@ export class IdentityResetService {
             userId,
             recoveryPhrase,
           );
-          if (outcome !== 'accepted') {
+          // `too_new` is the ONLY non-accepted outcome that still starts a
+          // ceremony (amendment (xlii)): the phrase was right but cannot buy
+          // the shortcut, so the owner keeps the full 72 h to notice and
+          // cancel. Refusing outright would break the lost-device path that
+          // §6.2 exists to serve.
+          if (outcome !== 'accepted' && outcome !== 'too_new') {
             return { status: outcome, deadlineAt: null, shortened: false };
           }
-          shortened = true;
+          shortened = outcome === 'accepted';
         }
 
         const deadlineAt = new Date(
@@ -220,12 +249,18 @@ export class IdentityResetService {
    * Verifies and spends a recovery phrase, returning 'accepted' or the status
    * explaining the refusal. Failures are counted and trigger a lockout, so the
    * phrase cannot be guessed online.
+   *
+   * `too_new` is NOT a refusal of the reset (amendment (xlii)): the phrase is
+   * genuine but younger than [RECOVERY_MIN_AGE_MS], so it may not buy the
+   * shortened window. The caller starts the ceremony at the FULL delay. The
+   * phrase is deliberately left UNSPENT — it is the user's, it was correct,
+   * and burning it here would cost a legitimate owner their key for nothing.
    */
   private async spendRecoveryPhrase(
     recoveryRepo: Repository<RecoveryKey>,
     userId: number,
     phrase: string,
-  ): Promise<'accepted' | 'invalid_phrase' | 'locked'> {
+  ): Promise<'accepted' | 'invalid_phrase' | 'locked' | 'too_new'> {
     const row = await recoveryRepo.findOne({ where: { userId } });
     // No phrase enrolled, or already spent: same answer either way, so the
     // wording never distinguishes the two. It is not constant TIME — an
@@ -275,6 +310,18 @@ export class IdentityResetService {
       return failedAttempts >= RECOVERY_MAX_FAILED_ATTEMPTS
         ? 'locked'
         : 'invalid_phrase';
+    }
+
+    // The phrase is correct. It may still be too YOUNG to buy the shortcut
+    // (amendment (xlii)) — checked only now, after verification, so a wrong
+    // guess still costs a failed attempt and cannot be used to probe the
+    // enrolment age. Left unspent on purpose; see the doc comment.
+    const ageMs = Date.now() - row.createdAt.getTime();
+    if (ageMs < RECOVERY_MIN_AGE_MS) {
+      this.logger.warn(
+        `[identity-reset] recovery phrase too new to shorten userId=${userId} ageMs=${ageMs} requiredMs=${RECOVERY_MIN_AGE_MS}`,
+      );
+      return 'too_new';
     }
 
     // Single-use: spent in the same transaction that creates the ceremony.
@@ -372,18 +419,34 @@ export class IdentityResetService {
    * Enrolls or replaces the account's recovery phrase. Only the Argon2id
    * verifier is stored. Replacing clears the spent/lockout state, because the
    * new phrase is a new secret.
+   *
+   * Replacing ALSO restarts the age clock (amendment (xlii)). `createdAt` is a
+   * `@CreateDateColumn`, so an UPDATE leaves it at the ORIGINAL enrolment —
+   * which would hand a thief the whole shortcut back: replace the phrase on a
+   * long-standing row and the new secret inherits an age it never had. The age
+   * gate governs the SECRET, not the row, so a new secret starts at zero.
+   *
+   * Returns whether this was a replacement, so the caller can word the
+   * notification correctly.
    */
-  async setRecoveryKey(userId: number, phrase: string): Promise<void> {
+  async setRecoveryKey(userId: number, phrase: string): Promise<boolean> {
     const verifierHash = await argon2.hash(phrase, RECOVERY_ARGON2_OPTIONS);
     const existing = await this.recoveryRepo.findOne({ where: { userId } });
     if (existing) {
       await this.recoveryRepo.update(
         { id: existing.id },
-        { verifierHash, usedAt: null, failedAttempts: 0, lockedUntil: null },
+        {
+          verifierHash,
+          usedAt: null,
+          failedAttempts: 0,
+          lockedUntil: null,
+          createdAt: new Date(),
+        },
       );
-      return;
+      return true;
     }
     await this.recoveryRepo.insert({ userId, verifierHash });
+    return false;
   }
 
   /**

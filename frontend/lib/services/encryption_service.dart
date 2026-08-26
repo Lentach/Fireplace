@@ -46,6 +46,31 @@ class E2eIdentityCheckUnavailableException implements Exception {
       'the missing identity is a fresh install';
 }
 
+/// Thrown when a served pre-key bundle carries an identity key that is NOT the
+/// account's (spec §3, enforced per §12 amendment (xxxix)).
+///
+/// Every device of an account shares one identity key. A bundle that disagrees
+/// with the key we already trust for that account did not come from the
+/// account: either the server is compromised and is offering its own key for a
+/// device the signed list legitimately names, or the account's key changed
+/// without the device-list chain reflecting it. Both are machine-in-the-middle
+/// until proven otherwise, so the session is refused rather than built.
+///
+/// Distinct from the same-address rotation warning: THAT is a key changing
+/// where one was already known and is surfaced as an alarm the user can read.
+/// This is a key that is wrong on arrival, on an address that has none.
+class AccountIdentityMismatch implements Exception {
+  const AccountIdentityMismatch({required this.userId, required this.deviceId});
+
+  final int userId;
+  final int deviceId;
+
+  @override
+  String toString() =>
+      'AccountIdentityMismatch: the bundle served for userId=$userId '
+      'deviceId=$deviceId carries an identity key that is not the account\'s';
+}
+
 class EncryptionService {
   EncryptionService({
     int decryptedContentCacheLimit = 2000,
@@ -802,15 +827,25 @@ class EncryptionService {
   /// Serialized per peer (see [_sessionTails]): processPreKeyBundle archives
   /// the current ratchet state and stores a new record — racing it against an
   /// in-flight encrypt/decrypt store loses one side's advance.
+  /// [expectedIdentityBase64] is the account's already-trusted identity key,
+  /// or null when this account has never been contacted on ANY device. When
+  /// present it MUST equal the bundle's key or the build is refused — see
+  /// [_buildSessionSerialized].
   Future<void> buildSession(
     int userId,
     Map<String, dynamic> preKeyBundle, {
     int deviceId = _deviceId,
+    required String? expectedIdentityBase64,
   }) {
     return _runSessionSerialized(
       userId,
       deviceId,
-      () => _buildSessionSerialized(userId, deviceId, preKeyBundle),
+      () => _buildSessionSerialized(
+        userId,
+        deviceId,
+        preKeyBundle,
+        expectedIdentityBase64,
+      ),
     );
   }
 
@@ -818,6 +853,7 @@ class EncryptionService {
     int userId,
     int deviceId,
     Map<String, dynamic> preKeyBundle,
+    String? expectedIdentityBase64,
   ) async {
     final address = SignalProtocolAddress(userId.toString(), deviceId);
     final builder = SessionBuilder(
@@ -840,6 +876,39 @@ class EncryptionService {
       base64Decode(preKeyBundle['identityPublicKey'] as String),
       0,
     );
+
+    // §3 SAYS EVERY DEVICE OF AN ACCOUNT SHARES ONE IDENTITY KEY. ENFORCE IT
+    // (spec §12 amendment (xxxix)).
+    //
+    // Without this the store's TOFU is keyed per (peer, deviceId), so a peer's
+    // newly linked device is a FRESH address: `existing == null`, no change to
+    // detect, trusted in silence. The DAK-signed device list stops a server
+    // inventing a device, but nothing stopped it serving a bundle carrying its
+    // OWN identity key for a device the list legitimately names — a silent
+    // MITM slot on every link, and precisely the capability §2 says a server
+    // alone does not have.
+    //
+    // FAIL CLOSED. The alternative — build the session and warn — was
+    // considered and rejected: a dismissible banner over a live MITM is worse
+    // than a refusal, because the message is already encrypted to the attacker
+    // by the time the user reads it. Refusing costs a peer device we cannot
+    // verify; accepting costs the plaintext.
+    //
+    // A null anchor is genuine first contact with the ACCOUNT (not merely with
+    // this device), which is irreducibly TOFU and stays trusting. The caller
+    // resolves the anchor across the account's known devices, never from a
+    // fixed device slot.
+    final expected = expectedIdentityBase64;
+    if (expected != null) {
+      final offered = base64Encode(identityKey.serialize());
+      if (offered != expected) {
+        debugPrint(
+          '[EncryptionService] REFUSED session userId=$userId '
+          'deviceId=$deviceId reason=account_identity_mismatch',
+        );
+        throw AccountIdentityMismatch(userId: userId, deviceId: deviceId);
+      }
+    }
 
     // DO NOT pre-save the bundle's identity here. This code did that until
     // 2026-08-05, and it silently disabled the MITM warning on the ONE path
@@ -1214,6 +1283,25 @@ class EncryptionService {
     } catch (_) {
       // Fail closed at the caller: a null here means "cannot verify", and
       // the device-list cache refuses to trust anything without the anchor.
+      return null;
+    }
+  }
+
+  /// The identity key already trusted for [peerId] at [deviceId], or null if
+  /// that address has never been contacted.
+  ///
+  /// Unlike [peerTofuIdentityBase64] this takes the device explicitly, because
+  /// device 1 is NOT a safe default: ids are never reused and a post-§6.2
+  /// account has no device 1 at all, so a fixed slot is empty exactly for the
+  /// accounts that most recently survived a takeover.
+  Future<String?> peerIdentityAt(int peerId, int deviceId) async {
+    if (!_initialized) return null;
+    try {
+      final identity = await _identityStore.getIdentity(
+        SignalProtocolAddress(peerId.toString(), deviceId),
+      );
+      return identity == null ? null : base64Encode(identity.serialize());
+    } catch (_) {
       return null;
     }
   }

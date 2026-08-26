@@ -60,7 +60,7 @@ void main() {
         isNotNull,
         reason: 'the recovered account must have a bundle on the server',
       );
-      await peer.encryption.buildSession(_recoveredUserId, bundle);
+      await peer.encryption.buildSession(_recoveredUserId, bundle, expectedIdentityBase64: null);
 
       final ciphertext = await peer.encryptText(
         _recoveredUserId,

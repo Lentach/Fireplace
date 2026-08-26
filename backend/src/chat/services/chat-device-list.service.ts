@@ -11,6 +11,8 @@ import {
 } from '../dto/device-list.dto';
 import { validateDto } from '../utils/dto.validator';
 import { userRoom } from '../utils/user-room';
+import { ChatValidationService } from './chat-validation.service';
+import { ConversationsService } from '../../conversations/conversations.service';
 
 /**
  * socket.io declares `Socket.data` as `any`; one documented narrowing keeps
@@ -37,7 +39,11 @@ function socketUserId(client: Socket): number | undefined {
 export class ChatDeviceListService {
   private readonly logger = new Logger(ChatDeviceListService.name);
 
-  constructor(private readonly deviceListService: DeviceListService) {}
+  constructor(
+    private readonly deviceListService: DeviceListService,
+    private readonly chatValidationService: ChatValidationService,
+    private readonly conversationsService: ConversationsService,
+  ) {}
 
   async handleEnrollDeviceAuthority(
     client: Socket,
@@ -118,17 +124,45 @@ export class ChatDeviceListService {
   }
 
   /**
-   * Serves the stored enrollment + list for ANY requested user: peers run the
-   * I7 chain themselves and need the full record. `listCanonical` is echoed
-   * as the STORED base64 string verbatim (falsification 23);
+   * Serves the stored enrollment + list to a caller ENTITLED to it: peers run
+   * the I7 chain themselves and need the full record. `listCanonical` is
+   * echoed as the STORED base64 string verbatim (falsification 23);
    * `enrollmentCreatedAt` as the signed integer milliseconds, so E re-verifies
    * bit-for-bit.
+   *
+   * Entitlement (amendment (xliii)). This used to serve ANY account's roster
+   * to ANY authenticated caller, which made it a device-count, platform and
+   * timeline oracle over every user on the instance — a precise profiling
+   * surface in an app whose premise is metadata minimisation, on a repository
+   * public since 2026-08-18. Three ways in, in cost order:
+   *
+   *   1. YOUR OWN list. Always. The I7 own-skew re-fetch depends on it and it
+   *      discloses nothing you do not already hold.
+   *   2. Someone you may message — friends and not blocked either way. The
+   *      predicate the gateway already uses everywhere else; no new
+   *      authorisation concept is introduced here.
+   *   3. Someone you share a conversation with, even if rule 2 now refuses.
+   *      REQUIRED, not a convenience: a peer who later unfriends or blocks you
+   *      would otherwise render history you ALREADY RECEIVED permanently
+   *      undecryptable, because the accept-side gate needs their verified list
+   *      to decrypt. A fix that silently destroys readable history is worse
+   *      than the leak it closes.
+   *
+   * A refusal is SILENT, matching the error path below: I5 makes silence
+   * fail-closed on the client ("cannot verify", never "no devices"), and
+   * answering would itself confirm whether the account exists.
    */
   async handleGetDeviceList(client: Socket, data: unknown): Promise<void> {
     const requesterId = socketUserId(client);
     if (!requesterId) return;
     try {
       const dto = validateDto(GetDeviceListDto, data);
+      if (!(await this.mayReadDeviceList(requesterId, dto.userId))) {
+        this.logger.warn(
+          `[device-list] REFUSED requesterId=${requesterId} targetUserId=${dto.userId} reason=not_entitled`,
+        );
+        return;
+      }
       const row = await this.deviceListService.getAuthorization(dto.userId);
       client.emit('deviceList', {
         userId: dto.userId,
@@ -151,5 +185,34 @@ export class ChatDeviceListService {
         `getDeviceList failed requesterId=${requesterId}: ${message}`,
       );
     }
+  }
+
+  /**
+   * May `requesterId` read `targetUserId`'s device roster? See the three rules
+   * on [handleGetDeviceList] (amendment (xliii)).
+   *
+   * Ordered cheapest-first: the identity check costs nothing, the messaging
+   * predicate is two indexed reads, and the conversation lookup only runs when
+   * the messaging predicate has already refused — so the common case (a
+   * friend) never pays for the carve-out.
+   */
+  private async mayReadDeviceList(
+    requesterId: number,
+    targetUserId: number,
+  ): Promise<boolean> {
+    if (requesterId === targetUserId) return true;
+    const canMessage = await this.chatValidationService.validateCanMessage(
+      requesterId,
+      targetUserId,
+    );
+    if (canMessage.valid) return true;
+    // The history carve-out: they can no longer message each other, but a
+    // conversation between them exists, so messages already delivered still
+    // need this list to decrypt.
+    const conversation = await this.conversationsService.findByUsers(
+      requesterId,
+      targetUserId,
+    );
+    return conversation != null;
   }
 }

@@ -125,7 +125,7 @@ void main() {
 
         // Signed-prekey-only X3DH is the safe fallback and must still establish
         // future traffic with the replacement client.
-        await observer.encryption.buildSession(legacy.userId, fetched);
+        await observer.encryption.buildSession(legacy.userId, fetched, expectedIdentityBase64: null);
         final ciphertext = await observer.encryptText(
           legacy.userId,
           'epoch-safe-${DateTime.now().microsecondsSinceEpoch}',
@@ -164,7 +164,7 @@ void main() {
           ...bobBundle,
           'oneTimePreKeyId': bobOtp['keyId'],
           'oneTimePreKeyPublic': bobOtp['publicKey'],
-        });
+        }, expectedIdentityBase64: null);
         const historicalPlaintext = 'history-before-cache-clear';
         final historicalCiphertext = await alice.encrypt(
           91002,
@@ -234,7 +234,7 @@ void main() {
           ...bundle,
           'oneTimePreKeyId': otp['keyId'],
           'oneTimePreKeyPublic': otp['publicKey'],
-        });
+        }, expectedIdentityBase64: null);
         final ciphertext = await alice.encrypt(
           92002,
           jsonEncode(E2eEnvelope.build('durable text')),
