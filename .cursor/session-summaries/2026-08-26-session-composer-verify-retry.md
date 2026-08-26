@@ -54,12 +54,22 @@ environmental. Docs updated in `d367098`; this file adds the operational knowled
 
 ## State at close
 
-- Branch `fix/composer-regression`, HEAD `d367098` + this doc, pushed. PR #151
-  CI 6/6 green, **NOT merged**, no version bump.
+- Branch `fix/composer-regression`, HEAD `371293c` (merge of master's docs-only
+  drift; conflict in LATEST.md resolved keeping both intents), pushed. PR #151
+  CI 6/6 green ON THE MERGED TREE, mergeable, **NOT merged**, no version bump.
+  Independent reviewer verdict: SHIP-WITH-NITS, no blockers (2 code nits left
+  deliberately unfixed to preserve the banked emulator verification).
+- **⚠️ PROD IS SERVING THE UNMERGED BRANCH BUILD** (owner ordered a branch-test
+  deploy per the runbook's "Branch testing before merge"): frontend `0.1.19 ·
+  371293c` published via `deploy-web.ps1`, smoke PASSED rc=0 (bundle sha check
+  green), backend untouched (0.1.11/9153531). Whatever happens next, prod must
+  end on a master build: iPhone test passes → merge #151 + PATCH bump + normal
+  deploy; fails → `git checkout master ; .\deploy-web.ps1` rollback.
+- **⚠️ Main checkout `Desktop/fireplace` is left in DETACHED HEAD at `371293c`**
+  (the branch itself is held by the `fireplace-composer` worktree). Before any
+  `git pull` or deploy from that checkout, `git checkout master` first — a blind
+  deploy from there silently re-ships the branch build.
 - **Single merge gate left:** owner iPhone — paperclip with keyboard DOWN → menu
   anchored near the paperclip, no orb/flash. Android real-device pass is a bonus.
-- After owner OK: merge → PATCH bump → frontend-only deploy per
-  `.cursor/rules/production-vm-deploy.mdc` → post-deploy smoke → owner fully
-  closes+reopens the PWA (never uninstall/clear site data).
 - Rig fully torn down (emulator, `fpcomposer` compose project removed, :8095
   server stopped). `C:/tmp/fp-repro` left untouched.
