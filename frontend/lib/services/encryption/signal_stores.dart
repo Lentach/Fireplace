@@ -498,13 +498,22 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
     final encoded = base64Encode(identityKey.serialize());
     await _storage.write(key: key, value: encoded);
     _trustedMemo[key] = identityKey;
-    // The account pin follows the same acceptance path as the per-device row
-    // — never a separate decision — so the I7 anchor can only ever be a key
-    // this device already accepted. Last acceptance wins, which is what makes
-    // it survive the peer replacing their whole device set in a §6.2 reset.
+    // The account pin is SET on first contact and never silently moved after
+    // that. Advancing it on every accepted key would hand the anchor to any
+    // single ciphertext: TOFU auto-accepts rotations, and the receive path has
+    // no (xxxix) bundle check, so a colluding server could inject one message
+    // from a device the peer's list legitimately names, carrying a divergent
+    // identity, and the peer's REAL list would stop verifying — the same
+    // fail-closed lockout (xlvi) exists to remove, and one that would not
+    // self-heal because an unchanged key deliberately never re-writes.
+    // A genuine account-level change goes through [promotePendingAccountIdentity],
+    // which the human acknowledgement calls.
     final accountKey = _accountKey(address.getName());
-    await _storage.write(key: accountKey, value: encoded);
-    _trustedMemo[accountKey] = identityKey;
+    if (!_trustedMemo.containsKey(accountKey) &&
+        await _storage.read(key: accountKey) == null) {
+      await _storage.write(key: accountKey, value: encoded);
+      _trustedMemo[accountKey] = identityKey;
+    }
     return true;
   }
 
@@ -565,8 +574,44 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
     await saveIdentity(address, identityKey);
     if (existing != null ||
         (accountBefore != null && !_sameIdentity(accountBefore, identityKey))) {
+      // Hold the candidate rather than adopting it. The anchor moves only when
+      // a human acknowledges the change, so a forged key can raise a VISIBLE
+      // alarm but can never quietly become the thing the I7 chain trusts.
+      //
+      // PERSISTED, because the warning it accompanies is persisted too: the
+      // user may well acknowledge after a restart, and an in-memory candidate
+      // would leave that acknowledgement with nothing to promote — the peer
+      // would stay unverifiable with no way left to say so.
+      await _storage.write(
+        key: _pendingKey(address.getName()),
+        value: encodedOf(identityKey),
+      );
       onIdentityChanged?.call(address);
     }
+    return true;
+  }
+
+  static String encodedOf(IdentityKey key) => base64Encode(key.serialize());
+
+  /// An identity seen for a peer ACCOUNT that differs from its pinned anchor,
+  /// awaiting human acknowledgement (amendment (xlvi)).
+  String _pendingKey(String name) => '${_p}pending_account_identity_$name';
+
+  /// The user acknowledged [name]'s identity change, so the account anchor may
+  /// now advance to the key that triggered it.
+  ///
+  /// This is the ONLY way an established anchor moves. Without it a peer who
+  /// completes a §6.2 reset would stay unverifiable for good; with it, moving
+  /// the anchor always costs an alarm the user actually saw.
+  Future<bool> promotePendingAccountIdentity(String name) async {
+    final pendingKey = _pendingKey(name);
+    final stored = await _storage.read(key: pendingKey);
+    if (stored == null) return false;
+    final identity = IdentityKey.fromBytes(base64Decode(stored), 0);
+    final key = _accountKey(name);
+    await _storage.write(key: key, value: stored);
+    _trustedMemo[key] = identity;
+    await _storage.delete(key: pendingKey);
     return true;
   }
 

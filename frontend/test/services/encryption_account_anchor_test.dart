@@ -57,28 +57,77 @@ void main() {
     );
   });
 
-  test('a pre-existing device-1 pin still anchors (upgrade path)', () async {
+  test('a pre-existing device-1 pin is ADOPTED as the account pin (upgrade path)', () async {
     final accountKey = freshKey();
     // Every install that predates this change has ONLY the per-device rows.
     // Losing their anchor on upgrade would fail-close every conversation at
     // once, which is far worse than the bug being fixed.
     await peerStore.saveIdentity(SignalProtocolAddress('$peerId', 1), accountKey);
-
+    // Prove the ADOPTION, not just the read: with the legacy row deleted the
+    // anchor must survive, which it only can if the fallback wrote it through.
     expect(await service.peerTofuIdentityBase64(peerId), b64(accountKey));
+    await const FlutterSecureStorage().delete(
+      key: 'e2e_17_trusted_identity_${peerId}_1',
+    );
+
+    expect(
+      await service.peerTofuIdentityBase64(peerId),
+      b64(accountKey),
+      reason: 'the fallback must ADOPT the legacy key, not re-read it forever',
+    );
   });
 
-  test('the account pin FOLLOWS the peer through an identity change', () async {
+  test('an established anchor is NOT moved by a newly accepted key', () async {
+    final accountKey = freshKey();
+    final injected = freshKey();
+    await peerStore.saveIdentity(SignalProtocolAddress('$peerId', 1), accountKey);
+    expect(await service.peerTofuIdentityBase64(peerId), b64(accountKey));
+
+    // The receive path has no (xxxix) bundle check, and TOFU auto-accepts every
+    // rotation, so one injected ciphertext from a device the peer's list
+    // legitimately names reaches here. If that moved the anchor, the peer's
+    // REAL list would stop verifying — the very lockout this amendment cures,
+    // and it would not self-heal, because an unchanged key never re-writes.
+    await peerStore.isTrustedIdentity(
+      SignalProtocolAddress('$peerId', 9),
+      injected,
+      Direction.receiving,
+    );
+
+    expect(
+      await service.peerTofuIdentityBase64(peerId),
+      b64(accountKey),
+      reason: 'the anchor must never move without a human acknowledgement',
+    );
+  });
+
+  test('acknowledgement is what advances the anchor', () async {
     final oldKey = freshKey();
     final newKey = freshKey();
     await peerStore.saveIdentity(SignalProtocolAddress('$peerId', 1), oldKey);
-    // Their reset: new identity, new device id, and device 1 is gone. The
-    // stale device-1 row must not out-vote the key we have since accepted.
-    await peerStore.saveIdentity(SignalProtocolAddress('$peerId', 4), newKey);
+    await service.peerTofuIdentityBase64(peerId);
+
+    // Their §6.2 reset: new identity on a device id we have never seen.
+    await peerStore.isTrustedIdentity(
+      SignalProtocolAddress('$peerId', 4),
+      newKey,
+      Direction.receiving,
+    );
+    await service.recordPeerIdentityChangedFromServer(peerId);
+    expect(
+      await service.peerTofuIdentityBase64(peerId),
+      b64(oldKey),
+      reason: 'before acknowledgement the anchor holds',
+    );
+
+    await service.acknowledgePeerIdentity(peerId);
 
     expect(
       await service.peerTofuIdentityBase64(peerId),
       b64(newKey),
-      reason: 'anchoring on the revoked device would refuse the current list',
+      reason:
+          'without this the peer stays unverifiable for good — the anchor must '
+          'advance, but only at a moment the user actually saw',
     );
   });
 

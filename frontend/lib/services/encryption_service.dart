@@ -253,9 +253,22 @@ class EncryptionService {
 
   /// The user verified [peerId]'s fingerprint out of band. Drops the warning
   /// for good — this is the ONLY thing that clears it.
+  ///
+  /// It is also the ONLY thing that advances the I7 account anchor
+  /// (amendment (xlvi)). A peer who completes a §6.2 reset presents a new
+  /// account identity, and their re-enrolled device list cannot verify until
+  /// this device accepts it — but accepting it silently would let one injected
+  /// ciphertext move the anchor and lock the peer out instead. Tying the two
+  /// together means the anchor never moves without an alarm the user saw.
   Future<void> acknowledgePeerIdentity(int peerId) async {
     if (!_peersWithChangedIdentity.remove(peerId)) return;
-    E2ePersistentDiag.record('PEER_IDENTITY_ACKNOWLEDGED', {'peerId': peerId});
+    final promoted = await _identityStore.promotePendingAccountIdentity(
+      peerId.toString(),
+    );
+    E2ePersistentDiag.record('PEER_IDENTITY_ACKNOWLEDGED', {
+      'peerId': peerId,
+      'anchorAdvanced': promoted,
+    });
     await _persistIdentityChanged();
     onPeerIdentityChanged?.call(peerId);
   }
