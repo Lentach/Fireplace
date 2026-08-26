@@ -200,6 +200,14 @@ void main() {
             await carol.setRecoveryKey('reset-probe-phrase-$runTag'),
             isTrue,
           );
+          // §12 (xlii): a phrase younger than the full reset delay may not
+          // SHORTEN, or a password thief would enrol one and skip the wait it
+          // exists to gate. Carol is the legitimate owner, so age the row in
+          // seconds instead of waiting three days.
+          await e2eSql(
+            'UPDATE recovery_keys SET "createdAt" = NOW() - INTERVAL \'4 days\' '
+            'WHERE "userId" = ${carol.userId};',
+          );
           final requested = await carol.requestIdentityReset(
             recoveryPhrase: 'reset-probe-phrase-$runTag',
           );
@@ -244,6 +252,9 @@ void main() {
           );
 
           // ---- the replacement now lands, and fires the teardown ----
+          // Drop anything buffered so the assertion below can only be satisfied
+          // by the silence of THIS teardown, never by an empty backlog.
+          recovering!.events.discard('deviceRevoked');
           final accepted = await recovering!.uploadKeyBundleRaw(freshKeys);
           expect(accepted['success'], isTrue, reason: '$accepted');
           final newDeviceId = accepted['deviceId'] as int;
@@ -252,6 +263,24 @@ void main() {
           expect(newDeviceId, nextDeviceIdBefore);
           expect(newDeviceId, isNot(1));
           expect(newDeviceId, isNot(deviceTwoId));
+
+          // §12 (xli) ON THE WIRE — the guard that was wrong TWICE, and until
+          // now was proven only against a mock. This socket is still
+          // authenticated as its PRE-reset device id, so it sits in a room the
+          // teardown just revoked. `_onOwnDeviceRevoked` does NOT filter on
+          // device id: it reads the id for a diagnostic line, then logs out
+          // unconditionally. So a room-wide announcement would make the
+          // recovering client wipe the session it adopted three lines above,
+          // and the recovery would strand on every run. The server must
+          // exclude the caller from the announcement, not merely from the
+          // disconnect.
+          await recovering!.events.none(
+            'deviceRevoked',
+            within: const Duration(seconds: 3),
+            reason:
+                'the recovering caller must never be told its own old device '
+                'id was revoked',
+          );
 
           // REBIND, and it is not ceremony. The teardown allocated a new device
           // id and issued a token bound to it; this socket is still authenticated

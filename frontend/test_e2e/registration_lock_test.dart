@@ -167,6 +167,20 @@ void main() {
 
       expect(await user.setRecoveryKey(phrase), isTrue);
 
+      // §12 (xlii): a phrase enrolled less than the full reset delay ago may
+      // NOT shorten. Without that gate a password thief simply enrols a fresh
+      // recovery key and skips the very 72 h wait the key is an exception to.
+      // This test is the LEGITIMATE case — an owner whose phrase long predates
+      // the theft — so the row is aged here, in seconds, rather than by
+      // waiting three days. The young-phrase refusal itself is proven in the
+      // backend suite (identity-reset.service.spec.ts); it cannot be added to
+      // THIS flow, because refusing it still starts a ceremony whose cancel
+      // would arm the 24 h cooldown that the next test inherits.
+      await e2eSql(
+        'UPDATE recovery_keys SET "createdAt" = NOW() - INTERVAL \'4 days\' '
+        'WHERE "userId" = ${user.userId};',
+      );
+
       // A wrong phrase must authorize nothing at all — no ceremony, no
       // deadline, nothing for the caller to act on.
       final wrong = await user.requestIdentityReset(
