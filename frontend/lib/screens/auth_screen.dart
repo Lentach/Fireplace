@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../models/chat_background_preference.dart';
-import '../theme/glass_theme.dart';
 import '../theme/rpg_theme.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/auth_form.dart';
@@ -74,10 +73,6 @@ class _AuthScreenState extends State<AuthScreen> {
     final l10n = AppLocalizations.of(context);
     final scheme = Theme.of(context).colorScheme;
     final fc = FireplaceColors.of(context);
-    // Wordmark accent = the light glass chrome ember (GlassTheme.light
-    // .onGlassAccent, deep ember #A03D0C) — reads as the brand flame against
-    // the warm-paper background while FIRE stays warm near-black.
-    final accent = GlassTheme.of(context).onGlassAccent;
 
     return Scaffold(
       body: ChatBackgroundPattern(
@@ -94,30 +89,17 @@ class _AuthScreenState extends State<AuthScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // The landing wordmark: Archivo 900, FIRE in warm
-                    // near-black (onSurface) + PLACE in the deep ember accent.
-                    Text.rich(
-                      TextSpan(
-                        text: 'FIRE',
-                        style: GoogleFonts.archivo(
-                          fontSize: 30,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.8,
-                          height: 1,
-                          color: scheme.onSurface,
-                        ),
-                        children: [
-                          TextSpan(
-                            text: 'PLACE',
-                            style: GoogleFonts.archivo(
-                              fontSize: 30,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 1.8,
-                              height: 1,
-                              color: accent,
-                            ),
-                          ),
-                        ],
+                    // The landing wordmark: Archivo 900, UMBRA in warm
+                    // near-black (onSurface). The old FIRE/PLACE two-tone
+                    // split does not map to a single word.
+                    Text(
+                      'UMBRA',
+                      style: GoogleFonts.archivo(
+                        fontSize: 30,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.8,
+                        height: 1,
+                        color: scheme.onSurface,
                       ),
                     ),
                     const SizedBox(height: 12),

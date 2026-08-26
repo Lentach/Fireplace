@@ -50,7 +50,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   if (!_backgroundIsolateReady) {
     await _backgroundIsolateNotificationsPlugin.initialize(
       settings: const InitializationSettings(
-        android: AndroidInitializationSettings('@drawable/ic_stat_fireplace'),
+        android: AndroidInitializationSettings('@drawable/ic_stat_umbra'),
         iOS: DarwinInitializationSettings(),
       ),
     );
@@ -129,20 +129,20 @@ Future<void> showFireplaceMessageNotificationWithPlugin({
 
   final androidDetails = AndroidNotificationDetails(
     _androidChannelId,
-    'Fireplace',
+    'Umbra',
     channelDescription: _androidChannelDescription,
     importance: Importance.high,
     priority: Priority.high,
-    // Status-bar small icon: monochrome white-on-transparent flame
-    // (res/drawable-*/ic_stat_fireplace.png). A full-colour icon here renders
+    // Status-bar small icon: monochrome white-on-transparent hex mark
+    // (res/drawable-*/ic_stat_umbra.png). A full-colour icon here renders
     // as a white square in the status bar.
-    icon: '@drawable/ic_stat_fireplace',
+    icon: '@drawable/ic_stat_umbra',
     tag: tag,
   );
 
   await plugin.show(
     id: notificationId,
-    title: 'Fireplace',
+    title: 'Umbra',
     body: body,
     notificationDetails: NotificationDetails(android: androidDetails),
     payload: conversationId?.toString(),

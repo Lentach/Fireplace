@@ -192,7 +192,7 @@ self.addEventListener('push', function (event) {
   var senderName = typeof payload.senderName === 'string' && payload.senderName
     ? payload.senderName
     : null;
-  var title = senderName || 'Fireplace';
+  var title = senderName || 'Umbra';
   var body = unreadCount > 1
     ? unreadCount + ' new messages'
     : 'New message';
@@ -200,7 +200,7 @@ self.addEventListener('push', function (event) {
   var tag = convId != null ? 'conversation-' + convId : 'new-message';
   var notificationOptions = {
     body: body,
-    // Large icon (notification body): full-colour Fireplace campfire mark.
+    // Large icon (notification body): the silver hex Umbra mark.
     icon: '/icons/notification-icon-512.png',
     // Small/status-bar icon: MUST be monochrome white-on-transparent — Android
     // renders only its alpha channel. A full-colour image here is the classic
