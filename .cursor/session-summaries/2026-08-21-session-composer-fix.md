@@ -83,11 +83,14 @@ stack (`fpcomposer` project, torn down) + seeded probeA/probeB + IME oracle
   flow; probe log shows **no SLIDE-START** anywhere in the picker flow (red run had it
   at the tap); DOM probe shows the anchored input created at the tile rect (40×40 CSS at
   the paperclip), correct accept/capture, attached until resolution.
-- **Emulator-unverifiable, honestly:** the camera/file RETURN leg — the starved 2 GB
-  emulator freezes the page during any full-screen activity and Chrome then CANCELs the
-  pending chooser; a BARE static `<input capture>` on a plain HTML page fails identically
-  (discriminator), so it is the environment, not our path. The pre-existing file_picker
-  path has the same exposure. **Needs one pass on a real Android phone.**
+- **Camera/file RETURN leg — VERIFIED GREEN 2026-08-26 (retry session):** on a fresh
+  default-GPU emulator boot with an idle host, Aparat → shutter → confirm → **staged
+  chip** (`…966.jpg · 62 KB`, page NOT cold-booted) → send → **encrypted IMAGE delivered**
+  (bubble 03:05 ✓, DB row id 2); Plik → Files "Recent" → `fp-probe.txt` → **FILE message
+  delivered** (bubble 03:07 ✓, DB row id 3, mediaUrl persisted). Keyboard rose after both
+  flows. Earlier 08-21 failures were environmental (starved emulator froze the page;
+  Chrome CANCELed the pending chooser — bare `<input capture>` discriminator failed
+  identically). Evidence: `local/probe/m1..m15.png`.
 - **Not testable anywhere but an iPhone:** Safari's popover placement/orb with the now
   rendered+attached anchor. Mechanism is source-proven; get a screen recording from the
   owner's device before merging.
@@ -96,8 +99,9 @@ stack (`fpcomposer` project, torn down) + seeded probeA/probeB + IME oracle
 ## Notes for next session
 
 - **Branch is pushed, NOT merged; no version bump.** Owner must device-test on his
-  iPhone (orb + placement with keyboard down) and any Android phone (camera/file door
-  return leg) before merge. Never merge on red; check CI on the branch.
+  iPhone (orb + placement with keyboard down) before merge; the Android camera/file
+  return leg is now emulator-verified (2026-08-26), a real-Android pass is a bonus,
+  not a gate. Never merge on red; check CI on the branch.
 - iOS keyboard-up placement (menu mid-screen) and the keyboard collapsing when the menu
   opens are SAFARI behavior (08-19 bare-page proof) — the fix does not claim them.
 - The emulator rig degrades after ~2 h (ANR loops, clock drift); reboot it rather than
