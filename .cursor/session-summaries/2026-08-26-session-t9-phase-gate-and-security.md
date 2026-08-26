@@ -1,4 +1,4 @@
-# 2026-08-22 — the T1–T8 phase gate, and T9 (the four security defects it found)
+# 2026-08-26 — the T1–T8 phase gate, and T9 (the four security defects it found)
 
 Branch `feat/takeover-alarm-0a`. **Nothing merged. Nothing deployed.**
 Spine: `4c0e0bf` gate fold → `27acd86` T9 settlement → `290cacc` T9 build.
