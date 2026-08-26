@@ -99,18 +99,75 @@ all of T9 added **zero** lint errors (the first cut added 9 and 2; both were rew
 suites' own conventions rather than lowering the floor) · analyze clean · flutter **1541/10sk** ·
 both count verifiers OK.
 
-**NOT run: the wire suite (`test_e2e`).** Docker was in use by another agent. This is the honest gap
-in T9's evidence — every guard is unit-proven and two-way proven, and the P0's reasoning is
-source-traced, but nothing in T9 has been exercised on the wire or in the app.
+**Wire suite: RUN LATER THE SAME DAY, once Docker was freed — see the two sections below. It found
+real breakage.** The line that used to stand here ("nothing in T9 has been exercised on the wire")
+is now false, and the way it became false is the lesson.
+
+## The wire run (`a65aeff`) — what two green unit suites could not see
+
+backend **1029/62** and flutter **1541** were both green when the wire suite came back **42 passed,
+2 FAILED**. One cause, amendment (xlii): `registration_lock_test.dart` and the reset probe each
+**enrol a recovery phrase and spend it on the very next line**, so the new age gate correctly
+refused to shorten and `shortened` was false. The harness encoded pre-(xlii) behaviour, because T9
+was built without ever running it. The second failure was pure cascade — test 1 died before its
+cancel could arm the 24 h cooldown test 2 documents inheriting.
+
+Both flows are the LEGITIMATE case (the owner's phrase predates the theft), so both now age the row
+**in seconds** via `e2eSql` rather than waiting three days. **No production source changed.**
+
+**(xli) is now proven live and two-way.** The probe had never looked at `deviceRevoked` at all —
+that is how the guard stayed wrong twice. With `events.discard` + `events.none` added around the
+teardown, deleting `.except(exceptSocketId)` and recompiling fails the probe with a REAL event:
+`Bad state: Unexpected "deviceRevoked" …: {userId: 586, deviceId: 1}` — a live server handing the
+recovering caller its own revocation, which is exactly what drives `_onOwnDeviceRevoked` into an
+unconditional logout. Restored byte-identically, probe green.
+
+> **Two-way proofs validate a test's SENSITIVITY, never its FIDELITY.** Every T9 guard was two-way
+> proven against mocks and still shipped a harness that encoded the wrong contract. Only the wire
+> run could tell the difference.
+
+## (xliv) — the UX half of (xlii) (`7fffef5`)
+
+Found by looking at what the wire failures implied for a real person. (xlii)'s `too_new` was
+**silent**: it returned the same `{status:'pending', shortened:false}` as a no-phrase reset, and the
+client reads only `shortened`. An owner who enrolled a phrase two days ago and then lost their
+device typed a correct phrase and saw an unexplained 72 h — the natural reading is "rejected", and
+the natural next action is to retype it into the five-attempt lockout that (xlii)'s gate had
+deliberately left unspent.
+
+**The apparent security tradeoff was illusory, and checking that is what unblocked the fix.** It
+looked like "inform the owner = inform the thief". But a WRONG phrase already answers
+`invalid_phrase` while a correct one answers `pending`, so **phrase correctness is already
+observable today**; the verdict discloses nothing new. Requester-only on `identityResetStatus`; the
+room-wide `identityResetPending` alarm still carries no phrase verdict. Transient by design, NOT
+persisted on the ceremony row.
+
+Wire-proven on the true path at zero extra registration cost: the ceremony that request starts is
+cleared by **DELETE**ing the row, not cancelling it — cancelling is precisely what made this case
+untestable here, because it arms the 24 h cooldown the rest of the flow inherits. Falsified by
+removing the gateway emit (`Expected: true / Actual: <null>`), then restored. Fresh reviewer: SHIP,
+no P0/P1/P2, and it independently confirmed the disclosure argument in all four masking states
+(`existing` short-circuit, cooldown, race winner, lockout) plus the one weak assertion
+(`identityResetAnswerIsRefusal … isFalse` is redundant but closed by its sibling message tests).
+
+## Verified at `7fffef5`
+
+backend **1031/62** · tsc clean · ratchet **PASS 889** (floor 906, NOT lowered) · analyze clean ·
+flutter **1546/10sk** · wire **44/3sk** · opt-in reset probe **1/1**.
 
 ## Owed, carried forward
 
-1. **(xl)** — bind the account identity key into the DAK-signed list. Durable form of the P0 fix;
+1. **The app-proof is the ONLY unproven half of T9 left, and it is now the narrow one.** Confirm
+   `_adoptReboundSession` (`connection_provider.dart:783`) keeps a real browser session through a
+   §6.2 recovery. The server-side cause is wire-proven gone, the pre-key partition is wire-proven,
+   and production does implement the rebind itself. Needs a browser grant.
+2. **(xl)** — bind the account identity key into the DAK-signed list. Durable form of the P0 fix;
    deferred because it changes (d)-governed canonical bytes and needs a list-version migration.
-2. **The peer-reset↔anchor interaction is reasoned, not observed** — no test covers (xxxix) refusing
+3. **`device_list_cache` anchors the I7 chain on a hard-coded device 1** — a post-§6.2 account has
+   no device 1. Look before Phase 3.
+4. **The peer-reset↔anchor interaction is reasoned, not observed** — no test covers (xxxix) refusing
    after a peer's own §6.2 key change.
-3. **Run the wire suite and an app-proof for T9** when Docker is free.
-4. `setDisappearingTimer` (same stranded-optimistic-state class as 14f) and the opt-in reset probe's
-   CI gap, both unchanged from §13.
-5. **Pushes to this branch still run NO CI** — `ci.yml` `push` is `branches: [master]`. Outside a
+5. `setDisappearingTimer` (same stranded-optimistic-state class as 14f), `updateDeviceList`'s
+   unlistened `deviceListUpdated` answer, and the opt-in reset probe's CI gap — unchanged from §13.
+6. **Pushes to this branch still run NO CI** — `ci.yml` `push` is `branches: [master]`. Outside a
    ticket; needs an owner ask.
