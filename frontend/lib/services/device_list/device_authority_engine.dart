@@ -200,13 +200,22 @@ class DeviceAuthorityEngine {
   }
 
   /// Builds the complete enrollment wire payload: fresh DAK, enrollment
-  /// record E signed by [identity], and the DAK-signed canonical v1 list of
-  /// the CURRENT device set — device 1 only, until T3 links devices.
+  /// record E signed by [identity], and the DAK-signed canonical list of the
+  /// CURRENT device set.
+  ///
+  /// [deviceId] and [version] both default to the first-enrollment case: the
+  /// one device this account has, at version 1. A §6.2 recovery re-enrollment
+  /// (amendment (xlv)) overrides BOTH — its surviving row, if any, keeps a
+  /// `listVersion` the replacement must ADVANCE past ((xxix)), and the device
+  /// it names is the freshly allocated id, never device 1, because ids are
+  /// never reused ((a)).
   Map<String, dynamic> mintEnrollment({
     required int userId,
     required IdentityKeyPair identity,
     required int createdAtMs,
     String platform = 'android',
+    int deviceId = 1,
+    int version = 1,
   }) {
     final dakPair = Curve.generateKeyPair();
     _dakPair = dakPair;
@@ -225,10 +234,10 @@ class DeviceAuthorityEngine {
     final listUpdate = signList(
       DeviceList(
         userId: userId,
-        version: 1,
+        version: version,
         devices: [
           DeviceListEntry(
-            deviceId: 1,
+            deviceId: deviceId,
             platform: platform,
             addedAtMs: createdAtMs,
           ),
@@ -289,12 +298,16 @@ class DeviceAuthorityEngine {
     send,
     int? createdAtMs,
     String platform = 'android',
+    int deviceId = 1,
+    int version = 1,
   }) async {
     final payload = mintEnrollment(
       userId: userId,
       identity: identity,
       createdAtMs: createdAtMs ?? DateTime.now().millisecondsSinceEpoch,
       platform: platform,
+      deviceId: deviceId,
+      version: version,
     );
     final answer = await send(payload);
     if (answer['success'] == true) {

@@ -36,6 +36,7 @@
 import 'dart:convert';
 
 import 'package:fireplace/services/device_list/device_authority_engine.dart';
+import 'package:fireplace/services/device_list/device_list_cache.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
@@ -169,6 +170,10 @@ void main() {
             'WHERE "userId" = ${carol.userId};',
           );
           expect(authBefore, isNotNull, reason: 'carol is enrolled');
+          final authVersionBefore = await scalar(
+            'SELECT "listVersion" FROM account_authorizations '
+            'WHERE "userId" = ${carol.userId};',
+          );
           final nextDeviceIdBefore = int.parse(
             (await scalar(
               'SELECT "nextDeviceId" FROM users WHERE id = ${carol.userId};',
@@ -390,6 +395,69 @@ void main() {
                 'enrollment — a test expecting that asserts a spec violation',
           );
 
+          // ...and "REPLACED later" is amendment (xlv) clause 1. Until the
+          // recovering device re-enrolls, the surviving row still names the
+          // devices this teardown just revoked and omits the id it allocated,
+          // and the DAK that signed it died with the lost devices — so
+          // `updateDeviceList` is not open to this client. A peer that
+          // re-TOFUs the new identity cannot verify that row at all.
+          final orphaned = await recovering!.fetchDeviceList(carol.userId);
+          expect(
+            () => DeviceListCache().adopt(
+              userId: carol.userId,
+              authorization:
+                  orphaned['authorization'] as Map<String, dynamic>?,
+              tofuIdentityKeyBase64: freshIdentity,
+            ),
+            throwsA(isA<DeviceListVerificationException>()),
+            reason:
+                'the orphaned row must not verify under the new identity — if '
+                'it did, the reset would not have changed the identity at all',
+          );
+
+          // The server names the version the replacement must carry, because
+          // the client cannot read a row it cannot verify.
+          expect(
+            accepted['nextListVersion'],
+            int.parse(authVersionBefore!) + 1,
+            reason: 'the replacement must ADVANCE past the surviving version',
+          );
+
+          // The replacement itself: a FRESH DAK, signed by the NEW identity,
+          // naming the freshly allocated id. In the app this is driven by
+          // ConnectionProvider off the rebind ack; here the harness plays that
+          // part so the SERVER half is proven end to end.
+          final replacement = DeviceAuthorityEngine();
+          final replaced = await replacement.enroll(
+            userId: carol.userId,
+            identity: IdentityKeyPair.fromSerialized(
+              base64Decode(await recovering!.exportIdentityPair()),
+            ),
+            send: recovering!.enrollDeviceAuthority,
+            deviceId: newDeviceId,
+            version: accepted['nextListVersion'] as int,
+          );
+          expect(replaced.accepted, isTrue, reason: '${replaced.error}');
+
+          // ...and now a peer can address the account again.
+          final repaired = DeviceListCache().adopt(
+            userId: carol.userId,
+            authorization:
+                (await recovering!.fetchDeviceList(
+                      carol.userId,
+                    ))['authorization']
+                    as Map<String, dynamic>?,
+            tofuIdentityKeyBase64: freshIdentity,
+          );
+          expect(
+            repaired.liveDeviceIds,
+            [newDeviceId],
+            reason:
+                'the peer-visible list must name the recovering device; naming '
+                'the revoked ones loses every message in both directions',
+          );
+          expect(repaired.isLiveDevice(newDeviceId), isTrue);
+
           // (f)(iv): the allocator only ever moves forward.
           expect(
             int.parse(
@@ -398,6 +466,199 @@ void main() {
               ))!,
             ),
             greaterThan(nextDeviceIdBefore),
+          );
+        },
+        timeout: const Timeout(Duration(minutes: 6)),
+      );
+    },
+    skip: _enabled ? false : 'set --dart-define=RESET_PROBE=true',
+  );
+
+  // ---------------------------------------------------------------------
+  // The shape the harness above never builds, and that is exactly why this
+  // exists. The probe above LINKS a device before it resets, because
+  // falsification 12 needs two partitions to be non-vacuous — so every reset
+  // this suite has ever run happened on an ENROLLED account. A single-device
+  // account is the majority shape, and §6.2 is precisely the "I lost my only
+  // device" ceremony, so the never-enrolled reset is the COMMON path and has
+  // never once been exercised.
+  // ---------------------------------------------------------------------
+  group(
+    '§6.2 reset on a NEVER-ENROLLED account: peers must still be able to '
+    'address the recovering device (amendments (a)/(f)/(x)/(xxix))',
+    () {
+      final baseUrl = e2eBaseUrl();
+      final runTag = DateTime.now().millisecondsSinceEpoch.toString();
+
+      late E2eClient solo;
+      E2eClient? recovering;
+
+      Future<String?> scalar(String sql) async {
+        final rows = await e2eSql(sql);
+        if (rows.isEmpty || rows.first.isEmpty) return null;
+        return rows.first.first;
+      }
+
+      setUpAll(() async {
+        await requireBackendUp(baseUrl);
+        FlutterSecureStorage.setMockInitialValues({});
+        SharedPreferences.setMockInitialValues({});
+
+        // ONE device, and deliberately NO `enrollDeviceAuthority` and NO link
+        // ceremony. `enrollDeviceAuthority` is emitted only by the linking
+        // controller (`link_ceremony_controller.dart`), so an account that
+        // never links a second device never enrolls — which is every user who
+        // owns one phone.
+        solo = E2eClient('nre', baseUrl);
+        await solo.registerFresh();
+        await solo.connectSocket();
+        await solo.initializeAndUploadKeys();
+      });
+
+      tearDownAll(() {
+        solo.dispose();
+        recovering?.dispose();
+      });
+
+      test(
+        'after the teardown allocates a fresh id, the account is still '
+        'un-enrolled, so a peer synthesizes device 1 and can neither address '
+        'nor accept the only device that exists',
+        () async {
+          expect(
+            await scalar(
+              'SELECT count(*) FROM account_authorizations '
+              'WHERE "userId" = ${solo.userId};',
+            ),
+            '0',
+            reason: 'the whole point: this account never enrolled',
+          );
+
+          // ---- the ceremony, same aged-not-waited shape as the probe above --
+          recovering = E2eClient('nrer', baseUrl)..adoptAccountFrom(solo);
+          await recovering!.connectSocket();
+          FlutterSecureStorage.setMockInitialValues({});
+          final freshKeys = await recovering!.initializeKeys();
+
+          expect(
+            (await recovering!.uploadKeyBundleRaw(freshKeys))['error'],
+            'identity_locked',
+            reason: '§6.1 is what makes a reset necessary at all',
+          );
+
+          expect(await solo.setRecoveryKey('nre-phrase-$runTag'), isTrue);
+          await e2eSql(
+            'UPDATE recovery_keys SET "createdAt" = NOW() - INTERVAL \'4 days\' '
+            'WHERE "userId" = ${solo.userId};',
+          );
+          final requested = await solo.requestIdentityReset(
+            recoveryPhrase: 'nre-phrase-$runTag',
+          );
+          expect(requested['status'], 'pending', reason: '$requested');
+
+          await e2eSql(
+            'UPDATE identity_reset_requests SET "deadlineAt" = now() - '
+            'interval \'5 seconds\' WHERE "userId" = ${solo.userId} '
+            'AND status = \'pending\';',
+          );
+          var status = 'pending';
+          for (var i = 0; i < 40 && status != 'completed'; i++) {
+            await Future<void>.delayed(const Duration(seconds: 3));
+            status = (await scalar(
+              'SELECT status FROM identity_reset_requests WHERE "userId" = '
+              '${solo.userId} ORDER BY id DESC LIMIT 1;',
+            ))!;
+          }
+          expect(status, 'completed', reason: 'the real sweep must complete it');
+
+          final accepted = await recovering!.uploadKeyBundleRaw(freshKeys);
+          expect(accepted['success'], isTrue, reason: '$accepted');
+          final newDeviceId = accepted['deviceId'] as int;
+
+          // (a)/(f)(i): ids are never reused, so the ONLY live device is >= 2.
+          expect(newDeviceId, greaterThanOrEqualTo(2));
+          expect(
+            await scalar(
+              'SELECT string_agg("deviceId"::text, \',\' ORDER BY "deviceId") '
+              'FROM devices WHERE "userId" = ${solo.userId} '
+              'AND "revokedAt" IS NULL;',
+            ),
+            '$newDeviceId',
+            reason: 'exactly one live device, and it is not device 1',
+          );
+
+          // ---- (xlv) CLAUSE 2: the roster is REFUSED, not answered ---------
+          // The teardown deliberately does not touch `account_authorizations`
+          // ((xxix)) — correct for an account that HAD a row, but this one
+          // never did and never gets one. Answering `authorization: null` here
+          // would make every peer synthesize the single device 1 that a
+          // non-enrolled account is supposed to have, and device 1 is exactly
+          // what this teardown revoked. So the server stays SILENT, which is
+          // fail-closed on the client (I5), until the replacement lands.
+          recovering!.events.discard('deviceList');
+          recovering!.socketService.socket!.emit('getDeviceList', {
+            'userId': solo.userId,
+          });
+          await recovering!.events.none(
+            'deviceList',
+            within: const Duration(seconds: 4),
+            reason:
+                'an un-enrolled account whose live devices exclude device 1 '
+                'must not be answered — a synthesized device 1 would silently '
+                'lose every message in both directions',
+          );
+
+          // ---- (xlv) CLAUSE 1: the replacement enrollment ------------------
+          // No surviving row, so the replacement is a FIRST enrollment and the
+          // server says so.
+          expect(
+            accepted['nextListVersion'],
+            1,
+            reason: 'an account that never enrolled re-enrolls at version 1',
+          );
+          final replacement = DeviceAuthorityEngine();
+          final replaced = await replacement.enroll(
+            userId: solo.userId,
+            identity: IdentityKeyPair.fromSerialized(
+              base64Decode(await recovering!.exportIdentityPair()),
+            ),
+            send: recovering!.enrollDeviceAuthority,
+            deviceId: newDeviceId,
+            version: accepted['nextListVersion'] as int,
+          );
+          expect(replaced.accepted, isTrue, reason: '${replaced.error}');
+
+          // ---- and now peers can reach the account, both directions --------
+          final roster = await recovering!.fetchDeviceList(solo.userId);
+          final verified = DeviceListCache().adopt(
+            userId: solo.userId,
+            authorization: roster['authorization'] as Map<String, dynamic>?,
+            tofuIdentityKeyBase64: base64Encode(
+              IdentityKeyPair.fromSerialized(
+                base64Decode(await recovering!.exportIdentityPair()),
+              ).getPublicKey().serialize(),
+            ),
+          );
+
+          // Peer -> reset user: the fan-out addresses `liveDeviceIds`
+          // (`messaging_provider.send.dart`).
+          expect(
+            verified.liveDeviceIds,
+            [newDeviceId],
+            reason:
+                'a peer must fan out to the device that EXISTS; addressing the '
+                'synthesized device 1 loses every inbound message',
+          );
+
+          // Reset user -> peer: `_originDeviceIsLive`
+          // (`messaging_provider.decrypt.dart`) refuses an origin the list does
+          // not contain, so the peer withholds every message this account sends.
+          expect(
+            verified.isLiveDevice(newDeviceId),
+            isTrue,
+            reason:
+                'a peer must accept the recovering device as a live origin, or '
+                'it withholds as DECRYPT_REFUSED_REVOKED_ORIGIN forever',
           );
         },
         timeout: const Timeout(Duration(minutes: 6)),

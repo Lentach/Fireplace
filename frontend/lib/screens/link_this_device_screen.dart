@@ -7,7 +7,6 @@ import '../services/device_link/link_ceremony_controller.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/glass/glass_top_bar.dart';
 import '../widgets/top_snackbar.dart';
-import 'devices_screen.dart' show linkPlatformLabel;
 
 /// The NEW-DEVICE side (N) of the §5.1 link ceremony (Phase 2 T3).
 ///

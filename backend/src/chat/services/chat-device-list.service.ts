@@ -13,6 +13,7 @@ import { validateDto } from '../utils/dto.validator';
 import { userRoom } from '../utils/user-room';
 import { ChatValidationService } from './chat-validation.service';
 import { ConversationsService } from '../../conversations/conversations.service';
+import { DevicesService } from '../../key-bundles/devices.service';
 
 /**
  * socket.io declares `Socket.data` as `any`; one documented narrowing keeps
@@ -43,6 +44,7 @@ export class ChatDeviceListService {
     private readonly deviceListService: DeviceListService,
     private readonly chatValidationService: ChatValidationService,
     private readonly conversationsService: ConversationsService,
+    private readonly devicesService: DevicesService,
   ) {}
 
   async handleEnrollDeviceAuthority(
@@ -164,6 +166,26 @@ export class ChatDeviceListService {
         return;
       }
       const row = await this.deviceListService.getAuthorization(dto.userId);
+      if (!row && !(await this.hasAddressableDefaultDevice(dto.userId))) {
+        // Amendment (xlv) clause 2. `authorization: null` is not merely "no
+        // enrollment row" on the wire — the client answers it by SYNTHESIZING
+        // the single device 1 that a non-enrolled account is supposed to have
+        // by construction. A completed §6.2 reset breaks that construction:
+        // ids are never reused ((a)), so the recovering device is id >= 2 and
+        // device 1 is revoked, while the teardown deliberately writes no
+        // enrollment row ((xxix)). Answering `null` here would tell every peer
+        // to encrypt to a device that CANNOT RECEIVE, and the send path has no
+        // way to notice: the loss is silent and permanent in both directions.
+        //
+        // So refuse, exactly as an entitlement refusal does — silence is
+        // fail-closed on the client (I5: "cannot verify", never "no devices"),
+        // which downgrades silent message loss to a visible send failure until
+        // the recovering device re-enrolls (clause 1).
+        this.logger.warn(
+          `[device-list] REFUSED targetUserId=${dto.userId} reason=no_addressable_device (un-enrolled account whose live devices exclude device 1 — post-reset, awaiting re-enrollment)`,
+        );
+        return;
+      }
       client.emit('deviceList', {
         userId: dto.userId,
         authorization: row
@@ -185,6 +207,26 @@ export class ChatDeviceListService {
         `getDeviceList failed requesterId=${requesterId}: ${message}`,
       );
     }
+  }
+
+  /**
+   * Can an un-enrolled account still be addressed by the device 1 its peers
+   * will synthesize (amendment (xlv) clause 2)?
+   *
+   * True in the ordinary case — a single-device account really is device 1,
+   * and that is the construction the synthesis relies on. False only once a
+   * §6.2 teardown has revoked device 1 and moved the account onto a freshly
+   * allocated id without writing an enrollment row.
+   *
+   * An account with NO live device at all is not this defect (it is offline,
+   * mid-provisioning or deleted) and keeps the historical answer, so this
+   * guard cannot turn an unrelated empty roster into a new refusal.
+   */
+  private async hasAddressableDefaultDevice(userId: number): Promise<boolean> {
+    const live = (await this.devicesService.listForUser(userId)).filter(
+      (d) => d.revokedAt == null,
+    );
+    return live.length === 0 || live.some((d) => d.deviceId === 1);
   }
 
   /**

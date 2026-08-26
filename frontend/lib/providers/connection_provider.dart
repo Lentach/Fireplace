@@ -7,8 +7,13 @@ import '../config/app_config.dart';
 import '../constants/app_constants.dart';
 import '../services/api_service.dart';
 import '../services/push_service.dart';
+import '../services/device_link/dak_store.dart';
 import '../services/device_link/link_ceremony_controller.dart'
-    show ProvisioningEventSink;
+    show
+        EncryptionServiceLinkGateway,
+        ProvisioningEventSink,
+        linkPlatformLabel;
+import '../services/device_list/device_authority_engine.dart';
 import '../services/server_clock.dart';
 import '../services/socket_service.dart';
 import '../utils/e2e_diag_log.dart';
@@ -711,6 +716,15 @@ class ConnectionProvider extends ChangeNotifier {
   /// that server issues the tokens anyway — but the churn is worth denying.
   DateTime? _lastReboundAt;
 
+  /// In-flight §6.2 re-enrollment ack ((xlv) clause 1).
+  ///
+  /// The recovery runs at login, when no DevicesScreen is mounted and
+  /// `_provisioningSink` is therefore null — so the recovery must consume its
+  /// own `deviceAuthorityEnrolled` answer rather than route it to a sink that
+  /// does not exist. That null sink is exactly why this re-enrollment could
+  /// not simply live on the ceremony controller.
+  Completer<Map<String, dynamic>>? _resetEnrollAck;
+
   /// Adopts the recovery session, reconnects under it, and only THEN delivers
   /// the ack — so the pre-key upload it triggers rides the new device id.
   ///
@@ -736,6 +750,7 @@ class ConnectionProvider extends ChangeNotifier {
     _reboundInFlight = true;
     _lastReboundAt = now;
     final userId = _currentUserId;
+    var rebound = false;
     try {
       if (onSessionRebound == null) {
         // Only the auth layer may write the session, so an unwired app cannot
@@ -751,6 +766,7 @@ class ConnectionProvider extends ChangeNotifier {
             AppConfig.baseUrl,
             immediate: true,
           );
+          rebound = true;
         } else {
           // Adopted but NOT reconnected: the replenish this ack triggers would
           // ride whatever socket exists, which is a weaker form of the very
@@ -768,6 +784,108 @@ class ConnectionProvider extends ChangeNotifier {
       _reboundInFlight = false;
     }
     _encryptionProvider?.onKeyBundleUploaded(data);
+    // Amendment (xlv) clause 1, and it runs on the REBOUND socket — the
+    // enrollment must be attributed to the freshly allocated device id, and
+    // the pre-reset socket is authenticated as a device this teardown just
+    // revoked. Strictly after the ack for the same reason the ack is delivered
+    // late: the one-time pre-key upload it triggers is the more urgent of the
+    // two, and a re-enrollment that fails must not strand it.
+    if (rebound && userId != null) {
+      final deviceId = data is Map ? data['deviceId'] : null;
+      final version = data is Map ? data['nextListVersion'] : null;
+      if (deviceId is int && version is int) {
+        await _reenrollAfterReset(
+          userId: userId,
+          deviceId: deviceId,
+          version: version,
+        );
+      } else {
+        // An older server that reissues a session without naming the version.
+        // Recorded rather than guessed: minting at the wrong version is
+        // refused as `stale_version`, and guessing 1 against a surviving row
+        // would look like a rollback attempt.
+        E2ePersistentDiag.record('RESET_REENROLL_NO_VERSION', {
+          'deviceId': '$deviceId',
+        });
+      }
+    }
+  }
+
+  /// Re-enrolls the device authority after a §6.2 recovery (amendment (xlv)
+  /// clause 1).
+  ///
+  /// The teardown revoked every device the surviving list names and allocated
+  /// an id it does NOT name, so peers hold a list that cannot address this
+  /// account — and for an account that never enrolled they synthesize a
+  /// device 1 that no longer exists. Neither is repairable with
+  /// `updateDeviceList`: that needs the old DAK, whose private half died with
+  /// the lost devices. Only a REPLACEMENT enrollment under a fresh DAK, signed
+  /// by the new identity, restores addressability.
+  ///
+  /// Rider order is T3's, unchanged: mint → persist the DAK armed → ONLY THEN
+  /// emit. A DAK that signed a list the server accepted but that this device
+  /// failed to persist would be unrecoverable authority.
+  Future<void> _reenrollAfterReset({
+    required int userId,
+    required int deviceId,
+    required int version,
+  }) async {
+    final encryption = _encryptionProvider;
+    if (encryption == null) {
+      E2ePersistentDiag.record('RESET_REENROLL_UNWIRED', {});
+      return;
+    }
+    try {
+      final identity = await EncryptionServiceLinkGateway(
+        encryption.encryptionService,
+      ).ownIdentityKeyPair();
+      if (identity == null) {
+        E2ePersistentDiag.record('RESET_REENROLL_NO_IDENTITY', {});
+        return;
+      }
+      final engine = DeviceAuthorityEngine();
+      final payload = engine.mintEnrollment(
+        userId: userId,
+        identity: identity,
+        createdAtMs: clock.now().millisecondsSinceEpoch,
+        platform: linkPlatformLabel(),
+        deviceId: deviceId,
+        version: version,
+      );
+      final exported = engine.exportDakForPersistence();
+      await DakStore().persistArmed(
+        DakRecord(
+          userId: userId,
+          dakPub: exported['dakPub']!,
+          dakPriv: exported['dakPriv']!,
+          createdAtMs: payload['createdAt'] as int,
+        ),
+      );
+      final ack = Completer<Map<String, dynamic>>();
+      _resetEnrollAck = ack;
+      _socketService.enrollDeviceAuthority(payload);
+      final answer = await ack.future.timeout(
+        const Duration(seconds: 20),
+        onTimeout: () => const {'success': false, 'error': 'timeout'},
+      );
+      if (answer['success'] != true) {
+        // Left visible rather than retried here: the account is still
+        // reachable-by-nobody, and (xlv) clause 2 keeps peers failing CLOSED
+        // meanwhile instead of silently addressing a device that cannot
+        // receive.
+        E2ePersistentDiag.record('RESET_REENROLL_REFUSED', {
+          'error': '${answer['error']}',
+          'deviceId': '$deviceId',
+          'version': '$version',
+        });
+      }
+    } catch (error) {
+      E2ePersistentDiag.record('RESET_REENROLL_FAILED', {
+        'error': error.runtimeType.toString(),
+      });
+    } finally {
+      _resetEnrollAck = null;
+    }
   }
 
   void _registerEventListeners() {
@@ -854,6 +972,20 @@ class ConnectionProvider extends ChangeNotifier {
       _provisioningSink?.onProvisioningCancelled(data);
     });
     _socketService.on('deviceAuthorityEnrolled', (data) {
+      // A recovery re-enrollment ((xlv) clause 1) owns its own answer: it runs
+      // with no screen mounted, so there is no sink to route to. The two
+      // cannot overlap — one needs DevicesScreen open, the other runs at
+      // login — and the waiter is cleared as soon as it settles.
+      final waiter = _resetEnrollAck;
+      if (waiter != null && !waiter.isCompleted) {
+        _resetEnrollAck = null;
+        waiter.complete(
+          data is Map
+              ? data.cast<String, dynamic>()
+              : const <String, dynamic>{'success': false, 'error': 'malformed'},
+        );
+        return;
+      }
       _provisioningSink?.onDeviceAuthorityEnrolled(data);
     });
     _socketService.on('deviceList', (data) {

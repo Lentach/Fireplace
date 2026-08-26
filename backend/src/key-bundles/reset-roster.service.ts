@@ -16,6 +16,14 @@ export interface ResetRosterResult {
   /** New session for that device, since every old session was dropped. */
   accessDeviceId: number;
   refreshToken: string;
+  /**
+   * The version the recovering device's REPLACEMENT enrollment must carry
+   * (amendment (xlv) clause 1): the surviving row's `listVersion` + 1, or 1
+   * when the account never enrolled. Required, not optional — every completed
+   * reset owes a re-enrollment, and an absent field would let a caller forget
+   * one silently.
+   */
+  nextListVersion: number;
 }
 
 /**
@@ -65,7 +73,7 @@ export class ResetRosterService {
     let deviceId = 0;
     let revokedDeviceIds: number[] = [];
     let refreshToken = '';
-
+    let nextListVersion = 1;
     await this.dataSource.transaction(async (manager) => {
       // Allocated, never re-minted: the counter is monotonic and is left
       // untouched by the rest of this teardown ((f)(i)+(f)(iv)).
@@ -111,16 +119,29 @@ export class ResetRosterService {
         null,
         manager,
       );
+
+      // (xlv) clause 1: the version the recovering device's REPLACEMENT
+      // enrollment must carry. Read inside the transaction beside the roster
+      // it describes. The row itself is deliberately left alone ((xxix)) —
+      // only its version is borrowed, so the replacement advances instead of
+      // colliding. No row (an account that never enrolled) means the
+      // replacement is a FIRST enrollment, which is version 1 by definition.
+      const [existing] = await manager.query<{ listVersion: number }[]>(
+        'SELECT "listVersion" FROM account_authorizations WHERE "userId" = $1',
+        [userId],
+      );
+      nextListVersion = (existing?.listVersion ?? 0) + 1;
     });
 
     this.logger.warn(
-      `[reset-roster] userId=${userId} recoveringDeviceId=${deviceId} movedFrom=${uploadedUnderDeviceId} revoked=[${revokedDeviceIds.join(',')}]`,
+      `[reset-roster] userId=${userId} recoveringDeviceId=${deviceId} movedFrom=${uploadedUnderDeviceId} revoked=[${revokedDeviceIds.join(',')}] nextListVersion=${nextListVersion}`,
     );
     return {
       deviceId,
       revokedDeviceIds,
       accessDeviceId: deviceId,
       refreshToken,
+      nextListVersion,
     };
   }
 }

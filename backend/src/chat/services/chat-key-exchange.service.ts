@@ -301,6 +301,18 @@ export class ChatKeyExchangeService {
       // material now lives under plus a fresh session for it. The client MUST
       // adopt these before uploading one-time pre-keys, or those keys land in
       // the namespace the teardown just abandoned.
+      //
+      // `nextListVersion` is amendment (xlv) clause 1. The recovering device
+      // has to RE-ENROLL — the teardown revoked every device the old list
+      // named and allocated an id it does not name, and the DAK that signed it
+      // died with the lost devices, so `updateDeviceList` is not open to this
+      // client. A replacement enrollment must ADVANCE past the surviving
+      // `listVersion` ((xxix)), which only the server can read: the client
+      // cannot verify that row (its enrollment signature is orphaned by the
+      // identity change) and must not be made to guess. Dictating the number
+      // grants the server no authority it lacks — the client still signs the
+      // list, and a server naming a stale version merely gets its own
+      // enrollment refused, which it could achieve by refusing outright.
       client.emit('keyBundleUploaded', {
         success: true,
         identityChanged: result.identityChanged,
@@ -309,6 +321,7 @@ export class ChatKeyExchangeService {
               deviceId: roster.deviceId,
               access_token: reissuedAccessToken,
               refresh_token: roster.refreshToken,
+              nextListVersion: roster.nextListVersion,
             }
           : {}),
       });

@@ -29,6 +29,7 @@ describe('ResetRosterService', () => {
   let deviceInsert: jest.Mock;
   let bundleUpdate: jest.Mock;
   let otpUpdate: jest.Mock;
+  let authorizationQuery: jest.Mock;
   let manager: EntityManager;
   let dataSource: { transaction: jest.Mock };
   let service: ResetRosterService;
@@ -46,6 +47,10 @@ describe('ResetRosterService', () => {
     deviceInsert = jest.fn().mockResolvedValue({ identifiers: [] });
     bundleUpdate = jest.fn().mockResolvedValue({ affected: 1 });
     otpUpdate = jest.fn().mockResolvedValue({ affected: 0 });
+    // The surviving enrollment row (xxix) leaves in place. Its version is the
+    // one (xlv) clause 1 must advance past; an account that never enrolled
+    // answers with no row at all, which the dedicated test below overrides.
+    authorizationQuery = jest.fn().mockResolvedValue([{ listVersion: 7 }]);
     manager = {
       getRepository: jest.fn((entity: unknown) => {
         if (entity === Device) return { insert: deviceInsert };
@@ -53,6 +58,7 @@ describe('ResetRosterService', () => {
         if (entity === OneTimePreKey) return { update: otpUpdate };
         throw new Error('unexpected repository request');
       }),
+      query: authorizationQuery,
     } as unknown as EntityManager;
     dataSource = {
       transaction: jest.fn(async (cb: (m: EntityManager) => Promise<void>) =>
@@ -153,5 +159,25 @@ describe('ResetRosterService', () => {
     await expect(service.applyAfterReset(USER_ID, 1)).rejects.toThrow(
       'pg down',
     );
+  });
+
+  // --- (xlv) clause 1: the version the replacement enrollment must carry ---
+
+  it('names the version AFTER the surviving enrollment, so the replacement advances', async () => {
+    const result = await service.applyAfterReset(USER_ID, 1);
+
+    // The row itself is left alone ((xxix)); only its version is borrowed. A
+    // replacement at or below it is refused as `stale_version`, which would
+    // leave the account addressable by nobody.
+    expect(result.nextListVersion).toBe(8);
+  });
+
+  it('names version 1 when the account never enrolled', async () => {
+    authorizationQuery.mockResolvedValue([]);
+
+    // The majority shape: one device, never linked, therefore never enrolled.
+    // Its replacement is a FIRST enrollment, and the server refuses a first
+    // enrollment at any version but 1.
+    expect((await service.applyAfterReset(USER_ID, 1)).nextListVersion).toBe(1);
   });
 });

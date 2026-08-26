@@ -4,6 +4,7 @@ import { ChatDeviceListService } from './chat-device-list.service';
 import { ChatValidationService } from './chat-validation.service';
 import { DeviceListService } from '../../key-bundles/device-list.service';
 import { ConversationsService } from '../../conversations/conversations.service';
+import { DevicesService } from '../../key-bundles/devices.service';
 
 /**
  * WHO MAY READ AN ACCOUNT'S DEVICE ROSTER (spec §12 amendment (xliii)).
@@ -28,6 +29,7 @@ describe('ChatDeviceListService.handleGetDeviceList entitlement', () => {
   let getAuthorization: jest.Mock;
   let validateCanMessage: jest.Mock;
   let findByUsers: jest.Mock;
+  let listForUser: jest.Mock;
   let emit: jest.Mock;
   let client: Partial<Socket>;
 
@@ -56,6 +58,10 @@ describe('ChatDeviceListService.handleGetDeviceList entitlement', () => {
       error: 'You can only message friends',
     });
     findByUsers = jest.fn().mockResolvedValue(null);
+    // The ordinary account: one live device, and it IS device 1 — so the
+    // (xlv) clause 2 guard is satisfied and these entitlement tests exercise
+    // entitlement, not addressability.
+    listForUser = jest.fn().mockResolvedValue([{ deviceId: 1, revokedAt: null }]);
     emit = jest.fn();
     client = { data: { user: { id: REQUESTER } }, emit };
 
@@ -65,6 +71,7 @@ describe('ChatDeviceListService.handleGetDeviceList entitlement', () => {
         { provide: DeviceListService, useValue: { getAuthorization } },
         { provide: ChatValidationService, useValue: { validateCanMessage } },
         { provide: ConversationsService, useValue: { findByUsers } },
+        { provide: DevicesService, useValue: { listForUser } },
       ],
     }).compile();
     service = module.get(ChatDeviceListService);
@@ -155,6 +162,53 @@ describe('ChatDeviceListService.handleGetDeviceList entitlement', () => {
         listSignature: 'list-sig',
         listCanonical: 'canonical-bytes',
       },
+    });
+  });
+
+  // --- (xlv) clause 2: an un-enrolled account must still be ADDRESSABLE ----
+  // `authorization: null` is not merely "no row" on the wire — the client
+  // answers it by synthesizing the single device 1 a non-enrolled account is
+  // supposed to have. A completed §6.2 reset breaks that construction.
+
+  it('REFUSES an un-enrolled account whose live devices exclude device 1', async () => {
+    getAuthorization.mockResolvedValue(null);
+    listForUser.mockResolvedValue([
+      { deviceId: 1, revokedAt: new Date() },
+      { deviceId: 2, revokedAt: null },
+    ]);
+
+    await get(REQUESTER);
+
+    // Silence, not `authorization: null` — answering would tell every peer to
+    // encrypt to device 1, which this account no longer has, and the loss is
+    // silent and permanent in both directions.
+    expect(emit).not.toHaveBeenCalled();
+  });
+
+  it('still answers an ordinary un-enrolled account, which really IS device 1', async () => {
+    getAuthorization.mockResolvedValue(null);
+    listForUser.mockResolvedValue([{ deviceId: 1, revokedAt: null }]);
+
+    await get(REQUESTER);
+
+    // The guard must not turn every single-device account into a refusal.
+    expect(emit).toHaveBeenCalledWith('deviceList', {
+      userId: REQUESTER,
+      authorization: null,
+    });
+  });
+
+  it('still answers an account with NO live device at all', async () => {
+    getAuthorization.mockResolvedValue(null);
+    listForUser.mockResolvedValue([{ deviceId: 1, revokedAt: new Date() }]);
+
+    await get(REQUESTER);
+
+    // Offline, mid-provisioning or deleted — not this defect, and silently
+    // refusing it would be a new failure mode invented by the guard.
+    expect(emit).toHaveBeenCalledWith('deviceList', {
+      userId: REQUESTER,
+      authorization: null,
     });
   });
 });

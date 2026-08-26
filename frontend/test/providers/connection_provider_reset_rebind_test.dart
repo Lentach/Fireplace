@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:clock/clock.dart';
 import 'package:fireplace/constants/app_constants.dart';
 import 'package:fireplace/providers/connection_provider.dart';
@@ -5,8 +7,12 @@ import 'package:fireplace/providers/conversations_provider.dart';
 import 'package:fireplace/providers/encryption_provider.dart';
 import 'package:fireplace/providers/friends_provider.dart';
 import 'package:fireplace/providers/messaging_provider.dart';
+import 'package:fireplace/services/device_list/device_list_canonical.dart';
+import 'package:fireplace/services/encryption_service.dart';
 import 'package:fireplace/services/socket_service.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
 
 /// The §6.2 recovery ack re-homes this account onto a NEWLY allocated device
 /// and hands back the session bound to it. The server states the contract at
@@ -42,6 +48,14 @@ class _FakeSocket extends SocketService {
     disconnects++;
   }
 
+  /// Replacement enrollments this recovery emitted ((xlv) clause 1).
+  final List<Map<String, dynamic>> enrollments = [];
+
+  @override
+  void enrollDeviceAuthority(Map<String, dynamic> payload) {
+    enrollments.add(payload);
+  }
+
   @override
   void on(String event, void Function(dynamic) callback) {
     handlers.putIfAbsent(event, () => []).add(callback);
@@ -60,16 +74,30 @@ class _FakeSocket extends SocketService {
   }
 }
 
+/// Supplies the account identity the replacement enrollment is signed with.
+/// The real service reads it from a keystore this test has no business
+/// standing up.
+class _FakeEncryptionService extends EncryptionService {
+  _FakeEncryptionService(this.pair);
+  final IdentityKeyPair pair;
+
+  @override
+  Future<IdentityKeyPair> identityKeyPairForLinking() async => pair;
+}
+
 /// Records WHEN the ack reached the encryption layer, relative to the rebind.
 class _RecordingEncryption extends EncryptionProvider {
+  _RecordingEncryption(this.order, EncryptionService service)
+    : super(service: service);
   final List<String> order;
-  _RecordingEncryption(this.order);
 
   @override
   void onKeyBundleUploaded(dynamic data) => order.add('ack');
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   late _FakeSocket socket;
   late List<String> order;
   late ConnectionProvider conn;
@@ -78,11 +106,17 @@ void main() {
       conn.connect(7, 'old-token', 'http://127.0.0.1:3000');
 
   setUp(() async {
+    // The armed DAK write of (xlv) clause 1 goes through secure storage, and
+    // `persistArmed` only counts a write it can read back.
+    FlutterSecureStorage.setMockInitialValues({});
     socket = _FakeSocket();
     order = <String>[];
     conn = ConnectionProvider(socketService: socket);
     conn.setProviders(
-      encryption: _RecordingEncryption(order),
+      encryption: _RecordingEncryption(
+        order,
+        _FakeEncryptionService(generateIdentityKeyPair()),
+      ),
       friends: FriendsProvider(),
       conversations: ConversationsProvider(),
       messaging: MessagingProvider(),
@@ -242,5 +276,74 @@ void main() {
       5,
       reason: 'every ack is still delivered — throttling must not swallow it',
     );
+  });
+
+  // --- (xlv) clause 1: the recovery re-enrolls the device authority --------
+  // The teardown revoked every device the surviving list names and allocated
+  // an id it does not name, so without this the account is addressable by
+  // nobody. It cannot live on LinkCeremonyController: that is registered by
+  // DevicesScreen, and a recovery runs at login with no screen mounted.
+
+  test('a recovery re-enrolls at the server-named version and device', () async {
+    conn.onSessionRebound = (_) async {};
+
+    socket.emitServer('keyBundleUploaded', {
+      ...recoveryAck(),
+      'nextListVersion': 4,
+    });
+    // Let the rebind + mint + armed DAK persist run, then answer the enroll.
+    await pumpEventQueue();
+    socket.emitServer('deviceAuthorityEnrolled', {'success': true});
+    await pumpEventQueue();
+
+    expect(
+      socket.enrollments,
+      hasLength(1),
+      reason: 'a completed recovery owes exactly one replacement enrollment',
+    );
+    final list = parseCanonicalDeviceList(
+      base64Decode(socket.enrollments.single['listCanonical'] as String),
+    );
+    expect(
+      list.version,
+      4,
+      reason:
+          'the replacement must carry the version the server named — the '
+          'client cannot read a row whose enrollment signature is orphaned',
+    );
+    expect(
+      list.devices.map((d) => d.deviceId),
+      [3],
+      reason:
+          'it must name the freshly allocated id, never device 1: ids are '
+          'never reused ((a)) and device 1 is what the teardown revoked',
+    );
+  });
+
+  test('an ack that names no version enrolls NOTHING', () async {
+    conn.onSessionRebound = (_) async {};
+
+    // An older server that reissues a session without naming the version.
+    // Guessing 1 against a surviving row reads as a rollback attempt, so the
+    // client must decline to guess rather than mint something refusable.
+    socket.emitServer('keyBundleUploaded', recoveryAck());
+    await pumpEventQueue();
+
+    expect(socket.enrollments, isEmpty);
+  });
+
+  test('an ORDINARY ack never re-enrolls', () async {
+    conn.onSessionRebound = (_) async {};
+
+    // No rebind, so no teardown happened and the device list is untouched.
+    // Re-enrolling here would replace a live DAK the account still holds.
+    socket.emitServer('keyBundleUploaded', {
+      'success': true,
+      'identityChanged': false,
+      'nextListVersion': 4,
+    });
+    await pumpEventQueue();
+
+    expect(socket.enrollments, isEmpty);
   });
 }

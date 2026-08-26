@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -13,13 +12,6 @@ import '../theme/rpg_theme.dart';
 import '../widgets/glass/glass_top_bar.dart';
 import 'link_device_screen.dart';
 import 'link_this_device_screen.dart';
-
-/// This device's self-reported platform label for the signed list entry
-/// (spec §12 item (i) — informational metadata, ≤32 chars, never a name).
-String linkPlatformLabel() {
-  if (kIsWeb) return 'web';
-  return defaultTargetPlatform.name.toLowerCase();
-}
 
 /// The account's devices (multi-device spec §4/§5.1 — Phase 2 T3).
 ///

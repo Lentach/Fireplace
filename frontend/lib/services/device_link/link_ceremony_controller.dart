@@ -30,6 +30,17 @@ import '../encryption_service.dart';
 import 'dak_store.dart';
 import 'link_crypto.dart';
 
+/// This device's self-reported platform label for the signed list entry
+/// (spec §12 item (i) — informational metadata, ≤32 chars, never a name).
+///
+/// Lives here rather than on a screen because the §6.2 recovery
+/// re-enrollment ((xlv) clause 1) runs from ConnectionProvider, at login,
+/// with no screen mounted — and a provider must not import one.
+String linkPlatformLabel() {
+  if (kIsWeb) return 'web';
+  return defaultTargetPlatform.name.toLowerCase();
+}
+
 /// Server events ConnectionProvider forwards to the registered ceremony
 /// controller. One interface so the provider stays a dumb router.
 abstract class ProvisioningEventSink {

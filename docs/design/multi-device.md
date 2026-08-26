@@ -1289,6 +1289,50 @@ that is the designed outcome).
     NOT persisted on the ceremony row: it describes what just happened to a request, not the state
     of the ceremony, and a session that reconnects into a running ceremony needs the deadline and
     the cancel button, not a re-run of an explanation it already saw.
-- **Next gate:** T9 implementation review, then the T1–T8 + T9 merge decision. The T1–T8 phase
+- **Amendment 2026-08-26 (T10, settled BEFORE the fix; the defect was found by auditing the
+  residual list after (xliv) closed, and reproduced on the wire before a line was changed):**
+  - **(xlv) A completed §6.2 reset MUST leave the account addressable — it does not today, in
+    EITHER account shape, and the failure is permanent and bidirectional.** The teardown allocates
+    a fresh device id ((a): ids are never reused) and revokes every other device, but nothing
+    re-establishes the DAK-signed list that peers use to address the account. Two shapes, two
+    failures, both reproduced against a real server:
+    - **Previously enrolled.** The enrollment row survives by design ((xxix)), so peers are served
+      a list that names the devices this teardown just REVOKED and omits the id it just allocated,
+      signed by a DAK whose private half died with the lost devices. A peer that re-TOFUs the new
+      identity cannot verify it at all — observed as `invalid_enrollment_signature` — and fails
+      closed: it can never send to the account again.
+    - **Never enrolled** (the majority shape — enrollment happens only when a second device is
+      linked). No row exists, so the server answers `authorization: null`, which the client
+      answers by SYNTHESIZING the single device 1 a non-enrolled account is supposed to have by
+      construction. §6.2 breaks that construction. Peers then encrypt to a device that does not
+      exist while refusing the one that does, and unlike the enrolled shape this is SILENT: the
+      server accepts envelopes for any device id, so every message is lost in both directions with
+      no error anywhere.
+    Nine tickets missed this because the harness only ever reset accounts it had LINKED first —
+    falsification 12 needs two partitions — so the never-enrolled reset, the common case, had
+    never once been exercised.
+    **Clause 1 — the recovering device MUST re-enroll.** This is the step (xxix) already reserved
+    when it said the row is "REPLACED later, by a fresh IK-signed enrollment"; nothing implemented
+    it, and `enrollDeviceAuthority` is emitted from exactly one place in the client, the link
+    ceremony. The replacement mints a FRESH DAK, is signed by the new identity, and names only the
+    freshly allocated id. The server already admits precisely this replacement and always has: an
+    enrollment whose stored record no longer verifies under the account's current published
+    identity is orphaned, and only an identity change can orphan it. The version it must carry
+    rides the recovery ack as `nextListVersion`, because the client cannot read a row whose
+    signature is orphaned and must not be made to guess — guessing 1 against a surviving row reads
+    as a rollback attempt. Dictating that integer grants the server no authority it lacks: the
+    client still signs the list, and a server naming a stale version merely gets the enrollment it
+    wanted refused. It CANNOT live on the ceremony controller, which is registered by the devices
+    screen: a recovery runs at login with no screen mounted.
+    **Clause 2 — until it does, the server MUST NOT serve a roster that cannot receive.** When the
+    answer would be `authorization: null` while the account's live devices exclude device 1, the
+    roster is refused in silence, exactly as an entitlement refusal is — silence is fail-closed on
+    the client (I5: "cannot verify", never "no devices"). This converts the dangerous silent shape
+    into the survivable visible one for the window clause 1 cannot cover: a device that crashes or
+    goes offline between the teardown and its re-enrollment. An account with no live device at all
+    keeps the historical answer, so the guard cannot invent a refusal for an unrelated empty
+    roster.
+- **Next gate:** T10 implementation review, then the T1–T9 + T10 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the
-  test-integrity findings are folded at `4c0e0bf`; the four security findings are this ticket.
+  test-integrity findings are folded at `4c0e0bf`; the four security findings were T9. T10 is the
+  §6.2 addressability defect (xlv), found by auditing the residual list rather than by any suite.
