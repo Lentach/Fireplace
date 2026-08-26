@@ -1467,7 +1467,9 @@ class EncryptionProvider extends ChangeNotifier {
   bool get identityResetShortened => _identityResetShortened;
 
   /// Last answer to a reset request: 'pending', 'existing', 'cooldown',
-  /// 'invalid_phrase' or 'locked'. Null once consumed by the UI.
+  /// 'invalid_phrase', 'locked', or one of the two synthetic values
+  /// ([identityResetNoAnswerStatus], [identityResetPhraseTooNewStatus]).
+  /// Null once consumed by the UI.
   String? get identityResetRequestStatus => _identityResetRequestStatus;
 
   /// A completed ceremony is waiting to be spent by a key upload.
@@ -1490,6 +1492,15 @@ class EncryptionProvider extends ChangeNotifier {
   /// The synthetic status used when the server never answered. Not a server
   /// value — the UI maps it like any refusal, because nothing was started.
   static const String identityResetNoAnswerStatus = 'no_answer';
+
+  /// The synthetic status for a ceremony that DID start, on a phrase that was
+  /// correct but too young to shorten it (amendment (xlii)).
+  ///
+  /// Synthetic for the same reason as [identityResetNoAnswerStatus]: the wire
+  /// keeps `status: 'pending'` — a ceremony really is running and the deadline
+  /// must still be applied — while the UI needs to say something different from
+  /// a plain start. Never a refusal.
+  static const String identityResetPhraseTooNewStatus = 'phrase_too_new';
 
   /// Starts the ceremony. A recovery phrase shortens the wait but never
   /// silences the notifications, and never grants an instant replacement.
@@ -1545,11 +1556,20 @@ class EncryptionProvider extends ChangeNotifier {
     if (status is! String) return;
     _identityResetAnswerTimeout?.cancel();
     _identityResetAnswerTimeout = null;
-    _identityResetRequestStatus = status;
+    // Deadline first: the ceremony is real regardless of the phrase verdict.
     if (status == 'pending' || status == 'existing') {
       _applyResetDeadline(data['deadlineAt'], data['shortened'] == true);
     }
-    _e2eFlowLog('IDENTITY_RESET_STATUS', {'status': status});
+    // A too-young phrase still answers `pending`; only the message differs, so
+    // the substitution happens here and nothing above it is affected. An older
+    // server omits the flag and behaves exactly as before.
+    _identityResetRequestStatus =
+        status == 'pending' && data['phraseTooNew'] == true
+        ? identityResetPhraseTooNewStatus
+        : status;
+    _e2eFlowLog('IDENTITY_RESET_STATUS', {
+      'status': _identityResetRequestStatus,
+    });
     notifyListeners();
   }
 

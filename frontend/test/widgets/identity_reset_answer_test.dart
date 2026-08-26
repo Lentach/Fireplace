@@ -1,16 +1,20 @@
 import 'package:fireplace/l10n/app_localizations.dart';
 import 'package:fireplace/l10n/app_localizations_en.dart';
 import 'package:fireplace/l10n/app_localizations_pl.dart';
+import 'package:fireplace/providers/encryption_provider.dart';
 import 'package:fireplace/widgets/recovery_phrase_prompt.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Every answer the reset ceremony can give must reach the user (§6.2).
 ///
-/// Three of the five refuse to start anything, and they are exactly the ones a
+/// Three of the six refuse to start anything, and they are exactly the ones a
 /// genuine owner recovering lost keys runs into: a mistyped phrase that still
 /// passes the local BIP39 checksum, the lockout after five of those, and the
 /// cooldown that follows a cancel. Silence there looks like a dead button
 /// while the account stays unreachable.
+///
+/// The sixth starts a ceremony but withholds the shortcut (amendment (xlii)),
+/// which is the one answer a user can mistake for a refusal.
 void main() {
   final AppLocalizations en = AppLocalizationsEn();
   final AppLocalizations pl = AppLocalizationsPl();
@@ -21,6 +25,7 @@ void main() {
     'cooldown',
     'invalid_phrase',
     'locked',
+    EncryptionProvider.identityResetPhraseTooNewStatus,
   ];
 
   test('every server answer produces a sentence, in both languages', () {
@@ -57,6 +62,33 @@ void main() {
     expect(identityResetAnswerIsRefusal('locked'), isTrue);
     expect(identityResetAnswerIsRefusal('pending'), isFalse);
     expect(identityResetAnswerIsRefusal('existing'), isFalse);
+  });
+
+  test('a too-young phrase is not styled as a refusal — it DID start', () {
+    // Red would say "rejected", and the user would retype a correct phrase
+    // until the five-attempt lockout. A ceremony really is running.
+    expect(
+      identityResetAnswerIsRefusal(
+        EncryptionProvider.identityResetPhraseTooNewStatus,
+      ),
+      isFalse,
+    );
+  });
+
+  test('the too-young message says the phrase was right, and why it waits', () {
+    for (final l10n in <AppLocalizations>[en, pl]) {
+      final message = identityResetAnswerMessage(
+        l10n,
+        EncryptionProvider.identityResetPhraseTooNewStatus,
+      );
+      // Distinct from a plain start: that line is what the user got BEFORE
+      // this amendment, and it is exactly what left them guessing.
+      expect(message, isNot(l10n.identityResetStarted));
+      // ...and distinct from a rejection, which is the wrong conclusion.
+      expect(message, isNot(l10n.identityResetPhraseRejected));
+      // The wait it explains is the full one, so the number has to appear.
+      expect(message, contains('72'));
+    }
   });
 
   test('the cooldown message names the way out', () {

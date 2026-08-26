@@ -129,6 +129,11 @@ String? identityResetAnswerMessage(AppLocalizations l10n, String? status) {
   switch (status) {
     case 'pending':
       return l10n.identityResetStarted;
+    case EncryptionProvider.identityResetPhraseTooNewStatus:
+      // Started, but NOT shortened. Without this the owner sees 72 h after
+      // typing a phrase they know is right and concludes it was rejected —
+      // the one reading that makes them retype it into the lockout.
+      return l10n.identityResetPhraseTooNew;
     case 'existing':
       return l10n.identityResetAlreadyRunning;
     case 'cooldown':

@@ -211,6 +211,9 @@ describe('IdentityResetService (reset ceremony §6.2 / recovery key §6.2.1)', (
         status: 'existing',
         deadlineAt,
         shortened: false,
+        // No phrase was examined: this request short-circuited on the
+        // ceremony that was already running.
+        phraseTooNew: false,
       });
       // A repeat request must not restart or extend the clock.
       expect(resetRepo.insert).not.toHaveBeenCalled();
@@ -300,6 +303,8 @@ describe('IdentityResetService (reset ceremony §6.2 / recovery key §6.2.1)', (
 
         expect(result.status).toBe('pending');
         expect(result.shortened).toBe(true);
+        // Accepted, so there is nothing to explain away.
+        expect(result.phraseTooNew).toBe(false);
         const remaining = (result.deadlineAt?.getTime() ?? 0) - Date.now();
         expect(remaining).toBeLessThanOrEqual(RESET_DELAY_RECOVERY_MS + 5000);
         expect(remaining).toBeGreaterThan(RESET_DELAY_RECOVERY_MS - 5000);
@@ -329,6 +334,7 @@ describe('IdentityResetService (reset ceremony §6.2 / recovery key §6.2.1)', (
         // path §6.2 exists to serve — but at the full delay.
         expect(result.status).toBe('pending');
         expect(result.shortened).toBe(false);
+        expect(result.phraseTooNew).toBe(true);
         const remaining = (result.deadlineAt?.getTime() ?? 0) - Date.now();
         expect(remaining).toBeGreaterThan(RESET_DELAY_MS - 5000);
         expect(resetRepo.insert).toHaveBeenCalledWith(
@@ -349,6 +355,29 @@ describe('IdentityResetService (reset ceremony §6.2 / recovery key §6.2.1)', (
         expect(recoveryRepo.update).not.toHaveBeenCalled();
       });
 
+      // The UX half of (xlii). The gate is right, but a silent `shortened:
+      // false` reads exactly like "no phrase given" — so an owner who typed a
+      // correct phrase sees 72 h, assumes a typo, and retypes it until the
+      // five-attempt lockout. The answer has to distinguish the two.
+      it('reports the age verdict, so a young phrase is distinguishable from no phrase at all', async () => {
+        recoveryRepo.findOne.mockResolvedValue(
+          enrolled({ createdAt: new Date(Date.now() - 60_000) }),
+        );
+
+        const young = await service.requestReset(7, phrase);
+
+        resetRepo.findOne.mockResolvedValue(null);
+        resetRepo.insert.mockClear();
+        const none = await service.requestReset(7);
+
+        // Identical on every field the pre-(xlii) client could see...
+        expect(young.status).toBe(none.status);
+        expect(young.shortened).toBe(none.shortened);
+        // ...and told apart only by the verdict this amendment adds.
+        expect(young.phraseTooNew).toBe(true);
+        expect(none.phraseTooNew).toBe(false);
+      });
+
       it('a WRONG phrase still costs an attempt even when it is young', async () => {
         recoveryRepo.findOne.mockResolvedValue(
           enrolled({ createdAt: new Date(Date.now() - 60_000) }),
@@ -365,6 +394,9 @@ describe('IdentityResetService (reset ceremony §6.2 / recovery key §6.2.1)', (
         // whether a phrase is enrolled, without spending an attempt.
         expect(result.status).toBe('invalid_phrase');
         expect(setSql(recoveryBuilder.set)).toContain('"failedAttempts" + 1');
+        // A wrong phrase is not a young phrase: the caller must not be told
+        // to stop retyping something that genuinely did not match.
+        expect(result.phraseTooNew).toBe(false);
       });
 
       it('rolls the phrase spend back when a concurrent request wins the race', async () => {

@@ -634,6 +634,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Reset started. Everyone signed in has been told, and it can be cancelled until the countdown ends.';
 
   @override
+  String get identityResetPhraseTooNew =>
+      'Reset started. Your recovery key was correct, but it was created less than 3 days ago, so it cannot shorten the wait this time — the full 72 hours apply. There is no need to enter it again.';
+
+  @override
   String get identityResetAlreadyRunning =>
       'A reset is already running for this account. The countdown at the top of the screen shows how long is left.';
 

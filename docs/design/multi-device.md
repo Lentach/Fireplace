@@ -1269,6 +1269,26 @@ that is the designed outcome).
     convenience: a client must still resolve the list of a peer who sent it a message and later
     unfriended or blocked it, or previously received history becomes permanently undecryptable —
     a fix that silently destroys readable history is worse than the leak it closes.
+- **Amendment 2026-08-26 (T9 follow-up, settled with the fix and not before it — the gap was found
+  by the T9 wire run, which is also what proved (xlii) was behaving correctly):**
+  - **(xliv) A reset answer MUST say when a CORRECT phrase was too young to shorten the delay.**
+    (xlii) is right to refuse the shortcut, but it refused it silently: `too_new` fell through to
+    the same `{status:'pending', shortened:false}` an ordinary no-phrase reset returns, and the
+    client reads only `shortened`. So the owner who did the responsible thing — enrolled a phrase,
+    then lost the device two days later — types a phrase they know is correct and is shown the
+    full 72 h with no explanation. The likely reading is "it was rejected", and the likely next
+    action is to retype it, which walks a legitimate owner into the five-attempt lockout that
+    (xlii)'s own gate left deliberately unspent. **This discloses nothing new.** Phrase
+    correctness is ALREADY observable: a wrong phrase answers `invalid_phrase` while a correct one
+    answers `pending`, so an attacker holding a candidate can distinguish them today without the
+    flag. The verdict therefore buys the owner an explanation at no cost to the threat model
+    (xlii) was written against. Scope is deliberately narrow: the verdict goes to the REQUESTER
+    only, on `identityResetStatus`. The room-wide `identityResetPending` alarm keeps carrying the
+    deadline and the cancel affordance and no phrase verdict — those sessions presented no phrase,
+    and the alarm reaches devices the requester may not hold. It is transient by design and is
+    NOT persisted on the ceremony row: it describes what just happened to a request, not the state
+    of the ceremony, and a session that reconnects into a running ceremony needs the deadline and
+    the cancel button, not a re-run of an explanation it already saw.
 - **Next gate:** T9 implementation review, then the T1–T8 + T9 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the
   test-integrity findings are folded at `4c0e0bf`; the four security findings are this ticket.

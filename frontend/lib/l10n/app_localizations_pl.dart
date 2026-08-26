@@ -641,6 +641,10 @@ class AppLocalizationsPl extends AppLocalizations {
       'Reset rozpoczęty. Wszystkie zalogowane sesje zostały powiadomione, a do końca odliczania można go anulować.';
 
   @override
+  String get identityResetPhraseTooNew =>
+      'Reset rozpoczęty. Twój klucz odzyskiwania był poprawny, ale został utworzony mniej niż 3 dni temu, więc tym razem nie może skrócić oczekiwania — obowiązują pełne 72 godziny. Nie musisz wpisywać go ponownie.';
+
+  @override
   String get identityResetAlreadyRunning =>
       'Dla tego konta reset już trwa. Odliczanie na górze ekranu pokazuje, ile zostało czasu.';
 

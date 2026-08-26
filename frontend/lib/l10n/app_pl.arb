@@ -222,6 +222,7 @@
   "recoveryPhraseUseAction": "Użyj klucza",
   "recoveryPhraseNoneAction": "Nie mam go",
   "identityResetStarted": "Reset rozpoczęty. Wszystkie zalogowane sesje zostały powiadomione, a do końca odliczania można go anulować.",
+  "identityResetPhraseTooNew": "Reset rozpoczęty. Twój klucz odzyskiwania był poprawny, ale został utworzony mniej niż 3 dni temu, więc tym razem nie może skrócić oczekiwania — obowiązują pełne 72 godziny. Nie musisz wpisywać go ponownie.",
   "identityResetAlreadyRunning": "Dla tego konta reset już trwa. Odliczanie na górze ekranu pokazuje, ile zostało czasu.",
   "identityResetCooldown": "Reset został niedawno anulowany, więc nowy nie może ruszyć przez maksymalnie 24 godziny. Jeśli ktoś inny wciąż go anuluje, najpierw zmień hasło, aby go wylogować.",
   "identityResetPhraseRejected": "Te 12 słów nie pasuje do klucza odzyskiwania zapisanego dla tego konta. Możesz spróbować ponownie albo rozpocząć reset bez klucza i poczekać 72 godziny.",

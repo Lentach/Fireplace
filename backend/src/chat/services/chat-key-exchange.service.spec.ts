@@ -431,7 +431,9 @@ describe('ChatKeyExchangeService', () => {
         // The exclusion must be narrow: a genuinely superseded sibling is
         // still told, or `except` would have silenced the whole announcement.
         expect(
-          delivered.filter((d) => d.event === 'deviceRevoked').map((d) => d.socketId),
+          delivered
+            .filter((d) => d.event === 'deviceRevoked')
+            .map((d) => d.socketId),
         ).toEqual(['sock-a', 'sock-b']);
       });
 
@@ -442,8 +444,7 @@ describe('ChatKeyExchangeService', () => {
       // synchronously — so the emit carrying its new deviceId and session
       // would silently no-op. With its old refresh token revoked and its old
       // JWT gated, the recovery would strand on EVERY run.
-      it('acks the recovering caller even though its OWN device id was revoked',
-        async () => {
+      it('acks the recovering caller even though its OWN device id was revoked', async () => {
         resetAuthorized();
         resetRosterService.applyAfterReset.mockResolvedValue({
           deviceId: 4,
@@ -1329,6 +1330,7 @@ describe('ChatKeyExchangeService', () => {
         status: 'pending',
         deadlineAt,
         shortened: false,
+        phraseTooNew: false,
       });
 
       await service.handleResetIdentityRequest(
@@ -1342,6 +1344,7 @@ describe('ChatKeyExchangeService', () => {
         status: 'pending',
         deadlineAt: deadlineAt.toISOString(),
         shortened: false,
+        phraseTooNew: false,
       });
       // Whole room, including the requesting session.
       expect(mockServer.to).toHaveBeenCalledWith('user:1');
@@ -1354,6 +1357,40 @@ describe('ChatKeyExchangeService', () => {
         1,
         'identity_reset_pending',
       );
+    });
+
+    // Amendment (xlii), UX half: the requester learns WHY the shortcut was
+    // denied. Without it the answer is byte-identical to a no-phrase start.
+    it('tells the requester a correct phrase was too young — and tells nobody else', async () => {
+      const deadlineAt = new Date(Date.now() + 1000);
+      identityResetService.requestReset.mockResolvedValue({
+        status: 'pending',
+        deadlineAt,
+        shortened: false,
+        phraseTooNew: true,
+      });
+
+      await service.handleResetIdentityRequest(
+        mockClient as Socket,
+        {},
+        mockServer as Server,
+      );
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(mockClient.emit).toHaveBeenCalledWith('identityResetStatus', {
+        status: 'pending',
+        deadlineAt: deadlineAt.toISOString(),
+        shortened: false,
+        phraseTooNew: true,
+      });
+      // The room-wide alarm carries the deadline and the cancel affordance,
+      // never a verdict about the phrase: those sessions did not present one,
+      // and the alarm is broadcast to devices the requester may not hold.
+      expect(mockServer.emit).toHaveBeenCalledWith('identityResetPending', {
+        deadlineAt: deadlineAt.toISOString(),
+        shortened: false,
+        occurredAt: expect.any(String) as unknown,
+      });
     });
 
     it('passes a recovery phrase through and still rings every bell', async () => {

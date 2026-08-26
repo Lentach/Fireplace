@@ -84,6 +84,18 @@ export interface RequestResetResult {
   status: RequestResetStatus;
   deadlineAt: Date | null;
   shortened: boolean;
+  /**
+   * The presented phrase was CORRECT but younger than {@link
+   * RECOVERY_MIN_AGE_MS}, so it could not buy the shortcut (amendment (xlii))
+   * and the ceremony runs the full delay.
+   *
+   * Reported rather than swallowed because the silent form is indistinguishable
+   * from "no phrase given", which leaves an owner who typed their phrase
+   * correctly staring at 72 h with no idea why. This discloses nothing new: a
+   * WRONG phrase already answers `invalid_phrase`, so phrase correctness is
+   * already observable — this only explains a delay the caller can see anyway.
+   */
+  phraseTooNew: boolean;
 }
 
 export interface IdentityResetStatusSummary {
@@ -152,6 +164,9 @@ export class IdentityResetService {
         status: 'existing',
         deadlineAt: existing.deadlineAt,
         shortened: existing.shortened,
+        // An already-running ceremony short-circuits BEFORE the phrase is
+        // examined, so there is no age verdict to report.
+        phraseTooNew: false,
       };
     }
 
@@ -181,12 +196,18 @@ export class IdentityResetService {
       this.logger.warn(
         `[identity-reset] request refused by post-cancel cooldown userId=${userId}`,
       );
-      return { status: 'cooldown', deadlineAt: null, shortened: false };
+      return {
+        status: 'cooldown',
+        deadlineAt: null,
+        shortened: false,
+        phraseTooNew: false,
+      };
     }
 
     try {
       return await this.dataSource.transaction(async (manager) => {
         let shortened = false;
+        let phraseTooNew = false;
         if (recoveryPhrase != null && recoveryPhrase.length > 0) {
           const outcome = await this.spendRecoveryPhrase(
             manager.getRepository(RecoveryKey),
@@ -199,9 +220,15 @@ export class IdentityResetService {
           // cancel. Refusing outright would break the lost-device path that
           // §6.2 exists to serve.
           if (outcome !== 'accepted' && outcome !== 'too_new') {
-            return { status: outcome, deadlineAt: null, shortened: false };
+            return {
+              status: outcome,
+              deadlineAt: null,
+              shortened: false,
+              phraseTooNew: false,
+            };
           }
           shortened = outcome === 'accepted';
+          phraseTooNew = outcome === 'too_new';
         }
 
         const deadlineAt = new Date(
@@ -221,9 +248,14 @@ export class IdentityResetService {
           throw new PendingResetConflict(error);
         }
         this.logger.warn(
-          `[identity-reset] ceremony started userId=${userId} shortened=${shortened} deadlineAt=${deadlineAt.toISOString()}`,
+          `[identity-reset] ceremony started userId=${userId} shortened=${shortened} phraseTooNew=${phraseTooNew} deadlineAt=${deadlineAt.toISOString()}`,
         );
-        return { status: 'pending' as const, deadlineAt, shortened };
+        return {
+          status: 'pending' as const,
+          deadlineAt,
+          shortened,
+          phraseTooNew,
+        };
       });
     } catch (error) {
       if (!(error instanceof PendingResetConflict)) throw error;
@@ -237,6 +269,9 @@ export class IdentityResetService {
           status: 'existing',
           deadlineAt: winner.deadlineAt,
           shortened: winner.shortened,
+          // The race winner's ceremony, not ours: this request's phrase (if
+          // any) bought nothing, and the rollback un-spent it.
+          phraseTooNew: false,
         };
       }
       // No winner: the insert failed for some other reason (or the race winner

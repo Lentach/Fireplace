@@ -170,12 +170,41 @@ void main() {
       // §12 (xlii): a phrase enrolled less than the full reset delay ago may
       // NOT shorten. Without that gate a password thief simply enrols a fresh
       // recovery key and skips the very 72 h wait the key is an exception to.
-      // This test is the LEGITIMATE case — an owner whose phrase long predates
-      // the theft — so the row is aged here, in seconds, rather than by
-      // waiting three days. The young-phrase refusal itself is proven in the
-      // backend suite (identity-reset.service.spec.ts); it cannot be added to
-      // THIS flow, because refusing it still starts a ceremony whose cancel
-      // would arm the 24 h cooldown that the next test inherits.
+      //
+      // §12 (xliv): and the refusal must SAY so. The phrase is right, so a
+      // silent full-length wait reads as "rejected" and walks the owner into
+      // retyping it until the five-attempt lockout. Proven here on the wire
+      // because the flag has to survive real JSON, not just a mocked service.
+      user.events.discard('identityResetPending');
+      secondSession.events.discard('identityResetPending');
+      final tooNew = await user.requestIdentityReset(recoveryPhrase: phrase);
+      expect(tooNew['status'], 'pending');
+      expect(tooNew['shortened'], isFalse);
+      expect(
+        tooNew['phraseTooNew'],
+        isTrue,
+        reason: 'a correct-but-young phrase must be reported as such',
+      );
+      final fullWait = DateTime.parse(
+        tooNew['deadlineAt'] as String,
+      ).difference(DateTime.now().toUtc());
+      expect(
+        fullWait.inHours,
+        greaterThan(70),
+        reason: 'the ceremony still starts, at the FULL delay',
+      );
+
+      // Clear that ceremony by DELETING the row rather than cancelling it.
+      // Cancelling is what used to make this case untestable here: it arms the
+      // 24 h cooldown the rest of this flow would then inherit. The phrase was
+      // never spent (that is (xlii)'s own rule), so nothing else needs undoing.
+      await e2eSql(
+        'DELETE FROM identity_reset_requests '
+        'WHERE "userId" = ${user.userId} AND status = \'pending\';',
+      );
+
+      // Now the LEGITIMATE case — an owner whose phrase long predates the
+      // theft — by ageing the row in seconds rather than waiting three days.
       await e2eSql(
         'UPDATE recovery_keys SET "createdAt" = NOW() - INTERVAL \'4 days\' '
         'WHERE "userId" = ${user.userId};',

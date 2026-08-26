@@ -1184,6 +1184,12 @@ abstract class AppLocalizations {
   /// **'Reset rozpoczęty. Wszystkie zalogowane sesje zostały powiadomione, a do końca odliczania można go anulować.'**
   String get identityResetStarted;
 
+  /// No description provided for @identityResetPhraseTooNew.
+  ///
+  /// In pl, this message translates to:
+  /// **'Reset rozpoczęty. Twój klucz odzyskiwania był poprawny, ale został utworzony mniej niż 3 dni temu, więc tym razem nie może skrócić oczekiwania — obowiązują pełne 72 godziny. Nie musisz wpisywać go ponownie.'**
+  String get identityResetPhraseTooNew;
+
   /// No description provided for @identityResetAlreadyRunning.
   ///
   /// In pl, this message translates to:

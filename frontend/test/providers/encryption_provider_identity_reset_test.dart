@@ -111,6 +111,60 @@ void main() {
         expect(provider.identityResetDeadline, isNull);
       }
     });
+
+    // Amendment (xlii), UX half.
+    test('a too-young phrase still raises the countdown it started', () {
+      final deadline = DateTime.now().toUtc().add(const Duration(hours: 72));
+      provider.onIdentityResetStatus({
+        'status': 'pending',
+        'deadlineAt': deadline.toIso8601String(),
+        'shortened': false,
+        'phraseTooNew': true,
+      });
+
+      // The substitution is for the MESSAGE only. A ceremony is running, and
+      // losing the deadline would take the cancel button with it — the one
+      // affordance the whole 72 h delay exists to provide.
+      expect(
+        provider.identityResetRequestStatus,
+        EncryptionProvider.identityResetPhraseTooNewStatus,
+      );
+      expect(provider.identityResetDeadline, isNotNull);
+      expect(provider.identityResetShortened, isFalse);
+    });
+
+    test('a plain start is untouched, and so is an older server', () {
+      final deadline = DateTime.now().toUtc().add(const Duration(hours: 72));
+
+      provider.onIdentityResetStatus({
+        'status': 'pending',
+        'deadlineAt': deadline.toIso8601String(),
+        'shortened': false,
+        'phraseTooNew': false,
+      });
+      expect(provider.identityResetRequestStatus, 'pending');
+
+      // A server that predates the flag omits it entirely; the client must
+      // read that as an ordinary start, never as a phrase verdict.
+      provider.onIdentityResetStatus({
+        'status': 'pending',
+        'deadlineAt': deadline.toIso8601String(),
+        'shortened': false,
+      });
+      expect(provider.identityResetRequestStatus, 'pending');
+    });
+
+    test('the flag never rewrites an answer that is not a fresh start', () {
+      // `existing` reports somebody else's ceremony; a phrase verdict there
+      // would be about a phrase this request never got to present.
+      provider.onIdentityResetStatus({
+        'status': 'existing',
+        'deadlineAt': DateTime.now().toUtc().toIso8601String(),
+        'shortened': false,
+        'phraseTooNew': true,
+      });
+      expect(provider.identityResetRequestStatus, 'existing');
+    });
   });
 
   group('registration lock refusal', () {

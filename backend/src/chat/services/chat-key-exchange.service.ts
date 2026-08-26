@@ -556,6 +556,11 @@ export class ChatKeyExchangeService {
           ? result.deadlineAt.toISOString()
           : undefined,
         shortened: result.shortened,
+        // Only the requester is told WHY the shortcut was denied. The room-wide
+        // `identityResetPending` alarm below deliberately carries no phrase
+        // verdict: the other sessions need the deadline and the cancel button,
+        // not a fact about the phrase.
+        phraseTooNew: result.phraseTooNew,
       });
       // Only a NEW ceremony rings the bells. Re-reporting an existing one to a
       // reconnecting client must not re-notify every device.

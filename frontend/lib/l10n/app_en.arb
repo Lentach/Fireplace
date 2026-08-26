@@ -222,6 +222,7 @@
   "recoveryPhraseUseAction": "Use recovery key",
   "recoveryPhraseNoneAction": "I don't have one",
   "identityResetStarted": "Reset started. Everyone signed in has been told, and it can be cancelled until the countdown ends.",
+  "identityResetPhraseTooNew": "Reset started. Your recovery key was correct, but it was created less than 3 days ago, so it cannot shorten the wait this time — the full 72 hours apply. There is no need to enter it again.",
   "identityResetAlreadyRunning": "A reset is already running for this account. The countdown at the top of the screen shows how long is left.",
   "identityResetCooldown": "A reset was cancelled recently, so a new one cannot start for up to 24 hours. If someone else keeps cancelling it, change your password to sign them out first.",
   "identityResetPhraseRejected": "Those 12 words did not match the recovery key stored for this account. You can try again, or start the reset without it and wait 72 hours.",
