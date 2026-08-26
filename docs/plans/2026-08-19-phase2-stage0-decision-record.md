@@ -647,6 +647,16 @@ research and review CHANGED about them:
    marks a socket disconnected synchronously, so the emit carrying its reissued session silently
    no-oped. Eviction now runs strictly after the ack and never touches the caller. **A test pins the
    ORDER, not just the outcome** — the outcome-only version passed with the bug present.
+5. **And the FIRST fix for that was still incomplete — the announcement, not the disconnect, was the
+   fatal half.** Sparing the caller from `disconnect()` left the eviction announcing ROOM-WIDE, and
+   the caller is still joined to the room of its pre-reset id. The client handler does NOT filter on
+   device id (`_onOwnDeviceRevoked` reads it only for a diagnostic line, then logs out
+   unconditionally), so the recovering device wiped the session it had just adopted. Fixed with
+   `.except(exceptSocketId)` at `c5cbd7d`. Excluded SERVER-side on purpose: a client that ignored a
+   `deviceRevoked` whose id did not match its own would also ignore a REAL revocation whenever its
+   own device id is unconfirmed — a live state, and itself a P1 in the T5 re-review. **The test mock
+   had to be taught to resolve broadcasts**; with the previous `mockReturnThis` stub the assertion
+   would have been vacuous.
 
 **Owed, recorded not claimed.** (1) **(xl)** — binding the account identity key into the DAK-signed
 list is the durable form of the P0 fix and is deferred: it changes the (d)-governed canonical bytes
