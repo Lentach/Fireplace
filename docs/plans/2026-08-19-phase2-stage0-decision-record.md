@@ -603,3 +603,59 @@ probe is opt-in and therefore defends nothing in CI until the registration budge
 **Verified at `cecdf44`:** backend **1007/61** · ratchet **PASS 889** real (floor 906, not lowered) ·
 analyze clean · flutter **1530/10sk** · wire **44/3sk** · opt-in reset probe **1/1**
 (`--dart-define=RESET_PROBE=true`), both count verifiers OK.
+
+## 14. The T1–T8 phase gate (2026-08-22) — and T9, the four defects it found
+
+**Three independent reviewers over `bf11861...b048ec9`** — 103 commits, 197 files, +38341/−1828 —
+each with a distinct lens, because three identical passes would have found one thing three times.
+Verdicts: spec conformance **SHIP WITH FIXES**, test integrity **SHIP WITH FIXES**, security/crypto
+**SHIP WITH FIXES (one P0, two P1)**. No amendment was found violated; every one (a)–(xxxviii) that
+is reachable from code was confirmed implemented.
+
+**The test-integrity findings are folded at `4c0e0bf`.** Four tests could not fail under the mutation
+they existed to catch: the §6.2 teardown atomicity was only half-pinned (dropping the
+`manager ? … : this.refreshRepo` branch stayed green while the session wipe silently returned to the
+autocommit connection); `resolveLoginDeviceId`'s "live rows only" guard survived an
+`IsNull()`→`Not(IsNull())` inversion that would have reintroduced the T6 lockout; the `sendToken`
+reconcile's cross-conversation refusal and sender scoping were untested — `findBySendToken` was not
+even in the mock; and NOTHING asserted `devicesSyncing` is ever RAISED, so deleting the flag-raise
+left the suite green while the note silently never appeared. That commit also corrected an
+overstated claim in §13 (see the `updateDeviceList` paragraph there).
+
+**The security findings became T9.** Settled first as amendments **(xxxix)–(xliii)** at `27acd86`,
+built at `290cacc`. What is worth carrying forward is not the four fixes but the four things the
+research and review CHANGED about them:
+
+1. **The P0's obvious anchor was the wrong anchor.** `peerTofuIdentityBase64` reads a hard-coded
+   `(peer, device 1)`. Ids are never reused, so a post-§6.2 account has NO device 1 — anchoring
+   there finds nothing for exactly the accounts that just survived a takeover. The anchor comes from
+   the I7-verified list instead.
+2. **The P0 is not cold-cache bypassable, and that is structural, not incidental.** Reaching a
+   peer's device >1 requires the verified list (`_resolveFanOut` gates fan-out on
+   `recipientList != null`), and that same list supplies the anchor. A cold cache means there is no
+   device-2 build to attack. Worth re-deriving before anyone "optimises" `_resolveFanOut`.
+3. **Two of the gate's own premises were WRONG and the research caught both.** The teardown does not
+   run from a cron — it runs lazily inside `handleUploadKeyBundle`, which already holds the socket
+   server, so the eviction needed no new plumbing. And leaving `account_authorizations` untouched is
+   spec-MANDATED by (f)(iii)/(xxix), not a bug; the probe already asserts that expecting otherwise
+   asserts a spec violation. Also: the reset is NOT silent (push fires on both paths) — only the
+   ENROLMENT was — and because a password thief can already run the 72 h ceremony, password re-auth
+   defends nothing. The age gate is the control that bites.
+4. **The first cut of the eviction would have stranded every recovery**, and the review caught it.
+   The recovering client is still authenticated as its PRE-reset device id, so its own socket sits in
+   a room the teardown just revoked; evicting before the ack disconnected the caller, and socket.io
+   marks a socket disconnected synchronously, so the emit carrying its reissued session silently
+   no-oped. Eviction now runs strictly after the ack and never touches the caller. **A test pins the
+   ORDER, not just the outcome** — the outcome-only version passed with the bug present.
+
+**Owed, recorded not claimed.** (1) **(xl)** — binding the account identity key into the DAK-signed
+list is the durable form of the P0 fix and is deferred: it changes the (d)-governed canonical bytes
+and needs a list-version migration on every enrolled account. (2) The peer-reset↔anchor interaction
+((xxxix) refusing after a peer's own §6.2 key change) is REASONED from source, not observed by any
+test. (3) `setDisappearingTimer` and the opt-in probe's CI gap carry forward from §13 unchanged.
+
+**Verified at `290cacc`:** backend **1029/62** · ratchet **PASS 889** real — the exact pre-change
+baseline, so the whole gate fold plus T9 added ZERO lint errors · analyze clean · flutter
+**1541/10sk** · both count verifiers OK. **The wire suite was NOT run: Docker was in use by another
+agent.** Every guard in both commits is two-way proven, mutation by mutation, restored
+byte-identically.
