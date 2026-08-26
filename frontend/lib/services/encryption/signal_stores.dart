@@ -463,6 +463,16 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
   String _trustedKey(SignalProtocolAddress address) =>
       '${_p}trusted_identity_${address.getName()}_${address.getDeviceId()}';
 
+  /// The ACCOUNT-level pin (spec §12 amendment (xlvi)): the identity key this
+  /// device has accepted for a peer ACCOUNT, independent of which of their
+  /// devices presented it.
+  ///
+  /// §3 gives one identity key per account, shared to every linked device, so
+  /// this is where the value always belonged. Keying the I7 anchor by
+  /// `(peer, device 1)` was a category error that only became visible when
+  /// §6.2 produced accounts with no device 1 — ids are never reused ((a)).
+  String _accountKey(String name) => '${_p}account_identity_$name';
+
   /// Write-through memo of the trusted peer keys this engine has already read.
   ///
   /// libsignal calls [isTrustedIdentity] on EVERY encrypt and EVERY decrypt, and
@@ -485,12 +495,43 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
   ) async {
     if (identityKey == null) return false;
     final key = _trustedKey(address);
+    final encoded = base64Encode(identityKey.serialize());
+    await _storage.write(key: key, value: encoded);
+    _trustedMemo[key] = identityKey;
+    // The account pin follows the same acceptance path as the per-device row
+    // — never a separate decision — so the I7 anchor can only ever be a key
+    // this device already accepted. Last acceptance wins, which is what makes
+    // it survive the peer replacing their whole device set in a §6.2 reset.
+    final accountKey = _accountKey(address.getName());
+    await _storage.write(key: accountKey, value: encoded);
+    _trustedMemo[accountKey] = identityKey;
+    return true;
+  }
+
+  /// The identity key accepted for a peer ACCOUNT, or null on first contact.
+  ///
+  /// Falls back to the legacy `(peer, device 1)` row and adopts it, so an
+  /// install that predates (xlvi) keeps every anchor it had. Without that
+  /// backfill an upgrade would fail-close every existing conversation at once
+  /// — far worse than the defect being fixed.
+  Future<IdentityKey?> getAccountIdentity(String name) async {
+    final key = _accountKey(name);
+    final memo = _trustedMemo[key];
+    if (memo != null) return memo;
+    final stored = await _storage.read(key: key);
+    if (stored != null) {
+      final identity = IdentityKey.fromBytes(base64Decode(stored), 0);
+      _trustedMemo[key] = identity;
+      return identity;
+    }
+    final legacy = await getIdentity(SignalProtocolAddress(name, 1));
+    if (legacy == null) return null;
     await _storage.write(
       key: key,
-      value: base64Encode(identityKey.serialize()),
+      value: base64Encode(legacy.serialize()),
     );
-    _trustedMemo[key] = identityKey;
-    return true;
+    _trustedMemo[key] = legacy;
+    return legacy;
   }
 
   @override
@@ -513,8 +554,17 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
       // Unchanged: deliberately NO write. This runs per message.
       return true;
     }
+    // First contact with this ADDRESS is not necessarily first contact with the
+    // ACCOUNT, and that gap used to swallow the alarm entirely: a peer's §6.2
+    // reset — or a server introducing a device under an identity of its own
+    // choosing — arrives on a device id we have never seen, so the per-address
+    // rule read it as first contact and said nothing (amendment (xlvi)).
+    final accountBefore = existing == null
+        ? await getAccountIdentity(address.getName())
+        : null;
     await saveIdentity(address, identityKey);
-    if (existing != null) {
+    if (existing != null ||
+        (accountBefore != null && !_sameIdentity(accountBefore, identityKey))) {
       onIdentityChanged?.call(address);
     }
     return true;

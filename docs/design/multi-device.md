@@ -1351,7 +1351,40 @@ that is the designed outcome).
     silent shape into the survivable visible one for the window clause 1 cannot
     cover. An account with no live device at all keeps the historical answer, so
     the guard cannot invent a refusal for an unrelated empty roster.
-- **Next gate:** T10 implementation review, then the T1–T9 + T10 merge decision. The T1–T8 phase
+- **Amendment 2026-08-26 (T11, ratified BEFORE the fix; the OTHER half of (xlv), found by
+  re-reading the residual sweep once more after T10 shipped — the item had been marked closed):**
+  - **(xlvi) The I7 anchor is a property of the peer ACCOUNT, not of their device 1.** (xlv)
+    restored the LIST a §6.2 recovery leaves behind. It did not restore a peer's ability to CHECK
+    that list. The chain is verified against "the identity key this device has accepted for that
+    peer", and that value was read from a fixed `(peer, device 1)` address. §3 gives ONE identity
+    key per account, shared to every linked device, so the device was never the right unit — the
+    category error only became visible once §6.2 began producing accounts with **no device 1**,
+    ids being never reused ((a)). For such a peer the lookup returned their PRE-reset key (if we
+    had ever met device 1) or nothing, so the freshly re-enrolled list failed as
+    `invalid_enrollment_signature` or `no_tofu_identity`. **Net effect before this amendment: (xlv)
+    turned silent message loss into a fail-closed lockout, which is better and still broken.**
+    **Clause 1 — pin the anchor per ACCOUNT.** One stored value per peer, written on the SAME
+    acceptance path as the per-device row and never as a separate decision, so the anchor can only
+    ever be a key this device already accepted. Last acceptance wins, which is exactly what lets it
+    survive a peer replacing their entire device set. An install predating this keeps every anchor
+    it had: a missing account pin falls back to the legacy `(peer, 1)` row and adopts it, because an
+    upgrade that fail-closed every existing conversation at once would be far worse than the defect.
+    **Clause 2 — first contact with an ADDRESS is not first contact with an ACCOUNT, and the gap
+    used to swallow the alarm entirely.** A peer's reset arrives on a device id we have never seen,
+    so the per-address TOFU rule read it as first contact and said NOTHING. That is precisely the
+    event §6.2 promises to announce, and the same silence would cover a server introducing a device
+    under an identity of its own choosing. The account pin makes it observable: a new address whose
+    key differs from the accepted account key raises the existing identity-changed surface, while a
+    new address carrying the SAME key stays quiet, because alarming on an ordinary link would train
+    people to dismiss the one surface that detects a real takeover.
+    Client-side only: no wire field, no migration, no change to DAK-signed bytes. **(xl) remains the
+    durable end state** — binding the account identity into the signed list would make the anchor
+    unguessable rather than merely account-scoped — but it changes (d)-governed canonical bytes and
+    needs a list-version migration, and a recovery-breaking defect must not wait on that.
+- **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the
-  test-integrity findings are folded at `4c0e0bf`; the four security findings were T9. T10 is the
-  §6.2 addressability defect (xlv), found by auditing the residual list rather than by any suite.
+  test-integrity findings are folded at `4c0e0bf`; the four security findings were T9. **T10 (xlv)
+  and T11 (xlvi) are the two halves of one defect: a completed §6.2 reset left the account
+  unreachable, first silently and then fail-closed. Neither was found by a suite** — both came from
+  re-reading residual notes against source, and the second was hiding behind a note the first had
+  already marked closed.

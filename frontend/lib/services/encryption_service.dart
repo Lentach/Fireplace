@@ -1265,19 +1265,24 @@ class EncryptionService {
     }
   }
 
-  /// The TOFU-pinned identity public key of [peerId] (base64 of the
+  /// The TOFU-pinned identity public key of [peerId]'s ACCOUNT (base64 of the
   /// serialized key), or null when none is stored or the read fails.
   ///
   /// This is what the T4 device-list cache verifies a peer's DAK enrollment
   /// against (I7 chain: their TOFU'd IK → E → DAK → list) — deliberately the
-  /// STORED key, never a fresh network value, for the same reason as the
-  /// fingerprint above: the chain must anchor on the key this device
-  /// actually accepted.
+  /// STORED key, never a fresh network value, because the chain must anchor on
+  /// the key this device actually accepted.
+  ///
+  /// ACCOUNT-scoped, not `(peer, device 1)` (spec §12 amendment (xlvi)). §3
+  /// gives one identity key per account, so the device was never the right
+  /// unit; the bug only surfaced once §6.2 started producing accounts with no
+  /// device 1, whose freshly re-enrolled list then anchored on a revoked
+  /// device's key — or on nothing — and could never verify.
   Future<String?> peerTofuIdentityBase64(int peerId) async {
     if (!_initialized) return null;
     try {
-      final identity = await _identityStore.getIdentity(
-        SignalProtocolAddress(peerId.toString(), _deviceId),
+      final identity = await _identityStore.getAccountIdentity(
+        peerId.toString(),
       );
       return identity == null ? null : base64Encode(identity.serialize());
     } catch (_) {
