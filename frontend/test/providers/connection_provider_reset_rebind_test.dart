@@ -320,6 +320,49 @@ void main() {
     );
   });
 
+  test('a repeated offer with NO rebind still re-enrolls (the retry path)', () async {
+    conn.onSessionRebound = (_) async {};
+
+    // The recovery's own attempt died — dropped socket, killed app. The
+    // teardown runs only on the upload that consumed the ceremony, so nothing
+    // re-fires on its own; the server re-offers the terms on every
+    // authenticated upload instead. No tokens here, so the rebind path must
+    // NOT run.
+    socket.emitServer('keyBundleUploaded', {
+      'success': true,
+      'identityChanged': false,
+      'deviceId': 5,
+      'nextListVersion': 2,
+    });
+    await pumpEventQueue();
+    socket.emitServer('deviceAuthorityEnrolled', {'success': true});
+    await pumpEventQueue();
+
+    expect(socket.connects, 1, reason: 'a retry offer must not rebind');
+    expect(socket.enrollments, hasLength(1));
+    final retried = parseCanonicalDeviceList(
+      base64Decode(socket.enrollments.single['listCanonical'] as String),
+    );
+    expect(retried.version, 2);
+    expect(retried.devices.map((d) => d.deviceId), [5]);
+  });
+
+  test('an IMPLAUSIBLE server-named version is refused, not signed', () async {
+    conn.onSessionRebound = (_) async {};
+
+    // Every later DAK-signed mutation must strictly exceed the stored version,
+    // so signing a number near the ceiling would freeze this account's device
+    // list permanently — and it would stay frozen after the server turned
+    // honest again. The client cannot authenticate the number, so it bounds it.
+    socket.emitServer('keyBundleUploaded', {
+      ...recoveryAck(),
+      'nextListVersion': 2147483000,
+    });
+    await pumpEventQueue();
+
+    expect(socket.enrollments, isEmpty);
+  });
+
   test('an ack that names no version enrolls NOTHING', () async {
     conn.onSessionRebound = (_) async {};
 

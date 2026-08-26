@@ -4,7 +4,6 @@ import { ChatDeviceListService } from './chat-device-list.service';
 import { ChatValidationService } from './chat-validation.service';
 import { DeviceListService } from '../../key-bundles/device-list.service';
 import { ConversationsService } from '../../conversations/conversations.service';
-import { DevicesService } from '../../key-bundles/devices.service';
 
 /**
  * WHO MAY READ AN ACCOUNT'S DEVICE ROSTER (spec §12 amendment (xliii)).
@@ -29,7 +28,7 @@ describe('ChatDeviceListService.handleGetDeviceList entitlement', () => {
   let getAuthorization: jest.Mock;
   let validateCanMessage: jest.Mock;
   let findByUsers: jest.Mock;
-  let listForUser: jest.Mock;
+  let pendingReplacementVersion: jest.Mock;
   let emit: jest.Mock;
   let client: Partial<Socket>;
 
@@ -58,20 +57,21 @@ describe('ChatDeviceListService.handleGetDeviceList entitlement', () => {
       error: 'You can only message friends',
     });
     findByUsers = jest.fn().mockResolvedValue(null);
-    // The ordinary account: one live device, and it IS device 1 — so the
-    // (xlv) clause 2 guard is satisfied and these entitlement tests exercise
-    // entitlement, not addressability.
-    listForUser = jest.fn().mockResolvedValue([{ deviceId: 1, revokedAt: null }]);
+    // The ordinary account owes no replacement enrollment, so the (xlv)
+    // clause 2 guard stands aside and these tests exercise entitlement.
+    pendingReplacementVersion = jest.fn().mockResolvedValue(null);
     emit = jest.fn();
     client = { data: { user: { id: REQUESTER } }, emit };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ChatDeviceListService,
-        { provide: DeviceListService, useValue: { getAuthorization } },
+        {
+          provide: DeviceListService,
+          useValue: { getAuthorization, pendingReplacementVersion },
+        },
         { provide: ChatValidationService, useValue: { validateCanMessage } },
         { provide: ConversationsService, useValue: { findByUsers } },
-        { provide: DevicesService, useValue: { listForUser } },
       ],
     }).compile();
     service = module.get(ChatDeviceListService);
@@ -172,10 +172,7 @@ describe('ChatDeviceListService.handleGetDeviceList entitlement', () => {
 
   it('REFUSES an un-enrolled account whose live devices exclude device 1', async () => {
     getAuthorization.mockResolvedValue(null);
-    listForUser.mockResolvedValue([
-      { deviceId: 1, revokedAt: new Date() },
-      { deviceId: 2, revokedAt: null },
-    ]);
+    pendingReplacementVersion.mockResolvedValue(1);
 
     await get(REQUESTER);
 
@@ -187,7 +184,7 @@ describe('ChatDeviceListService.handleGetDeviceList entitlement', () => {
 
   it('still answers an ordinary un-enrolled account, which really IS device 1', async () => {
     getAuthorization.mockResolvedValue(null);
-    listForUser.mockResolvedValue([{ deviceId: 1, revokedAt: null }]);
+    pendingReplacementVersion.mockResolvedValue(null);
 
     await get(REQUESTER);
 
@@ -200,7 +197,7 @@ describe('ChatDeviceListService.handleGetDeviceList entitlement', () => {
 
   it('still answers an account with NO live device at all', async () => {
     getAuthorization.mockResolvedValue(null);
-    listForUser.mockResolvedValue([{ deviceId: 1, revokedAt: new Date() }]);
+    pendingReplacementVersion.mockResolvedValue(null);
 
     await get(REQUESTER);
 

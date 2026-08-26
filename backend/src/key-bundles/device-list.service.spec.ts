@@ -23,6 +23,7 @@ interface AuthRepoMock {
 describe('DeviceListService', () => {
   let authRepo: AuthRepoMock;
   let keyBundleRepo: { findOne: jest.Mock };
+  let devicesService: { listForUser: jest.Mock };
   let service: DeviceListService;
 
   const enrollment = () => ({
@@ -57,7 +58,17 @@ describe('DeviceListService', () => {
         .fn()
         .mockResolvedValue({ identityPublicKey: V.identityPublicKey }),
     };
-    service = new DeviceListService(authRepo as never, keyBundleRepo as never);
+    // Only `pendingReplacementVersion` (xlv) consults the roster; the enroll
+    // paths under test here never reach it. An account whose live device IS
+    // device 1 is the ordinary shape and keeps that method's answer null.
+    devicesService = {
+      listForUser: jest.fn().mockResolvedValue([{ deviceId: 1, revokedAt: null }]),
+    };
+    service = new DeviceListService(
+      authRepo as never,
+      keyBundleRepo as never,
+      devicesService as never,
+    );
   });
 
   describe('enroll (first-write-wins, I2)', () => {
@@ -331,6 +342,56 @@ describe('DeviceListService', () => {
     it('returns null for a never-enrolled account', async () => {
       authRepo.findOne.mockResolvedValue(null);
       await expect(service.getAuthorization(V.userId)).resolves.toBeNull();
+    });
+  });
+
+  // The one predicate behind BOTH (xlv) clauses: clause 2 refuses a roster on
+  // it, clause 1 re-offers the replacement terms on it. They must never
+  // disagree, which is why there is only one.
+  describe('pendingReplacementVersion ((xlv))', () => {
+    it('owes NOTHING for an ordinary un-enrolled account that really is device 1', async () => {
+      authRepo.findOne.mockResolvedValue(null);
+      await expect(
+        service.pendingReplacementVersion(V.userId),
+      ).resolves.toBeNull();
+    });
+
+    it('owes a FIRST enrollment when an un-enrolled account has lost device 1', async () => {
+      authRepo.findOne.mockResolvedValue(null);
+      devicesService.listForUser.mockResolvedValue([
+        { deviceId: 1, revokedAt: new Date() },
+        { deviceId: 2, revokedAt: null },
+      ]);
+      // The post-reset never-enrolled shape: peers would synthesize a device 1
+      // that no longer exists.
+      await expect(service.pendingReplacementVersion(V.userId)).resolves.toBe(1);
+    });
+
+    it('owes nothing when NO device is live — offline or deleted, not this defect', async () => {
+      authRepo.findOne.mockResolvedValue(null);
+      devicesService.listForUser.mockResolvedValue([
+        { deviceId: 1, revokedAt: new Date() },
+      ]);
+      await expect(
+        service.pendingReplacementVersion(V.userId),
+      ).resolves.toBeNull();
+    });
+
+    it('owes nothing while the stored enrollment still verifies', async () => {
+      authRepo.findOne.mockResolvedValue(storedRow());
+      await expect(
+        service.pendingReplacementVersion(V.userId),
+      ).resolves.toBeNull();
+    });
+
+    it('owes stored+1 once an identity change has ORPHANED the row', async () => {
+      authRepo.findOne.mockResolvedValue({ ...storedRow(), listVersion: 6 });
+      // Only an identity change can orphan an enrollment, and §6.2 is the one
+      // that also revokes every device the row names.
+      keyBundleRepo.findOne.mockResolvedValue({
+        identityPublicKey: V.lockNewIdentityPublicKey,
+      });
+      await expect(service.pendingReplacementVersion(V.userId)).resolves.toBe(7);
     });
   });
 });

@@ -9,6 +9,7 @@ import { ConversationsService } from '../../conversations/conversations.service'
 import { PushNotificationsService } from '../../push-notifications/push-notifications.service';
 import { IdentityResetService } from '../../key-bundles/identity-reset.service';
 import { DevicesService } from '../../key-bundles/devices.service';
+import { DeviceListService } from '../../key-bundles/device-list.service';
 import { ResetRosterService } from '../../key-bundles/reset-roster.service';
 import { UsersService } from '../../users/users.service';
 import { JwtService } from '@nestjs/jwt';
@@ -186,6 +187,14 @@ describe('ChatKeyExchangeService', () => {
         {
           provide: WebPushSubscriptionsService,
           useValue: webPushSubscriptionsService,
+        },
+        {
+          provide: DeviceListService,
+          // (xlv) clause 1's retry offer. Null is the ordinary account: no
+          // replacement enrollment owed, so the ack keeps its historic shape.
+          useValue: {
+            pendingReplacementVersion: jest.fn().mockResolvedValue(null),
+          },
         },
       ],
     }).compile();

@@ -13,7 +13,6 @@ import { validateDto } from '../utils/dto.validator';
 import { userRoom } from '../utils/user-room';
 import { ChatValidationService } from './chat-validation.service';
 import { ConversationsService } from '../../conversations/conversations.service';
-import { DevicesService } from '../../key-bundles/devices.service';
 
 /**
  * socket.io declares `Socket.data` as `any`; one documented narrowing keeps
@@ -44,7 +43,6 @@ export class ChatDeviceListService {
     private readonly deviceListService: DeviceListService,
     private readonly chatValidationService: ChatValidationService,
     private readonly conversationsService: ConversationsService,
-    private readonly devicesService: DevicesService,
   ) {}
 
   async handleEnrollDeviceAuthority(
@@ -166,7 +164,11 @@ export class ChatDeviceListService {
         return;
       }
       const row = await this.deviceListService.getAuthorization(dto.userId);
-      if (!row && !(await this.hasAddressableDefaultDevice(dto.userId))) {
+      if (
+        !row &&
+        (await this.deviceListService.pendingReplacementVersion(dto.userId)) !==
+          null
+      ) {
         // Amendment (xlv) clause 2. `authorization: null` is not merely "no
         // enrollment row" on the wire — the client answers it by SYNTHESIZING
         // the single device 1 that a non-enrolled account is supposed to have
@@ -207,26 +209,6 @@ export class ChatDeviceListService {
         `getDeviceList failed requesterId=${requesterId}: ${message}`,
       );
     }
-  }
-
-  /**
-   * Can an un-enrolled account still be addressed by the device 1 its peers
-   * will synthesize (amendment (xlv) clause 2)?
-   *
-   * True in the ordinary case — a single-device account really is device 1,
-   * and that is the construction the synthesis relies on. False only once a
-   * §6.2 teardown has revoked device 1 and moved the account onto a freshly
-   * allocated id without writing an enrollment row.
-   *
-   * An account with NO live device at all is not this defect (it is offline,
-   * mid-provisioning or deleted) and keeps the historical answer, so this
-   * guard cannot turn an unrelated empty roster into a new refusal.
-   */
-  private async hasAddressableDefaultDevice(userId: number): Promise<boolean> {
-    const live = (await this.devicesService.listForUser(userId)).filter(
-      (d) => d.revokedAt == null,
-    );
-    return live.length === 0 || live.some((d) => d.deviceId === 1);
   }
 
   /**

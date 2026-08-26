@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import { AccountAuthorization } from './account-authorization.entity';
 import { KeyBundle } from './key-bundle.entity';
+import { DevicesService } from './devices.service';
 import {
   CanonicalDeviceListError,
   parseCanonicalDeviceList,
@@ -95,7 +96,55 @@ export class DeviceListService {
     private readonly authorizationRepo: Repository<AccountAuthorization>,
     @InjectRepository(KeyBundle)
     private readonly keyBundleRepo: Repository<KeyBundle>,
+    private readonly devicesService: DevicesService,
   ) {}
+
+  /**
+   * Does this account owe a REPLACEMENT enrollment, and at what version
+   * (amendment (xlv))? Null when it does not.
+   *
+   * One predicate, two consumers, deliberately: the roster guard of clause 2
+   * and the retry offer of clause 1 must never disagree about whether an
+   * account is addressable, or the server would refuse to serve a list while
+   * telling nobody how to repair it.
+   *
+   * Two ways a completed §6.2 reset leaves an account un-addressable, and
+   * they need different tests because ONLY the second leaves a row behind:
+   *
+   *  - Never enrolled. No row, so peers synthesize the single device 1 a
+   *    non-enrolled account has by construction — which the teardown revoked.
+   *    Its replacement is a FIRST enrollment, so version 1. An account with
+   *    no live device at all is offline or deleted, not this defect.
+   *  - Previously enrolled. The row survives ((xxix)) but its enrollment
+   *    record no longer verifies under the account's CURRENT published
+   *    identity, and ONLY an identity change can orphan it. Its replacement
+   *    must advance past the surviving version.
+   */
+  async pendingReplacementVersion(userId: number): Promise<number | null> {
+    const published = await this.keyBundleRepo.findOne({
+      where: { userId },
+      order: { deviceId: 'ASC' },
+    });
+    if (!published) return null;
+
+    const stored = await this.authorizationRepo.findOne({ where: { userId } });
+    if (!stored) {
+      const live = (await this.devicesService.listForUser(userId)).filter(
+        (d) => d.revokedAt == null,
+      );
+      const addressable = live.length === 0 || live.some((d) => d.deviceId === 1);
+      return addressable ? null : 1;
+    }
+
+    const stillValid = verifyEnrollmentSignature({
+      identityPublicKey: published.identityPublicKey,
+      userId,
+      dakPub: stored.dakPub,
+      createdAtMs: stored.enrollmentCreatedAt.getTime(),
+      signature: stored.enrollmentSig,
+    });
+    return stillValid ? null : stored.listVersion + 1;
+  }
 
   /**
    * Validates the canonical base64 transport form and the bytes behind it.

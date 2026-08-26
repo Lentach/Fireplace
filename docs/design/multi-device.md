@@ -1320,18 +1320,37 @@ that is the designed outcome).
     identity is orphaned, and only an identity change can orphan it. The version it must carry
     rides the recovery ack as `nextListVersion`, because the client cannot read a row whose
     signature is orphaned and must not be made to guess — guessing 1 against a surviving row reads
-    as a rollback attempt. Dictating that integer grants the server no authority it lacks: the
-    client still signs the list, and a server naming a stale version merely gets the enrollment it
-    wanted refused. It CANNOT live on the ceremony controller, which is registered by the devices
-    screen: a recovery runs at login with no screen mounted.
-    **Clause 2 — until it does, the server MUST NOT serve a roster that cannot receive.** When the
-    answer would be `authorization: null` while the account's live devices exclude device 1, the
-    roster is refused in silence, exactly as an entitlement refusal is — silence is fail-closed on
-    the client (I5: "cannot verify", never "no devices"). This converts the dangerous silent shape
-    into the survivable visible one for the window clause 1 cannot cover: a device that crashes or
-    goes offline between the teardown and its re-enrollment. An account with no live device at all
-    keeps the historical answer, so the guard cannot invent a refusal for an unrelated empty
-    roster.
+    as a rollback attempt. Dictating that integer is ALMOST free of authority —
+    the client still signs the list, and a server naming a STALE version merely
+    gets the enrollment it wanted refused — but not entirely, and the first
+    draft of this amendment overclaimed it. An INFLATED version is signed just
+    as willingly, and because every later mutation must strictly exceed the
+    stored version, a hostile server could freeze the account's device list for
+    good by naming a number near the integer ceiling — a state that survives
+    the server becoming honest again. The client cannot authenticate the number
+    (the row it would check against is the orphaned one), so it applies a
+    plausibility CEILING instead: versions advance once per device mutation, so
+    no real account approaches it. It CANNOT live on the ceremony controller,
+    which is registered by the devices screen: a recovery runs at login with no
+    screen mounted.
+    **The offer is REPEATED, not one-shot.** A re-enrollment that dies with a
+    dropped socket or a killed app would otherwise leave the account
+    un-addressable forever, since the teardown runs only on the upload that
+    consumes the ceremony and nothing re-fires on a later launch — the exact
+    "I lost my only device" user this amendment exists for. The server already
+    detects that state (it is the same predicate clause 2 refuses on), so it
+    re-offers the terms on EVERY authenticated key-bundle upload until the
+    replacement lands. One predicate serves both clauses deliberately: a server
+    that refused to serve a roster while telling nobody how to repair it would
+    be a worse failure than the one being fixed.
+    **Clause 2 — until it does, the server MUST NOT serve a roster that cannot
+    receive.** When the answer would be `authorization: null` while the
+    account's live devices exclude device 1, the roster is refused in silence,
+    exactly as an entitlement refusal is — silence is fail-closed on the client
+    (I5: "cannot verify", never "no devices"). This converts the dangerous
+    silent shape into the survivable visible one for the window clause 1 cannot
+    cover. An account with no live device at all keeps the historical answer, so
+    the guard cannot invent a refusal for an unrelated empty roster.
 - **Next gate:** T10 implementation review, then the T1–T9 + T10 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the
   test-integrity findings are folded at `4c0e0bf`; the four security findings were T9. T10 is the

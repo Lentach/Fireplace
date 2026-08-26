@@ -8,6 +8,7 @@ import {
 } from '../../key-bundles/key-bundles.service';
 import { IdentityResetService } from '../../key-bundles/identity-reset.service';
 import { DevicesService } from '../../key-bundles/devices.service';
+import { DeviceListService } from '../../key-bundles/device-list.service';
 import { ConversationsService } from '../../conversations/conversations.service';
 import { PushNotificationsService } from '../../push-notifications/push-notifications.service';
 import { validateDto } from '../utils/dto.validator';
@@ -93,6 +94,7 @@ export class ChatKeyExchangeService {
     private readonly jwtService: JwtService,
     private readonly fcmTokensService: FcmTokensService,
     private readonly webPushSubscriptionsService: WebPushSubscriptionsService,
+    private readonly deviceListService: DeviceListService,
   ) {}
 
   /**
@@ -313,6 +315,17 @@ export class ChatKeyExchangeService {
       // grants the server no authority it lacks — the client still signs the
       // list, and a server naming a stale version merely gets its own
       // enrollment refused, which it could achieve by refusing outright.
+      // A recovery whose re-enrollment never landed — the socket dropped, the
+      // ack timed out, the app was killed — would otherwise stay un-addressable
+      // forever: the roster block above runs ONLY on the upload that consumes
+      // the ceremony, so nothing re-fires on a later launch, and the account is
+      // left fail-closed by clause 2 with no way back except another 72 h
+      // ceremony. The server already knows this state exactly (it is the same
+      // predicate clause 2 refuses on), so it re-offers the terms on any
+      // authenticated upload and the client simply retries.
+      const owedVersion = roster
+        ? null
+        : await this.deviceListService.pendingReplacementVersion(userId);
       client.emit('keyBundleUploaded', {
         success: true,
         identityChanged: result.identityChanged,
@@ -323,6 +336,12 @@ export class ChatKeyExchangeService {
               refresh_token: roster.refreshToken,
               nextListVersion: roster.nextListVersion,
             }
+          : {}),
+        // No session is reissued here: this upload authenticated normally, so
+        // the caller already holds the right one. Carrying no tokens is also
+        // what keeps the client's rebind path from re-running.
+        ...(owedVersion !== null
+          ? { deviceId, nextListVersion: owedVersion }
           : {}),
       });
       if (result.identityChanged) {

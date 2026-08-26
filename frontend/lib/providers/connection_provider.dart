@@ -725,6 +725,12 @@ class ConnectionProvider extends ChangeNotifier {
   /// not simply live on the ceremony controller.
   Completer<Map<String, dynamic>>? _resetEnrollAck;
 
+  /// Plausibility ceiling for a server-named replacement list version
+  /// ((xlv) clause 1). A list version advances once per device mutation, so
+  /// no real account comes near this; the bound exists only to deny a hostile
+  /// server the "freeze the list at the integer ceiling" move.
+  static const int _maxPlausibleListVersion = 1000000;
+
   /// Adopts the recovery session, reconnects under it, and only THEN delivers
   /// the ack — so the pre-key upload it triggers rides the new device id.
   ///
@@ -835,6 +841,21 @@ class ConnectionProvider extends ChangeNotifier {
       E2ePersistentDiag.record('RESET_REENROLL_UNWIRED', {});
       return;
     }
+    // The server names this version, and an honest one names `stored + 1`.
+    // Signing it unbounded would let a hostile one name a number near the
+    // integer ceiling: every later DAK-signed mutation must strictly exceed
+    // the stored version, so the account's device list would be frozen for
+    // good — a state that survives the server becoming honest again. The
+    // client cannot authenticate the number (the row it would check against is
+    // the orphaned one), so the only honest defence is a plausibility ceiling:
+    // list versions advance once per device mutation, so a real account never
+    // approaches this.
+    if (version < 1 || version > _maxPlausibleListVersion) {
+      E2ePersistentDiag.record('RESET_REENROLL_IMPLAUSIBLE_VERSION', {
+        'version': '$version',
+      });
+      return;
+    }
     try {
       final identity = await EncryptionServiceLinkGateway(
         encryption.encryptionService,
@@ -905,6 +926,23 @@ class ConnectionProvider extends ChangeNotifier {
         return;
       }
       _encryptionProvider?.onKeyBundleUploaded(data);
+      // No rebind, but the server can still be telling us we owe it a
+      // replacement enrollment ((xlv) clause 1): the recovery's own attempt
+      // died with a dropped socket or a killed app, and the roster block that
+      // started it runs only once, on the upload that consumed the ceremony.
+      // The offer rides every authenticated upload until it is taken.
+      final owedDeviceId = data is Map ? data['deviceId'] : null;
+      final owedVersion = data is Map ? data['nextListVersion'] : null;
+      final userId = _currentUserId;
+      if (owedDeviceId is int && owedVersion is int && userId != null) {
+        unawaited(
+          _reenrollAfterReset(
+            userId: userId,
+            deviceId: owedDeviceId,
+            version: owedVersion,
+          ),
+        );
+      }
     });
     _socketService.on('oneTimePreKeysUploaded', (data) {
       _encryptionProvider?.onOneTimePreKeysUploaded(data);
