@@ -133,9 +133,20 @@ export class ChatKeyExchangeService {
    * offline device receives nothing and meets the connect gate instead, which
    * is the durable enforcement.
    *
-   * The recovering device is NOT in `revokedDeviceIds` — it was moved to a
-   * freshly allocated id before the revocation stamp — so it cannot kick
-   * itself.
+   * THE RECOVERING CALLER IS EXCLUDED FROM BOTH HALVES, and the announcement
+   * matters more than the disconnect. Its socket is still joined to the room
+   * of its PRE-reset device id, which this teardown just revoked, so a
+   * room-wide emit reaches it — and the client's `deviceRevoked` handler does
+   * NOT filter on device id (`connection_provider.dart:_onOwnDeviceRevoked`
+   * reads the id only for its diagnostic line, then logs out unconditionally).
+   * It would therefore wipe the very session it had just adopted from the ack,
+   * moments earlier. Sparing it from `disconnect()` alone does not help: the
+   * event alone is enough to destroy the recovery.
+   *
+   * Excluded server-side rather than filtered client-side on purpose. A client
+   * that ignored a `deviceRevoked` whose id did not match its own would also
+   * ignore a REAL revocation whenever its own device id is unconfirmed —
+   * trading a recoverable annoyance for a silent security failure.
    */
   private evictSupersededDevices(
     userId: number,
@@ -148,6 +159,7 @@ export class ChatKeyExchangeService {
       try {
         server
           .to(deviceRoom(userId, revokedDeviceId))
+          .except(exceptSocketId)
           .emit('deviceRevoked', { userId, deviceId: revokedDeviceId });
         const sockets = socketsForDevice(server, userId, revokedDeviceId);
         for (const socket of sockets) {

@@ -57,6 +57,8 @@ describe('ChatKeyExchangeService', () => {
   let mockClient: Omit<Partial<Socket>, 'data'> & { data: MockSocketData };
   let mockServer: Partial<Server>;
   let roomsAdapter: Map<string, Set<string>>;
+  /** Every broadcast the server mock actually delivered, per receiving socket. */
+  let delivered: Array<{ socketId: string; event: string; payload: unknown }>;
 
   const mockBundle: PreKeyBundleResponse = {
     registrationId: 12345,
@@ -77,9 +79,37 @@ describe('ChatKeyExchangeService', () => {
       to: jest.fn().mockReturnValue({ emit: clientRoomEmit }),
     };
     roomsAdapter = new Map<string, Set<string>>();
+    // The server mock RESOLVES a broadcast instead of just recording it: `to`
+    // and `except` accumulate the target, `emit` expands it against
+    // `roomsAdapter` and appends one entry per receiving socket. Without this
+    // an "the caller was not told" assertion would be vacuous — a mock that
+    // merely returns `this` from `except` delivers to everyone regardless.
+    delivered = [];
+    let toRooms: string[] = [];
+    let exceptIds: string[] = [];
     mockServer = {
-      to: jest.fn().mockReturnThis(),
-      emit: jest.fn(),
+      // `to`/`except` really return a BroadcastOperator; returning the mock
+      // server keeps the chain callable, so the shape is asserted away with
+      // the same idiom the `sockets` stub below already uses.
+      to: jest.fn((room: string) => {
+        toRooms.push(room);
+        return mockServer;
+      }) as unknown as Server['to'],
+      except: jest.fn((socketId: string) => {
+        exceptIds.push(socketId);
+        return mockServer;
+      }) as unknown as Server['except'],
+      emit: jest.fn((event: string, payload: unknown) => {
+        for (const room of toRooms) {
+          for (const socketId of roomsAdapter.get(room) ?? []) {
+            if (exceptIds.includes(socketId)) continue;
+            delivered.push({ socketId, event, payload });
+          }
+        }
+        toRooms = [];
+        exceptIds = [];
+        return true;
+      }),
       sockets: {
         adapter: { rooms: roomsAdapter },
         sockets: new Map(),
@@ -397,6 +427,12 @@ describe('ChatKeyExchangeService', () => {
           .invocationCallOrder[0];
         const kickAt = kickedOne.disconnect.mock.invocationCallOrder[0];
         expect(ackAt).toBeLessThan(kickAt);
+
+        // The exclusion must be narrow: a genuinely superseded sibling is
+        // still told, or `except` would have silenced the whole announcement.
+        expect(
+          delivered.filter((d) => d.event === 'deviceRevoked').map((d) => d.socketId),
+        ).toEqual(['sock-a', 'sock-b']);
       });
 
       // THE ORDERING THAT MAKES RECOVERY WORK AT ALL. The recovering client is
@@ -441,6 +477,18 @@ describe('ChatKeyExchangeService', () => {
           access_token: 'fresh-access',
           refresh_token: 'fresh-refresh',
         });
+
+        // AND IT IS NEVER TOLD IT WAS REVOKED. This matters more than the
+        // disconnect: the client's handler does NOT filter on device id
+        // (connection_provider.dart `_onOwnDeviceRevoked` reads the id only for
+        // its diagnostic line, then logs out unconditionally), so a room-wide
+        // announcement would make the recovering device wipe the very session
+        // it adopted from the ack a moment earlier.
+        expect(
+          delivered.filter(
+            (d) => d.socketId === 'sock-caller' && d.event === 'deviceRevoked',
+          ),
+        ).toEqual([]);
       });
 
       it('does not evict the RECOVERING device', async () => {
