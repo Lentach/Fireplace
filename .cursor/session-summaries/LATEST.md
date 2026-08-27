@@ -21,17 +21,21 @@ residual notes against source before believing them.** The one half still unprov
 **📍 WHERE THINGS LIVE (multi-device program, 2026-08-26).** You are reading the WORKTREE copy, which is
 the current one: `C:/Users/Lentach/Desktop/fireplace-0a` on branch `feat/takeover-alarm-0a`. **The MAIN
 checkout's copy of this file is STALE** — `C:/Users/Lentach/Desktop/Fireplace` sits on `master`, so its
-`.cursor/session-summaries/LATEST.md` stops at 2026-08-20 and knows nothing of T6/T7/T7.5/T8/T9. The program's
+`.cursor/session-summaries/LATEST.md` stops at 2026-08-20 and knows nothing of T6/T7/T7.5/T8/T9/T10/T11. The program's
 task plan, findings and progress live ONLY in the main checkout at
 `C:/Users/Lentach/Desktop/Fireplace/.planning/multi-device/`, are **gitignored** (`.gitignore:58`) by
 owner instruction, and therefore cannot be read from this worktree or pushed anywhere: the books here say
 what happened, those say what is OWED, and both are required. A cold agent landing in the main checkout
-first is caught by `.planning/START-HERE.md`. **📖 A FRESH AGENT SHOULD READ
-`C:/Users/Lentach/Desktop/Fireplace/.planning/multi-device/HANDOFF.md` FIRST** — the whole-programme
-orientation written 2026-08-26 at `11e5ff8`: what is being built and why, the threat model, I1–I9, the
-complete **(a)–(xliv) amendment index with line numbers**, T1–T9 history, what is owed, the owner's
-binding rules, environment, budget cliffs, tooling traps, first-five-actions. It POINTS rather than
-restates, which is why it is not a tenth per-ticket brief; **update it when the programme moves.**
+first is caught by `.planning/START-HERE.md`. **📖 FINISHING THIS PROGRAMME? READ
+`C:/Users/Lentach/Desktop/Fireplace/.planning/multi-device/FINISH-HERE.md` FIRST** — the work queue
+the owner asked for before they will merge: the exit criteria for "100% finished", **the honest list
+of claims that were never verified against a running system** (the app-proof, T10's client trigger,
+all of T11, and whether T11's identity-change alarm actually reaches the user), the ordered
+completion queue, and the two procedures that found the last three defects. It expires at merge.
+**📖 NEW TO THE PROGRAMME? `.planning/multi-device/HANDOFF.md`** is the orientation: threat model,
+I1–I9, the complete **(a)–(xlvi) amendment index with line numbers**, T1–T11 history, binding rules,
+environment, budget cliffs, tooling traps. Both POINT rather than restate; **update them when the
+programme moves.**
 
 **🗺 START HERE IF YOU ARE LOST: `2026-08-05-HANDOFF-audit-state.md`** — plain-language map of the 2026-08-04/05 full-codebase audit: what was found, what merged, what is deliberately parked, and the three owner-only decisions. The two ordered task queues are `.planning/full-audit/REMAINING-WORK.md` (backend) and `.planning/full-audit/frontend/REMAINING-WORK.md` (frontend), both local-only/gitignored. Older long-form: `2026-08-03-HANDOFF-post-b2b-state.md` (B2b gate detail + traps; **its work queue is DONE**) and `2026-08-03-HANDOFF-signal-grade-queue.md` (dated addenda).
 
