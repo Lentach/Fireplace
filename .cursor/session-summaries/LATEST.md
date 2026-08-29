@@ -16,11 +16,38 @@ which holds the full account — **rotating an entry out of this file loses noth
 > `2026-08-22-session-t8-harness-sweep.md`). For multi-device specifically the permanent record is
 > `.planning/multi-device/` (`FINISH-HERE.md`, `progress.md`, `task_plan.md`), not this file.
 
-**Date:** 2026-08-29 — **D1 (P0) AND D2 (P1) FIXED under new spec amendment (xlvii); the
-multi-device work queue is now EMPTY except the owner's merge decision.** ➡
-**`2026-08-29-session-d1-d2-recovery.md`**. Commits `c33c3b3` (the fix) → merge of `master` into the
-branch to unblock CI. **Nothing merged to master, nothing deployed.** The amendment index now runs
-**(a)–(xlvii)**. **Master was merged in to unblock CI and CI run `33228671766` is GREEN on all four jobs, so T9–T11 and this work are CI-tested for the first time; the branch is now MERGEABLE.** Follow-up `5b95e6d` makes candidate promotion COMPARE-AND-SWAP, so a candidate that moves between display and confirmation is refused rather than substituted for the key the user compared (CI green, 1599/10sk).
+**Date:** 2026-08-29 — **D1 (P0), D2 (P1) and a P1 found afterwards are all FIXED, under three new
+spec amendments (xlvii)/(xlviii)/(xlix); the multi-device work queue is now EMPTY except the owner's
+merge decision.** ➡ **`2026-08-29-session-d1-d2-recovery.md`** (read its THREE addenda). Spine:
+`c33c3b3` (D1/D2) → merge of `master` to unblock CI → `5b95e6d` (compare-and-swap) → `26acafc`
+((xlix) + the three residuals). **Nothing merged to master, nothing deployed.** The amendment index
+now runs **(a)–(xlix)**. CI green on all four jobs; the branch is MERGEABLE.
+
+**⚠ THE LAST FIX IS THE ONE TO READ, and it was NOT found by any suite.** The owner asked for another
+review because defects kept surfacing; he was right to. **(xlix):** the compare-and-swap added
+earlier the SAME session had a bypass — `promotePendingAccountIdentity` returns false both when
+nothing is staged and when something DIFFERENT is staged, and the caller conflated them, falling
+through to a re-affirmation that deleted the pending candidate and consumed the warning. A malicious
+server serves the peer's HONEST key (so the out-of-band comparison SUCCEEDS) and injects its own key
+while the user reads the number aloud; **the user's CORRECT confirmation was then the instrument that
+erased the evidence**, and clause 4 guaranteed it never alarmed again. **Third defect in this
+programme with one root cause: a slot read and then acted on while other writers can move it.**
+
+**(xlviii)** closed the three residuals (xlvii) had recorded: the rebuild intent, the identity-warning
+set's eviction policy (it kept the 200 numerically HIGHEST peer ids and accepted warnings for peers
+we hold no key for — ~200 forged events evicted a genuine warning and deleted the only door to
+recovery), and the device-list rollback pin — all three now persisted. ⚠️ **The first draft of
+(xlviii) OVERSTATED residual (a) and the spec records the withdrawal**: two reviewers contradicted
+each other and the source settled it — the damage is ONE destroyed message, then self-heal, not a
+permanently broken conversation.
+
+**Real-device testing exists and nobody had used it.** A Pixel 7 emulator plus
+`adb reverse tcp:3000 tcp:3000` reaches the local backend with ZERO code changes, because the
+loopback-only `network_security_config` already permits `localhost` — **do NOT weaken that file to
+use `10.0.2.2`.** New `integration_test/identity_recovery_durability_device_test.dart` (4 tests)
+proves the persistence properties against the REAL Keystore and REAL SharedPreferences, which the
+unit suite's in-memory mock cannot do. The branch also RAN on Android for the first time: login
+against the real backend succeeded and both §6.0 identity surfaces render correctly in Polish.
 
 The last two open defects are closed. **D1 (P0):** a completed §6.2 reset left the peer unreachable
 in both directions, and the only action offered to the user destroyed the warning while repairing
@@ -47,10 +74,14 @@ schedules **nothing at all**: no run, no failure, no annotation. **T9, T10, T11 
 never been CI-tested.** Do not add the branch to `push`; make the PR mergeable instead. Re-measured
 against current master (brand now renamed to Umbra, 28 commits ahead): **2 conflicts, both docs
 (`CLAUDE.md` and this file), zero code conflicts.** Resolve `CLAUDE.md` carefully — the count
-verifiers gate exactly those lines, and the right values are the branch's (**1597 Flutter / 10 skipped**, **1042 backend / 62 suites**) after the merge. Detail in `.planning/multi-device/FINISH-HERE.md` §6a.
+verifiers gate exactly those lines, and the right values after the merge are **1607 Flutter / 10
+skipped** and **1042 backend / 62 suites** (an earlier revision of this file said 1597, which was
+never a measured number — re-run the verifiers, never inherit a count). Detail in
+`.planning/multi-device/FINISH-HERE.md` §6a.
 
-Exit criteria E1–E5 are met and reproduced first-hand. **E6 (CI) is asked, not done**, because
-unblocking it changes the merge candidate. E7 is the owner's go.
+Exit criteria **E1–E6 are all met and reproduced first-hand** (E6 closed once the merge made the PR
+mergeable and CI actually scheduled). **E7 — the owner's go — is the only thing left, and it is a
+decision, not work.**
 
 **➡ PICKING THIS PROGRAM UP COLD?** Read this file, then the newest dated summary it names, then root
 `CLAUDE.md` §3/§7, then the frozen spec `docs/design/multi-device.md` (§5.x plus **every** dated §12

@@ -207,3 +207,85 @@ rather than a test-only seam.
 flutter analyze clean · flutter test 1599 passed / 10 skipped
 CI run 33229485935 on 5b95e6d: SUCCESS, all four jobs
 ```
+
+---
+
+## Addendum 3 — (xlix) and (xlviii): the owner asked, and the audit found a P1 (`26acafc`)
+
+The owner asked three things: whether the app could be tested more like a real phone, whether the
+three residuals (xlvii) recorded needed attention, and for another review because defects kept
+surfacing. All three were productive, and the third found the worst bug of the session.
+
+### (xlix) — a correct confirmation destroyed the evidence. P1.
+
+Found by a fresh security review, not by a suite. The compare-and-swap added earlier the same
+session had a **bypass**: `promotePendingAccountIdentity` returns false for two materially different
+reasons — nothing staged, or something DIFFERENT staged — and `acknowledgePeerIdentity` conflated
+them. On any refusal it fell through to the re-affirmation branch, which (when the confirmed key
+equalled the pin) called `adoptAccountIdentity`, and that deleted the pending slot unconditionally
+before the caller cleared the persisted warning. **The refusal the situation calls for already
+existed ten lines below and was unreachable whenever the confirmed key happened to equal the pin.**
+
+The attack needs a malicious server and NO user error. Summon the ceremony; answer the probe the
+dialog itself emits with the peer's HONEST key so the out-of-band comparison SUCCEEDS; inject a
+ciphertext under a key of your own while the user reads the number aloud. The user's **correct**
+confirmation then deleted the candidate, consumed the warning, and left the attacker's key in the
+per-device row — where (xlvii) clause 4 guarantees it never alarms again.
+
+This is the THIRD defect in the programme with one root cause: a slot read and then acted on while
+other writers can move it. Fixed by reading the candidate BEFORE deciding, and by giving
+`adoptAccountIdentity` a REQUIRED `expectedPendingBase64` so the slot has no unguarded mutator left
+for a future caller to find.
+
+### (xlviii) — the three residuals, all confirmed from source, none terminal
+
+1. **Rebuild intent now persisted**, written BEFORE the anchor advances, cleared only once a session
+   was really built. The anchor advance and the warning clear were both durable while the intent to
+   repair the poisoned sessions lived only in provider memory.
+2. **Warning set evicts by insertion order**, not by keeping the 200 numerically HIGHEST peer ids,
+   and a server-sourced `peerIdentityChanged` is ignored for a peer we hold no anchor for. The
+   anchor IS the contact check — no roster wired into the crypto layer — and uncertainty resolves to
+   RECORDING, so the gate can never fail closed against the user.
+3. **Rollback pin persisted.** Its own comment already argued rollback detection must survive cache
+   invalidation; a restart is a stronger invalidation, and every launch reopened the whole window.
+
+⚠️ **The first draft of (xlviii) overstated (a)** and the spec records the withdrawal. An enrolled
+post-§6.2 peer gets a fresh device id, so the poisoned record is orphaned; a non-enrolled peer
+self-heals after ONE destroyed message via the peer's own `sessionRebuildNeeded`
+(`messaging_provider.decrypt.dart:475-481` states that rule). Two reviewers contradicted each other
+on this and reading the source settled it. A spec that exaggerates trains the same dismissal a false
+alarm does.
+
+### Real-device testing — there WAS a better option, and it mattered
+
+A Pixel 7 emulator was available the whole time. `adb reverse tcp:3000 tcp:3000` reaches the local
+backend with **zero code changes**, because the loopback-only `network_security_config` already
+permits `localhost` — do NOT weaken that file to use `10.0.2.2`.
+
+New `integration_test/identity_recovery_durability_device_test.dart` (4 tests) proves the
+(xlviii)/(xlix) properties against the REAL Android Keystore and the REAL SharedPreferences, by
+constructing `EncryptionService` twice over the same on-device storage. **Every property here is a
+persistence property, and the unit suite proves them against an in-memory mock that cannot fail the
+way a device fails.** Observed on device: `PEER_IDENTITY_CHANGED_IGNORED{no_local_anchor}` and
+`PEER_IDENTITY_ADOPT_REFUSED{candidate_changed_since_display}`.
+
+Also smoke-tested the branch itself on the emulator against the real backend: login as 671
+succeeded, and **both §6.0 identity surfaces render correctly in Polish** — the fail-closed "no
+encryption keys on this device" guard (which correctly REFUSED to regenerate) and the "new keys on
+your account" takeover alarm. First time this branch has been seen running on Android.
+
+### Recorded, NOT fixed — needs a spec decision, not a patch
+
+The human-verified account anchor is **not** passed to `buildSession` as the (xxxix) expected
+identity: the provider resolves it from the per-device rows of the cached list and skips the device
+being built, so for a peer with ONE live device — every account that just completed §6.2 — the
+anchor is null and the fail-closed gate is vacuous on the first send after the ceremony. Passing it
+would fail-close every legitimate account-wide rotation. (xlvii) reopens that calculus because a
+fail-closed peer now has a working door out, but the choice is the owner's.
+
+```
+flutter analyze clean · flutter test 1607 passed / 10 skipped (+8)
+8 falsifications, all RED and all behavioural (no compile-error fakes)
+on device: 4/4 on the Pixel 7 emulator
+lint ratchet PASS (floor 906 untouched, actual 889) · both count verifiers OK
+```
