@@ -20,7 +20,7 @@ which holds the full account — **rotating an entry out of this file loses noth
 multi-device work queue is now EMPTY except the owner's merge decision.** ➡
 **`2026-08-29-session-d1-d2-recovery.md`**. Commits `c33c3b3` (the fix) → merge of `master` into the
 branch to unblock CI. **Nothing merged to master, nothing deployed.** The amendment index now runs
-**(a)–(xlvii)**.
+**(a)–(xlvii)**. **Master was merged in to unblock CI and CI run `33228671766` is GREEN on all four jobs, so T9–T11 and this work are CI-tested for the first time; the branch is now MERGEABLE.**
 
 The last two open defects are closed. **D1 (P0):** a completed §6.2 reset left the peer unreachable
 in both directions, and the only action offered to the user destroyed the warning while repairing

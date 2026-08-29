@@ -139,3 +139,36 @@ counts:    verify-claude-frontend-test-counts.mjs -> OK (1584 / 10)
 ```
 
 Full detail: `.planning/multi-device/progress.md` (2026-08-29) and `FINISH-HERE.md` §6a.
+
+---
+
+## Addendum — CI unblocked and GREEN (owner authorized the merge-in)
+
+Owner chose "merge master in, resolve, verify, push". Done at `5369965`.
+
+**2 textual conflicts, both docs, zero code conflicts.** `CLAUDE.md`: kept the branch's counts and
+detail plus master's Web Lock probe sentence, correcting its script path (master named
+`scripts/session-lock-probe.mjs`, which does not exist — `ci.yml:183` runs
+`scripts/verify-session-lock-probe.mjs`; source wins over docs). `LATEST.md`: kept both entry sets,
+restored the newest-first ordering the merge had interleaved (verified a pure permutation — the
+sorted line multiset is byte-identical before and after), then rotated to the 5-entry cap
+`.githooks/pre-commit` enforces, naming the rotated-out standing warnings in the header so the cap
+does not bury them.
+
+**One semantic conflict git could not see, and it vindicates doing this before the merge:** master's
+new `messaging_read_receipt_visibility_test.dart` fake overrides `ensureSession(int)`, while the
+multi-device work added `{int deviceId}` to that signature. Git merged every file cleanly and the
+tree **failed to analyze**. Merging to master without CI would have shipped that.
+
+```
+local:  analyze clean · flutter 1597/10sk · backend 1042/62 · impact selftest all passed
+        lint-ratchet PASS 906 -> 889 real (-17); floor deliberately left at 906
+        both verify-claude-*-test-counts.mjs OK
+PR #144: CONFLICTING/DIRTY -> MERGEABLE
+CI run 33228671766: SUCCESS, all four jobs
+        Backend tests 1m4s · E2E wire harness 2m8s · E2E session Web Lock probe 50s ·
+        Flutter analyze and tests 4m20s
+```
+
+**T9, T10, T11 and the D1/D2 work are CI-tested for the first time.** Exit criteria E1–E6 are met;
+only E7 (the owner's go) is open.
