@@ -386,3 +386,107 @@ flutter analyze clean · flutter test 1614 passed / 10 skipped (+7 this pass)
 on device: rendered and screenshotted before/after on the Pixel 7, Polish locale
 CI 33256270023 on 300e4e8: SUCCESS, all four jobs
 ```
+
+---
+
+## Addendum 5 — finish pass + deploy-readiness audit (`3041733`, `7768861`)
+
+The owner asked to "finish what's left and recheck if everything is ready to
+deploy", then interjected "do not merge yet". No merge, no deploy performed.
+
+### The undiagnosed defect is diagnosed and fixed
+
+A session that stays CONNECTED across a §6.2 reset kept rendering the pending
+countdown until a reload. **Confirmed from source, not guessed:** the deadline is
+server-authoritative but was fetched exactly once, at `socketReady`. Nothing
+announces a ceremony LEAVING 'pending' — `completeDueResets` says in its own
+doc-comment that completion "deliberately fans out NO notification", and
+`identityResetCancelled` covers only cancels. No timer corrected it, so a cold
+boot was the only cure.
+
+⚠️ **The scout's recommended fix was rejected.** Adding an
+`identityResetCompleted` broadcast means a new protocol contract, a §12
+amendment and a docs update on a branch one decision from merge — and it would
+NOT have explained the report, because a COMPLETED ceremony cannot hold a
+future deadline (the sweep only completes rows whose deadline has elapsed).
+Instead the client re-asks `checkOwnKeyBundle` once per minute *while a ceremony
+is held*, matching the backend's own EVERY_MINUTE sweep. `_hydrateIdentityResetState`
+already handles every terminal case, so whatever ended the ceremony the next
+answer is the truth — including the variant I could not reproduce. It re-reads
+rather than guessing, so the server stays authoritative; the timer exists only
+while a deadline or unspent completion is held, and dies in `dispose`.
+
+Falsified: dropping the timer start → `Expected: <3> / Actual: <0>`.
+
+### The P3 list, closed — with two items REJECTED on inspection
+
+A fresh scout re-verified all 9 items and **corrected my own list**: the
+reply-quote card was inlined TWICE, not three times (`text_message_content.dart`
+has none), and all the message widgets live under `lib/widgets/message/`, not
+`lib/widgets/` — which is probably what an earlier audit mistook for "these
+files do not exist".
+
+Done: the auth tabs were distinguished by **colour alone** (no `selected` state,
+so a screen reader could not tell LOGIN from REGISTER) and sat under the 48dp
+minimum; the scroll-to-bottom chevron and three tappable avatars were
+unlabelled; `auth_form`'s spinner was `colorScheme.primary` **inside a filled
+button whose fill is `buttonBg`** — primary-on-primary, invisible where they
+coincide; both composer preview bars used one grey for three dark themes;
+`avatar_circle` hardcoded white on a pale-on-light gradient; the reply-quote
+card became one `ReplyQuoteCard` (pure extraction, muted computation carried
+over unchanged, so there is no visual delta to review).
+
+**Rejected, with the reasoning now in the code so the next audit stops
+re-flagging them:** `ping_effect_overlay`'s orange is an attention signal that
+must read identically on all five themes and must never be mistaken for the
+error red or a theme's own primary (**which is red on Ember**) — and its alphas
+are baked so the badge stays `const` for the RepaintBoundary. And
+`anti_quantum_note_card`'s `_kNoteRed` shares a hex with `errorColorLight` by
+COINCIDENCE — it is half of a brand gradient, and binding it to the error token
+would let a future error-colour change silently restyle the card.
+
+### Deploy readiness — what was actually PROVEN, not assumed
+
+- ⚠️ **The version was not bumped, and that was a real blocker.** Branch and
+  master both read `0.1.20`, which is what is LIVE. `CLAUDE.md` 93 requires a
+  production release to bump PATCH, and 85 warns Flutter serves cached code
+  under an unchanged version — `curl /version.json` could not have told the
+  owner whether the deploy took effect. Bumped to **0.1.21** (`7768861`).
+- **The prod image builds and RUNS.** `backend/Dockerfile` is `node:22-alpine`
+  (musl) with no build toolchain, and this branch adds `argon2`, a NATIVE addon
+  — a plausible deploy-time failure. Built it: succeeds, and `argon2` *hashes*
+  in the stage-2 runtime (which runs its own separate `npm ci --omit=dev`),
+  because 0.45.1 ships a `linux-x64` prebuild. All 16 migrations ship in the
+  image; the version args bake correctly.
+- **The migration upgrade path is proven against realistic data**, which
+  matters because `0015` BACKFILLS `devices` from existing users and SWAPS a
+  UNIQUE index on `one_time_pre_keys`. Probe: fresh Postgres 16 → master's own
+  `0001-0012` blobs → seed 3 users / 3 bundles / 120 OTPKs → apply `0013-0016`.
+  Result: all four apply, 3/3 devices backfilled and primary, **3/3 bundles got
+  a deviceId with 0 orphans, all 120 OTPKs preserved and re-keyed**, old index
+  dropped, new index present AND rejecting a true duplicate. `0015` is also
+  re-runnable.
+  ⚠️ The first probe run was INVALID and nearly read as a pass: my seed used
+  guessed column names (`identityKey`, `signedPreKey`) that do not exist, so the
+  migrations were tested against EMPTY tables (`otpk rows before: 0`). Introspect
+  the schema; never seed from remembered column names.
+- **No new env vars.** `MEDIA_BASE_URL` looked new but exists on master already
+  and is already required in `docker-compose.prod.yml`; the branch only adds
+  reference sites.
+- Branch touches backend AND frontend ⇒ **split deploy** (§4).
+
+### Verified
+
+```
+flutter analyze clean · flutter test 1618 / 10 skipped (+4)
+npm test 1042 / 62 suites · lint ratchet PASS 906 -> 889
+both count verifiers OK · impact selftest all passed
+CI 33258252792 on 7768861: SUCCESS, all four jobs
+on device (Pixel 7, Polish): both banners collapsed and compact for the pair,
+  no phantom gap, avatar letter legible under the new readableOn computation,
+  and tapping one banner expands ONLY it — full safety text, action still shown
+```
+
+Still open and NOT blocking: KA-02 (needs an owner spec decision), Q5/(xl), U7,
+and the two-party verify-keys ceremony on a real phone (genuinely unverified —
+account 671 is fail-closed on a fresh install by design).

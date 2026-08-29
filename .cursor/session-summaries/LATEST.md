@@ -66,8 +66,32 @@ fingerprints (a human compares those digits by hand). ⚠️ **Two process lesso
 the WRONG WORKING COPY** (the main checkout, on `master`, where the branch's banners do not exist)
 and confidently reported them missing — verify a subagent's PREMISE, not just its conclusion; and
 **CI caught a break a grep missed**, because the wire harness lives in `test_e2e/`, a sibling of
-`test/`. Still open, deliberately: reply-quote card inlined ×3, two avatar conventions, sub-48dp
-auth tabs, missing `Semantics` on a few icon-only controls.
+`test/`.
+
+**Finish pass + deploy-readiness audit (same day, `3041733` → `7768861`).** Owner asked to finish
+what was left and recheck deployability, then said **"do not merge yet"** — no merge, no deploy.
+**The one undiagnosed defect is fixed:** a session that stayed CONNECTED across a §6.2 reset kept
+counting down until a reload, because the deadline is fetched ONLY at `socketReady` and nothing
+announces a ceremony leaving 'pending' (`completeDueResets` fans out nothing by design). ⚠️ The
+scout's recommended `identityResetCompleted` broadcast was **rejected** — a new wire contract plus
+§12 amendment on a pre-merge branch, and it would not even have explained the report, since a
+COMPLETED ceremony cannot hold a future deadline. The client now re-asks `checkOwnKeyBundle` while a
+ceremony is held, matching the backend's own EVERY_MINUTE sweep, which self-heals every variant.
+The P3 list is closed: auth tabs were distinguished by **colour alone** and sat under 48dp, the
+scroll-to-bottom chevron and three avatars were unlabelled, `auth_form`'s spinner was
+primary-on-primary (invisible), both preview bars used one grey for three dark themes, and the
+reply-quote card is now one widget. **Two audit items REJECTED with reasons written into the code**
+(the ping orange must never read as Ember's red primary and is `const` for a RepaintBoundary; the
+note card's red matches `errorColorLight` by coincidence, not identity). ⚠️ **Deploy blocker found
+and fixed: the version was never bumped** — branch and master both read `0.1.20`, which is LIVE, so
+`/version.json` could not have shown whether a deploy took effect. Now **0.1.21**. Proven, not
+assumed: the prod image BUILDS and `argon2` (a native addon, on musl alpine with no toolchain)
+hashes in the stage-2 runtime; and the `0015` backfill/unique-index swap was replayed on master's
+own schema with 3 users / 120 OTPKs — **all rows preserved and re-keyed, new index enforcing**.
+No new env vars. ⚠️ My FIRST migration probe was invalid and nearly read as a pass: guessed column
+names meant it tested against EMPTY tables. Introspect the schema; never seed from memory.
+Still open, non-blocking: KA-02 (owner spec decision), Q5/(xl), U7, and the two-party verify-keys
+ceremony on a real phone.
 
 The last two open defects are closed. **D1 (P0):** a completed §6.2 reset left the peer unreachable
 in both directions, and the only action offered to the user destroyed the warning while repairing
