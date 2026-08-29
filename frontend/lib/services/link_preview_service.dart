@@ -60,7 +60,7 @@ class LinkPreviewService {
     try {
       final response = await http
           .get(uri, headers: {
-            'User-Agent': 'Mozilla/5.0 (compatible; Fireplace/1.0)',
+            'User-Agent': 'Mozilla/5.0 (compatible; Umbra/1.0)',
           })
           .timeout(const Duration(seconds: 5));
 

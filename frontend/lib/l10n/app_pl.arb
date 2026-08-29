@@ -12,7 +12,7 @@
   "webPushEnableSubtitle": "Na iOS wymagane po dodaniu aplikacji do ekranu głównego",
   "webPushEnabled": "Powiadomienia push włączone",
   "webPushPermissionDenied": "Odrzucono uprawnienie do powiadomień",
-  "webPushInstallRequired": "Najpierw dodaj Fireplace do ekranu głównego (Safari -> Udostępnij -> Do ekranu początkowego)",
+  "webPushInstallRequired": "Najpierw dodaj Umbra do ekranu głównego (Safari -> Udostępnij -> Do ekranu początkowego)",
   "webPushNotSupported": "Powiadomienia push nie są obsługiwane w tej przeglądarce/sesji",
   "webPushNoChanges": "Powiadomienia push są już włączone",
   "webPushEnableFailed": "Nie udało się włączyć powiadomień push",
@@ -35,7 +35,7 @@
 
   "privacySafetyTitle": "Prywatność i bezpieczeństwo",
   "e2eEncryptionEnabled": "Szyfrowanie end-to-end jest włączone",
-  "e2eEncryptionDescription": "Twoje wiadomości są szyfrowane protokołem Signal. Tylko Ty i odbiorca możecie je odczytać. Serwery Fireplace nie mają dostępu do treści wiadomości.",
+  "e2eEncryptionDescription": "Twoje wiadomości są szyfrowane protokołem Signal. Tylko Ty i odbiorca możecie je odczytać. Serwery Umbra nie mają dostępu do treści wiadomości.",
   "yourEncryptionKeys": "Twoje klucze szyfrowania",
   "yourEncryptionKeysDescription": "Klucze są bezpiecznie przechowywane na tym urządzeniu. Po zmianie urządzenia lub reinstalacji aplikacji zostaną wygenerowane nowe klucze, a poprzedniej historii nie da się odzyskać.",
   "singleDeviceEncryption": "Szyfrowanie na jednym urządzeniu",
@@ -400,7 +400,7 @@
   "appearanceBackgroundStarfield": "Gwiazdy",
 
   "rotateDeviceTitle": "Obróć urządzenie",
-  "rotateDeviceMessage": "Fireplace działa tylko w trybie pionowym.",
+  "rotateDeviceMessage": "Umbra działa tylko w trybie pionowym.",
 
   "messageActionReply": "Odpowiedz",
   "messageActionCopy": "Kopiuj",

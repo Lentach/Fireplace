@@ -14,7 +14,7 @@ import '../config/app_config.dart';
 /// `c`/`e` live in the FRAGMENT on purpose: fragments are never transmitted
 /// in HTTP requests, so the server learns neither the conversation id nor
 /// anything it does not already know. `c` powers the reveal page's
-/// "Open Fireplace" deep link (`/?notify_conv=<c>`); `e` powers the in-chat
+/// "Open Umbra" deep link (`/?notify_conv=<c>`); `e` powers the in-chat
 /// self-destruct countdown without any server round trip.
 final RegExp _noteUrlTail =
     RegExp(r'^[0-9a-f]{32}#[A-Za-z0-9_-]+=*(&[ce]=\d+)*$');

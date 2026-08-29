@@ -173,7 +173,7 @@ abstract class AppLocalizations {
   /// No description provided for @webPushInstallRequired.
   ///
   /// In pl, this message translates to:
-  /// **'Najpierw dodaj Fireplace do ekranu głównego (Safari -> Udostępnij -> Do ekranu początkowego)'**
+  /// **'Najpierw dodaj Umbra do ekranu głównego (Safari -> Udostępnij -> Do ekranu początkowego)'**
   String get webPushInstallRequired;
 
   /// No description provided for @webPushNotSupported.
@@ -305,7 +305,7 @@ abstract class AppLocalizations {
   /// No description provided for @e2eEncryptionDescription.
   ///
   /// In pl, this message translates to:
-  /// **'Twoje wiadomości są szyfrowane protokołem Signal. Tylko Ty i odbiorca możecie je odczytać. Serwery Fireplace nie mają dostępu do treści wiadomości.'**
+  /// **'Twoje wiadomości są szyfrowane protokołem Signal. Tylko Ty i odbiorca możecie je odczytać. Serwery Umbra nie mają dostępu do treści wiadomości.'**
   String get e2eEncryptionDescription;
 
   /// No description provided for @yourEncryptionKeys.
@@ -1937,7 +1937,7 @@ abstract class AppLocalizations {
   /// No description provided for @rotateDeviceMessage.
   ///
   /// In pl, this message translates to:
-  /// **'Fireplace działa tylko w trybie pionowym.'**
+  /// **'Umbra działa tylko w trybie pionowym.'**
   String get rotateDeviceMessage;
 
   /// No description provided for @messageActionReply.

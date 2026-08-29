@@ -47,7 +47,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get webPushInstallRequired =>
-      'Najpierw dodaj Fireplace do ekranu głównego (Safari -> Udostępnij -> Do ekranu początkowego)';
+      'Najpierw dodaj Umbra do ekranu głównego (Safari -> Udostępnij -> Do ekranu początkowego)';
 
   @override
   String get webPushNotSupported =>
@@ -116,7 +116,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get e2eEncryptionDescription =>
-      'Twoje wiadomości są szyfrowane protokołem Signal. Tylko Ty i odbiorca możecie je odczytać. Serwery Fireplace nie mają dostępu do treści wiadomości.';
+      'Twoje wiadomości są szyfrowane protokołem Signal. Tylko Ty i odbiorca możecie je odczytać. Serwery Umbra nie mają dostępu do treści wiadomości.';
 
   @override
   String get yourEncryptionKeys => 'Twoje klucze szyfrowania';
@@ -1079,7 +1079,7 @@ class AppLocalizationsPl extends AppLocalizations {
   String get rotateDeviceTitle => 'Obróć urządzenie';
 
   @override
-  String get rotateDeviceMessage => 'Fireplace działa tylko w trybie pionowym.';
+  String get rotateDeviceMessage => 'Umbra działa tylko w trybie pionowym.';
 
   @override
   String get messageActionReply => 'Odpowiedz';

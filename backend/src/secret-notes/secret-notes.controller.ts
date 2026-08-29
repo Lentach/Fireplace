@@ -144,9 +144,9 @@ export class SecretNotesController {
   <h1>Anti-Quantum Note</h1>
   <p class="sub">Someone sent you a self-destructing message.<br>It will be permanently destroyed after you read it.</p>
   <button class="btn" id="revealBtn">🔓 Reveal &amp; Destroy</button>
-  <div class="expires">Expires in ${remaining} · Powered by Fireplace</div>
+  <div class="expires">Expires in ${remaining} · Powered by Umbra</div>
   <div id="error">Failed to load note. It may have already been read.</div>
-  <a class="applink" href="/">← Open Fireplace</a>
+  <a class="applink" href="/">← Open Umbra</a>
 </div>
 
 <div class="card" id="revealed" style="display:none">
@@ -154,7 +154,7 @@ export class SecretNotesController {
   <div class="revealed-header">Message revealed · Now permanently destroyed</div>
   <div class="content" id="noteContent"></div>
   <div class="footer">This note has been deleted from the server.<br>Refreshing this page will show nothing.</div>
-  <a class="applink" href="/">← Open Fireplace</a>
+  <a class="applink" href="/">← Open Umbra</a>
 </div>
 
 <script nonce="${nonce}">
@@ -244,7 +244,7 @@ document.getElementById('revealBtn').addEventListener('click', reveal);
   <div class="icon">💀</div>
   <h1>This note no longer exists</h1>
   <p>It was either already read or has expired.<br>Ask the sender to create a new one.</p>
-  <a class="applink" href="/">← Open Fireplace</a>
+  <a class="applink" href="/">← Open Umbra</a>
 </div>
 </body>
 </html>`;
