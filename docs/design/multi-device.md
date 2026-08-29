@@ -1543,6 +1543,106 @@ that is the designed outcome).
     trade-off the comment at :293-296 deliberately took the other side of. **(xlvii) changes that
     calculus — a fail-closed peer now has a working door out — so the choice is reopened, but it is
     a spec call and it is NOT taken here.**
+- **PRE-MERGE GATE ROUND (2026-08-29, three fresh reviewers on the full programme at `5c51bbd`).
+  VERDICT: DO NOT MERGE. Six P1-class findings, four of them verified line-by-line by the lead
+  against source. NONE of the six is fixed and NO amendment is ratified for them — each needs a
+  spec ruling first, and several interact. Recorded here so they cannot be lost; numbering is
+  deliberately the reviewers' ids, not amendment numerals, because they are not yet rulings.**
+  - **RC-01 (P1, VERIFIED by the lead) — a peer who was OFFLINE during a §6.2 recovery is locked
+    out permanently, silently, in both directions.** Four hops, each read in source: a device-list
+    verification failure records a diagnostic and rethrows with no alarm
+    (`encryption_provider.dart:423-428`); the accept gate withholds the recovering device's rows
+    BEFORE Signal runs, because the escape hatch covers only `originDeviceId == 1`
+    (`messaging_provider.decrypt.dart:146-162`), so `isTrustedIdentity` never records a candidate;
+    `peerIdentityChanged` is a live room emit only (`chat-key-exchange.service.ts:439-441`), so an
+    offline peer never learns; and BOTH (xlvii) doors are gated on the warning set that therefore
+    stays empty (`encryption_service.dart:280`, `encryption_provider.dart:2041`). **This is the
+    THIRD variant of the T10/T11 defect** — a completed reset leaving a conversation unreachable —
+    differing only in which side was offline, and it contradicts I7 (:87-89). The comment at
+    `decrypt.dart:142-145` reasons carefully about the OLD device 1 and never about the recovering
+    device's NEW id >= 2. Minimum fix, no wire change: on a verification failure for a peer we hold
+    a pinned account anchor for, raise the identity-changed warning through the same recorder the
+    server event uses — i.e. actually implement I7.
+  - **RC-02 (P1 adversarial / P2 as pure clock skew, VERIFIED) — dismissing the own-identity alarm
+    arms a permanent suppressor from an UNVALIDATED server string.** `occurredAt` is accepted
+    verbatim whenever it is a `String`; `dismissOwnIdentityReplaced` copies it into the persisted
+    watermark (`encryption_service.dart:501`); `recordOwnIdentityReplacedFromServer` suppresses
+    anything comparing `<=` it as a STRING (:460). The comment at :455-457 asserts "both sides are
+    ISO-8601 UTC" and nothing enforces it. A server sends `occurredAt: '9999-...'`, the user taps
+    the most natural button available, and the §6.0 offline-learn path is dead for that install
+    while the alarm still looks healthy. Non-adversarial variant: `markOwnIdentityPublished` writes
+    a DEVICE-clock watermark (+10 min) and compares it against SERVER stamps, so a fast clock
+    suppresses genuine replacements for the skew. Fix: parse at the boundary, reject unparseable or
+    far-future, compare instants not strings.
+  - **F2 (P1, VERIFIED) — one server-chosen field destroys the primary's DAK private key.** ANY
+    inbound `keyBundleUploaded` carrying integer `deviceId` + `nextListVersion` triggers
+    `_reenrollAfterReset` with no latch and no proof a replacement is owed
+    (`connection_provider.dart:934-944`). It mints a fresh DAK and `DakStore.persistArmed`
+    OVERWRITES the existing record (`dak_store.dart:106`, keyed only by userId) and is awaited at
+    `connection_provider.dart:877` — BEFORE `enrollDeviceAuthority` at :887. When the server then
+    answers `already_enrolled`, nothing is restored: the real DAK private half is gone, every later
+    `revokeDevice`/`provisionDevice` dies on `invalid_list_signature`, and the only exit is a 72 h
+    §6.2 reset. `persistArmed`'s own docstring disciplines the write-before-emit ordering but never
+    considers that the write destroys a still-valid key; `LinkCeremonyController` has the
+    restore/clear discipline this path lacks.
+  - **F3 (P1, VERIFIED) — after a §6.2 reset the orphaned roster is still SERVED, so a message is
+    silently and permanently lost.** (xlv) clause 2's guard reads `!row && pendingReplacementVersion
+    !== null` (`chat-device-list.service.ts:168`), so it covers only the NEVER-ENROLLED shape. For a
+    previously-enrolled account the teardown leaves `account_authorizations` intact ((xxix)) and its
+    stored `listCanonical` still names the pre-reset devices LIVE, so `row` exists, the guard is
+    skipped, and a peer holding the pre-reset anchor verifies that dead roster successfully. Where
+    the only live entry is device 1, `envelopeRefusal` exempts device 1 from the liveness check, the
+    row commits with `encryptedContent = null`, and the recovering device reads `none_for_device`
+    forever. Sender sees success; recipient never learns the message existed. `pendingReplacementVersion`
+    ALREADY returns non-null for both shapes, so the fix is to drop the `!row &&` conjunct.
+  - **F1 (P1, reviewer-reported, NOT independently verified by the lead) — a compromised LINKED
+    device can seize the device-list authority and permanently disable revocation.** A linked device
+    holds `ikPriv`; §6.1 accepts `sig_oldIK` as authorization for an identity replacement; the
+    (xxix) replacement-enrollment branch then admits a fresh IK-signed enrollment whenever the
+    stored one is ORPHANED, and a signature rotation orphans it exactly as a reset does. The primary
+    is evicted from the signed roster with no `deviceRevoked` and can never revoke the intruder.
+    Claimed to violate I2 and the §2 matrix row "Add/replace a device: L=no". Proposed fix: gate the
+    replacement-enrollment admission on `authorizedBy === 'reset'`, which `upsertKeyBundle` already
+    computes, rather than on mere orphaning.
+  - **F4 — KA-02 CONFIRMED REAL, and BROADER than (xlix) recorded.** The (xxxix) expected-identity
+    gate is vacuous not only on the first send after the ceremony but for EVERY cold cache (the list
+    cache is memory-only) and EVERY single-live-device peer (`notEnrolled()` synthesises device 1
+    alone), because `_accountIdentityAnchor` scans per-device rows excluding the device being built
+    and `buildSession` no-ops on a null expected identity. So it is the DEFAULT state, not an edge
+    case. Severity is below a silent MITM because `isTrustedIdentity` still alarms on the account
+    anchor — but the plaintext is already encrypted to the attacker by then, which is the
+    "build and warn" outcome (xxxix) rejected. The minimum safe fix has TWO halves and the second is
+    load-bearing: fall back to the account anchor, AND make the refusal a first-class alarm (stage
+    the offered key, add the peer to the warning set) so the (xlvii) door exists — otherwise the fix
+    trades a MITM window for a lockout. **This is the spec call (xlix) deferred, and it is still not
+    taken here.**
+  - Also open, lower: **F5 (P2)** `AccountIdentityMismatch` — the one exception meaning "this is not
+    this account's key" — is mapped to the catch-all "Recipient may not have encryption enabled",
+    staging no candidate and raising no alarm, so the verify ceremony is unreachable (it is also the
+    prerequisite for F4's fix). **F6 (P2)** the persisted rollback floor fails OPEN: a storage read
+    error is indistinguishable from "never pinned", re-opening the rollback window, which is the
+    opposite polarity to (xlviii) clause 2's own rule. **RC-03 (P2)** the (xlix) clause-1 candidate
+    re-check is evaluated only against the PRE-await slot, and `adoptAccountIdentity` returns void so
+    the caller cannot learn a candidate appeared during its storage write — the fourth instance of
+    this programme's one root cause. **RC-04 (P2)** `ensureSession` consumes the in-memory rebuild
+    flag on its first line and the durable intent is re-read ONLY at connect, so a rebuild that
+    throws in-process leaves the poisoned session in use for the rest of the process. **F7/RC-06/
+    RC-07 (P3)** `updateDeviceList` bypasses the §5.5 teardown; `regenerateIdentityAfterConfirmedLoss`
+    clears peer warnings on inverted reasoning while leaving the anchors; `stagePendingAccountIdentity`
+    remains an unguarded writer of the candidate slot (reviewer could construct no exploit).
+  - **Fixed in this round (the only one):** RC-05 (P3) — `clearAll()` cleared nine fields and no
+    ceremony state, so a pending countdown rendered over the NEXT account's session with a live
+    cancel button, and the new 1-minute re-read kept running on a logged-out session because its
+    stop condition IS that state. Fixed at `c405aaa`, falsified RED.
+  - **Reviewer claim REJECTED by the lead:** that the wire harness does not run in CI. `ci.yml:207-252`
+    boots `docker compose`, waits for backend health, and runs `flutter test test_e2e`; it was
+    observed green this session. The reviewer inferred the risk without reading the workflow.
+    **Reviewer claim UPHELD:** `RESET_PROBE` appears nowhere in `ci.yml`, so
+    `identity_reset_teardown_test.dart` — the ONLY proof that a completed reset re-keys strictly
+    within `(identity, deviceId)` (falsification 12) — is SKIPPED in CI. It is gated because
+    `/auth/register` is 10/hr/IP shared by all of `test_e2e/` and the default run already spends it
+    to the edge, so the fix is a SEPARATE job with its own compose stack (a fresh backend resets the
+    in-memory bucket), never raising the production cap to fit a test.
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the
   test-integrity findings are folded at `4c0e0bf`; the four security findings were T9. **T10 (xlv)
