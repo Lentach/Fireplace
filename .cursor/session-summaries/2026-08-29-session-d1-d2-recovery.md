@@ -490,3 +490,39 @@ on device (Pixel 7, Polish): both banners collapsed and compact for the pair,
 Still open and NOT blocking: KA-02 (needs an owner spec decision), Q5/(xl), U7,
 and the two-party verify-keys ceremony on a real phone (genuinely unverified —
 account 671 is fail-closed on a fresh install by design).
+
+### On-device acceptance suite — 12/12, and the coverage gap it closes
+
+Prompted by review: the host `flutter test` number never covered the native
+crypto asserts. `frontend/CLAUDE.md` 56-61 is explicit that
+`native_content_store_device_test.dart` is the ONLY check exercising the real
+Android Keystore, the real SQLCipher `.so` from the APK and the real native
+webcrypto — the host VM has no native webcrypto (no MSVC), so those assertions
+are `skip`ped in the 1618.
+
+⚠️ **Two corrections to the prompt, both from source.** (1) The mandate for that
+file is scoped to `lib/services/encryption/`, `auth_token_store.dart` and the
+audio seal path; **this session's diff touched NONE of them** — only providers,
+screens, widgets and l10n (`git diff --name-only d9849aa~1..HEAD -- frontend/lib`).
+So the re-run obligation was not triggered by this pass. (2) The dir is 12 tests
+(8 + 4), not 8.
+
+Ran it anyway, because the gap is real for the BRANCH even if not for this diff.
+**But not before resolving the contradiction it created:** ten minutes earlier I
+had declined to log out precisely to preserve the only working device-verification
+setup, and that file's last test destroys every content key in the real Keystore
+— strictly more destructive than the logout I refused. So:
+
+```
+adb emu avd snapshot save pre_destructive     # OK
+flutter test integration_test -d emulator-5554 # 12/12 passed (identity 4, native 8)
+adb emu avd snapshot load pre_destructive     # OK — session intact, verified by screenshot
+```
+
+Alphabetical order puts the destructive file last, which is what the doc means by
+"LAST on purpose". Snapshot first, always — the drift "database opened twice"
+warnings in the log are benign debug-build noise, not failures.
+
+**Lesson: when a mandate and a preservation decision collide, snapshot rather than
+choose.** And check whether a re-run mandate actually covers your diff before
+paying its cost.
