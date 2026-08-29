@@ -67,10 +67,10 @@ void main() {
     await store.saveIdentity(SignalProtocolAddress('42', 1), oldKey);
     // They rotate and a human accepts it: ONLY the account row advances, which
     // is the divergence the old address could not see.
-    await store.adoptAccountIdentity('42', newKey);
+    await store.adoptAccountIdentity('42', newKey, expectedPendingBase64: null);
 
     // Reference renderings of each key, via peers whose only key is that one.
-    await store.adoptAccountIdentity('43', newKey);
+    await store.adoptAccountIdentity('43', newKey, expectedPendingBase64: null);
     await store.saveIdentity(SignalProtocolAddress('44', 1), oldKey);
 
     expect(

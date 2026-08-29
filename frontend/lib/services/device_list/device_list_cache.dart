@@ -108,7 +108,31 @@ class DeviceListCache {
   /// Highest verified version ever seen per userId. Deliberately NOT dropped
   /// by [invalidate]: rollback detection must survive cache invalidation, or
   /// a server could serve v1 again by first pushing a `deviceListChanged`.
+  ///
+  /// PERSISTED via [onPinAdvanced] (amendment (xlviii) clause 3). The argument
+  /// above applies with more force to a process restart, which is a strictly
+  /// stronger invalidation than [invalidate]: while this map was
+  /// process-lifetime only, every app launch reopened the full rollback window,
+  /// so a server could re-serve any older validly-signed list — one that
+  /// re-admits a revoked device, or that downgrades a previously-enrolled peer
+  /// to `authorization: null` and defeats the (xix) check at the top of
+  /// [adopt], which reads exactly this map.
   final Map<int, int> _pinnedVersion = {};
+
+  /// Fired when a pin ADVANCES, so the owner can persist it. Never fired for a
+  /// no-change refresh.
+  void Function(int userId, int version)? onPinAdvanced;
+
+  /// Restore pins recorded by a previous process. Existing (higher) pins win —
+  /// a seed must never LOWER a floor this process already established.
+  void seedPins(Map<int, int> pins) {
+    for (final entry in pins.entries) {
+      final held = _pinnedVersion[entry.key];
+      if (held == null || entry.value > held) {
+        _pinnedVersion[entry.key] = entry.value;
+      }
+    }
+  }
 
   /// The cached verified list, or null when a fetch is needed.
   VerifiedDeviceList? cached(int userId) => _byUser[userId];
@@ -196,6 +220,7 @@ class DeviceListCache {
     _byUser[userId] = verified;
     if (pinned == null || deviceList.version > pinned) {
       _pinnedVersion[userId] = deviceList.version;
+      onPinAdvanced?.call(userId, deviceList.version);
     }
     return verified;
   }

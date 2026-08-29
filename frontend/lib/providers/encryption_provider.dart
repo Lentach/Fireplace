@@ -251,6 +251,13 @@ class EncryptionProvider extends ChangeNotifier {
       'recipientId': recipientId,
       'deviceId': deviceId,
     });
+    // Only NOW is the durable intent satisfied (amendment (xlviii) clause 1).
+    // The in-memory flag is consumed at the top of this method so concurrent
+    // callers do not each rebuild, but the persisted one must survive until a
+    // session actually exists — a throw or a kill between those two points has
+    // to leave the intent standing, or the poisoned session is reused silently
+    // on the next launch.
+    await _encryptionService.clearSessionRebuild(recipientId, deviceId);
   }
 
   /// The identity key already trusted for [recipientId] on ANY of its devices
@@ -1191,6 +1198,22 @@ class EncryptionProvider extends ChangeNotifier {
         // Same reason, one step further: without the ledger loaded, the first
         // history pass cannot tell a lost record from one never decrypted.
         await loadDecryptedLedger();
+        // Rebuild intents recorded by a PREVIOUS process (amendment (xlviii)
+        // clause 1). Seeded before the flag flips, for the same reason as the
+        // two loads above: a send that wins the race would otherwise reuse a
+        // session the last run already knew was poisoned. Seeding the
+        // in-memory set keeps the hot path in ensureSession untouched — one
+        // membership test, no storage read per send.
+        _forceSessionRebuild.addAll(_encryptionService.pendingSessionRebuilds);
+        // Rollback floors from previous launches, and the write-through that
+        // keeps them durable (amendment (xlviii) clause 3). Seeded BEFORE the
+        // flag flips: the (xix) refusal inside DeviceListCache.adopt reads this
+        // floor, so a list adopted against an empty one would accept a
+        // rollback this device had already ruled out.
+        _deviceListCache.seedPins(_encryptionService.deviceListPins);
+        _deviceListCache.onPinAdvanced = (peerId, version) {
+          _encryptionService.recordDeviceListPin(peerId, version);
+        };
         _e2eInitialized = true;
         debugPrint('[E2E] Encryption service initialized');
         _e2eFlowLog('E2E_INIT_DONE', {
@@ -2000,16 +2023,24 @@ class EncryptionProvider extends ChangeNotifier {
     int peerId, {
     String? adoptIdentityBase64,
   }) async {
+    // Capture the addresses BEFORE anything else: the cached list is the only
+    // record of which devices we ever addressed, and device 1 covers the legacy
+    // single-device address that predates any list.
+    final known = _deviceListCache.cached(peerId);
+    final addresses = <int>{1, ...?known?.liveDeviceIds};
+    // Record the rebuild intent DURABLY BEFORE the anchor advances (amendment
+    // (xlviii) clause 1). The advance and the warning clear are both persisted,
+    // so if this write came second a kill in between would leave a peer marked
+    // "resolved" with no warning and a session still keyed to the replaced
+    // identity. Recording first can only over-record: if the acknowledgement is
+    // refused we clear it below, and a crash before that costs one pre-key
+    // fetch instead of a message.
+    await _encryptionService.recordSessionRebuilds(peerId, addresses);
     final advanced = await _encryptionService.acknowledgePeerIdentity(
       peerId,
       adoptIdentityBase64: adoptIdentityBase64,
     );
     if (advanced) {
-      // Capture the addresses BEFORE invalidating: the cached list is the only
-      // record of which devices we ever addressed, and device 1 covers the
-      // legacy single-device address that predates any list.
-      final known = _deviceListCache.cached(peerId);
-      final addresses = <int>{1, ...?known?.liveDeviceIds};
       _deviceListCache.invalidate(peerId);
       for (final deviceId in addresses) {
         markSessionRebuild(peerId, deviceId: deviceId);
@@ -2018,6 +2049,11 @@ class EncryptionProvider extends ChangeNotifier {
         'peerId': peerId,
         'rebuiltAddresses': addresses.toList(),
       });
+    } else {
+      // Explicitly refused: nothing advanced, so nothing is poisoned and the
+      // speculative intent above names no real damage. Only an EXPLICIT refusal
+      // clears it — an exception leaves it standing, which is the safe side.
+      await _encryptionService.clearSessionRebuildsFor(peerId);
     }
     notifyListeners();
     return advanced;

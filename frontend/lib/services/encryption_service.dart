@@ -298,25 +298,49 @@ class EncryptionService {
         advanced = true;
         source = 'displayed_candidate';
       } else {
-        // Not (or no longer) the candidate. The only other value a human may
-        // legitimately confirm is the key already pinned — a re-affirmation
-        // that advances nothing but resolves the warning.
+        // The CAS refused, and it refuses for two materially different reasons
+        // that MUST NOT be conflated (amendment (xlix)): either nothing is
+        // staged, or something DIFFERENT is staged. Read the slot before
+        // considering a re-affirmation, because [adoptAccountIdentity] drops
+        // the candidate and the caller below consumes the warning — so taking
+        // the re-affirmation first would destroy the only record of a key that
+        // arrived under the open dialog AND the sole door back to this
+        // ceremony. A malicious server reaches exactly that state by serving
+        // the HONEST key (so the out-of-band comparison succeeds) and
+        // injecting a ciphertext of its own while the user reads the number
+        // aloud; the user's CORRECT confirmation would otherwise be the
+        // instrument that erases the evidence.
+        final pending = await _identityStore.pendingAccountIdentity(name);
+        final pendingBase64 = pending == null
+            ? null
+            : base64Encode(pending.serialize());
+        if (pendingBase64 != null && pendingBase64 != supplied) {
+          E2ePersistentDiag.record('PEER_IDENTITY_ADOPT_REFUSED', {
+            'peerId': peerId,
+            'reason': 'candidate_changed_since_display',
+          });
+          return false;
+        }
+        // Nothing staged (or the slot already holds exactly what was
+        // confirmed): the one remaining value a human may legitimately
+        // confirm is the key already pinned — a re-affirmation that advances
+        // nothing but resolves the warning.
         final pinned = await _identityStore.getAccountIdentity(name);
         if (pinned != null && base64Encode(pinned.serialize()) == supplied) {
-          await _identityStore.adoptAccountIdentity(name, pinned);
+          await _identityStore.adoptAccountIdentity(
+            name,
+            pinned,
+            expectedPendingBase64: pendingBase64,
+          );
           advanced = true;
           source = 'reaffirmed_pin';
         } else {
-          // Either an unrecorded key, or the candidate changed under the open
-          // dialog. Both mean the same thing to the user: what you compared is
-          // not what would be pinned, so nothing is pinned and the warning
-          // stands. The caller must re-display before asking again.
-          final pending = await _identityStore.pendingAccountIdentity(name);
+          // An unrecorded key: what the user compared is not what would be
+          // pinned, so nothing is pinned and the warning stands. The caller
+          // must re-display before asking again.
           E2ePersistentDiag.record('PEER_IDENTITY_ADOPT_REFUSED', {
             'peerId': peerId,
-            'reason': pending == null
-                ? 'unrecorded_key'
-                : 'candidate_changed_since_display',
+            'reason': 'unrecorded_key',
           });
           return false;
         }
@@ -344,6 +368,21 @@ class EncryptionService {
   /// new device/browser sign-in on the peer's side, so callers must not word
   /// it as an attack.
   Future<void> recordPeerIdentityChangedFromServer(int peerId) async {
+    // (xlviii) clause 2. The userId on this event is whatever the server says,
+    // and nothing here used to check it. A peer this device holds NO account
+    // anchor for has no identity to have CHANGED — there is nothing to compare
+    // in the ceremony and nothing to repair — so recording one is pure noise
+    // that competes for the capped persisted set. ~200 forged ids were enough
+    // to evict a genuine warning across a restart, and since (xlvii) that
+    // warning is the SOLE door to recovery: the flood deleted the repair path
+    // for a peer the server had itself broken.
+    if (!await _hasPinnedAccountIdentity(peerId)) {
+      E2ePersistentDiag.record('PEER_IDENTITY_CHANGED_IGNORED', {
+        'peerId': peerId,
+        'reason': 'no_local_anchor',
+      });
+      return;
+    }
     if (!_peersWithChangedIdentity.add(peerId)) return;
     E2ePersistentDiag.record('PEER_IDENTITY_CHANGED', {
       'peerId': peerId,
@@ -351,6 +390,21 @@ class EncryptionService {
     });
     onPeerIdentityChanged?.call(peerId);
     await _persistIdentityChanged();
+  }
+
+  /// Whether this device holds a pinned ACCOUNT identity for [peerId].
+  ///
+  /// Uncertainty answers YES on purpose: losing a genuine identity warning is
+  /// far worse than recording a spurious one, so an unready store or a storage
+  /// error must not become a silent filter on safety notices.
+  Future<bool> _hasPinnedAccountIdentity(int peerId) async {
+    if (!_initialized) return true;
+    try {
+      final pinned = await _identityStore.getAccountIdentity(peerId.toString());
+      return pinned != null;
+    } catch (_) {
+      return true;
+    }
   }
 
   // ---------- Own-identity-replaced alarm (Phase 0a, spec §6.0) ----------
@@ -471,13 +525,18 @@ class EncryptionService {
     if (userId == null) return;
     try {
       final prefs = await _sharedPrefs;
-      // Highest ids kept, same rule as the retired set: bounded degradation (an
-      // old warning drops off) beats an unbounded key competing with the Signal
-      // session records for quota.
-      final sorted = _peersWithChangedIdentity.toList()..sort();
-      final kept = sorted.length > _identityChangedCap
-          ? sorted.sublist(sorted.length - _identityChangedCap)
-          : sorted;
+      // Bounded degradation (an old warning drops off) beats an unbounded key
+      // competing with the Signal session records for quota — but the eviction
+      // MUST be by recency, not by id (xlviii clause 2). This used to sort the
+      // ids and keep the tail, i.e. the 200 numerically HIGHEST, which drops
+      // the LOWEST id: merely the oldest account, and therefore the likeliest
+      // to be a real long-standing contact. `_peersWithChangedIdentity` is a
+      // LinkedHashSet, so iteration order IS insertion order and the tail is
+      // the most recently warned.
+      final ordered = _peersWithChangedIdentity.toList();
+      final kept = ordered.length > _identityChangedCap
+          ? ordered.sublist(ordered.length - _identityChangedCap)
+          : ordered;
       await prefs.setString(_identityChangedKey(userId), jsonEncode(kept));
     } catch (_) {}
   }
@@ -491,6 +550,150 @@ class EncryptionService {
       final decoded = jsonDecode(raw);
       if (decoded is! List) return;
       _peersWithChangedIdentity.addAll(decoded.whereType<int>());
+    } catch (_) {}
+  }
+
+  // ---------- Persisted session-rebuild intent (amendment (xlviii) clause 1) --
+
+  /// Addresses whose Signal session must be rebuilt before the next send,
+  /// as `peerId:deviceId`.
+  ///
+  /// Persisted because the reason it gets set is persisted. A confirmed
+  /// (xlvii) recovery advances the account anchor AND clears the identity
+  /// warning — both durable — while the intent to rebuild the sessions that
+  /// the old key poisoned used to live only in provider memory. Killing the
+  /// app in between therefore left a peer whose anchor said "resolved", whose
+  /// warning was gone, and whose session was still keyed to the identity the
+  /// user had just replaced: the next send silently encrypted to a key the
+  /// peer no longer holds, destroying a message that had one copy.
+  ///
+  /// Insertion-ordered and capped like the warning set: bounded degradation
+  /// beats an unbounded key competing with the session records for quota.
+  final Set<String> _pendingSessionRebuilds = <String>{};
+
+  static const int _sessionRebuildCap = 200;
+
+  String _sessionRebuildKey(int userId) => 'e2e_${userId}_session_rebuild_v1';
+
+  static String _rebuildEntry(int peerId, int deviceId) => '$peerId:$deviceId';
+
+  /// Every persisted rebuild intent, as `(peerId, deviceId)` pairs.
+  Set<(int, int)> get pendingSessionRebuilds {
+    final out = <(int, int)>{};
+    for (final entry in _pendingSessionRebuilds) {
+      final parts = entry.split(':');
+      if (parts.length != 2) continue;
+      final peerId = int.tryParse(parts[0]);
+      final deviceId = int.tryParse(parts[1]);
+      if (peerId == null || deviceId == null) continue;
+      out.add((peerId, deviceId));
+    }
+    return out;
+  }
+
+  /// Durably record that [addresses] of [peerId] need a session rebuild.
+  ///
+  /// Called BEFORE the anchor advances, on purpose (clause 1): a kill between
+  /// the two MUST leave a redundant rebuild rather than a cleared warning over
+  /// a poisoned session. A redundant rebuild costs one pre-key fetch and one
+  /// one-time pre-key; the other ordering costs a message.
+  Future<void> recordSessionRebuilds(int peerId, Iterable<int> addresses) async {
+    var added = false;
+    for (final deviceId in addresses) {
+      if (_pendingSessionRebuilds.add(_rebuildEntry(peerId, deviceId))) {
+        added = true;
+      }
+    }
+    if (!added) return;
+    await _persistSessionRebuilds();
+  }
+
+  /// Drop the persisted intent for one address, once a rebuild really happened.
+  Future<void> clearSessionRebuild(int peerId, int deviceId) async {
+    if (!_pendingSessionRebuilds.remove(_rebuildEntry(peerId, deviceId))) return;
+    await _persistSessionRebuilds();
+  }
+
+  /// Drop every persisted intent for [peerId] — the acknowledgement was
+  /// refused, so nothing advanced and nothing is poisoned.
+  Future<void> clearSessionRebuildsFor(int peerId) async {
+    final prefix = '$peerId:';
+    final before = _pendingSessionRebuilds.length;
+    _pendingSessionRebuilds.removeWhere((e) => e.startsWith(prefix));
+    if (_pendingSessionRebuilds.length == before) return;
+    await _persistSessionRebuilds();
+  }
+
+  Future<void> _persistSessionRebuilds() async {
+    final userId = _userId;
+    if (userId == null) return;
+    try {
+      final prefs = await _sharedPrefs;
+      final ordered = _pendingSessionRebuilds.toList();
+      final kept = ordered.length > _sessionRebuildCap
+          ? ordered.sublist(ordered.length - _sessionRebuildCap)
+          : ordered;
+      await prefs.setString(_sessionRebuildKey(userId), jsonEncode(kept));
+    } catch (_) {}
+  }
+
+  Future<void> _loadSessionRebuilds(int userId) async {
+    try {
+      final prefs = await _sharedPrefs;
+      final raw = prefs.getString(_sessionRebuildKey(userId));
+      if (raw == null) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return;
+      _pendingSessionRebuilds.addAll(decoded.whereType<String>());
+    } catch (_) {}
+  }
+
+  // ---------- Persisted device-list rollback pins (xlviii clause 3) ----------
+
+  /// Highest device-list version ever verified per PEER userId.
+  ///
+  /// The floor the (xix) rollback refusal reads. Persisted because a process
+  /// restart is a stronger cache invalidation than the one the pin was already
+  /// designed to survive: while it lived only in memory, every app launch let a
+  /// server re-serve an older validly-signed list — including one that
+  /// re-admits a device the peer had revoked.
+  final Map<int, int> _deviceListPins = {};
+
+  /// Pins recorded by this and previous processes, for seeding the cache.
+  Map<int, int> get deviceListPins => Map.unmodifiable(_deviceListPins);
+
+  String _deviceListPinsKey(int userId) => 'e2e_${userId}_devicelist_pins_v1';
+
+  /// Durably record that [peerId]'s list verified at [version]. Monotonic: a
+  /// lower version never lowers the floor.
+  Future<void> recordDeviceListPin(int peerId, int version) async {
+    final held = _deviceListPins[peerId];
+    if (held != null && version <= held) return;
+    _deviceListPins[peerId] = version;
+    final userId = _userId;
+    if (userId == null) return;
+    try {
+      final prefs = await _sharedPrefs;
+      await prefs.setString(
+        _deviceListPinsKey(userId),
+        jsonEncode(_deviceListPins.map((k, v) => MapEntry(k.toString(), v))),
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _loadDeviceListPins(int userId) async {
+    try {
+      final prefs = await _sharedPrefs;
+      final raw = prefs.getString(_deviceListPinsKey(userId));
+      if (raw == null) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return;
+      decoded.forEach((key, value) {
+        final peerId = int.tryParse(key.toString());
+        if (peerId == null || value is! int) return;
+        final held = _deviceListPins[peerId];
+        if (held == null || value > held) _deviceListPins[peerId] = value;
+      });
     } catch (_) {}
   }
 
@@ -535,6 +738,13 @@ class EncryptionService {
     // work can add to the set.
     await _loadIdentityChanged(userId);
     await _loadOwnIdentityReplaced(userId);
+    // Rebuild intents outlive the process that recorded them (clause 1): a
+    // recovery confirmed just before the app died must still repair its
+    // sessions on the next launch.
+    await _loadSessionRebuilds(userId);
+    // Rollback floors from previous launches (clause 3), before any device list
+    // can be adopted against an empty floor.
+    await _loadDeviceListPins(userId);
 
     // A THROWING read propagates: a storage error must never be read as "no
     // keys". Only a definitive absence reaches the server-backed fresh-install
@@ -681,6 +891,10 @@ class EncryptionService {
     // too, or the banners outlive the event that explains them.
     _peersWithChangedIdentity.clear();
     await _persistIdentityChanged();
+    // A key regeneration invalidates every session anyway, so a rebuild intent
+    // recorded against the old ones names nothing.
+    _pendingSessionRebuilds.clear();
+    await _persistSessionRebuilds();
 
     await _generateKeys();
     needsKeyUpload = true;

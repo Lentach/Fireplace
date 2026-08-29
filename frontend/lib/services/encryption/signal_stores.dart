@@ -678,7 +678,7 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
   }
 
   /// The user compared [identity] against [name]'s own copy out of band and
-  /// accepted it. Pins it as the account anchor and drops any candidate.
+  /// accepted it. Pins it as the account anchor.
   ///
   /// The escape hatch for a peer whose recovery path fail-closed before any
   /// candidate could be recorded (amendment (xlvii) clause 3): after a
@@ -690,11 +690,30 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
   /// fingerprint — never from a path that merely received bytes. The key is
   /// server-supplied and untrusted; the out-of-band comparison is the entire
   /// defence, exactly as it is on first contact (I7).
-  Future<void> adoptAccountIdentity(String name, IdentityKey identity) async {
+  ///
+  /// **[expectedPendingBase64] is REQUIRED and clears the candidate slot only
+  /// when the slot still holds exactly that value** (amendment (xlix) clause
+  /// 2). This method used to delete the candidate unconditionally, which let a
+  /// re-affirmation of the pinned key destroy a DIFFERENT key that had arrived
+  /// under the open dialog — and, because the caller clears the persisted
+  /// warning on success, destroy the only door back to this ceremony with it.
+  /// Pass null to assert "no candidate was observed": a candidate that appeared
+  /// since is then deliberately LEFT IN PLACE, because keeping evidence is the
+  /// safe direction. The parameter is required rather than defaulted so no
+  /// future caller can inherit the unguarded behaviour by omission.
+  Future<void> adoptAccountIdentity(
+    String name,
+    IdentityKey identity, {
+    required String? expectedPendingBase64,
+  }) async {
     final key = _accountKey(name);
     await _storage.write(key: key, value: encodedOf(identity));
     _trustedMemo[key] = identity;
-    await _storage.delete(key: _pendingKey(name));
+    if (expectedPendingBase64 == null) return;
+    final pendingKey = _pendingKey(name);
+    final stored = await _storage.read(key: pendingKey);
+    if (stored != expectedPendingBase64) return;
+    await _storage.delete(key: pendingKey);
   }
 
   bool _sameIdentity(IdentityKey a, IdentityKey b) {

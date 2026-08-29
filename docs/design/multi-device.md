@@ -1437,6 +1437,112 @@ that is the designed outcome).
     matters more now that this warning is the sole door to recovery; (c) the device-list rollback
     pin is process-lifetime only. All three predate this amendment; (a) is newly load-bearing
     because of clause 3.
+- **Amendment 2026-08-29 (D3, ratified BEFORE the fix; the owner asked whether the three residuals
+  (xlvii) recorded needed attention, and reading them against source found all three real, none
+  terminal, and the FIRST DRAFT OF THIS AMENDMENT OVERSTATED (a) — the correction is recorded below
+  because a spec that exaggerates a risk trains the same dismissal a false alarm does):**
+  - **(xlviii) A recovery the user has completed MUST survive a restart.** (xlvii) made a reset peer
+    recoverable, but left the recovery's load-bearing state in memory while the part that CLOSES the
+    door is persisted. Proven from source, not inferred: `_forceSessionRebuild` is a bare
+    `Set<(int, int)>` (`encryption_provider.dart:52`), cleared on both disconnect (:1902) and login
+    (:1936); adoption marks rebuild through it and nothing else (:2015 — deliberately NOT
+    `deleteSession`, since that was removed for wiping archived ratchet states and turning in-flight
+    messages into permanent Bad-MAC loss); `ensureSession` returns early on
+    `hasSession && !needsRebuild` (:192); and the warning that is the SOLE door to the ceremony is
+    removed and persisted the instant the anchor advances (`encryption_service.dart:334-335`).
+    The composition is the defect, and no single line is wrong. **Confirm the ceremony, close the app
+    before the next send to that peer, and the poisoned session is silently reused.** The blast
+    radius is shape-dependent, and this is the part the first draft got wrong:
+    - **Enrolled peer, post-§6.2 reset (the (xlv) shape): benign.** The teardown allocates a FRESH
+      device id and ids are never reused ((a)), so after a restart the refetched list names a new
+      address with no session at all; the poisoned record is orphaned and never addressed again.
+    - **Non-enrolled peer (the common single-device shape): one lost message.** Such a peer is
+      device 1 by construction (`VerifiedDeviceList.notEnrolled()`), so the address is stable and
+      `hasSession(peer, 1)` is TRUE for the poisoned record. Our next send uses it, the peer cannot
+      decrypt it, and they render `[Decryption failed]` on a plaintext that had one copy. Repair
+      then arrives from THEM, not us: `messaging_provider.decrypt.dart:475-481` states the standing
+      rule that "our own outbound session stays untouched — it either still works, or the peer sends
+      US `sessionRebuildNeeded` (the one legitimate setter of the force-rebuild flag)", and their
+      bad-MAC path (:1556) emits exactly that. **So the conversation self-heals after one destroyed
+      message; it is not permanently broken, and the claim that it was is withdrawn.** What remains
+      is a real cost paid by a user who did everything the ceremony asked, plus the fact that
+      (xlvii)'s clause-4 suppression means they are never re-warned and never learn why.
+    Three clauses:
+    1. **The force-rebuild intent MUST be persisted per account**, written BEFORE the anchor
+       advances and cleared only once a rebuild has actually happened. The ordering is the whole
+       point: an ill-timed kill MUST leave a redundant rebuild, NEVER a cleared warning standing
+       over a poisoned session. A redundant rebuild costs one pre-key fetch and one OTP; the other
+       direction destroys a message that had exactly one copy, and hides the reason from both ends.
+    2. **The persisted warning set MUST evict by INSERTION ORDER, not by numeric peer id**
+       (`encryption_service.dart:501` sorts ints and keeps the tail — the 200 numerically HIGHEST
+       ids), **and a server-sourced `peerIdentityChanged` MUST be ignored for a peer this device
+       holds NO pinned account identity for** (the recorder added unconditionally, with no check on
+       a userId the server chose freely). Otherwise ~200 forged events naming high userIds evict a
+       genuine warning across a restart, and a malicious server both breaks a peer relationship AND
+       deletes the repair path. Eviction is a quota, so it MUST drop the least recently warned peer —
+       never the one with the smallest id, which is merely the OLDEST ACCOUNT and therefore the
+       likeliest to be a real long-standing contact.
+       **The anchor IS the contact check, and deliberately so:** no roster needs wiring into the
+       crypto layer, because a peer this device holds no anchor for has no identity to have CHANGED —
+       there is nothing for the ceremony to compare and nothing to repair — while every peer the
+       alarm legitimately fires for is by construction one whose old key we pinned. Uncertainty
+       (store not ready, storage error) MUST resolve to RECORDING the warning: losing a genuine
+       safety notice is worse than keeping a spurious one, so this gate must never become a silent
+       filter that fails closed against the user.
+    3. **The device-list rollback pin MUST be persisted per account** (`device_list_cache.dart:111`
+       is a bare `Map<int, int>`). Its own comment already argues rollback detection must survive
+       cache invalidation; a process restart is a strictly stronger invalidation. After one, the
+       client re-accepts any older validly-signed list — including one that re-admits a revoked
+       device, or that downgrades a previously-enrolled peer to `authorization: null` in defiance of
+       (xix).
+    **Deliberately NOT fixed here:** persistence does not make recovery ATOMIC — the anchor advance
+    and the poison drop remain separate writes, and clause 1 resolves that by choosing the redundant
+    rebuild as the safe failure rather than by adding a transaction. And a contact check NARROWS the
+    (xlvii) widening without closing it: a server can still summon the ceremony for any real contact,
+    which remains governed by the out-of-band comparison and by (xl) as the durable end state.
+- **Amendment 2026-08-29 (D4, ratified BEFORE the fix; found by a fresh security review of the
+  (xlvii) ceremony, and it is the THIRD defect in this programme with one root cause — a slot that
+  is read and then acted on while other writers can move it):**
+  - **(xlix) Re-affirming the pinned key MUST NOT destroy a candidate that arrived after the
+    fingerprint was displayed.** The compare-and-swap added for (xlvii) clause 2 closed the
+    substitution path, but it has a bypass. `promotePendingAccountIdentity` returns false for two
+    materially different reasons — NOTHING is staged, or a DIFFERENT key is staged — and
+    `acknowledgePeerIdentity` conflates them: on any refusal it falls through to a re-affirmation
+    branch (`encryption_service.dart:300-308`) which, when the confirmed key equals the current pin,
+    calls `adoptAccountIdentity`. That method deletes the pending slot unconditionally
+    (`signal_stores.dart:697`), and the caller then clears and persists the warning (:334-335).
+    **The refusal the situation calls for already exists ten lines below (:314-321,
+    `candidate_changed_since_display`) and is simply unreachable whenever the confirmed key happens
+    to equal the pin.**
+    The exploit needs a malicious server and no user error whatsoever. It summons the ceremony for
+    contact P; the clause-3 probe the dialog itself emits tells the server the dialog is open right
+    now; it answers with P's HONEST key, so `offerMatchesPin` holds and the out-of-band comparison
+    SUCCEEDS; and while the user is reading the number aloud it delivers a ciphertext from a live
+    device of P under a key of its own, which `isTrustedIdentity` writes into the candidate slot and
+    the per-device row. The user's CORRECT confirmation then deletes the candidate, consumes the
+    warning, and leaves the attacker's key in the `(P, device)` row — where (xlvii) clause 4
+    guarantees it never alarms again, because the ACCOUNT anchor is honest. **A user who did
+    everything right is the instrument that destroys the evidence.** Two clauses:
+    1. **The re-affirmation branch MUST read the candidate slot BEFORE it decides.** A candidate
+       that differs from the confirmed key means something wrote it after the display, which is
+       exactly `candidate_changed_since_display` — refuse, leave the warning standing, and make the
+       caller re-display. Re-affirmation is legitimate ONLY when the slot is empty or already holds
+       the confirmed key.
+    2. **`adoptAccountIdentity` MUST NOT drop a candidate it was not asked about.** The (xlvii)
+       lesson was that "the pinned key is the key the human saw" has to be STRUCTURAL rather than a
+       convention held by one call site; the same applies to destroying an alarm. It may clear the
+       slot only when the slot holds the identity being adopted, so no unguarded mutator of that
+       slot remains for a future caller to find.
+    **Recorded, NOT fixed, and it needs a spec decision rather than a patch:** the human-verified
+    account anchor is not passed to `buildSession` as the (xxxix) expected identity — the provider
+    resolves that from the PER-DEVICE rows of the cached list and skips the device being built
+    (`encryption_provider.dart:276-300`), so for a peer with ONE live device (every account that just
+    completed §6.2) the candidate set is empty, the anchor is null, and the fail-closed gate at
+    `encryption_service.dart:978-989` is vacuous on the first send after the ceremony. Passing the
+    account anchor there would fail-close every legitimate account-wide rotation, which is the
+    trade-off the comment at :293-296 deliberately took the other side of. **(xlvii) changes that
+    calculus — a fail-closed peer now has a working door out — so the choice is reopened, but it is
+    a spec call and it is NOT taken here.**
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the
   test-integrity findings are folded at `4c0e0bf`; the four security findings were T9. **T10 (xlv)

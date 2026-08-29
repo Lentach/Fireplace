@@ -49,16 +49,28 @@ flutter test test_e2e
 
 Two headless accounts run the REAL `ApiService`+`SocketService`+`EncryptionService` (real libsignal) against the local backend: register → WS key upload → friendship → conversation → PreKey(3:)/whisper(2:) round trips → mid-conversation session rebuild → edit → reactions, asserting decryption both ends. Fresh accounts every run BY DESIGN (server keeps old unused OTPs oldest-first; reuse ⇒ phantom bad-MAC). Register throttle 10/hr/IP is in-memory — `docker compose restart backend` resets it. The harness resets the flutter_test binding's HTTP-blocking `HttpOverrides` globally (`enableRealNetwork()`); found the burned-but-never-served OTP backend bug on its first run.
 
-On-device acceptance for the encrypted content store (`integration_test/` — also a sibling of
-`test/`, so the default suite never picks it up; needs a running emulator or phone, and CANNOT run
-in CI). It is the only check that exercises the REAL Android Keystore, the REAL SQLCipher `.so` from
-the APK and the REAL native webcrypto — the host VM has no webcrypto native (no MSVC), so those
-crypto assertions are `skip`ped in `flutter test` and only run here. Re-run it after touching
-anything under `lib/services/encryption/`, `auth_token_store.dart`, or the audio seal path:
+On-device acceptance (`integration_test/` — also a sibling of `test/`, so the default suite never
+picks it up; needs a running emulator or phone, and CANNOT run in CI). Two files, two different
+reasons to exist:
+
+- `native_content_store_device_test.dart` (8 tests) — the encrypted content store. The only check
+  that exercises the REAL Android Keystore, the REAL SQLCipher `.so` from the APK and the REAL
+  native webcrypto — the host VM has no webcrypto native (no MSVC), so those crypto assertions are
+  `skip`ped in `flutter test` and only run here. Re-run after touching anything under
+  `lib/services/encryption/`, `auth_token_store.dart`, or the audio seal path. **Destructive and
+  LAST on purpose:** its final test destroys every content key in the real Keystore.
+- `identity_recovery_durability_device_test.dart` (4 tests) — amendments (xlviii)/(xlix). Every
+  property it asserts is a PERSISTENCE property, and the unit suite proves them against
+  `SharedPreferences.setMockInitialValues`, an in-memory map that cannot fail the way a device
+  fails. It constructs `EncryptionService` TWICE over the same on-device storage; the second
+  construction is the relaunch. Re-run after touching the persisted session-rebuild intent, the
+  identity-warning set, or the device-list rollback pin.
 
 ```powershell
 cd frontend
-flutter test integration_test -d <deviceId>   # 8 tests, ~1-4 min incl. the gradle build
+flutter test integration_test -d <deviceId>   # 12 tests, ~2-9 min incl. the gradle build
+# or one file:
+flutter test integration_test/identity_recovery_durability_device_test.dart -d <deviceId>
 ```
 
 Local devices:

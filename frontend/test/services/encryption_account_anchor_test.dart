@@ -197,7 +197,11 @@ void main() {
 
     await peerStore.saveIdentity(address, oldKey);
     // The human compared fingerprints and accepted the new key.
-    await peerStore.adoptAccountIdentity('$peerId', acceptedKey);
+    await peerStore.adoptAccountIdentity(
+      '$peerId',
+      acceptedKey,
+      expectedPendingBase64: null,
+    );
 
     final changed = <String>[];
     peerStore.onIdentityChanged = (a) => changed.add(a.getName());
@@ -222,7 +226,11 @@ void main() {
   test('a key matching NEITHER the row nor the anchor still reports', () async {
     final address = SignalProtocolAddress('$peerId', 1);
     await peerStore.saveIdentity(address, freshKey());
-    await peerStore.adoptAccountIdentity('$peerId', freshKey());
+    await peerStore.adoptAccountIdentity(
+      '$peerId',
+      freshKey(),
+      expectedPendingBase64: null,
+    );
 
     final changed = <String>[];
     peerStore.onIdentityChanged = (a) => changed.add(a.getName());
