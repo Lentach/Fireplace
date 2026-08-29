@@ -172,3 +172,38 @@ CI run 33228671766: SUCCESS, all four jobs
 
 **T9, T10, T11 and the D1/D2 work are CI-tested for the first time.** Exit criteria E1–E6 are met;
 only E7 (the owner's go) is open.
+
+---
+
+## Addendum 2 — candidate promotion is now compare-and-swap (`5b95e6d`, CI green)
+
+Raised in review of the clause-3 work, and correct: the ceremony reads the
+pending-candidate slot **twice** — once to display a fingerprint, once to promote — and that slot
+has several unconditional writers (`saveIdentity` via `isTrustedIdentity` on any inbound ciphertext,
+and the `stagePendingAccountIdentity` that clause 3 itself added). `promotePendingAccountIdentity`
+re-read the slot and promoted whatever was there at confirm time, so a key change landing in between
+meant **the user compared fingerprint A out of band and pinned key B** — the clause 2 defect wearing
+a different hat.
+
+The earlier guard compared the supplied key against the stored candidate *before* promoting, which
+closed the common case but left the window between that check and the promotion's own read.
+
+`promotePendingAccountIdentity` now takes `expectedIdentityBase64` and promotes **only** if the
+stored candidate still equals it. The service passes the exact bytes the UI displayed, so promotion
+is atomic — the displayed key or nothing. A refusal records
+`candidate_changed_since_display` / `unrecorded_key`, keeps the peer in the alarm set, and returns
+false.
+
+**The dialog no longer closes on a refusal.** It re-reads, shows the fingerprint actually on offer
+now, and states that nothing was confirmed and why. Closing would have dropped the user back to a
+standing warning that silently did not clear, with no hint that what they compared was stale.
+
+Falsified: deleting the compare-and-swap yields `Expected: false / Actual: <true>` — key B pinned,
+the exact substitution this prevents. The race test drives the competing write through the **real**
+`SecureIdentityKeyStore` on the service's own storage prefix, so it models a genuine second writer
+rather than a test-only seam.
+
+```
+flutter analyze clean · flutter test 1599 passed / 10 skipped
+CI run 33229485935 on 5b95e6d: SUCCESS, all four jobs
+```
