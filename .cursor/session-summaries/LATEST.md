@@ -2,9 +2,45 @@
 
 Entries are newest-first. Each one links its dated file, which holds the full account.
 
+## 2026-08-29 — D1/D2 fixed under (xlvii); the multi-device work queue is EMPTY except the owner's merge
+
+**`2026-08-29-session-d1-d2-recovery.md` · commit `c33c3b3`, pushed. Nothing merged, nothing
+deployed.** The amendment index now runs **(a)–(xlvii)**.
+
+The last two open defects are closed. **D1 (P0):** a completed §6.2 reset left the peer unreachable
+in both directions, and the only action offered to the user destroyed the warning while repairing
+nothing — the accept gate withholds the peer's rows before Signal runs, so no candidate is ever
+recorded, and `acknowledgePeerIdentity` cleared the alarm on its first line regardless. Recovery now
+runs off the peer's currently-served key, compared out of band and pinned only on human
+confirmation, and is proven end to end: `DEVICE_LIST_REJECTED` → `PEER_IDENTITY_SERVED` →
+`PEER_IDENTITY_ADOPTED` → `DEVICE_LIST_VERIFIED liveDevices:[5]`. **D2 (P1) was worse than filed:**
+the verify dialog displayed the pinned anchor while confirm promoted a different, never-shown
+candidate — **the ceremony verified one number and adopted another**, which inverts the defence
+rather than degrading it.
+
+**E3 gate: three reviewers, no P0, no P1, every P2 and P3 folded** — including the programme's
+signature failure (the spec-mandated poison-clearing was asserted nowhere and could have been
+deleted with the suite green) and a real concurrency regression this change introduced (the new
+identity probe shared `ensureSession`'s pending-fetch map and ate its force-rebuild flag).
+Adoption is now structural: only a key this device recorded can ever be pinned.
+
+**⚠ The one thing every future reader must know: CI has been BLIND on this branch since 2026-08-19,
+and the long-standing explanation was wrong.** It is not the `push` trigger. PR #144 is open and
+`pull_request` has no branch filter, so pushes here did run the full workflow — until master
+diverged and the PR went `CONFLICTING`, after which GitHub cannot compute the merge ref and
+schedules **nothing at all**: no run, no failure, no annotation. **T9, T10, T11 and `c33c3b3` have
+never been CI-tested.** Do not add the branch to `push`; make the PR mergeable instead. Re-measured
+against current master (brand now renamed to Umbra, 28 commits ahead): **2 conflicts, both docs
+(`CLAUDE.md` and this file), zero code conflicts.** Resolve `CLAUDE.md` carefully — the count
+verifiers gate exactly those lines, and the right values are the branch's (**1584 Flutter / 10
+skipped**, **1042 backend / 62 suites**). Detail in `.planning/multi-device/FINISH-HERE.md` §6a.
+
+Exit criteria E1–E5 are met and reproduced first-hand. **E6 (CI) is asked, not done**, because
+unblocking it changes the merge candidate. E7 is the owner's go.
+
 **➡ PICKING THIS PROGRAM UP COLD?** Read this file, then the newest dated summary it names, then root
 `CLAUDE.md` §3/§7, then the frozen spec `docs/design/multi-device.md` (§5.x plus **every** dated §12
-amendment, now (a)–(xlvi)), then `docs/plans/2026-08-19-phase2-stage0-decision-record.md`. **There is
+amendment, now (a)–(xlvii)), then `docs/plans/2026-08-19-phase2-stage0-decision-record.md`. **There is
 no live per-ticket handoff and there should not be** — `2026-08-22-HANDOFF-T8-start-here.md` expired the
 moment T8 closed and now carries a SUPERSEDED banner. Eight such briefs have rotted; the books plus
 `.planning/multi-device/` are the permanent handoff. **T1–T11 are built, reviewed and WIRE-PROVEN.
