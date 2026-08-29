@@ -7,6 +7,8 @@ import '../push_android_stub.dart'
     if (dart.library.io) 'android_fcm_local_notifications.dart' as push_android;
 import '../utils/pending_deep_link_stub.dart'
     if (dart.library.html) '../utils/pending_deep_link_web.dart';
+import '../utils/page_lifecycle_stub.dart'
+    if (dart.library.html) '../utils/page_lifecycle_web.dart';
 import 'api_service.dart';
 import 'web_push_bridge_stub.dart'
     if (dart.library.html) 'web_push_bridge_web.dart';
@@ -78,8 +80,16 @@ class PushService {
       if (onNavigateToConversation != null) {
         _webPushBridge.listenForNotificationClicks((convId) {
           // Click handled live — drop the SW's IndexedDB fallback record so it
-          // cannot re-trigger navigation on the next cold start.
-          clearPendingNotificationDeepLink().ignore();
+          // cannot re-trigger navigation on the next cold start. EXCEPT while a
+          // frozen-page reload may follow (freeze-reload guard): the SW's
+          // queued click message flushes on the same thaw, and this record is
+          // then the ONLY carrier of the tapped conversation across the
+          // reload — deleting it would cold-boot onto the conversations list
+          // (field bug, users 48/90, Aug 2026). A record left behind is
+          // bounded: consumed-and-deleted by the next drain, max age 5 min.
+          if (!frozenPageReloadImminent()) {
+            clearPendingNotificationDeepLink().ignore();
+          }
           if (convId != null) onNavigateToConversation(convId);
         });
       }

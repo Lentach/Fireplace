@@ -762,7 +762,7 @@ extension MessagingSend on MessagingProvider {
     );
 
     // Key encoded as base64url for URL fragment (#KEY). The fragment also
-    // carries c=<convId> (reveal page's "Open Fireplace" deep link back into
+    // carries c=<convId> (reveal page's "Open Umbra" deep link back into
     // this chat) and e=<expiry epoch ms> (in-chat self-destruct countdown).
     // Fragments never travel in HTTP requests — the server sees none of it.
     final keyBase64Url = base64Url.encode(keyBytes);

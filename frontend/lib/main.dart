@@ -150,7 +150,7 @@ class FireplaceApp extends StatelessWidget {
       child: Consumer<SettingsProvider>(
         builder: (context, settings, _) {
           return MaterialApp(
-            title: 'Fireplace',
+            title: 'Umbra',
             debugShowCheckedModeBanner: false,
             scrollBehavior: const AppScrollBehavior(),
             builder: (context, child) {

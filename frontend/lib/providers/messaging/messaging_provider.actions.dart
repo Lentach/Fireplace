@@ -8,7 +8,16 @@ part of '../messaging_provider.dart';
 
 /// User- and timer-driven mutations: read / clear / delete / pin / react / expiry.
 extension MessagingActions on MessagingProvider {
+  /// Do NOT emit READ from a backgrounded client. A hidden PWA with a mounted
+  /// chat route used to mark every arriving message READ while the user was
+  /// away (field bug, users 48/90, Aug 2026). Fail-open on a missing provider:
+  /// desktop and existing tests keep the old behavior. Recovery marking on
+  /// return is guaranteed because every foreground path refetches history
+  /// (connection_provider._onSocketReady / _resyncAfterResume /
+  /// chat_resume_reassert.dart) and that refetch calls markConversationRead
+  /// again with this gate passing.
   void markConversationRead(int conversationId) {
+    if (_conversationsProvider?.isClientVisible == false) return;
     _emit?.call('markConversationRead', {'conversationId': conversationId});
   }
 

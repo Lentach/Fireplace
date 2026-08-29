@@ -446,7 +446,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'FIREPLACE',
+                      'UMBRA',
                       style: RpgTheme.bodyFont(
                         fontSize: 10,
                         color: colorScheme.primary,

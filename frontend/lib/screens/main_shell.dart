@@ -15,6 +15,8 @@ import '../providers/friends_provider.dart';
 import 'chat_detail_screen.dart';
 import '../utils/pending_deep_link_stub.dart'
     if (dart.library.html) '../utils/pending_deep_link_web.dart';
+import '../utils/page_lifecycle_stub.dart'
+    if (dart.library.html) '../utils/page_lifecycle_web.dart';
 import '../utils/e2e_diag_log.dart';
 import '../utils/tab_visibility.dart';
 import '../utils/instant_opaque_route.dart';
@@ -40,6 +42,8 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   int _selectedIndex = 0;
   StreamSubscription<dynamic>? _tabVisibilitySub;
+  StreamSubscription<dynamic>? _pageResumeSub;
+  StreamSubscription<dynamic>? _freezeReloadSub;
   UnreadBadgeSync? _unreadBadgeSync;
 
   @override
@@ -70,23 +74,54 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           }
           return;
         }
-        unawaited(() async {
-          await auth.ensureSessionReady();
-          if (!mounted) return;
-          if (!auth.isLoggedIn) return;
-          context.read<ConversationsProvider>().setClientVisible(true);
-          context.read<ConnectionProvider>().ensureReconnectIfNeeded();
-          // iOS PWA: a notification tap on a suspended WebView loses the SW's
-          // click postMessage — the SW also persisted the target conversation
-          // to IndexedDB, so drain it now that the tab is visible again.
-          final pendingConvId = await consumePendingNotificationDeepLink();
-          if (pendingConvId != null && mounted) {
-            context
-                .read<ConversationsProvider>()
-                .requestNavigateToConversationFromNotification(pendingConvId);
-          }
-        }());
+        unawaited(_recoverForeground(markVisible: true));
       });
+      // bfcache restore: the snapshot is coherent, only the socket is dead —
+      // soft recovery. `resume` after a TAB FREEZE is different: the thawed
+      // Flutter engine is untrustworthy (mid-screen composer, lag, dead chat
+      // — field bug on 0.1.18, users 48/90), so a frozen page is REPLACED via
+      // the freeze-reload guard below, mimicking the swipe-close + icon
+      // relaunch users prove works. The pending deep-link survives in
+      // IndexedDB; the loop guard degrades to this same soft recovery.
+      _pageResumeSub = registerPageShowRecoveryListener(() {
+        if (!mounted) return;
+        E2eDiagLog.add('PAGE_RESUME', {'source': 'pageshow'});
+        unawaited(_recoverForeground(markVisible: false));
+      });
+      _freezeReloadSub = installFreezeReloadGuard(
+        onFallbackRecover: () {
+          if (!mounted) return;
+          E2eDiagLog.add('PAGE_RESUME', {'source': 'freeze-loop-guard'});
+          unawaited(_recoverForeground(markVisible: false));
+        },
+      );
+      if (consumeFrozenReloadMarker()) {
+        // This boot IS the replacement of a frozen page — the only surviving
+        // evidence, since the RAM diag log died with the reloaded page.
+        E2eDiagLog.add('BOOT_AFTER_FROZEN', {});
+      }
+    }
+  }
+
+  Future<void> _recoverForeground({required bool markVisible}) async {
+    final auth = context.read<AuthProvider>();
+    await auth.ensureSessionReady();
+    if (!mounted) return;
+    if (!auth.isLoggedIn) return;
+    // Only a real visibility signal may claim "user is looking": a background
+    // unfreeze must not re-enable read receipts or server push suppression.
+    if (markVisible) {
+      context.read<ConversationsProvider>().setClientVisible(true);
+    }
+    context.read<ConnectionProvider>().ensureReconnectIfNeeded();
+    // iOS PWA: a notification tap on a suspended WebView loses the SW's
+    // click postMessage — the SW also persisted the target conversation
+    // to IndexedDB, so drain it now that the tab is visible again.
+    final pendingConvId = await consumePendingNotificationDeepLink();
+    if (pendingConvId != null && mounted) {
+      context
+          .read<ConversationsProvider>()
+          .requestNavigateToConversationFromNotification(pendingConvId);
     }
   }
 
@@ -131,6 +166,8 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       unawaited(badge.dispose());
     }
     _tabVisibilitySub?.cancel();
+    _pageResumeSub?.cancel();
+    _freezeReloadSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
