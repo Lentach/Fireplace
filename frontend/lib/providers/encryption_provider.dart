@@ -2006,6 +2006,23 @@ class EncryptionProvider extends ChangeNotifier {
     _ownDeviceId = 1;
     _ownDeviceIdConfirmed = false;
     _deviceListCache.clear();
+    // The §6.2 ceremony belongs to the ACCOUNT, and this provider is a process
+    // singleton reused across logins. Left standing, user A's countdown renders
+    // over user B's session — with a live cancel button that emits
+    // `resetIdentityCancel` on B's socket — until B's first `ownKeyBundleStatus`
+    // happens to correct it. A false security countdown attributed to the wrong
+    // account is exactly the alarm that teaches users to dismiss alarms.
+    //
+    // The refresh timer must die with that state or it keeps asking the server
+    // about a ceremony on a session that is logged out: `_syncIdentityResetRefresh`
+    // stops only when the state below is already cleared, so it is called AFTER.
+    _identityResetDeadline = null;
+    _identityResetShortened = false;
+    _identityResetCompleted = false;
+    _identityResetRequestStatus = null;
+    _identityResetAnswerTimeout?.cancel();
+    _identityResetAnswerTimeout = null;
+    _syncIdentityResetRefresh();
     _cancelPendingFetches();
     notifyListeners();
   }

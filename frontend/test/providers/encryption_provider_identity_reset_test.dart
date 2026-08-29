@@ -579,6 +579,71 @@ void main() {
           );
         });
       });
+
+      // Found by review: this provider is a process singleton, so ceremony
+      // state left standing at logout renders over the NEXT account's session.
+      test('logout takes the countdown and the re-read with it', () {
+        fakeAsync((async) {
+          provider.onIdentityResetPending({
+            'deadlineAt': DateTime.now()
+                .toUtc()
+                .add(const Duration(hours: 72))
+                .toIso8601String(),
+            'shortened': true,
+          });
+          expect(provider.identityResetDeadline, isNotNull);
+
+          provider.clearAll();
+
+          expect(
+            provider.identityResetDeadline,
+            isNull,
+            reason: "user A's countdown must not render over user B's session",
+          );
+          expect(provider.identityResetShortened, isFalse);
+          expect(provider.identityResetCompleted, isFalse);
+
+          emitted.clear();
+          async.elapse(const Duration(minutes: 5));
+          expect(
+            emitted.where((e) => e.event == 'checkOwnKeyBundle'),
+            isEmpty,
+            reason: 'a logged-out session must stop asking about a ceremony',
+          );
+        });
+      });
+
+      // A completed grant is unspent until an upload consumes it, and that
+      // transition has no event either — so it keeps re-reading, then stops.
+      test('an unspent completed grant re-reads, and stops once consumed', () {
+        fakeAsync((async) {
+          provider.onOwnKeyBundleStatus({
+            'exists': true,
+            'identityReset': {'status': 'completed'},
+          });
+          expect(provider.identityResetCompleted, isTrue);
+
+          emitted.clear();
+          async.elapse(const Duration(minutes: 2));
+          expect(
+            emitted.where((e) => e.event == 'checkOwnKeyBundle').length,
+            2,
+            reason: 'an unspent grant is still live state worth re-reading',
+          );
+
+          provider.onOwnKeyBundleStatus({
+            'exists': true,
+            'identityReset': null,
+          });
+          emitted.clear();
+          async.elapse(const Duration(minutes: 5));
+          expect(
+            emitted.where((e) => e.event == 'checkOwnKeyBundle'),
+            isEmpty,
+            reason: 'consumed grant ends the re-read',
+          );
+        });
+      });
     },
   );
 }
