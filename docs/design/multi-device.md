@@ -1560,9 +1560,31 @@ that is the designed outcome).
     THIRD variant of the T10/T11 defect** — a completed reset leaving a conversation unreachable —
     differing only in which side was offline, and it contradicts I7 (:87-89). The comment at
     `decrypt.dart:142-145` reasons carefully about the OLD device 1 and never about the recovering
-    device's NEW id >= 2. Minimum fix, no wire change: on a verification failure for a peer we hold
-    a pinned account anchor for, raise the identity-changed warning through the same recorder the
-    server event uses — i.e. actually implement I7.
+    device's NEW id >= 2.
+    **Minimum fix, no wire change — and it MUST discriminate on `e.reason`, which the first draft of
+    this entry did not say.** Raising the warning on EVERY `DeviceListVerificationException` would
+    hand a malicious or merely broken server a way to permanently flag every contact as
+    identity-changed by answering junk: that trades a silent lockout for a server-driven false alarm
+    on the same I7 surface, and a surface that cries wolf is the one users learn to dismiss. The
+    reasons are NOT interchangeable, so the gate is an ALLOW-LIST of exactly two — default-deny, so a
+    reason code added later cannot silently start raising alarms:
+    - `invalid_enrollment_signature` (`device_authority_engine.dart:365`) — the enrollment does not
+      verify under the identity THIS device pinned. That is I7's "invalid chain" and it is precisely
+      the post-§6.2 anchor mismatch RC-01 is about. **WARN.**
+    - `version_rollback` (`device_authority_engine.dart:390`, `device_list_cache.dart:185`) — I7
+      names rollback explicitly. **WARN.**
+    - `invalid_list_signature` (:374) is NOT a warn: the enrollment verified under our pinned anchor,
+      so the identity is RIGHT and only the inner DAK signature failed. Fail closed, as today.
+    - `malformed_answer` (:354), `invalid_canonical` (:381), `user_mismatch` (:384),
+      `version_mismatch` (:387) all mean "the server sent garbage", which is none of I7's three
+      conditions and is not evidence about any peer's key. Fail closed, no alarm.
+    - `no_tofu_identity` (`device_list_cache.dart:192`) is definitionally not an identity change: we
+      hold no anchor, so there is no identity to have changed. It also subsumes the "only for a peer
+      we hold a pinned anchor for" precondition.
+    Note this is NOT in tension with (xlviii) clause 2's rule that uncertainty resolves toward
+    WARNING. That rule governs OUR OWN uncertainty — a storage read we cannot complete — where the
+    safe side is to warn. This governs the SERVER's assertion being unparseable, which is not
+    evidence of an identity change at all. Different uncertainties, opposite safe sides.
   - **RC-02 (P1 adversarial / P2 as pure clock skew, VERIFIED) — dismissing the own-identity alarm
     arms a permanent suppressor from an UNVALIDATED server string.** `occurredAt` is accepted
     verbatim whenever it is a `String`; `dismissOwnIdentityReplaced` copies it into the persisted
