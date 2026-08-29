@@ -1799,6 +1799,20 @@ that is the designed outcome).
        offer already rides every authenticated upload until it is taken.
     This also removes the need for a latch: an unlimited number of spurious offers now costs an
     unlimited number of refused enrollments and destroys nothing.
+    **DELIBERATELY OUT OF SCOPE, and still unruled: whether an inbound `keyBundleUploaded` offer is
+    GENUINE.** (liii) is an ordering ruling only — stage, emit, commit-or-restore — and it must not
+    be read as having settled offer authenticity. The two questions were conflated in an earlier
+    write-up of this finding, which described the fix as needing "a decision on how the client proves
+    a re-enrollment offer is genuine"; that decision turned out to be unanswerable rather than
+    pending, because the row the client would check the offer against is the orphaned one. So the
+    ordering fix stands alone and needs no policy call.
+    What remains, and is NOT decided here: an unauthenticated offer can still be replayed without
+    limit. After (liii) that costs a mint plus a refused enrollment per offer and destroys nothing —
+    which is why no latch was added — but it is unbounded work driven by a server-controlled field,
+    and it is the same shape as the (a)-sanctioned allocator burn recorded under F8. If it is ever
+    ruled on, the candidate mechanisms are a per-`(deviceId, version)` one-shot, or requiring the
+    offer to arrive as the ANSWER to an upload this device actually made rather than as an unsolicited
+    push. Both are cheap; neither is needed for correctness now.
 
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the
