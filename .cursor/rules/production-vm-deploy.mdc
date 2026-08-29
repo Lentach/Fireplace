@@ -55,10 +55,12 @@ subscribe fails (`push service error` / delivery `400`).
 
 **⚠️ exit-21 silent publish halt = KASPERSKY (identified 2026-08-29 after 12 recurrences since 07-08).**
 Symptom: build succeeds, log dies at the `=== Publish via ssh/scp ===` banner, exit code 21, nothing
-published, no error. Cause: Kaspersky interferes with the script mid-run — the owner caught it
-DELETING `deploy-web.ps1` from the working tree during a deploy (twice: 08-20 and 08-29; restore
-with `git checkout -- deploy-web.ps1`). **Durable fix: add a Kaspersky exclusion for the repo
-directory (or at minimum `deploy-web.ps1` + powershell.exe launched from it) — owner action.**
+published, no error. Cause: Kaspersky targets the deploy scripts themselves (a .ps1 doing ssh/scp
+trips its heuristic) — it DELETED `deploy-web.ps1` twice (08-20, 08-29) and `deploy-landing.ps1`
+once (08-29, in the landing repo); restore with `git checkout -- <script>`. It also killed
+`deploy-landing.ps1` mid-run the same way (exit-21 at the swap banner). **Durable fix: add
+Kaspersky exclusions for BOTH repo directories (`fireplace`, `fireplace-landing`), or at minimum
+both .ps1 files + powershell.exe launched from them — owner action.**
 Until excluded: on exit-21 run the manual staged publish (identical to the script's else-branch):
 `ssh VM "rm -rf ~/web-staging && mkdir -p ~/web-staging"` → `scp -r frontend/build/web VM:web-staging`
 → `ssh VM 'test -f ~/web-staging/web/version.json && cd ~/fireplace && rm -rf frontend-build &&
