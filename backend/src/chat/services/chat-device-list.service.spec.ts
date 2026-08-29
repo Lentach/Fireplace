@@ -208,4 +208,35 @@ describe('ChatDeviceListService.handleGetDeviceList entitlement', () => {
       authorization: null,
     });
   });
+
+  // --- (l): the same refusal must cover the ENROLLED shape --------------
+  // A §6.2 teardown deliberately LEAVES the enrollment row ((xxix)) and only
+  // stamps `devices.revokedAt`, so `listCanonical` still names the pre-reset
+  // devices as live. The peer's pinned anchor VERIFIES that dead roster, since
+  // the enrollment was signed by the very key it pinned.
+
+  it('REFUSES an ENROLLED account that owes a replacement enrollment', async () => {
+    // The default beforeEach row is present; only the owed replacement differs.
+    validateCanMessage.mockResolvedValue({ valid: true });
+    pendingReplacementVersion.mockResolvedValue(4);
+
+    await get(TARGET);
+
+    // Before (l) the `!row` conjunct skipped the guard here and served the
+    // orphaned roster, and the sender was shown a SUCCESSFUL send while the
+    // recipient never learned the message existed.
+    expect(emit).not.toHaveBeenCalled();
+  });
+
+  it('serves an enrolled account that owes nothing, so the guard is not a blanket refusal', async () => {
+    validateCanMessage.mockResolvedValue({ valid: true });
+    pendingReplacementVersion.mockResolvedValue(null);
+
+    await get(TARGET);
+
+    expect(emit).toHaveBeenCalledWith(
+      'deviceList',
+      expect.objectContaining({ userId: TARGET }),
+    );
+  });
 });

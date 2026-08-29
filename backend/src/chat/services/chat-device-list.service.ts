@@ -165,26 +165,37 @@ export class ChatDeviceListService {
       }
       const row = await this.deviceListService.getAuthorization(dto.userId);
       if (
-        !row &&
         (await this.deviceListService.pendingReplacementVersion(dto.userId)) !==
-          null
+        null
       ) {
-        // Amendment (xlv) clause 2. `authorization: null` is not merely "no
-        // enrollment row" on the wire — the client answers it by SYNTHESIZING
-        // the single device 1 that a non-enrolled account is supposed to have
-        // by construction. A completed §6.2 reset breaks that construction:
-        // ids are never reused ((a)), so the recovering device is id >= 2 and
-        // device 1 is revoked, while the teardown deliberately writes no
-        // enrollment row ((xxix)). Answering `null` here would tell every peer
-        // to encrypt to a device that CANNOT RECEIVE, and the send path has no
-        // way to notice: the loss is silent and permanent in both directions.
+        // Amendment (xlv) clause 2, widened to every account shape by (l).
         //
-        // So refuse, exactly as an entitlement refusal does — silence is
-        // fail-closed on the client (I5: "cannot verify", never "no devices"),
-        // which downgrades silent message loss to a visible send failure until
-        // the recovering device re-enrolls (clause 1).
+        // Two shapes reach here, and BOTH serve a roster that cannot receive:
+        //
+        //  * NO enrollment row. `authorization: null` is not merely "not
+        //    enrolled" on the wire — the client answers it by SYNTHESIZING the
+        //    single device 1 a non-enrolled account has by construction. A
+        //    completed §6.2 reset breaks that construction: ids are never
+        //    reused ((a)), so the recovering device is id >= 2 and device 1 is
+        //    revoked.
+        //  * A SURVIVING enrollment row, which is the shape (l) fixes. The
+        //    teardown deliberately leaves the row ((xxix)) and only stamps
+        //    `devices.revokedAt`, so `listCanonical` still names the pre-reset
+        //    devices LIVE. A peer holding the pre-reset anchor VERIFIES that
+        //    dead roster — the enrollment was signed by the very key it pinned
+        //    — and where the only live entry is device 1 the envelope is
+        //    accepted (device 1 is exempt from the liveness refusal), commits
+        //    with `encryptedContent = null`, and the recovering device reads
+        //    `none_for_device` forever. The sender sees success.
+        //
+        // Either way the loss is silent, permanent and bidirectional, and the
+        // send path cannot notice. So refuse, exactly as an entitlement
+        // refusal does — silence is fail-closed on the client (I5: "cannot
+        // verify", never "no devices"), which downgrades silent message loss
+        // to a visible send failure until the recovering device re-enrolls
+        // ((xlv) clause 1).
         this.logger.warn(
-          `[device-list] REFUSED targetUserId=${dto.userId} reason=no_addressable_device (un-enrolled account whose live devices exclude device 1 — post-reset, awaiting re-enrollment)`,
+          `[device-list] REFUSED targetUserId=${dto.userId} reason=no_addressable_device (replacement enrollment owed — post-reset or post-rotation; enrolled=${row != null})`,
         );
         return;
       }

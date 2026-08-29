@@ -1665,6 +1665,34 @@ that is the designed outcome).
     `/auth/register` is 10/hr/IP shared by all of `test_e2e/` and the default run already spends it
     to the edge, so the fix is a SEPARATE job with its own compose stack (a fresh backend resets the
     in-memory bucket), never raising the production cap to fit a test.
+- **Amendment 2026-08-29 (D5, ratified BEFORE the fix; from the pre-merge gate round, finding F3):**
+  - **(l) A roster that CANNOT RECEIVE must be refused for every account shape, not only the
+    never-enrolled one.** (xlv) clause 2 established the rule and its reasoning is unchanged: telling
+    a peer to encrypt to a device that cannot receive is silent, permanent, bidirectional message
+    loss, and silence is fail-closed on the client (I5), so refusing downgrades that loss to a
+    visible send failure until the recovering device re-enrolls. The DEFECT is that the guard was
+    written `!row && pendingReplacementVersion(userId) !== null`
+    (`chat-device-list.service.ts:167-171`), and the `!row` conjunct silently restricts it to the
+    account shape that has no enrollment row at all. A §6.2 teardown deliberately LEAVES the row
+    ((xxix)) while stamping `devices.revokedAt`, so for every previously-enrolled account `row` is
+    present, the guard is skipped, and the stored `listCanonical` — which still names the pre-reset
+    devices as LIVE — is served. A peer holding the pre-reset TOFU anchor verifies that dead roster
+    SUCCESSFULLY, because the enrollment was signed by exactly the key it pinned. Where the surviving
+    list's only live entry is device 1, `envelopeRefusal` exempts device 1 from the liveness check,
+    the row commits with `encryptedContent = null`, and the recovering device (a fresh id >= 2) reads
+    `none_for_device` forever: the sender is shown a successful send and the recipient never learns
+    the message existed.
+    **The predicate already computes the right answer for both shapes** — `pendingReplacementVersion`
+    returns `stored.listVersion + 1` whenever the stored enrollment no longer verifies under the
+    account's currently published identity, and its own docstring (`device-list.service.ts:118-121`)
+    names the "previously enrolled" case. So the ruling is simply: **drop the `!row &&` conjunct.**
+    Refuse whenever a replacement is owed, for both shapes.
+    **This also covers the §6.1 signature-authorized rotation, deliberately.** Such a rotation
+    orphans the enrollment exactly as a reset does, and `purgeSupersededDevices` leaves the rotating
+    device as the only published bundle — so the stored roster likewise names devices that can no
+    longer receive, and refusing it is correct for the same reason. (Whether that rotation should be
+    able to orphan an enrollment AT ALL is finding F1 and is NOT decided here.)
+
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the
   test-integrity findings are folded at `4c0e0bf`; the four security findings were T9. **T10 (xlv)
