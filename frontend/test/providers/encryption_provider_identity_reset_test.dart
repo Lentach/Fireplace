@@ -499,6 +499,81 @@ void main() {
         expect(service.ownIdentityReplacedAt, isNull);
       },
     );
+
+    // Amendment (li) clause 1. The value the server sends becomes the persisted
+    // DISMISSAL WATERMARK the instant the user taps dismiss, and everything at
+    // or below it is suppressed forever.
+    test(
+      'an absurd server timestamp cannot become a permanent off switch',
+      () async {
+        // ONE service, shared with the provider: the watermark is written by
+        // the dismissal and read by the hydration, so asserting against a
+        // SEPARATE instance would pass with the bug fully intact.
+        final service = EncryptionService();
+        final owner = EncryptionProvider(service: service);
+        addTearDown(owner.dispose);
+
+        // The alarm still raises — the EVENT is the alarm, the timestamp is
+        // only metadata — but the poisoned instant must not be what is stored.
+        owner.onOwnIdentityReplaced({'occurredAt': '9999-01-01T00:00:00Z'});
+        expect(service.ownIdentityReplacedAt, isNotNull);
+        expect(
+          service.ownIdentityReplacedAt,
+          isNot(startsWith('9999')),
+          reason: 'the stored instant must be ours, not the forged one',
+        );
+
+        await owner.dismissOwnIdentityReplaced();
+
+        // A genuine replacement, strictly newer than our own fallback stamp.
+        await service.recordOwnIdentityReplacedFromServer(
+          DateTime.now()
+              .toUtc()
+              .add(const Duration(minutes: 1))
+              .toIso8601String(),
+        );
+        expect(
+          service.ownIdentityReplacedAt,
+          isNotNull,
+          reason: 'a forged far-future watermark must not silence §6.0',
+        );
+      },
+    );
+
+    test('an unparseable instant is ignored by the hydration path', () async {
+      final service = EncryptionService();
+
+      await service.recordOwnIdentityReplacedFromServer('not-a-date');
+
+      expect(
+        service.ownIdentityReplacedAt,
+        isNull,
+        reason: 'an unorderable value cannot be ordered against the watermark',
+      );
+    });
+
+    test('the self-publish suppression is ONE report, not a time window', () async {
+      final service = EncryptionService();
+      await service.markOwnIdentityPublished();
+
+      // Our own republish, reported back: suppressed.
+      await service.recordOwnIdentityReplacedFromServer(
+        DateTime.now().toUtc().toIso8601String(),
+      );
+      expect(service.ownIdentityReplacedAt, isNull);
+
+      // A SECOND replacement is somebody else's, and must alarm. Under the old
+      // device-clock watermark this stayed silent for ten minutes — and for the
+      // whole skew on a device whose clock ran fast.
+      await service.recordOwnIdentityReplacedFromServer(
+        DateTime.now().toUtc().add(const Duration(seconds: 1)).toIso8601String(),
+      );
+      expect(
+        service.ownIdentityReplacedAt,
+        isNotNull,
+        reason: 'only the first report is ours; the next one is an alarm',
+      );
+    });
   });
 
   // A ceremony leaving 'pending' has NO server event: `completeDueResets`

@@ -434,6 +434,36 @@ class EncryptionService {
   String _ownIdentityReplacedSeenKey(int userId) =>
       'e2e_${userId}_own_identity_replaced_seen_v1';
 
+  /// One-shot: THIS device published a new identity and the server has not yet
+  /// reported it back. Amendment (li) clause 2 — replaces a device-clock
+  /// watermark, because that clock was compared against SERVER stamps and a
+  /// fast clock silently suppressed every genuine replacement for the skew.
+  bool _ownPublishUnacknowledged = false;
+
+  String _ownPublishUnackKey(int userId) =>
+      'e2e_${userId}_own_publish_unacked_v1';
+
+  /// How far ahead of us a server instant may legitimately sit. Generous on
+  /// purpose: this bounds ABSURDITY (a `9999-…` suppressor), not clock skew.
+  static const Duration _maxServerInstantSkew = Duration(days: 1);
+
+  /// Amendment (li) clause 1. Parses a server-supplied instant and returns the
+  /// CANONICAL UTC form, or null when the value cannot be trusted to order.
+  ///
+  /// Every downstream comparison of these values is a STRING compare, which is
+  /// sound only for a canonical representation — so canonicalising here is what
+  /// makes that soundness structural instead of an assumption in a comment.
+  static String? normalizeServerInstant(String? raw) {
+    if (raw == null) return null;
+    final parsed = DateTime.tryParse(raw);
+    if (parsed == null) return null;
+    final utc = parsed.toUtc();
+    if (utc.isAfter(DateTime.now().toUtc().add(_maxServerInstantSkew))) {
+      return null;
+    }
+    return utc.toIso8601String();
+  }
+
   Future<void> recordOwnIdentityReplaced(String occurredAt) async {
     _ownIdentityReplacedAt = occurredAt;
     E2ePersistentDiag.record('OWN_IDENTITY_REPLACED', {
@@ -454,19 +484,28 @@ class EncryptionService {
   ///
   /// Ignores anything the user already dismissed, and anything not newer than
   /// what is already showing, so reconnect churn cannot re-raise a handled
-  /// alarm. String comparison is sound here: both sides are ISO-8601 UTC.
+  /// alarm. The comparison is a string compare, which is sound because every
+  /// value that reaches here has been through [normalizeServerInstant] — the
+  /// assumption a comment used to assert, now enforced ((li) clause 1).
   Future<void> recordOwnIdentityReplacedFromServer(String occurredAt) async {
-    final seen = _ownIdentityReplacedSeenAt;
-    if (seen != null && occurredAt.compareTo(seen) <= 0) return;
-    final current = _ownIdentityReplacedAt;
-    if (current != null && occurredAt.compareTo(current) <= 0) return;
-    await recordOwnIdentityReplaced(occurredAt);
-  }
+    // Defence in depth: the provider normalizes, and so do we. An unorderable
+    // instant is IGNORED on this path — hydration exists only to order a past
+    // event against the watermark, and a server that withholds the field
+    // entirely already achieves this, so ignoring grants it nothing new.
+    final normalized = normalizeServerInstant(occurredAt);
+    if (normalized == null) return;
 
-  /// Clock skew allowed when suppressing the alarm for a replacement THIS
-  /// device performed: the audit row is stamped by the server, the watermark by
-  /// this device, and the two clocks are not the same clock.
-  static const Duration _ownPublishSkewAllowance = Duration(minutes: 10);
+    // Amendment (li) clause 2: the report of OUR OWN republish, consumed once.
+    if (_ownPublishUnacknowledged) {
+      await _clearOwnPublishUnacknowledged();
+      return;
+    }
+    final seen = _ownIdentityReplacedSeenAt;
+    if (seen != null && normalized.compareTo(seen) <= 0) return;
+    final current = _ownIdentityReplacedAt;
+    if (current != null && normalized.compareTo(current) <= 0) return;
+    await recordOwnIdentityReplaced(normalized);
+  }
 
   /// Records that THIS device published a new identity, so the connect-time
   /// hydration does not report that replacement back as a warning.
@@ -476,21 +515,31 @@ class EncryptionService {
   /// replaced them — an alarm about the recovery they just performed, on a
   /// fresh install that has no dismissal watermark to suppress it.
   ///
-  /// The margin means a genuine replacement by another session within ten
-  /// minutes of our own publish is not surfaced by THIS path. That is a narrow
-  /// window, and one an unauthorized replacement cannot even reach: the
-  /// registration lock refuses it unless it is signed or spends a ceremony.
+  /// A ONE-SHOT flag, not a time window ((li) clause 2). The old form wrote a
+  /// DEVICE-clock watermark ten minutes ahead and compared it against
+  /// SERVER-stamped instants, so a fast device clock silently suppressed every
+  /// genuine replacement for the whole skew. The blind spot is now exactly one
+  /// report instead of ten minutes of them, and it involves no clock at all —
+  /// and an unauthorized replacement still cannot reach it, because the §6.1
+  /// registration lock refuses one that is neither signed nor spending a
+  /// ceremony.
   Future<void> markOwnIdentityPublished() async {
-    final watermark = DateTime.now()
-        .toUtc()
-        .add(_ownPublishSkewAllowance)
-        .toIso8601String();
-    _ownIdentityReplacedSeenAt = watermark;
+    _ownPublishUnacknowledged = true;
     final userId = _userId;
     if (userId == null) return;
     try {
       final prefs = await _sharedPrefs;
-      await prefs.setString(_ownIdentityReplacedSeenKey(userId), watermark);
+      await prefs.setInt(_ownPublishUnackKey(userId), 1);
+    } catch (_) {}
+  }
+
+  Future<void> _clearOwnPublishUnacknowledged() async {
+    _ownPublishUnacknowledged = false;
+    final userId = _userId;
+    if (userId == null) return;
+    try {
+      final prefs = await _sharedPrefs;
+      await prefs.remove(_ownPublishUnackKey(userId));
     } catch (_) {}
   }
 
@@ -517,6 +566,10 @@ class EncryptionService {
       _ownIdentityReplacedSeenAt = prefs.getString(
         _ownIdentityReplacedSeenKey(userId),
       );
+      // (li) clause 2: the flag must survive a restart, because a fresh
+      // install right after a recovery is exactly when the false alarm fired.
+      _ownPublishUnacknowledged =
+          (prefs.getInt(_ownPublishUnackKey(userId)) ?? 0) == 1;
     } catch (_) {}
   }
 
@@ -597,7 +650,10 @@ class EncryptionService {
   /// the two MUST leave a redundant rebuild rather than a cleared warning over
   /// a poisoned session. A redundant rebuild costs one pre-key fetch and one
   /// one-time pre-key; the other ordering costs a message.
-  Future<void> recordSessionRebuilds(int peerId, Iterable<int> addresses) async {
+  Future<void> recordSessionRebuilds(
+    int peerId,
+    Iterable<int> addresses,
+  ) async {
     var added = false;
     for (final deviceId in addresses) {
       if (_pendingSessionRebuilds.add(_rebuildEntry(peerId, deviceId))) {
@@ -610,7 +666,9 @@ class EncryptionService {
 
   /// Drop the persisted intent for one address, once a rebuild really happened.
   Future<void> clearSessionRebuild(int peerId, int deviceId) async {
-    if (!_pendingSessionRebuilds.remove(_rebuildEntry(peerId, deviceId))) return;
+    if (!_pendingSessionRebuilds.remove(_rebuildEntry(peerId, deviceId))) {
+      return;
+    }
     await _persistSessionRebuilds();
   }
 
@@ -1587,10 +1645,7 @@ class EncryptionService {
       if (offered == null &&
           servedIdentityBase64 != null &&
           servedIdentityBase64.isNotEmpty) {
-        offered = IdentityKey.fromBytes(
-          base64Decode(servedIdentityBase64),
-          0,
-        );
+        offered = IdentityKey.fromBytes(base64Decode(servedIdentityBase64), 0);
         offeredWasServed = true;
       }
       // An offer identical to the pin is not a CHANGE to confirm — but it must
@@ -1603,8 +1658,7 @@ class EncryptionService {
       final offerMatchesPin =
           offered != null &&
           pinned != null &&
-          base64Encode(offered.serialize()) ==
-              base64Encode(pinned.serialize());
+          base64Encode(offered.serialize()) == base64Encode(pinned.serialize());
       // RECORD a served offer as the pending candidate, so that every adoption
       // promotes a key this device wrote down (see [acknowledgePeerIdentity]).
       // This cannot clobber a genuine candidate: `offered` is taken from the

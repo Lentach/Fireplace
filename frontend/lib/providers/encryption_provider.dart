@@ -1703,10 +1703,25 @@ class EncryptionProvider extends ChangeNotifier {
   /// also exactly what a password-only takeover looks like, so it is durable
   /// and survives restarts until dismissed.
   void onOwnIdentityReplaced(dynamic data) {
-    final occurredAt = data is Map && data['occurredAt'] is String
+    // Amendment (li) clause 1. The value the server hands us here ends up as
+    // the persisted DISMISSAL WATERMARK the moment the user taps dismiss, and
+    // everything older than that watermark is suppressed forever — so an
+    // unvalidated `9999-…` would turn the most natural button on this alarm
+    // into a permanent off switch for the §6.0 offline-learn path.
+    //
+    // On THIS path an untrustworthy value must still raise the alarm: the
+    // event is the alarm and the timestamp is only metadata. So fall back to
+    // our own clock, exactly as an absent field already did.
+    final raw = data is Map && data['occurredAt'] is String
         ? data['occurredAt'] as String
-        : DateTime.now().toUtc().toIso8601String();
-    _e2eFlowLog('OWN_IDENTITY_REPLACED_EVENT', {'occurredAt': occurredAt});
+        : null;
+    final occurredAt =
+        EncryptionService.normalizeServerInstant(raw) ??
+        DateTime.now().toUtc().toIso8601String();
+    _e2eFlowLog('OWN_IDENTITY_REPLACED_EVENT', {
+      'occurredAt': occurredAt,
+      'rejectedRaw': raw != null && raw != occurredAt,
+    });
     _encryptionService.recordOwnIdentityReplaced(occurredAt);
     notifyListeners();
   }

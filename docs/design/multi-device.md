@@ -1693,6 +1693,37 @@ that is the designed outcome).
     longer receive, and refusing it is correct for the same reason. (Whether that rotation should be
     able to orphan an enrollment AT ALL is finding F1 and is NOT decided here.)
 
+- **Amendment 2026-08-29 (D6, ratified BEFORE the fix; from the pre-merge gate round, finding RC-02):**
+  - **(li) A server-supplied timestamp MUST NOT be able to arm a permanent alarm suppressor, and
+    the self-publish suppression MUST NOT depend on the device clock.** Two defects share one field.
+    1. **Validate and canonicalise at the boundary.** `occurredAt` was accepted verbatim whenever it
+       was a `String`; `dismissOwnIdentityReplaced` copied it into the persisted watermark, and
+       `recordOwnIdentityReplacedFromServer` suppresses anything comparing `<=` the watermark as a
+       STRING. The comment asserted "both sides are ISO-8601 UTC" and nothing enforced it. So a
+       server emits `occurredAt: '9999-01-01T…'`, the user taps the single most natural button on an
+       alarm that reads like "you signed in on your laptop", and the §6.0 offline-learn path is dead
+       for the life of that install while the alarm still looks healthy. Ruling: parse every
+       server-supplied instant, reject what does not parse or sits absurdly far in the future, and
+       store the CANONICAL UTC form so the ordering comparison is sound by construction rather than
+       by assumption. On the LIVE event path an unparseable value must still raise the alarm — the
+       event is the alarm and the timestamp is only metadata — using a locally generated instant, so
+       garbage degrades to "we warn you, timed by our own clock" and never to silence. On the
+       connect-time HYDRATION path an unparseable value is ignored, because that path exists purely
+       to ORDER a past event against the watermark and an unorderable value cannot do that; a server
+       withholding the field entirely already has that effect, so this grants it nothing.
+    2. **Drop the device clock from the self-publish suppression.** `markOwnIdentityPublished` wrote
+       a watermark of DEVICE-now + 10 min and that value was compared against SERVER-stamped
+       instants, so a device whose clock runs fast suppresses every genuine replacement for the
+       duration of the skew — the constant is named for skew but the comparison is what the skew
+       breaks. The suppression exists for one narrow purpose: not alarming the user about the
+       republish THEY just performed. That is a ONE-SHOT condition, not a time window. Ruling:
+       record a persisted one-shot "our own publish is unacknowledged" flag, consumed by the first
+       server report that would otherwise raise the alarm. It survives restart (a fresh install
+       after a recovery is exactly when the false alarm fired), it involves no clock on either side,
+       and it narrows the blind window from "ten minutes of reports" to "exactly one report" — which
+       an unauthorized replacement still cannot reach, for the reason already recorded: the §6.1
+       registration lock refuses a replacement that is neither signed nor spending a ceremony.
+
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the
   test-integrity findings are folded at `4c0e0bf`; the four security findings were T9. **T10 (xlv)
