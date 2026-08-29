@@ -289,3 +289,100 @@ flutter analyze clean · flutter test 1607 passed / 10 skipped (+8)
 on device: 4/4 on the Pixel 7 emulator
 lint ratchet PASS (floor 906 untouched, actual 889) · both count verifiers OK
 ```
+
+---
+
+## Addendum 4 — frontend standards pass (`d9849aa`, `0f8a78c`, `300e4e8`)
+
+The owner sent a screenshot of two identity banners consuming half a phone screen
+and said "reduce it to an error like your keys are on a different device", then
+"redo everything frontend and improve it to standards".
+
+**Scope was pushed back on deliberately.** A ground-up visual redesign would bury
+4,100 lines of audited crypto under unreviewed UI churn on a branch one decision
+from merge. What was done instead: four parallel audits against the project's OWN
+documented design contract, then fix the violations. **The audits confirmed the app
+HAS a disciplined system** — `theme/rpg_theme.dart`, five themes, two
+`ThemeExtension`s, golden-locked, with the consumption rule written down in
+`frontend/CLAUDE.md` §9 and the snackbar rule in §8. So "to standards" meant
+closing leaks, not inventing a look.
+
+### The banner wall
+
+One shared `IdentityAlertBanner` now backs all three identity banners, which had
+each carried a copy of the same skeleton (three places for a contrast fix to be
+missed — the pinned-foreground comment had already been copy-pasted twice).
+Collapsed by default: title, optional short status (the reset countdown), and the
+action. The paragraph is one tap away. **The action never hides** — for a damaged
+identity it is the only way out. Screen readers get the full detail while
+collapsed, because collapsing is a density decision, not a way to hide a warning
+from someone who cannot see the chevron.
+
+⚠️ **Found a real bug while reading: each banner wrapped ITSELF in
+`SafeArea(bottom: false)`.** Sibling `SafeArea`s do not consume the inset for each
+other — each applies the FULL top inset, so the stack produced phantom
+status-bar gaps. That was the mystery gap in the owner's screenshot. The shell
+wraps the stack once now; a test asserts no `SafeArea` reappears inside a banner.
+
+Measured on the Pixel 7 emulator against the real backend: **~750px → ~220px** for
+two stacked banners, gap gone, hairline separating a destructive action from a
+benign one, expanded detail aligned under the title.
+
+### The P1 nobody had noticed
+
+**The login screen — the app's front door and its only feedback channel — spoke
+English on every locale.** Every status was a hardcoded literal built inside
+`AuthProvider`: one branch told the user to run `docker-compose up`, and the
+fallback was `return msg`, the raw exception. The provider now emits an
+`AuthStatusCode` and the widget layer localizes it, which is the split this repo
+ALREADY used twice (`logoutBecauseDeviceRevoked` takes a localized notice
+"because only the widget layer holds the locale"; `invitations_screen` maps
+backend reason codes). The off-brand pre-Umbra "Hero created! Now login." went
+with it.
+
+### Also closed
+
+- ~12 semantic error reds → `colorScheme.error`. Raw `#F44336` measures ~3.1:1 on
+  the two light themes, which is exactly why the theme defines `errorColorLight`.
+  Decorative reds (recording dot, media scrims) deliberately untouched.
+- Unread badge hardcoded `Colors.blue`/`Colors.white`: off-brand on 4 of 5 themes
+  and ~3.3:1 for 11px text → `primary`/`onPrimary`.
+- Three sites computed muted text as `isDark ? RpgTheme.mutedDark : …`, but
+  `mutedDark` is the EMBER theme's grey and three themes are dark → the blue and
+  cosmic themes got the wrong hue. Now `FireplaceColors.of(context).mutedText`.
+- Two raw `AlertDialog`s → `GlassDialog` (9 existing call sites). One was
+  `peer_identity_fingerprint_dialog`, which THIS session had introduced.
+- The damaged-banner failure path used `ScaffoldMessenger` (a documented
+  regression, §8) and interpolated the raw exception → `showTopSnackBar` + ARB.
+- **Fingerprints are monospace now.** The entire defence of that ceremony is a
+  human reading digits aloud; proportional Inter makes 1/l and 0/O ambiguous.
+- A hardcoded English `Text('Retry')` that all four audits missed.
+
+### Two process lessons, both paid for
+
+1. **One scout audited the WRONG WORKING COPY.** It reported that three of the
+   banners "do not exist" and that the owner's memory "predates their removal".
+   It had read `C:/Users/Lentach/Desktop/Fireplace`, which sits on `master` where
+   those files are branch-only. Its existence claims were discarded; its
+   convention findings were re-verified independently and kept. **Verify a
+   subagent's premise, not just its conclusion.**
+2. **CI caught a break my grep missed.** The wire harness lives in `test_e2e/`, a
+   SIBLING of `test/`, so `grep -rn … test/` never saw
+   `auth_token_fault_injection_test.dart` asserting the old English copy. 43
+   passed, 1 failed. Fixed in `300e4e8` and verified against the live local
+   backend. **Search every test root, not the obvious one.**
+
+### Reported, NOT done — P3 refactors with more regression surface than a pre-merge branch should absorb
+
+The reply-quote card is inlined three times and wants one extracted widget;
+`avatar_circle` and `HexAvatar` are two conventions for one component; the auth
+tab targets are ~40dp against a 48dp minimum; several tappable avatars and the
+scroll-to-bottom button lack `Semantics` labels; `ping_effect_overlay` hardcodes
+Material orange.
+
+```
+flutter analyze clean · flutter test 1614 passed / 10 skipped (+7 this pass)
+2 falsifications, both behavioural
+on device: rendered and screenshotted before/after on the Pixel 7, Polish locale
+CI 33256270023 on 300e4e8: SUCCESS, all four jobs
+```

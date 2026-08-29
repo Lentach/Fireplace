@@ -49,6 +49,26 @@ proves the persistence properties against the REAL Keystore and REAL SharedPrefe
 unit suite's in-memory mock cannot do. The branch also RAN on Android for the first time: login
 against the real backend succeeded and both §6.0 identity surfaces render correctly in Polish.
 
+**Frontend standards pass (same day, `d9849aa` → `300e4e8`).** The owner sent a screenshot of two
+identity banners eating half a phone screen and then asked for the frontend brought "to standards".
+**A ground-up redesign was refused on purpose** — it would bury the audited crypto under unreviewed
+UI churn on a branch one decision from merge. Four parallel audits against the project's OWN
+documented contract (`frontend/CLAUDE.md` §8/§9) instead; the app turns out to HAVE a disciplined,
+golden-locked theme system, so the work was closing leaks, not inventing a look. One shared
+`IdentityAlertBanner`, collapsed by default (~750px → ~220px for two stacked, measured on device),
+**plus a real bug: each banner wrapped ITSELF in `SafeArea`, and sibling `SafeArea`s each apply the
+full top inset** — that was the phantom gap in the screenshot. **The P1 nobody had noticed: the
+login screen, the app's only feedback channel, spoke English on every locale, told users to run
+`docker-compose up`, and fell back to printing the raw exception.** Now an `AuthStatusCode` the
+widget layer localizes. Also: ~12 error reds onto `colorScheme.error`, an off-brand unread badge,
+a wrong-hue muted token on 3 of 5 themes, two raw `AlertDialog`s onto `GlassDialog`, and monospace
+fingerprints (a human compares those digits by hand). ⚠️ **Two process lessons: one scout audited
+the WRONG WORKING COPY** (the main checkout, on `master`, where the branch's banners do not exist)
+and confidently reported them missing — verify a subagent's PREMISE, not just its conclusion; and
+**CI caught a break a grep missed**, because the wire harness lives in `test_e2e/`, a sibling of
+`test/`. Still open, deliberately: reply-quote card inlined ×3, two avatar conventions, sub-48dp
+auth tabs, missing `Semantics` on a few icon-only controls.
+
 The last two open defects are closed. **D1 (P0):** a completed §6.2 reset left the peer unreachable
 in both directions, and the only action offered to the user destroyed the warning while repairing
 nothing — the accept gate withholds the peer's rows before Signal runs, so no candidate is ever
