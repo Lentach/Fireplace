@@ -62,6 +62,13 @@ class _PeerIdentityFingerprintDialogState
   String? _ownFingerprint;
   bool _loading = true;
 
+  /// The confirmation was refused because what the user compared is not what
+  /// would be pinned — the candidate moved while this dialog was open, or the
+  /// key was never recorded. The dialog stays open showing the CURRENT
+  /// fingerprint, because closing it would leave a standing warning with no
+  /// explanation of why nothing happened.
+  bool _staleOffer = false;
+
   @override
   void initState() {
     super.initState();
@@ -88,12 +95,23 @@ class _PeerIdentityFingerprintDialogState
   Future<void> _confirm(String? adoptIdentityBase64) async {
     final encryption = context.read<EncryptionProvider>();
     final navigator = Navigator.of(context);
-    await encryption.acknowledgePeerIdentity(
+    final adopted = await encryption.acknowledgePeerIdentity(
       widget.peerId,
       adoptIdentityBase64: adoptIdentityBase64,
     );
     if (!mounted) return;
-    navigator.pop();
+    if (adopted) {
+      navigator.pop();
+      return;
+    }
+    // Refused. Re-read and show the fingerprint that is actually on offer now,
+    // so the user compares the right number rather than being dropped back to a
+    // warning that silently did not clear.
+    setState(() {
+      _staleOffer = true;
+      _loading = true;
+    });
+    await _load();
   }
 
   @override
@@ -125,6 +143,15 @@ class _PeerIdentityFingerprintDialogState
                       widget.peerName,
                     ),
                   ),
+                  if (_staleOffer) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      l10n.peerIdentityFingerprintOfferChanged(widget.peerName),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ],
                   if (offered != null) ...[
                     const SizedBox(height: 12),
                     Text(

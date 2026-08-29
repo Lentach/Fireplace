@@ -193,6 +193,10 @@
     "placeholders": { "name": { "type": "String" } }
   },
   "peerIdentityFingerprintPreviousLabel": "Poprzednio zaufany odcisk",
+  "peerIdentityFingerprintOfferChanged": "Nic nie zostało potwierdzone: klucz użytkownika {name} zmienił się, gdy to okno było otwarte, więc nie jest to klucz, który właśnie porównałeś. Porównaj odcisk poniżej ponownie przed potwierdzeniem.",
+  "@peerIdentityFingerprintOfferChanged": {
+    "placeholders": { "name": { "type": "String" } }
+  },
   "peerIdentityFingerprintUnchangedNotice": "Klucz użytkownika {name} nie zmienił się od czasu, gdy go zaakceptowałeś. Potwierdź poniżej, aby zamknąć to ostrzeżenie.",
   "@peerIdentityFingerprintUnchangedNotice": {
     "placeholders": { "name": { "type": "String" } }

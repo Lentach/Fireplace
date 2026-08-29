@@ -532,6 +532,11 @@ class AppLocalizationsEn extends AppLocalizations {
       'Previously trusted fingerprint';
 
   @override
+  String peerIdentityFingerprintOfferChanged(String name) {
+    return 'Nothing was confirmed: $name\'s key changed while this was open, so it is not the one you just compared. Compare the fingerprint below again before confirming.';
+  }
+
+  @override
   String peerIdentityFingerprintUnchangedNotice(String name) {
     return '$name\'s key has not changed since you last accepted it. Confirm below to dismiss this warning.';
   }

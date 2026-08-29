@@ -612,10 +612,28 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
   /// added [adoptAccountIdentity] for the peer this path cannot serve at all:
   /// one whose candidate was never recorded because the accept gate refused
   /// their row before Signal could look at it.
-  Future<bool> promotePendingAccountIdentity(String name) async {
+  ///
+  /// **COMPARE-AND-SWAP on [expectedIdentityBase64].** The candidate slot is
+  /// read twice by the ceremony — once to DISPLAY a fingerprint, once here to
+  /// promote — and it has more than one unconditional writer ([saveIdentity]
+  /// via `isTrustedIdentity`, and [stagePendingAccountIdentity] when the key
+  /// came from the server). Promoting whatever happens to be stored at confirm
+  /// time would therefore let a key change land BETWEEN display and
+  /// confirmation, so the user compares fingerprint A out of band and pins
+  /// key B — which is the (xlvii) clause 2 defect wearing a different hat.
+  /// A caller that passes the exact identity it displayed gets an atomic
+  /// promotion or a refusal, never a substitution.
+  Future<bool> promotePendingAccountIdentity(
+    String name, {
+    String? expectedIdentityBase64,
+  }) async {
     final pendingKey = _pendingKey(name);
     final stored = await _storage.read(key: pendingKey);
     if (stored == null) return false;
+    if (expectedIdentityBase64 != null && stored != expectedIdentityBase64) {
+      // The candidate moved under us. Refuse: the caller must re-display.
+      return false;
+    }
     final identity = IdentityKey.fromBytes(base64Decode(stored), 0);
     final key = _accountKey(name);
     await _storage.write(key: key, value: stored);

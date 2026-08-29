@@ -283,36 +283,43 @@ class EncryptionService {
     final bool advanced;
     final String source;
     if (supplied != null && supplied.isNotEmpty) {
-      // ONLY a key this device already recorded may be pinned. Verifying the
-      // supplied bytes against stored state is what keeps "the pinned key is
-      // the key the human was shown" a STRUCTURAL property: before this check
-      // the parameter was opaque caller input, so the guarantee rested on one
-      // call site happening to pass the right value, and any future caller
-      // could have moved the I7 anchor to a key nobody ever displayed.
-      final pending = await _identityStore.pendingAccountIdentity(name);
-      final pinned = await _identityStore.getAccountIdentity(name);
-      final matchesPending =
-          pending != null && base64Encode(pending.serialize()) == supplied;
-      final matchesPinned =
-          pinned != null && base64Encode(pinned.serialize()) == supplied;
-      if (!matchesPending && !matchesPinned) {
-        E2ePersistentDiag.record('PEER_IDENTITY_ADOPT_REFUSED', {
-          'peerId': peerId,
-          'reason': 'unrecorded_key',
-        });
-        return false;
-      }
-      if (matchesPending) {
-        advanced = await _identityStore.promotePendingAccountIdentity(name);
+      // ONLY a key this device already recorded may be pinned, and ONLY if it
+      // is STILL the recorded one. The candidate slot is read once to display a
+      // fingerprint and again to promote, and it has several unconditional
+      // writers, so a plain "check then promote" would let the candidate move
+      // in between — the user compares A out of band and pins B, which is the
+      // clause 2 defect wearing a different hat. The compare-and-swap makes it
+      // atomic: the promotion takes the displayed bytes or refuses.
+      final promoted = await _identityStore.promotePendingAccountIdentity(
+        name,
+        expectedIdentityBase64: supplied,
+      );
+      if (promoted) {
+        advanced = true;
         source = 'displayed_candidate';
       } else {
-        // Re-affirming the key already pinned. Nothing advances, but the user
-        // compared it and said it is right, so the warning is resolved — the
-        // alternative is a standing alarm with no control, which is the dead
-        // end (xlvii) exists to remove.
-        await _identityStore.adoptAccountIdentity(name, pinned!);
-        advanced = true;
-        source = 'reaffirmed_pin';
+        // Not (or no longer) the candidate. The only other value a human may
+        // legitimately confirm is the key already pinned — a re-affirmation
+        // that advances nothing but resolves the warning.
+        final pinned = await _identityStore.getAccountIdentity(name);
+        if (pinned != null && base64Encode(pinned.serialize()) == supplied) {
+          await _identityStore.adoptAccountIdentity(name, pinned);
+          advanced = true;
+          source = 'reaffirmed_pin';
+        } else {
+          // Either an unrecorded key, or the candidate changed under the open
+          // dialog. Both mean the same thing to the user: what you compared is
+          // not what would be pinned, so nothing is pinned and the warning
+          // stands. The caller must re-display before asking again.
+          final pending = await _identityStore.pendingAccountIdentity(name);
+          E2ePersistentDiag.record('PEER_IDENTITY_ADOPT_REFUSED', {
+            'peerId': peerId,
+            'reason': pending == null
+                ? 'unrecorded_key'
+                : 'candidate_changed_since_display',
+          });
+          return false;
+        }
       }
     } else {
       advanced = await _identityStore.promotePendingAccountIdentity(name);

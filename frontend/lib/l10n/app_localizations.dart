@@ -1028,6 +1028,12 @@ abstract class AppLocalizations {
   /// **'Poprzednio zaufany odcisk'**
   String get peerIdentityFingerprintPreviousLabel;
 
+  /// No description provided for @peerIdentityFingerprintOfferChanged.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nic nie zostało potwierdzone: klucz użytkownika {name} zmienił się, gdy to okno było otwarte, więc nie jest to klucz, który właśnie porównałeś. Porównaj odcisk poniżej ponownie przed potwierdzeniem.'**
+  String peerIdentityFingerprintOfferChanged(String name);
+
   /// No description provided for @peerIdentityFingerprintUnchangedNotice.
   ///
   /// In pl, this message translates to:

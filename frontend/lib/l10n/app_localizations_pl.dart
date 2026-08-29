@@ -536,6 +536,11 @@ class AppLocalizationsPl extends AppLocalizations {
       'Poprzednio zaufany odcisk';
 
   @override
+  String peerIdentityFingerprintOfferChanged(String name) {
+    return 'Nic nie zostało potwierdzone: klucz użytkownika $name zmienił się, gdy to okno było otwarte, więc nie jest to klucz, który właśnie porównałeś. Porównaj odcisk poniżej ponownie przed potwierdzeniem.';
+  }
+
+  @override
   String peerIdentityFingerprintUnchangedNotice(String name) {
     return 'Klucz użytkownika $name nie zmienił się od czasu, gdy go zaakceptowałeś. Potwierdź poniżej, aby zamknąć to ostrzeżenie.';
   }

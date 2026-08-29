@@ -193,6 +193,10 @@
     "placeholders": { "name": { "type": "String" } }
   },
   "peerIdentityFingerprintPreviousLabel": "Previously trusted fingerprint",
+  "peerIdentityFingerprintOfferChanged": "Nothing was confirmed: {name}'s key changed while this was open, so it is not the one you just compared. Compare the fingerprint below again before confirming.",
+  "@peerIdentityFingerprintOfferChanged": {
+    "placeholders": { "name": { "type": "String" } }
+  },
   "peerIdentityFingerprintUnchangedNotice": "{name}'s key has not changed since you last accepted it. Confirm below to dismiss this warning.",
   "@peerIdentityFingerprintUnchangedNotice": {
     "placeholders": { "name": { "type": "String" } }

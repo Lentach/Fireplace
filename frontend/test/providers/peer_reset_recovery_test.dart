@@ -41,6 +41,7 @@ import 'package:fireplace/providers/conversations_provider.dart';
 import 'package:fireplace/providers/encryption_provider.dart';
 import 'package:fireplace/providers/messaging_provider.dart';
 import 'package:fireplace/services/device_list/device_authority_engine.dart';
+import 'package:fireplace/services/encryption/signal_stores.dart';
 import 'package:fireplace/services/device_list/device_list_cache.dart';
 import 'package:fireplace/services/device_list/device_list_canonical.dart';
 import 'package:fireplace/services/encryption_service.dart';
@@ -535,6 +536,60 @@ void main() {
       enc.peersWithChangedIdentity,
       contains(peerId),
       reason: 'and a refused adoption leaves the warning standing',
+    );
+  });
+
+  /// Hardening from review. The candidate slot is read TWICE by the ceremony —
+  /// once to display a fingerprint, once to promote — and it has several
+  /// unconditional writers. A plain "check, then promote" therefore has a window
+  /// where the candidate moves in between, and the user compares fingerprint A
+  /// out of band while key B gets pinned. That is the (xlvii) clause 2 defect
+  /// wearing a different hat, so the promotion is compare-and-swap.
+  test('a candidate that changes after display is refused, not substituted', () async {
+    await enc.encryptionService.recordPeerIdentityChangedFromServer(peerId);
+    final anchorBefore = await enc.encryptionService.peerTofuIdentityBase64(
+      peerId,
+    );
+
+    // The ceremony obtains and displays key A (the served one).
+    final displayed = await enc.loadPeerIdentityVerification(peerId);
+    expect(displayed.hasOffer, isTrue);
+    final keyA = displayed.offeredIdentityBase64!;
+
+    // While the dialog sits open, the candidate is replaced by key B — exactly
+    // what an inbound ciphertext (via isTrustedIdentity) or a second served
+    // fetch would do. Driven through the REAL store on the service's own
+    // storage prefix, so this is a genuine competing writer and not a seam.
+    final keyB = generateIdentityKeyPair().getPublicKey();
+    final store = SecureIdentityKeyStore(
+      DualStorage(const FlutterSecureStorage()),
+      'e2e_${ownUserId}_',
+    );
+    await store.stagePendingAccountIdentity(peerId.toString(), keyB);
+    expect(base64Encode(keyB.serialize()), isNot(keyA));
+
+    // The user confirms the number they actually compared: key A.
+    final advanced = await enc.acknowledgePeerIdentity(
+      peerId,
+      adoptIdentityBase64: keyA,
+    );
+
+    expect(
+      advanced,
+      isFalse,
+      reason: 'A is no longer the candidate, so nothing may be pinned',
+    );
+    expect(
+      await enc.encryptionService.peerTofuIdentityBase64(peerId),
+      anchorBefore,
+      reason:
+          'and above all B must NOT have been pinned — that would pin a key '
+          'the user never compared',
+    );
+    expect(
+      enc.peersWithChangedIdentity,
+      contains(peerId),
+      reason: 'the warning stands so the ceremony can be re-run',
     );
   });
 

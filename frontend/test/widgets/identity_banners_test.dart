@@ -97,6 +97,10 @@ class _FakeEncryption extends EncryptionProvider {
     );
   }
 
+  /// When true, the acknowledgement REFUSES — the compare-and-swap found the
+  /// candidate had moved since the fingerprint was displayed.
+  bool refuseAcknowledge = false;
+
   @override
   Future<bool> acknowledgePeerIdentity(
     int peerId, {
@@ -104,6 +108,7 @@ class _FakeEncryption extends EncryptionProvider {
   }) async {
     acknowledged.add(peerId);
     adoptedKeys.add(adoptIdentityBase64);
+    if (refuseAcknowledge) return false;
     changedPeers = changedPeers.where((id) => id != peerId).toSet();
     notifyListeners();
     return true;
@@ -438,6 +443,46 @@ void main() {
       expect(
         find.text(l10n.peerIdentityFingerprintServedNotice('bob')),
         findsOneWidget,
+      );
+    });
+
+    /// A refused confirmation must NOT close the dialog. The compare-and-swap
+    /// refuses when the candidate moved since the fingerprint was displayed, and
+    /// closing on refusal would drop the user back to a standing warning that
+    /// silently did not clear, with no hint that what they compared was stale.
+    testWidgets('a refused confirmation stays open and says why', (
+      tester,
+    ) async {
+      final encryption = _FakeEncryption(
+        changedPeers: {7},
+        peerFingerprint: '0123 4567 89ab cdef',
+        offeredFingerprint: 'aaaa bbbb cccc dddd',
+        offeredKey: 'T0ZGRVJFRA==',
+        ownFingerprint: 'fedc ba98 7654 3210',
+      )..refuseAcknowledge = true;
+      await tester.pumpWidget(proactiveHost(encryption));
+
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+      await tester.tap(find.text(l10n.peerIdentityMarkVerifiedAction));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byType(AlertDialog),
+        findsOneWidget,
+        reason: 'the dialog must stay open so the ceremony can be re-run',
+      );
+      expect(
+        find.text(l10n.peerIdentityFingerprintOfferChanged('bob')),
+        findsOneWidget,
+        reason: 'and it must say that nothing was confirmed, and why',
+      );
+      expect(
+        encryption.peersWithChangedIdentity,
+        {7},
+        reason: 'the warning stands',
       );
     });
   });
