@@ -117,4 +117,56 @@ class DakStore {
   /// Removes the record (abort hygiene / account teardown).
   Future<void> clear({required int userId}) =>
       _storage.delete(key: _key(userId));
+
+  // ---------- Pending slot (amendment (liii)) ----------
+  //
+  // A replacement-enrollment offer cannot be authenticated by this device: the
+  // enrollment row it would check against is the orphaned one. So an offer is
+  // tested WITHOUT spending the authority already held — the candidate lands
+  // here, and only a server acceptance promotes it. A refusal clears it and the
+  // live record above was never touched.
+
+  static String _pendingKey(int userId) => 'dak_pending_v1_$userId';
+
+  Future<DakRecord?> readPending({required int userId}) async {
+    final raw = await _storage.read(key: _pendingKey(userId));
+    if (raw == null) return null;
+    try {
+      return DakRecord._fromJson(jsonDecode(raw));
+    } catch (_) {
+      // Unlike the live slot this is NOT damage worth throwing over: a pending
+      // candidate authorizes nothing, so an unreadable one is simply discarded
+      // and the next offer mints another.
+      return null;
+    }
+  }
+
+  /// ARMED write to the pending slot. Same contract as [persistArmed]: callers
+  /// MUST NOT emit the enrollment until this returns, so an enrollment the
+  /// server accepts can never be one this device failed to persist.
+  Future<void> persistPendingArmed(DakRecord record) async {
+    await _storage.write(
+      key: _pendingKey(record.userId),
+      value: jsonEncode(record),
+    );
+    final readBack = await readPending(userId: record.userId);
+    if (readBack == null || !readBack._sameAs(record)) {
+      throw StateError('pending dak record failed read-back verification');
+    }
+  }
+
+  /// Makes the pending candidate the live authority, once the server has
+  /// accepted it. Armed, then the pending slot is dropped — in that order, so a
+  /// crash between them leaves a promotable candidate rather than nothing.
+  Future<void> promotePending({required int userId}) async {
+    final pending = await readPending(userId: userId);
+    if (pending == null) {
+      throw StateError('no pending dak record to promote for user $userId');
+    }
+    await persistArmed(pending);
+    await clearPending(userId: userId);
+  }
+
+  Future<void> clearPending({required int userId}) =>
+      _storage.delete(key: _pendingKey(userId));
 }

@@ -874,7 +874,19 @@ class ConnectionProvider extends ChangeNotifier {
         version: version,
       );
       final exported = engine.exportDakForPersistence();
-      await DakStore().persistArmed(
+      // Amendment (liii). The candidate goes to a PENDING slot, never over the
+      // live record. This offer cannot be authenticated by us — the enrollment
+      // row we would check it against is the orphaned one, which is why the
+      // server-named `version` above gets a plausibility ceiling rather than a
+      // signature check — so a spurious offer must cost us nothing. Overwriting
+      // in place meant one crafted event destroyed the account's real DAK
+      // private half, and every later revoke/provision died on
+      // `invalid_list_signature` with a 72 h reset as the only exit.
+      //
+      // Still ARMED before the emit, so an enrollment the server accepts can
+      // never be one we failed to persist.
+      final store = DakStore();
+      await store.persistPendingArmed(
         DakRecord(
           userId: userId,
           dakPub: exported['dakPub']!,
@@ -889,7 +901,13 @@ class ConnectionProvider extends ChangeNotifier {
         const Duration(seconds: 20),
         onTimeout: () => const {'success': false, 'error': 'timeout'},
       );
-      if (answer['success'] != true) {
+      if (answer['success'] == true) {
+        await store.promotePending(userId: userId);
+        E2ePersistentDiag.record('RESET_REENROLL_PROMOTED', {
+          'deviceId': '$deviceId',
+          'version': '$version',
+        });
+      } else {
         // Left visible rather than retried here: the account is still
         // reachable-by-nobody, and (xlv) clause 2 keeps peers failing CLOSED
         // meanwhile instead of silently addressing a device that cannot
@@ -899,6 +917,12 @@ class ConnectionProvider extends ChangeNotifier {
           'deviceId': '$deviceId',
           'version': '$version',
         });
+        // An EXPLICIT refusal means this candidate authorizes nothing, so drop
+        // it. A timeout is ambiguous and deliberately leaves it: the live
+        // record is intact either way, and the offer rides every later upload.
+        if (answer['error'] != 'timeout') {
+          await store.clearPending(userId: userId);
+        }
       }
     } catch (error) {
       E2ePersistentDiag.record('RESET_REENROLL_FAILED', {

@@ -1775,6 +1775,31 @@ that is the designed outcome).
     withholds the ciphertext before Signal runs. The repair therefore still goes through (xlvii)
     clause 3's served-key ceremony, which is why that mechanism remains load-bearing.
 
+- **Amendment 2026-08-29 (D8, ratified BEFORE the fix; from the pre-merge gate round, finding F2):**
+  - **(liii) Testing a replacement-enrollment offer MUST NOT destroy the authority the device
+    already holds.** ANY inbound `keyBundleUploaded` carrying integer `deviceId` and
+    `nextListVersion` triggered `_reenrollAfterReset` with no latch and no proof a replacement was
+    owed. That path mints a fresh DAK and `DakStore.persistArmed` OVERWRITES the record in place —
+    keyed only by userId — and is awaited BEFORE `enrollDeviceAuthority` is emitted. When the server
+    then answers `already_enrolled`, nothing is restored: the account's real DAK private half is
+    gone, every later `revokeDevice` and `provisionDevice` dies on `invalid_list_signature`, and the
+    only exit is a 72 h §6.2 ceremony. `LinkCeremonyController` has exactly the clear-on-refusal
+    discipline this path lacks, but clearing cannot help once the old record is already overwritten.
+    **The client cannot authenticate the offer, and the fix must not pretend otherwise.** The row it
+    would check the offer against is the orphaned one — the same reason the existing code defends the
+    server-named `version` with a plausibility ceiling rather than a signature. So the ruling is not
+    "prove the offer" but **"never spend a valid authority to test one"**:
+    1. The new record is written to a SEPARATE PENDING slot, armed exactly as before, so the
+       "callers MUST NOT emit until the write is proven" discipline is preserved and no accepted
+       enrollment can be left unpersisted.
+    2. It is PROMOTED to the live slot only after the server accepts.
+    3. An explicit refusal CLEARS the pending slot, and the live record is untouched throughout.
+    4. An ambiguous outcome — timeout, dropped socket — leaves the pending slot in place and the live
+       record intact, which is the safe side: the worst case is a retry on the next offer, and the
+       offer already rides every authenticated upload until it is taken.
+    This also removes the need for a latch: an unlimited number of spurious offers now costs an
+    unlimited number of refused enrollments and destroys nothing.
+
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the
   test-integrity findings are folded at `4c0e0bf`; the four security findings were T9. **T10 (xlv)

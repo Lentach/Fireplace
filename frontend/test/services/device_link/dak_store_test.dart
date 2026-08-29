@@ -87,4 +87,75 @@ void main() {
     expect(await store.read(userId: 7), isNull);
     expect(await storage.read(key: 'dak_record_v1_7'), isNull);
   });
+
+  // Amendment (liii): a replacement-enrollment offer cannot be authenticated by
+  // this device, so testing one must not spend the authority it already holds.
+  group('pending slot ((liii))', () {
+    const candidate = DakRecord(
+      userId: 7,
+      dakPub: 'Y2FuZFB1Yg==',
+      dakPriv: 'Y2FuZFByaXY=',
+      createdAtMs: 1755600001000,
+    );
+
+    test('a pending write leaves the LIVE record untouched', () async {
+      final store = DakStore(storage: DualStorage(const FlutterSecureStorage()));
+      await store.persistArmed(record);
+
+      await store.persistPendingArmed(candidate);
+
+      // This is the whole finding: the old code overwrote the live record here,
+      // so a server that then answered `already_enrolled` had destroyed the
+      // account's only DAK private half.
+      expect((await store.read(userId: 7))!.dakPub, record.dakPub);
+      expect((await store.readPending(userId: 7))!.dakPub, candidate.dakPub);
+    });
+
+    test('a refusal clears the candidate and the live authority survives', () async {
+      final store = DakStore(storage: DualStorage(const FlutterSecureStorage()));
+      await store.persistArmed(record);
+      await store.persistPendingArmed(candidate);
+
+      await store.clearPending(userId: 7);
+
+      expect((await store.read(userId: 7))!.dakPub, record.dakPub);
+      expect(await store.readPending(userId: 7), isNull);
+    });
+
+    test('promotion makes the candidate live and drops the pending slot', () async {
+      final storage = DualStorage(const FlutterSecureStorage());
+      final store = DakStore(storage: storage);
+      await store.persistArmed(record);
+      await store.persistPendingArmed(candidate);
+
+      await store.promotePending(userId: 7);
+
+      expect((await store.read(userId: 7))!.dakPub, candidate.dakPub);
+      expect(await store.readPending(userId: 7), isNull);
+      expect(await storage.read(key: 'dak_pending_v1_7'), isNull);
+    });
+
+    test('promoting nothing throws rather than clearing the live record', () async {
+      final store = DakStore(storage: DualStorage(const FlutterSecureStorage()));
+      await store.persistArmed(record);
+
+      await expectLater(
+        store.promotePending(userId: 7),
+        throwsA(isA<StateError>()),
+      );
+      expect((await store.read(userId: 7))!.dakPub, record.dakPub);
+    });
+
+    test('the pending write is ARMED: a lying store is caught', () async {
+      final storage = _LyingDualStorage();
+      final store = DakStore(storage: storage);
+      storage.swallowWrites = true;
+
+      await expectLater(
+        store.persistPendingArmed(candidate),
+        throwsA(isA<StateError>()),
+        reason: 'the enroll emit is gated on this write being proven',
+      );
+    });
+  });
 }
