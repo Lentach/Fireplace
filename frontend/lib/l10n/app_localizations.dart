@@ -2941,6 +2941,18 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Nieobsługiwany typ pliku'**
   String get attachmentUnsupportedFileType;
+
+  /// No description provided for @chatScrollToBottomSemantics.
+  ///
+  /// In pl, this message translates to:
+  /// **'Przewiń do najnowszych wiadomości'**
+  String get chatScrollToBottomSemantics;
+
+  /// No description provided for @avatarOpenProfileSemantics.
+  ///
+  /// In pl, this message translates to:
+  /// **'Otwórz profil'**
+  String get avatarOpenProfileSemantics;
 }
 
 class _AppLocalizationsDelegate

@@ -552,51 +552,55 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     return Positioned(
       bottom: 140,
       right: 16,
-      child: Material(
-        elevation: 2,
-        borderRadius: BorderRadius.circular(24),
-        color: Theme.of(context).colorScheme.surface,
-        child: InkWell(
-          onTap: _onScrollToBottomButtonTap,
+      child: Semantics(
+        button: true,
+        label: AppLocalizations.of(context).chatScrollToBottomSemantics,
+        child: Material(
+          elevation: 2,
           borderRadius: BorderRadius.circular(24),
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                const Icon(Icons.keyboard_arrow_down, size: 28),
-                if (_newMessagesCount > 0)
-                  Positioned(
-                    top: -4,
-                    right: -4,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      // Theme tokens, not Colors.blue/Colors.white: the raw
-                      // pair is off-brand on the ember/teal/cosmic themes, and
-                      // white on #2196F3 is ~3.3:1 — under the 4.5:1 gate for
-                      // 11px text. primary/onPrimary is the pairing every other
-                      // count badge in the app already uses.
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primary,
-                        borderRadius: const BorderRadius.all(
-                          Radius.circular(10),
+          color: Theme.of(context).colorScheme.surface,
+          child: InkWell(
+            onTap: _onScrollToBottomButtonTap,
+            borderRadius: BorderRadius.circular(24),
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  const Icon(Icons.keyboard_arrow_down, size: 28),
+                  if (_newMessagesCount > 0)
+                    Positioned(
+                      top: -4,
+                      right: -4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
                         ),
-                      ),
-                      constraints: const BoxConstraints(minWidth: 18),
-                      child: Text(
-                        _newMessagesCount > 99 ? '99+' : '$_newMessagesCount',
-                        style: RpgTheme.bodyFont(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Theme.of(context).colorScheme.onPrimary,
+                        // Theme tokens, not Colors.blue/Colors.white: the raw
+                        // pair is off-brand on the ember/teal/cosmic themes, and
+                        // white on #2196F3 is ~3.3:1 — under the 4.5:1 gate for
+                        // 11px text. primary/onPrimary is the pairing every other
+                        // count badge in the app already uses.
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primary,
+                          borderRadius: const BorderRadius.all(
+                            Radius.circular(10),
+                          ),
+                        ),
+                        constraints: const BoxConstraints(minWidth: 18),
+                        child: Text(
+                          _newMessagesCount > 99 ? '99+' : '$_newMessagesCount',
+                          style: RpgTheme.bodyFont(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Theme.of(context).colorScheme.onPrimary,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -1040,21 +1044,27 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
             ),
             child: Row(
               children: [
-                GestureDetector(
-                  onTap: _onAvatarTap,
-                  child: HexAvatar(
-                    size: 36,
-                    displayName: contactName,
-                    imageUrl: otherUser?.profilePictureUrl,
-                    surface: FireplaceColors.of(context).convItemBg,
-                    // mutedText, not convItemBorder: the blue border token is
-                    // 1.92:1 on this fill and the ring paints at 0.6 alpha —
-                    // the hex outline vanishes (design review 2026-08-03).
-                    borderColor: FireplaceColors.of(context).mutedText,
-                    initialsStyle: RpgTheme.bodyFont(
-                      fontSize: 36 * 0.34,
-                      fontWeight: FontWeight.w800,
-                      color: colorScheme.onSurface,
+                Semantics(
+                  button: true,
+                  label: AppLocalizations.of(
+                    context,
+                  ).avatarOpenProfileSemantics,
+                  child: GestureDetector(
+                    onTap: _onAvatarTap,
+                    child: HexAvatar(
+                      size: 36,
+                      displayName: contactName,
+                      imageUrl: otherUser?.profilePictureUrl,
+                      surface: FireplaceColors.of(context).convItemBg,
+                      // mutedText, not convItemBorder: the blue border token is
+                      // 1.92:1 on this fill and the ring paints at 0.6 alpha —
+                      // the hex outline vanishes (design review 2026-08-03).
+                      borderColor: FireplaceColors.of(context).mutedText,
+                      initialsStyle: RpgTheme.bodyFont(
+                        fontSize: 36 * 0.34,
+                        fontWeight: FontWeight.w800,
+                        color: colorScheme.onSurface,
+                      ),
                     ),
                   ),
                 ),
@@ -1084,20 +1094,24 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
         // Hex avatar slot (owner ruling 2026-08-03: the chat header speaks the
         // same hex language as the Chats list and the Contacts board; the old
         // bare 52px circle was the round-4 Telegram reference).
-        avatar: GestureDetector(
-          onTap: _onAvatarTap,
-          child: HexAvatar(
-            size: GlassTopBar.capsuleHeight,
-            displayName: contactName,
-            imageUrl: otherUser?.profilePictureUrl,
-            surface: FireplaceColors.of(context).convItemBg,
-            // mutedText for the same 3:1 boundary reason as the embedded
-            // header's hex above.
-            borderColor: FireplaceColors.of(context).mutedText,
-            initialsStyle: RpgTheme.bodyFont(
-              fontSize: GlassTopBar.capsuleHeight * 0.34,
-              fontWeight: FontWeight.w800,
-              color: colorScheme.onSurface,
+        avatar: Semantics(
+          button: true,
+          label: AppLocalizations.of(context).avatarOpenProfileSemantics,
+          child: GestureDetector(
+            onTap: _onAvatarTap,
+            child: HexAvatar(
+              size: GlassTopBar.capsuleHeight,
+              displayName: contactName,
+              imageUrl: otherUser?.profilePictureUrl,
+              surface: FireplaceColors.of(context).convItemBg,
+              // mutedText for the same 3:1 boundary reason as the embedded
+              // header's hex above.
+              borderColor: FireplaceColors.of(context).mutedText,
+              initialsStyle: RpgTheme.bodyFont(
+                fontSize: GlassTopBar.capsuleHeight * 0.34,
+                fontWeight: FontWeight.w800,
+                color: colorScheme.onSurface,
+              ),
             ),
           ),
         ),

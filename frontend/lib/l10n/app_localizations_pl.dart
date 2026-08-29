@@ -1674,4 +1674,10 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get attachmentUnsupportedFileType => 'Nieobsługiwany typ pliku';
+
+  @override
+  String get chatScrollToBottomSemantics => 'Przewiń do najnowszych wiadomości';
+
+  @override
+  String get avatarOpenProfileSemantics => 'Otwórz profil';
 }

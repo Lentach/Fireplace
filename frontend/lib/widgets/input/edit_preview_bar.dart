@@ -13,10 +13,11 @@ class EditPreviewBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final isDark = RpgTheme.isDark(context);
     final fc = FireplaceColors.of(context);
     final borderColor = Theme.of(context).colorScheme.primary;
-    final mutedColor = isDark ? Colors.white60 : Colors.black54;
+    // Per-theme token: the old `isDark ? white60 : black54` was one grey for
+    // three dark themes and another for two light ones.
+    final mutedColor = fc.mutedText;
 
     // Mirrors ReplyPreviewBar's rounded floating card.
     return Container(

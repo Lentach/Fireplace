@@ -43,8 +43,8 @@ class EncryptionProvider extends ChangeNotifier {
   /// in-flight fetch and returns early because the fetch's owner builds the
   /// session; a probe owner builds nothing, so sharing the map would leave the
   /// joiner with no session AND with its force-rebuild flag already consumed.
-  final Map<(int, int), Completer<Map<String, dynamic>>> _pendingIdentityProbes =
-      {};
+  final Map<(int, int), Completer<Map<String, dynamic>>>
+  _pendingIdentityProbes = {};
   bool _generatingMoreKeys = false;
 
   /// (userId, deviceId) addresses whose sessions should be force-rebuilt on
@@ -1524,6 +1524,39 @@ class EncryptionProvider extends ChangeNotifier {
   Timer? _identityResetAnswerTimeout;
   static const Duration _identityResetAnswerWindow = Duration(seconds: 6);
 
+  /// Re-reads the ceremony state while one is displayed.
+  ///
+  /// The deadline is server-authoritative but was fetched ONLY at `socketReady`
+  /// (`refreshOwnAccountStatus`), and no server event announces a ceremony
+  /// LEAVING 'pending' by completing — `completeDueResets` deliberately fans
+  /// out no notification, and `identityResetCancelled` covers only cancels. So
+  /// a session that stays connected across the transition kept rendering a
+  /// countdown for a ceremony that is already over, until a reload. Observed on
+  /// a real device.
+  ///
+  /// This re-asks instead of guessing locally: whatever ended the ceremony
+  /// (completed, cancelled elsewhere, row gone), the next answer is the truth,
+  /// and the existing `_hydrateIdentityResetState` already handles every case.
+  /// It runs ONLY while a deadline is held, so a normal session pays nothing,
+  /// and the period matches the backend's own EVERY_MINUTE sweep — the client
+  /// converges within about one tick of the state actually changing.
+  Timer? _identityResetRefreshTimer;
+  static const Duration _identityResetRefreshPeriod = Duration(minutes: 1);
+
+  /// Starts the re-read while a ceremony is held, stops it when none is.
+  /// Idempotent: safe to call from every path that touches the deadline.
+  void _syncIdentityResetRefresh() {
+    if (_identityResetDeadline == null && !_identityResetCompleted) {
+      _identityResetRefreshTimer?.cancel();
+      _identityResetRefreshTimer = null;
+      return;
+    }
+    _identityResetRefreshTimer ??= Timer.periodic(
+      _identityResetRefreshPeriod,
+      (_) => refreshOwnAccountStatus(),
+    );
+  }
+
   /// The synthetic status used when the server never answered. Not a server
   /// value — the UI maps it like any refusal, because nothing was started.
   static const String identityResetNoAnswerStatus = 'no_answer';
@@ -1625,6 +1658,7 @@ class EncryptionProvider extends ChangeNotifier {
     _identityResetDeadline = null;
     _identityResetShortened = false;
     _identityResetCompleted = false;
+    _syncIdentityResetRefresh();
     _e2eFlowLog('IDENTITY_RESET_CANCELLED', {});
     notifyListeners();
   }
@@ -1660,6 +1694,7 @@ class EncryptionProvider extends ChangeNotifier {
     _identityResetDeadline = parsed.toLocal();
     _identityResetShortened = shortened;
     _identityResetCompleted = false;
+    _syncIdentityResetRefresh();
   }
 
   /// Handler for the `ownIdentityReplaced` server event (Phase 0a): ANOTHER
@@ -1788,6 +1823,7 @@ class EncryptionProvider extends ChangeNotifier {
       _identityResetDeadline = null;
       _identityResetShortened = false;
       _identityResetCompleted = false;
+      _syncIdentityResetRefresh();
       notifyListeners();
       return;
     }
@@ -1807,6 +1843,9 @@ class EncryptionProvider extends ChangeNotifier {
     if (status == 'completed') {
       _identityResetDeadline = null;
       _identityResetCompleted = true;
+      // Still re-reading: a completed ceremony is waiting to be SPENT by an
+      // upload, and that transition has no event either.
+      _syncIdentityResetRefresh();
       notifyListeners();
     }
   }
@@ -2186,6 +2225,8 @@ class EncryptionProvider extends ChangeNotifier {
     _cancelPendingFetches();
     _identityResetAnswerTimeout?.cancel();
     _identityResetAnswerTimeout = null;
+    _identityResetRefreshTimer?.cancel();
+    _identityResetRefreshTimer = null;
     super.dispose();
   }
 

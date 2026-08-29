@@ -79,6 +79,12 @@ class _PingEffectOverlayState extends State<PingEffectOverlay>
       child: Stack(
         alignment: Alignment.center,
         children: [
+          // The orange below is deliberately NOT a theme token, and not a
+          // §9 violation: the ping is an attention signal that must read the
+          // same on all five themes and must never be mistaken for the error
+          // red or for a theme's own primary (which is red on Ember). Alpha is
+          // baked per ring so this whole badge stays `const` for the
+          // RepaintBoundary fast path below.
           // Concentric hex lattice, not circles: the ping propagates in the
           // app's own shape language (owner ask 2026-08-03).
           const SizedBox(
@@ -113,10 +119,7 @@ class _PingEffectOverlayState extends State<PingEffectOverlay>
       child: Center(
         child: FadeTransition(
           opacity: _opacityAnimation,
-          child: ScaleTransition(
-            scale: _scaleAnimation,
-            child: badge,
-          ),
+          child: ScaleTransition(scale: _scaleAnimation, child: badge),
         ),
       ),
     );
@@ -127,7 +130,11 @@ class _PingEffectOverlayState extends State<PingEffectOverlay>
 /// stroked `hexPath` outline. Constructed const so the ping subtree stays a
 /// build-once cached child under the Fade/Scale transitions.
 class _PingHexPainter extends CustomPainter {
-  const _PingHexPainter({this.fill, required this.border, required this.strokeWidth});
+  const _PingHexPainter({
+    this.fill,
+    required this.border,
+    required this.strokeWidth,
+  });
 
   final Color? fill;
   final Color border;

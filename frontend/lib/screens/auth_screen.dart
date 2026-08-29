@@ -44,23 +44,32 @@ class _AuthScreenState extends State<AuthScreen> {
     final scheme = Theme.of(context).colorScheme;
     final muted = FireplaceColors.of(context).mutedText;
     return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            color: selected
-                ? scheme.primary.withValues(alpha: 0.14)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(6),
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            label,
-            style: RpgTheme.bodyFont(
-              fontSize: 14,
-              color: selected ? scheme.primary : muted,
-              fontWeight: FontWeight.w600,
+      // `selected` is the only thing distinguishing these two tabs, and it was
+      // conveyed by colour alone — a screen reader could not tell which of
+      // Login / Create account was active. The 48dp floor is the Material
+      // minimum touch target; the padding alone left it at ~40dp.
+      child: Semantics(
+        selected: selected,
+        button: true,
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 48),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: selected
+                  ? scheme.primary.withValues(alpha: 0.14)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              label,
+              style: RpgTheme.bodyFont(
+                fontSize: 14,
+                color: selected ? scheme.primary : muted,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ),
@@ -181,22 +190,22 @@ class _AuthScreenState extends State<AuthScreen> {
                           // and this layer picks the words. `statusMessage` is
                           // the pre-localized channel (the device-revoked
                           // notice), so a code always wins when both are set.
-                          if (_statusText(authProvider, l10n) case final text?)
-                            ...[
-                              const SizedBox(height: 16),
-                              Text(
-                                text,
-                                textAlign: TextAlign.center,
-                                style: RpgTheme.bodyFont(
-                                  fontSize: 13,
-                                  color: authProvider.isError
-                                      ? scheme.error
-                                      // Dark-only neon green is illegible on
-                                      // paper; this door is always light.
-                                      : RpgTheme.successColorLight,
-                                ),
+                          if (_statusText(authProvider, l10n)
+                              case final text?) ...[
+                            const SizedBox(height: 16),
+                            Text(
+                              text,
+                              textAlign: TextAlign.center,
+                              style: RpgTheme.bodyFont(
+                                fontSize: 13,
+                                color: authProvider.isError
+                                    ? scheme.error
+                                    // Dark-only neon green is illegible on
+                                    // paper; this door is always light.
+                                    : RpgTheme.successColorLight,
                               ),
-                            ],
+                            ),
+                          ],
                         ],
                       ),
                     ),

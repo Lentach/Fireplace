@@ -33,10 +33,10 @@ class ReplyPreviewBar extends StatelessWidget {
       message,
       encryption: encryption,
     );
-    final isDark = RpgTheme.isDark(context);
     final fc = FireplaceColors.of(context);
     final accentColor = Theme.of(context).colorScheme.primary;
-    final mutedColor = isDark ? Colors.white60 : Colors.black54;
+    // Per-theme token, not a two-way dark/light guess.
+    final mutedColor = fc.mutedText;
 
     return Container(
       width: double.infinity,

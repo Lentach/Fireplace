@@ -1,3 +1,4 @@
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -499,4 +500,85 @@ void main() {
       },
     );
   });
+
+  // A ceremony leaving 'pending' has NO server event: `completeDueResets`
+  // deliberately fans out nothing, and `identityResetCancelled` covers only
+  // cancels. The deadline was fetched once at `socketReady`, so a session that
+  // stayed connected across the transition kept counting down to a ceremony
+  // that was already over — observed on a real device, cured only by a reload.
+  group(
+    'a live session re-reads the ceremony instead of trusting its cache',
+    () {
+      test('while a ceremony is held, the state is re-asked of the server', () {
+        fakeAsync((async) {
+          provider.onIdentityResetPending({
+            'deadlineAt': DateTime.now()
+                .toUtc()
+                .add(const Duration(hours: 72))
+                .toIso8601String(),
+            'shortened': false,
+          });
+          emitted.clear();
+
+          async.elapse(const Duration(minutes: 3));
+
+          expect(
+            emitted.where((e) => e.event == 'checkOwnKeyBundle').length,
+            3,
+            reason: 'one re-read per backend sweep tick while a banner is up',
+          );
+        });
+      });
+
+      test(
+        'the countdown clears once the server says the ceremony is gone',
+        () {
+          fakeAsync((async) {
+            provider.onIdentityResetPending({
+              'deadlineAt': DateTime.now()
+                  .toUtc()
+                  .add(const Duration(hours: 72))
+                  .toIso8601String(),
+              'shortened': false,
+            });
+            async.elapse(const Duration(minutes: 1));
+            expect(provider.identityResetDeadline, isNotNull);
+
+            // The answer that re-read earns: the row is no longer pending.
+            provider.onOwnKeyBundleStatus({
+              'exists': true,
+              'identityReset': null,
+            });
+
+            expect(
+              provider.identityResetDeadline,
+              isNull,
+              reason: 'no reload should be needed to stop counting down',
+            );
+
+            emitted.clear();
+            async.elapse(const Duration(minutes: 5));
+            expect(
+              emitted.where((e) => e.event == 'checkOwnKeyBundle'),
+              isEmpty,
+              reason:
+                  'the re-read must stop with the ceremony, not run forever',
+            );
+          });
+        },
+      );
+
+      test('a session with no ceremony never polls at all', () {
+        fakeAsync((async) {
+          emitted.clear();
+          async.elapse(const Duration(minutes: 10));
+          expect(
+            emitted,
+            isEmpty,
+            reason: 'the ordinary session must pay nothing for this',
+          );
+        });
+      });
+    },
+  );
 }

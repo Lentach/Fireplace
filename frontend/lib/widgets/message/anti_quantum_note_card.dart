@@ -11,6 +11,10 @@ import '../../theme/rpg_theme.dart';
 import '../../utils/anti_quantum_note_link.dart';
 import 'anti_quantum_note_reveal_sheet.dart';
 
+// The burn-after-reading card's own gradient. `_kNoteRed` happens to share a
+// hex with RpgTheme.errorColorLight, but that is coincidence, not identity:
+// this is a brand surface, not an error state, and binding it to the error
+// token would let a future error-colour change silently restyle the card.
 const Color _kNoteRed = Color(0xFFC0392B);
 const Color _kNoteRedDark = Color(0xFF922B21);
 
@@ -192,7 +196,9 @@ class _AntiQuantumNoteCardState extends State<AntiQuantumNoteCard> {
         : Colors.black.withValues(alpha: 0.04);
     final subtitleColor = widget.isMine
         ? widget.textColor.withValues(alpha: 0.75)
-        : (widget.isDark ? RpgTheme.timeColorDark : RpgTheme.textSecondaryLight);
+        : (widget.isDark
+              ? RpgTheme.timeColorDark
+              : RpgTheme.textSecondaryLight);
     final badgeGradient = destroyed
         ? LinearGradient(
             colors: [Colors.grey.shade600, Colors.grey.shade800],
@@ -239,10 +245,12 @@ class _AntiQuantumNoteCardState extends State<AntiQuantumNoteCard> {
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: destroyed
-                        ? LinearGradient(colors: [
-                            Colors.grey.shade600,
-                            Colors.grey.shade800,
-                          ])
+                        ? LinearGradient(
+                            colors: [
+                              Colors.grey.shade600,
+                              Colors.grey.shade800,
+                            ],
+                          )
                         : const LinearGradient(
                             colors: [_kNoteRed, _kNoteRedDark],
                             begin: Alignment.topCenter,
@@ -326,9 +334,7 @@ class _AntiQuantumNoteCardState extends State<AntiQuantumNoteCard> {
                                 l10n.antiQuantumNoteCardCountdown(
                                   _countdownLabel(),
                                 ),
-                                key: const Key(
-                                  'anti-quantum-note-countdown',
-                                ),
+                                key: const Key('anti-quantum-note-countdown'),
                                 style: RpgTheme.bodyFont(
                                   fontSize: 11,
                                   // Brand red drowns on dark bubbles; use the
@@ -361,7 +367,9 @@ class _AntiQuantumNoteCardState extends State<AntiQuantumNoteCard> {
   Widget _buildBurnedPill(AppLocalizations l10n) {
     final labelColor = widget.isMine
         ? widget.textColor.withValues(alpha: 0.55)
-        : (widget.isDark ? RpgTheme.timeColorDark : RpgTheme.textSecondaryLight);
+        : (widget.isDark
+              ? RpgTheme.timeColorDark
+              : RpgTheme.textSecondaryLight);
     final titleColor = widget.isMine
         ? widget.textColor.withValues(alpha: 0.8)
         : (widget.isDark ? Colors.white70 : Colors.black54);
@@ -410,10 +418,7 @@ class _AntiQuantumNoteCardState extends State<AntiQuantumNoteCard> {
                     ),
                     TextSpan(
                       text: ' — ${l10n.antiQuantumNoteBurnedSubtitle}',
-                      style: RpgTheme.bodyFont(
-                        fontSize: 12,
-                        color: labelColor,
-                      ),
+                      style: RpgTheme.bodyFont(fontSize: 12, color: labelColor),
                     ),
                   ],
                 ),

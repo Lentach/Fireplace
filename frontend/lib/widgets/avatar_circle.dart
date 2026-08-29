@@ -32,8 +32,7 @@ class _AvatarCircleState extends State<AvatarCircle> {
   String _buildImageUrl() {
     final url = widget.profilePictureUrl;
     if (url == null || url.trim().isEmpty) return '';
-    final isAbsolute =
-        url.startsWith('http://') || url.startsWith('https://');
+    final isAbsolute = url.startsWith('http://') || url.startsWith('https://');
     final base = isAbsolute ? url : '${AppConfig.baseUrl}$url';
     // Avatar URLs are unique per upload (server filename = randomUUID().ext),
     // so the URL itself is the cache key; a ?t= bust only forced a re-download
@@ -43,12 +42,25 @@ class _AvatarCircleState extends State<AvatarCircle> {
 
   @override
   Widget build(BuildContext context) {
-    final letter = widget.displayName.isNotEmpty ? widget.displayName[0].toUpperCase() : '?';
+    final letter = widget.displayName.isNotEmpty
+        ? widget.displayName[0].toUpperCase()
+        : '?';
     final isDark = RpgTheme.isDark(context);
     final gradientColors = isDark
-        ? [Theme.of(context).colorScheme.secondary, Theme.of(context).colorScheme.primary]
-        : [Theme.of(context).colorScheme.primary, Theme.of(context).colorScheme.secondary];
-    final letterColor = Colors.white;
+        ? [
+            Theme.of(context).colorScheme.secondary,
+            Theme.of(context).colorScheme.primary,
+          ]
+        : [
+            Theme.of(context).colorScheme.primary,
+            Theme.of(context).colorScheme.secondary,
+          ];
+    // The letter sits on a primary->secondary gradient, so white is not a
+    // given: on the light themes those fills are pale. Ask the same helper the
+    // button/FAB foregrounds use, against the gradient's midpoint.
+    final letterColor = RpgTheme.readableOn(
+      Color.lerp(gradientColors[0], gradientColors[1], 0.5)!,
+    );
 
     return Stack(
       children: [
@@ -114,7 +126,7 @@ class _AvatarCircleState extends State<AvatarCircle> {
                         child: CircularProgressIndicator(
                           value: loadingProgress.expectedTotalBytes != null
                               ? loadingProgress.cumulativeBytesLoaded /
-                                  loadingProgress.expectedTotalBytes!
+                                    loadingProgress.expectedTotalBytes!
                               : null,
                           strokeWidth: 2,
                           valueColor: AlwaysStoppedAnimation<Color>(

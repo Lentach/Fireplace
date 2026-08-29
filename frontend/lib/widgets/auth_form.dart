@@ -6,11 +6,7 @@ class AuthForm extends StatefulWidget {
   final bool isLogin;
   final Future<void> Function(String username, String password) onSubmit;
 
-  const AuthForm({
-    super.key,
-    required this.isLogin,
-    required this.onSubmit,
-  });
+  const AuthForm({super.key, required this.isLogin, required this.onSubmit});
 
   @override
   State<AuthForm> createState() => _AuthFormState();
@@ -62,23 +58,31 @@ class _AuthFormState extends State<AuthForm> {
         children: [
           TextFormField(
             controller: _usernameController,
-            style: RpgTheme.bodyFont(fontSize: 14, color: colorScheme.onSurface),
+            style: RpgTheme.bodyFont(
+              fontSize: 14,
+              color: colorScheme.onSurface,
+            ),
             decoration: RpgTheme.rpgInputDecoration(
               hintText: l10n.authUsernameHint,
               prefixIcon: Icons.person_outlined,
               context: context,
             ),
             onFieldSubmitted: (_) => _handleSubmit(),
-            validator: (value) =>
-                (value == null || value.isEmpty) ? l10n.authUsernameRequired : null,
+            validator: (value) => (value == null || value.isEmpty)
+                ? l10n.authUsernameRequired
+                : null,
           ),
           const SizedBox(height: 16),
           TextFormField(
             controller: _passwordController,
-            style: RpgTheme.bodyFont(fontSize: 14, color: colorScheme.onSurface),
+            style: RpgTheme.bodyFont(
+              fontSize: 14,
+              color: colorScheme.onSurface,
+            ),
             decoration: RpgTheme.rpgInputDecoration(
-              hintText:
-                  widget.isLogin ? l10n.authPasswordHint : l10n.authPasswordHintRegister,
+              hintText: widget.isLogin
+                  ? l10n.authPasswordHint
+                  : l10n.authPasswordHintRegister,
               prefixIcon: Icons.lock_outlined,
               context: context,
             ),
@@ -86,8 +90,9 @@ class _AuthFormState extends State<AuthForm> {
             onFieldSubmitted: (_) => _handleSubmit(),
             // Enforce strength only on registration; login just needs non-empty
             validator: widget.isLogin
-                ? (value) =>
-                    (value == null || value.isEmpty) ? l10n.passwordRequired : null
+                ? (value) => (value == null || value.isEmpty)
+                      ? l10n.passwordRequired
+                      : null
                 : (value) => _validatePassword(value, l10n),
           ),
           const SizedBox(height: 24),
@@ -99,10 +104,24 @@ class _AuthFormState extends State<AuthForm> {
                     width: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: colorScheme.primary,
+                      // The BUTTON's own foreground, read from the same theme
+                      // that painted its fill. `colorScheme.primary` here was
+                      // primary-on-primary: an invisible spinner on the themes
+                      // whose buttonBg IS primary.
+                      color:
+                          Theme.of(context)
+                              .elevatedButtonTheme
+                              .style
+                              ?.foregroundColor
+                              ?.resolve(const {}) ??
+                          colorScheme.onPrimary,
                     ),
                   )
-                : Text(widget.isLogin ? l10n.authLoginButton : l10n.authCreateAccountButton),
+                : Text(
+                    widget.isLogin
+                        ? l10n.authLoginButton
+                        : l10n.authCreateAccountButton,
+                  ),
           ),
         ],
       ),

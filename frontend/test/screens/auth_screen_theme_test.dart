@@ -49,6 +49,56 @@ void main() {
     );
     expect(pattern.layer, ChatBackgroundLayer.plain);
   });
+
+  // The two tabs were distinguished by COLOUR alone and sat under the 48dp
+  // Material touch minimum.
+  testWidgets('the auth tabs announce which one is selected, and are 48dp', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: RpgTheme.themeDataLight,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: const Locale('en'),
+        home: ChangeNotifierProvider(
+          create: (_) => AuthProvider(),
+          child: const AuthScreen(),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final selected = tester
+        .widgetList<Semantics>(find.byType(Semantics))
+        .where((s) => s.properties.selected != null)
+        .toList();
+    expect(
+      selected.length,
+      2,
+      reason: 'both tabs carry a selected state, not just a colour',
+    );
+    expect(
+      selected.where((s) => s.properties.selected == true).length,
+      1,
+      reason: 'exactly one tab is announced as active',
+    );
+
+    for (final label in ['LOGIN', 'REGISTER']) {
+      final size = tester.getSize(
+        find.ancestor(
+          of: find.text(label),
+          matching: find.byType(Container),
+        ).first,
+      );
+      expect(
+        size.height,
+        greaterThanOrEqualTo(48.0),
+        reason: '$label tab must meet the 48dp minimum touch target',
+      );
+    }
+  });
   // The login screen is the app's front door and its ONLY feedback channel.
   // Every status it showed used to be a hardcoded English literal built in
   // AuthProvider — including a developer message naming docker-compose and a

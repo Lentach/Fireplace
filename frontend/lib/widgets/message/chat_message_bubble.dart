@@ -23,6 +23,7 @@ import 'message_content_factory.dart';
 import 'voice_message_content.dart';
 import 'message_metadata_row.dart';
 import 'reaction_chips_row.dart';
+import 'reply_quote_card.dart';
 
 export 'reaction_chips_row.dart' show ReactionChipsRow;
 
@@ -38,50 +39,6 @@ class ChatMessageBubble extends StatelessWidget {
 
   String _displayContent(BuildContext context) =>
       messageDisplayContent(context, message);
-
-  Widget _buildReplyQuote(
-    BuildContext context,
-    ReplyToPreview replyTo,
-    bool isDark,
-    Color textColor,
-    Color borderColor,
-  ) {
-    final l10n = AppLocalizations.of(context);
-    final mutedColor = isDark
-        ? RpgTheme.timeColorDark
-        : RpgTheme.textSecondaryLight;
-    return Container(
-      padding: const EdgeInsets.only(left: 10, top: 6, bottom: 6, right: 8),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
-        border: Border(left: BorderSide(color: borderColor, width: 3)),
-        color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.06),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            replyTo.senderUsername.isNotEmpty
-                ? replyTo.senderUsername
-                : l10n.unknown,
-            style: RpgTheme.bodyFont(
-              fontSize: 12,
-              color: borderColor,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            _replyDisplayContent(context, replyTo),
-            style: RpgTheme.bodyFont(fontSize: 12, color: mutedColor),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
-    );
-  }
 
   String _replyDisplayContent(BuildContext context, ReplyToPreview replyTo) {
     final l10n = AppLocalizations.of(context);
@@ -190,12 +147,11 @@ class ChatMessageBubble extends StatelessWidget {
           : CrossAxisAlignment.start,
       children: [
         if (message.replyTo != null) ...[
-          _buildReplyQuote(
-            context,
-            message.replyTo!,
-            isDark,
-            textColor,
-            borderColor,
+          ReplyQuoteCard(
+            replyTo: message.replyTo!,
+            isDark: isDark,
+            borderColor: borderColor,
+            content: _replyDisplayContent(context, message.replyTo!),
           ),
           const SizedBox(height: 8),
         ],

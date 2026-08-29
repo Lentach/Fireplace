@@ -1650,4 +1650,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get attachmentUnsupportedFileType => 'Unsupported file type';
+
+  @override
+  String get chatScrollToBottomSemantics => 'Scroll to newest messages';
+
+  @override
+  String get avatarOpenProfileSemantics => 'Open profile';
 }
