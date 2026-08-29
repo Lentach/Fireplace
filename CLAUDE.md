@@ -36,7 +36,7 @@ Keep root cross-cutting: if a fact only matters while editing Flutter or NestJS 
 
 ## 2. Architecture map
 
-Fireplace is a production E2E encrypted chat app.
+Umbra (internal codename: Fireplace) is a production E2E encrypted chat app.
 
 **Naming: the user-facing brand is "Umbra" (since 0.1.20, PR #152); "Fireplace" lives on as the internal codename.** All code identifiers (`FireplaceApp`, `FireplaceColors`, pubspec `name: fireplace`, `package:fireplace/` imports), storage/contract names (secure-storage `FireplaceE2E`, IndexedDB `fireplace-push`/`fireplace-boot-marker`, Web Lock `fireplace-e2e-*`, Android channel `fireplace_messages`), repo name, and the domain keep the old name DELIBERATELY. Do NOT "fix" them: storage names are addresses of live user data (renaming `FireplaceE2E` = identity churn for every user), bundle/application ids are installed-app identity, and identifier renames are blame pollution for zero user value. New user-visible strings say Umbra; new internal identifiers may use either, favoring consistency with their surroundings.
 
