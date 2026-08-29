@@ -70,6 +70,24 @@ const THROTTLE_ANSWERS: Record<
       retryAfterMs,
     },
   ],
+  // Reverts the optimistic timer through `onDisappearingTimerFailed`.
+  //
+  // A DEDICATED event for the same reason as `messagePinFailed`: this guard
+  // refuses before the handler runs, so it holds only the requested `seconds`
+  // and cannot know the timer it displaced. Echoing `disappearingTimerUpdated`
+  // with the attempted value would CONFIRM a change that never happened — and
+  // this particular value is a safety promise, so a device left showing a timer
+  // the server never accepted tells the user messages will vanish when they
+  // will not.
+  setDisappearingTimer: (data, retryAfterMs) => [
+    'disappearingTimerFailed',
+    {
+      conversationId: (data as { conversationId?: number } | null)
+        ?.conversationId,
+      reason: RATE_LIMITED,
+      retryAfterMs,
+    },
+  ],
   // The link ceremony: each stage answers its own ack, so a throttled stage
   // surfaces in the link UI instead of hanging it.
   openProvisioning: (_data, retryAfterMs) => [

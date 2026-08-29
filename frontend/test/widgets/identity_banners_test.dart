@@ -1,5 +1,6 @@
 import 'package:fireplace/l10n/app_localizations.dart';
 import 'package:fireplace/providers/encryption_provider.dart';
+import 'package:fireplace/services/encryption_service.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/identity_damaged_banner.dart';
 import 'package:fireplace/widgets/own_identity_replaced_banner.dart';
@@ -19,6 +20,9 @@ class _FakeEncryption extends EncryptionProvider {
     this.damaged = false,
     this.changedPeers = const <int>{},
     this.peerFingerprint,
+    this.offeredFingerprint,
+    this.offeredKey,
+    this.offeredWasServed = false,
     this.ownFingerprint,
     this.replacedAt,
   });
@@ -26,9 +30,22 @@ class _FakeEncryption extends EncryptionProvider {
   bool damaged;
   Set<int> changedPeers;
   String? peerFingerprint;
+
+  /// The key the ceremony would PIN, as the real provider resolves it: from a
+  /// stored candidate, or — for a peer whose recovery path fail-closed before
+  /// one could be recorded — from a fresh server fetch ((xlvii) clause 3).
+  String? offeredFingerprint;
+  String? offeredKey;
+  bool offeredWasServed;
+
   String? ownFingerprint;
   int recoverCalls = 0;
   final List<int> acknowledged = <int>[];
+
+  /// What each acknowledgement was asked to pin. The dialog MUST hand back the
+  /// key it displayed ((xlvii) clause 2) — pinning anything else is the defect
+  /// this records.
+  final List<String?> adoptedKeys = <String?>[];
   bool recovering = false;
   String? replacedAt;
   int dismissCalls = 0;
@@ -65,10 +82,31 @@ class _FakeEncryption extends EncryptionProvider {
   }
 
   @override
-  Future<void> acknowledgePeerIdentity(int peerId) async {
+  Future<PeerIdentityVerification> loadPeerIdentityVerification(
+    int peerId, {
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    // An offer exists only while a warning stands, matching the real provider:
+    // a proactive open has nothing to adopt.
+    final standing = changedPeers.contains(peerId);
+    return PeerIdentityVerification(
+      pinnedFingerprint: peerFingerprint,
+      offeredFingerprint: standing ? offeredFingerprint : null,
+      offeredIdentityBase64: standing ? offeredKey : null,
+      offeredWasServed: standing && offeredWasServed,
+    );
+  }
+
+  @override
+  Future<bool> acknowledgePeerIdentity(
+    int peerId, {
+    String? adoptIdentityBase64,
+  }) async {
     acknowledged.add(peerId);
+    adoptedKeys.add(adoptIdentityBase64);
     changedPeers = changedPeers.where((id) => id != peerId).toSet();
     notifyListeners();
+    return true;
   }
 }
 
@@ -203,6 +241,8 @@ void main() {
       final encryption = _FakeEncryption(
         changedPeers: {7},
         peerFingerprint: '0123 4567 89ab cdef',
+        offeredFingerprint: 'aaaa bbbb cccc dddd',
+        offeredKey: 'T0ZGRVJFRA==',
         ownFingerprint: 'fedc ba98 7654 3210',
       );
       await tester.pumpWidget(
@@ -290,6 +330,8 @@ void main() {
       final encryption = _FakeEncryption(
         changedPeers: {7},
         peerFingerprint: '0123 4567 89ab cdef',
+        offeredFingerprint: 'aaaa bbbb cccc dddd',
+        offeredKey: 'T0ZGRVJFRA==',
         ownFingerprint: 'fedc ba98 7654 3210',
       );
       await tester.pumpWidget(proactiveHost(encryption));
@@ -304,6 +346,99 @@ void main() {
       expect(encryption.acknowledged, [7]);
       expect(encryption.peersWithChangedIdentity, isEmpty);
       expect(find.byType(AlertDialog), findsNothing, reason: 'dialog closes');
+    });
+
+    /// (xlvii) clause 2. The ceremony used to display the PINNED fingerprint
+    /// while confirming promoted a different, never-shown candidate — so for
+    /// any real rotation the number on screen could not match what the peer
+    /// read out, and confirming pinned bytes the user had never compared.
+    testWidgets('shows the offered key and pins exactly what it showed', (
+      tester,
+    ) async {
+      final encryption = _FakeEncryption(
+        changedPeers: {7},
+        peerFingerprint: '0123 4567 89ab cdef',
+        offeredFingerprint: 'aaaa bbbb cccc dddd',
+        offeredKey: 'T0ZGRVJFRA==',
+        ownFingerprint: 'fedc ba98 7654 3210',
+      );
+      await tester.pumpWidget(proactiveHost(encryption));
+
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+      // The key under consideration is on screen and labelled as the new one.
+      expect(find.text('aaaa bbbb cccc dddd'), findsOneWidget);
+      expect(
+        find.text(l10n.peerIdentityFingerprintNewLabel('bob')),
+        findsOneWidget,
+      );
+      // The pin is still shown, but only as context for what changed.
+      expect(find.text('0123 4567 89ab cdef'), findsOneWidget);
+      expect(
+        find.text(l10n.peerIdentityFingerprintPreviousLabel),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text(l10n.peerIdentityMarkVerifiedAction));
+      await tester.pumpAndSettle();
+
+      // The whole point: what was verified is what was pinned.
+      expect(encryption.adoptedKeys, ['T0ZGRVJFRA==']);
+    });
+
+    /// (xlvii) clause 1, at the surface. With nothing to adopt there must be no
+    /// confirm action at all: the old button called an acknowledgement that
+    /// dropped the warning FIRST and then found nothing to promote, destroying
+    /// the only persisted notice of a real event and repairing nothing.
+    testWidgets('offers no confirm action when there is nothing to pin', (
+      tester,
+    ) async {
+      final encryption = _FakeEncryption(
+        changedPeers: {7},
+        peerFingerprint: '0123 4567 89ab cdef',
+        ownFingerprint: 'fedc ba98 7654 3210',
+      );
+      await tester.pumpWidget(proactiveHost(encryption));
+
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+      expect(find.text(l10n.peerIdentityMarkVerifiedAction), findsNothing);
+      expect(
+        find.text(l10n.peerIdentityFingerprintOfferUnavailable('bob')),
+        findsOneWidget,
+        reason: 'the user is told why there is nothing to confirm',
+      );
+
+      // The warning MUST still be standing.
+      expect(encryption.peersWithChangedIdentity, {7});
+      expect(encryption.acknowledged, isEmpty);
+    });
+
+    /// A served key has not been corroborated by any message that decrypted, so
+    /// the out-of-band comparison is the only check there is. Say so.
+    testWidgets('names a freshly served key as uncorroborated', (tester) async {
+      final encryption = _FakeEncryption(
+        changedPeers: {7},
+        peerFingerprint: '0123 4567 89ab cdef',
+        offeredFingerprint: 'aaaa bbbb cccc dddd',
+        offeredKey: 'T0ZGRVJFRA==',
+        offeredWasServed: true,
+        ownFingerprint: 'fedc ba98 7654 3210',
+      );
+      await tester.pumpWidget(proactiveHost(encryption));
+
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+      expect(
+        find.text(l10n.peerIdentityFingerprintServedNotice('bob')),
+        findsOneWidget,
+      );
     });
   });
 }

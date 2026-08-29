@@ -180,6 +180,27 @@
     "placeholders": { "name": { "type": "String" } }
   },
   "peerIdentityFingerprintNoStoredKey": "No stored identity key is available for this contact.",
+  "peerIdentityFingerprintChangedNotice": "{name}'s keys have changed. Compare the NEW fingerprint below — the previous one is shown only so you can see what changed.",
+  "@peerIdentityFingerprintChangedNotice": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "peerIdentityFingerprintServedNotice": "This key came from the server and no message from {name} has confirmed it yet. Comparing it out of band is the only check there is.",
+  "@peerIdentityFingerprintServedNotice": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "peerIdentityFingerprintNewLabel": "{name}'s new fingerprint",
+  "@peerIdentityFingerprintNewLabel": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "peerIdentityFingerprintPreviousLabel": "Previously trusted fingerprint",
+  "peerIdentityFingerprintUnchangedNotice": "{name}'s key has not changed since you last accepted it. Confirm below to dismiss this warning.",
+  "@peerIdentityFingerprintUnchangedNotice": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "peerIdentityFingerprintOfferUnavailable": "{name}'s current key could not be loaded, so there is nothing to compare yet. Check your connection and open this again.",
+  "@peerIdentityFingerprintOfferUnavailable": {
+    "placeholders": { "name": { "type": "String" } }
+  },
   "peerIdentityChangedTimelineRow": "{name}'s security keys have changed — usually a sign-in from a new device or browser. Tap to verify.",
   "@peerIdentityChangedTimelineRow": {
     "placeholders": { "name": { "type": "String" } }

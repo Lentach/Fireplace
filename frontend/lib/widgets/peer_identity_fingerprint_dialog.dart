@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../l10n/app_localizations.dart';
 import '../providers/encryption_provider.dart';
+import '../services/encryption_service.dart';
 
 /// Side-by-side identity fingerprints for out-of-band verification.
 ///
@@ -13,95 +14,231 @@ import '../providers/encryption_provider.dart';
 /// "encrypted" from "encrypted to whoever the server said".
 ///
 /// Opened proactively from the peer's Safety section ("Verify security keys"
-/// on the user card), BEFORE anything goes wrong. The proactive door matters
-/// because a first-contact substitution never produces a change to warn about
-/// — there is no earlier key to differ from. (The in-chat reactive banner was
-/// removed by owner ruling 2026-08-15; this dialog is the surviving surface.)
+/// on the user card), BEFORE anything goes wrong — the proactive door matters
+/// because a first-contact substitution never produces a change to warn about,
+/// there being no earlier key to differ from — and reactively from
+/// [PeerIdentityChangedRow] when a change is standing.
+///
+/// **It shows the key that confirming will PIN** (spec §12 amendment (xlvii)
+/// clause 2). Until that amendment it displayed the currently pinned anchor
+/// while the confirm button promoted a different, never-displayed candidate: for
+/// any real rotation the number on screen could not match what the peer read
+/// out, so a careful user refused a legitimate change and a careless one
+/// accepted a key they had never compared. The ceremony verified one number and
+/// adopted another.
 Future<void> showPeerIdentityFingerprintDialog({
   required BuildContext context,
   required int peerId,
   required String peerName,
 }) {
-  final l10n = AppLocalizations.of(context);
-  // Capture the provider before opening the asynchronous dialog: the chat or
-  // profile context can disappear while the user is comparing the numbers.
-  final encryption = context.read<EncryptionProvider>();
-  final fingerprints = Future.wait<String?>([
-    encryption.getPeerIdentityFingerprint(peerId),
-    encryption.getIdentityFingerprint(),
-  ]);
-
   return showDialog<void>(
     context: context,
-    builder: (dialogContext) {
-      // Rebuilds when the warning clears, so the confirm button disappears the
-      // moment it is used.
-      final hasStandingWarning = dialogContext
-          .select<EncryptionProvider, bool>(
-            (e) => e.peersWithChangedIdentity.contains(peerId),
-          );
+    builder: (dialogContext) =>
+        _PeerIdentityFingerprintDialog(peerId: peerId, peerName: peerName),
+  );
+}
 
-      return AlertDialog(
-        title: Text(l10n.peerIdentityFingerprintDialogTitle),
-        content: FutureBuilder<List<String?>>(
-          future: fingerprints,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) {
-              return const SizedBox(
-                height: 56,
-                child: Center(child: CircularProgressIndicator()),
-              );
-            }
+/// Stateful because the offered key must be readable by the CONFIRM ACTION, not
+/// only by the content builder: the button pins exactly the bytes whose
+/// fingerprint was rendered, and a `FutureBuilder` wrapping only the content
+/// cannot hand them to `actions`.
+class _PeerIdentityFingerprintDialog extends StatefulWidget {
+  const _PeerIdentityFingerprintDialog({
+    required this.peerId,
+    required this.peerName,
+  });
 
-            final peerFingerprint = snapshot.data?[0];
-            final ownFingerprint = snapshot.data?[1];
-            return SingleChildScrollView(
+  final int peerId;
+  final String peerName;
+
+  @override
+  State<_PeerIdentityFingerprintDialog> createState() =>
+      _PeerIdentityFingerprintDialogState();
+}
+
+class _PeerIdentityFingerprintDialogState
+    extends State<_PeerIdentityFingerprintDialog> {
+  PeerIdentityVerification? _verification;
+  String? _ownFingerprint;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final encryption = context.read<EncryptionProvider>();
+    // loadPeerIdentityVerification may go to the network — a standing warning
+    // with no local candidate is the (xlvii) clause 3 shape, where the peer's
+    // currently served identity is the only thing there is to compare.
+    final verification = await encryption.loadPeerIdentityVerification(
+      widget.peerId,
+    );
+    final own = await encryption.getIdentityFingerprint();
+    if (!mounted) return;
+    setState(() {
+      _verification = verification;
+      _ownFingerprint = own;
+      _loading = false;
+    });
+  }
+
+  Future<void> _confirm(String? adoptIdentityBase64) async {
+    final encryption = context.read<EncryptionProvider>();
+    final navigator = Navigator.of(context);
+    await encryption.acknowledgePeerIdentity(
+      widget.peerId,
+      adoptIdentityBase64: adoptIdentityBase64,
+    );
+    if (!mounted) return;
+    navigator.pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    // Rebuilds when the warning clears, so the confirm button disappears the
+    // moment it is used.
+    final hasStandingWarning = context.select<EncryptionProvider, bool>(
+      (e) => e.peersWithChangedIdentity.contains(widget.peerId),
+    );
+    final verification = _verification;
+    final offered = verification?.offeredFingerprint;
+    final offeredKey = verification?.offeredIdentityBase64;
+
+    return AlertDialog(
+      title: Text(l10n.peerIdentityFingerprintDialogTitle),
+      content: _loading
+          ? const SizedBox(
+              height: 56,
+              child: Center(child: CircularProgressIndicator()),
+            )
+          : SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(l10n.peerIdentityFingerprintDialogDescription(peerName)),
-                  const SizedBox(height: 16),
                   Text(
-                    l10n.peerIdentityFingerprintPeerLabel(peerName),
-                    style: Theme.of(context).textTheme.labelLarge,
+                    l10n.peerIdentityFingerprintDialogDescription(
+                      widget.peerName,
+                    ),
                   ),
-                  const SizedBox(height: 4),
-                  if (peerFingerprint == null)
-                    Text(l10n.peerIdentityFingerprintNoStoredKey)
-                  else
-                    SelectableText(peerFingerprint),
+                  if (offered != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      l10n.peerIdentityFingerprintChangedNotice(
+                        widget.peerName,
+                      ),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    if (verification!.offeredWasServed) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        l10n.peerIdentityFingerprintServedNotice(
+                          widget.peerName,
+                        ),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    // The key confirming will pin, first: it is the one the
+                    // user must read against the peer's own copy.
+                    _FingerprintBlock(
+                      label: l10n.peerIdentityFingerprintNewLabel(
+                        widget.peerName,
+                      ),
+                      value: offered,
+                      missing: l10n.peerIdentityFingerprintNoStoredKey,
+                    ),
+                    const SizedBox(height: 16),
+                    _FingerprintBlock(
+                      label: l10n.peerIdentityFingerprintPreviousLabel,
+                      value: verification.pinnedFingerprint,
+                      missing: l10n.peerIdentityFingerprintNoStoredKey,
+                    ),
+                  ] else ...[
+                    if (hasStandingWarning) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        // Two very different situations, and conflating them
+                        // would be a lie: either the key is confirmed
+                        // UNCHANGED (so confirming just dismisses), or we could
+                        // not load it at all (so there is nothing to compare).
+                        verification?.offerMatchesPin == true
+                            ? l10n.peerIdentityFingerprintUnchangedNotice(
+                                widget.peerName,
+                              )
+                            : l10n.peerIdentityFingerprintOfferUnavailable(
+                                widget.peerName,
+                              ),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    _FingerprintBlock(
+                      label: l10n.peerIdentityFingerprintPeerLabel(
+                        widget.peerName,
+                      ),
+                      value: verification?.pinnedFingerprint,
+                      missing: l10n.peerIdentityFingerprintNoStoredKey,
+                    ),
+                  ],
                   const SizedBox(height: 16),
-                  Text(
-                    l10n.yourIdentityFingerprint,
-                    style: Theme.of(context).textTheme.labelLarge,
-                  ),
-                  const SizedBox(height: 4),
-                  SelectableText(
-                    ownFingerprint ?? l10n.identityFingerprintUnavailable,
+                  _FingerprintBlock(
+                    label: l10n.yourIdentityFingerprint,
+                    value: _ownFingerprint,
+                    missing: l10n.identityFingerprintUnavailable,
                   ),
                 ],
               ),
-            );
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: Text(l10n.cancel),
-          ),
-          if (hasStandingWarning)
-            TextButton(
-              onPressed: () async {
-                await encryption.acknowledgePeerIdentity(peerId);
-                if (dialogContext.mounted) {
-                  Navigator.of(dialogContext).pop();
-                }
-              },
-              child: Text(l10n.peerIdentityMarkVerifiedAction),
             ),
-        ],
-      );
-    },
-  );
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l10n.cancel),
+        ),
+        // Offered nothing to pin => nothing to confirm. Confirming with no
+        // offer would land on the pending-candidate fallback, which is exactly
+        // the no-op that used to destroy the warning ((xlvii) clause 1).
+        if (hasStandingWarning && !_loading && offeredKey != null)
+          TextButton(
+            onPressed: () => _confirm(offeredKey),
+            child: Text(l10n.peerIdentityMarkVerifiedAction),
+          ),
+      ],
+    );
+  }
+}
+
+/// One labelled fingerprint. An absent value renders as PLAIN text, never
+/// selectable: "no stored key" is an explanation, not a number to compare, and
+/// making it selectable invites copying it as if it were one.
+class _FingerprintBlock extends StatelessWidget {
+  const _FingerprintBlock({
+    required this.label,
+    required this.value,
+    required this.missing,
+  });
+
+  final String label;
+  final String? value;
+  final String missing;
+
+  @override
+  Widget build(BuildContext context) {
+    final fingerprint = value;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 4),
+        if (fingerprint == null)
+          Text(missing)
+        else
+          SelectableText(fingerprint),
+      ],
+    );
+  }
 }

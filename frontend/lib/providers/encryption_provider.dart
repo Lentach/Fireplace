@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
@@ -6,6 +7,7 @@ import '../models/message_model.dart';
 import '../services/audio_cache_store.dart';
 import '../services/encryption_service.dart';
 import '../services/device_list/device_list_cache.dart';
+import '../services/device_list/device_list_canonical.dart';
 import '../services/server_clock.dart';
 import '../utils/e2e_diag_log.dart';
 import '../utils/e2e_persistent_diag.dart';
@@ -32,6 +34,16 @@ class EncryptionProvider extends ChangeNotifier {
   EncryptionService get encryptionService => _encryptionService;
   bool _e2eInitialized = false;
   final Map<(int, int), Completer<Map<String, dynamic>>> _pendingPreKeyFetches =
+      {};
+
+  /// In-flight identity PROBES (amendment (xlvii) clause 3) — a raw bundle read
+  /// that builds no session.
+  ///
+  /// Deliberately NOT [_pendingPreKeyFetches]. `ensureSession` joins an
+  /// in-flight fetch and returns early because the fetch's owner builds the
+  /// session; a probe owner builds nothing, so sharing the map would leave the
+  /// joiner with no session AND with its force-rebuild flag already consumed.
+  final Map<(int, int), Completer<Map<String, dynamic>>> _pendingIdentityProbes =
       {};
   bool _generatingMoreKeys = false;
 
@@ -1671,7 +1683,32 @@ class EncryptionProvider extends ChangeNotifier {
       'deviceId': deviceId,
       'hasBundle': bundle != null && bundle is Map<String, dynamic>,
     });
-    final completer = _pendingPreKeyFetches.remove((userId, deviceId));
+    // TWO independent waiter sets, deliberately. The session fetch and the
+    // identity probe of (xlvii) clause 3 must never share a completer: a
+    // probe registered in the session map would make a concurrent
+    // `ensureSession` join it, return early believing the joined owner builds
+    // the session — which the probe never does — and silently drop the
+    // force-rebuild flag it removed on its first line.
+    _settleBundleWaiter(
+      _pendingPreKeyFetches.remove((userId, deviceId)),
+      userId,
+      deviceId,
+      bundle,
+    );
+    _settleBundleWaiter(
+      _pendingIdentityProbes.remove((userId, deviceId)),
+      userId,
+      deviceId,
+      bundle,
+    );
+  }
+
+  void _settleBundleWaiter(
+    Completer<Map<String, dynamic>>? completer,
+    int userId,
+    int deviceId,
+    dynamic bundle,
+  ) {
     if (completer == null || completer.isCompleted) return;
     if (bundle == null || bundle is! Map<String, dynamic>) {
       completer.completeError(
@@ -1915,16 +1952,182 @@ class EncryptionProvider extends ChangeNotifier {
   Future<String?> getIdentityFingerprint() =>
       _encryptionService.getIdentityFingerprint();
 
-  /// Stored trusted identity fingerprint for out-of-band peer verification.
+  /// Pinned account-identity fingerprint for out-of-band peer verification.
   Future<String?> getPeerIdentityFingerprint(int peerId) =>
       _encryptionService.getPeerIdentityFingerprint(peerId);
 
+  /// Everything the verify-security-keys dialog must show for [peerId]: the
+  /// pinned fingerprint and, when there is a change to confirm, the fingerprint
+  /// of the key adoption would pin.
+  ///
+  /// When a warning is standing but NO local candidate exists, this fetches the
+  /// peer's currently served account identity so the ceremony has something to
+  /// compare (amendment (xlvii) clause 3). That is the post-§6.2 shape: the
+  /// accept gate withholds the peer's row before Signal can record a candidate,
+  /// so without the fetch there is literally nothing to acknowledge and the
+  /// peer stays unreachable in both directions for good.
+  ///
+  /// The fetch is deliberately narrow — standing warning AND no candidate — so
+  /// merely opening the dialog to read a fingerprint never touches the network
+  /// and never spends a one-time pre-key.
+  Future<PeerIdentityVerification> loadPeerIdentityVerification(
+    int peerId, {
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    final local = await _encryptionService.peerIdentityVerification(peerId);
+    if (local.hasOffer) return local;
+    if (!peersWithChangedIdentity.contains(peerId)) return local;
+    final served = await _fetchServedAccountIdentity(peerId, timeout);
+    if (served == null) return local;
+    return _encryptionService.peerIdentityVerification(
+      peerId,
+      servedIdentityBase64: served,
+    );
+  }
+
   /// The user compared fingerprints out of band and accepted [peerId]'s current
-  /// key. Clears the standing identity-change warning — the ONLY thing that
-  /// does, so an unacknowledged warning survives restarts.
-  Future<void> acknowledgePeerIdentity(int peerId) async {
-    await _encryptionService.acknowledgePeerIdentity(peerId);
+  /// key. Returns whether the anchor actually advanced.
+  ///
+  /// [adoptIdentityBase64] MUST be the key the dialog displayed, so the pinned
+  /// key is the compared key (amendment (xlvii) clause 2).
+  ///
+  /// On success the state the stale anchor poisoned is dropped: the cached
+  /// device list, and the sessions for every device we currently believe the
+  /// peer has. Without that the anchor advances while the send path keeps
+  /// failing against a list it already refused and a ratchet keyed to the old
+  /// identity — the anchor is necessary for recovery but not sufficient.
+  Future<bool> acknowledgePeerIdentity(
+    int peerId, {
+    String? adoptIdentityBase64,
+  }) async {
+    final advanced = await _encryptionService.acknowledgePeerIdentity(
+      peerId,
+      adoptIdentityBase64: adoptIdentityBase64,
+    );
+    if (advanced) {
+      // Capture the addresses BEFORE invalidating: the cached list is the only
+      // record of which devices we ever addressed, and device 1 covers the
+      // legacy single-device address that predates any list.
+      final known = _deviceListCache.cached(peerId);
+      final addresses = <int>{1, ...?known?.liveDeviceIds};
+      _deviceListCache.invalidate(peerId);
+      for (final deviceId in addresses) {
+        markSessionRebuild(peerId, deviceId: deviceId);
+      }
+      _e2eFlowLog('PEER_IDENTITY_ADOPTED', {
+        'peerId': peerId,
+        'rebuiltAddresses': addresses.toList(),
+      });
+    }
     notifyListeners();
+    return advanced;
+  }
+
+  /// The account identity key the server currently serves for [peerId], or null
+  /// when no live device answers with one.
+  ///
+  /// UNTRUSTED by construction: the only thing done with it is showing its
+  /// fingerprint to a human for out-of-band comparison. §3 gives one identity
+  /// key per account, so the first live device that answers speaks for all of
+  /// them; the loop exists only to survive a device whose bundle is missing.
+  Future<String?> _fetchServedAccountIdentity(
+    int peerId,
+    Duration timeout,
+  ) async {
+    final List<int> candidates;
+    try {
+      candidates = await _servedDeviceIdHints(peerId, timeout);
+    } catch (e) {
+      _e2eFlowLog('PEER_IDENTITY_HINTS_FAILED', {
+        'peerId': peerId,
+        'error': '$e',
+      });
+      return null;
+    }
+    for (final deviceId in candidates) {
+      try {
+        final bundle = await _fetchBundleAnswer(peerId, deviceId, timeout);
+        final identity = bundle['identityPublicKey'];
+        if (identity is String && identity.isNotEmpty) {
+          _e2eFlowLog('PEER_IDENTITY_SERVED', {
+            'peerId': peerId,
+            'deviceId': deviceId,
+          });
+          return identity;
+        }
+      } catch (e) {
+        _e2eFlowLog('PEER_IDENTITY_SERVE_FAILED', {
+          'peerId': peerId,
+          'deviceId': deviceId,
+          'error': '$e',
+        });
+      }
+    }
+    return null;
+  }
+
+  /// Live device ids the server CLAIMS [peerId] has, lowest first.
+  ///
+  /// Read from the served `listCanonical` WITHOUT verifying its signature, and
+  /// that is sound only because of what it is used for: picking which device to
+  /// ask for a bundle. A lying server can only make us fetch a key a human then
+  /// refuses. Nothing here is cached, adopted, or allowed near the send path —
+  /// [getVerifiedDeviceList] remains the only source of addresses that may be
+  /// trusted, and it still fails closed.
+  ///
+  /// Falls back to device 1, which is the right guess for the two shapes that
+  /// produce no list: a non-enrolled account, and an install predating (xlv).
+  Future<List<int>> _servedDeviceIdHints(int peerId, Duration timeout) async {
+    final answer = await _fetchDeviceListAnswer(peerId, timeout);
+    final canonical = answer?['listCanonical'];
+    if (canonical is! String || canonical.isEmpty) return const [1];
+    try {
+      final list = parseCanonicalDeviceList(base64Decode(canonical));
+      final live = [
+        for (final device in list.devices)
+          if (device.revokedAtMs == null) device.deviceId,
+      ]..sort();
+      return live.isEmpty ? const [1] : live;
+    } on FormatException {
+      return const [1];
+    }
+  }
+
+  /// One raw `fetchPreKeyBundle` round trip, JOINING any fetch already in
+  /// flight for the same address.
+  ///
+  /// Separate from [ensureSession]'s own fetch on purpose: that one returns
+  /// early when it joins an in-flight fetch, because the joined caller builds
+  /// the session. This one needs the bundle itself. Joining rather than
+  /// replacing matters — the completer map is keyed by address, so registering a
+  /// second completer would strand the first until its timeout.
+  Future<Map<String, dynamic>> _fetchBundleAnswer(
+    int userId,
+    int deviceId,
+    Duration timeout,
+  ) {
+    final addressKey = (userId, deviceId);
+    final existing = _pendingIdentityProbes[addressKey];
+    if (existing != null) return existing.future;
+    final completer = Completer<Map<String, dynamic>>();
+    _pendingIdentityProbes[addressKey] = completer;
+    // deviceId is omitted for 1 (the server default), matching ensureSession so
+    // an older server that predates the field keeps answering.
+    _emit?.call('fetchPreKeyBundle', {
+      'userId': userId,
+      if (deviceId != 1) 'deviceId': deviceId,
+    });
+    return completer.future.timeout(
+      timeout,
+      onTimeout: () {
+        if (identical(_pendingIdentityProbes[addressKey], completer)) {
+          _pendingIdentityProbes.remove(addressKey);
+        }
+        throw TimeoutException(
+          'Pre-key bundle fetch timed out for user $userId device $deviceId',
+        );
+      },
+    );
   }
 
   /// User dismissed the own-identity-replaced notice.
@@ -1939,6 +2142,7 @@ class EncryptionProvider extends ChangeNotifier {
     await _encryptionService.clearAllKeys();
     _e2eInitialized = false;
     _pendingPreKeyFetches.clear();
+    _pendingIdentityProbes.clear();
   }
 
   @override
@@ -1958,6 +2162,12 @@ class EncryptionProvider extends ChangeNotifier {
       }
     }
     _pendingPreKeyFetches.clear();
+    for (final completer in _pendingIdentityProbes.values) {
+      if (!completer.isCompleted) {
+        completer.completeError('Disconnected');
+      }
+    }
+    _pendingIdentityProbes.clear();
     for (final completer in _pendingDeviceListFetches.values) {
       if (!completer.isCompleted) {
         completer.completeError('Disconnected');

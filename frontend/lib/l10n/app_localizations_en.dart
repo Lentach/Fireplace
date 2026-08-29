@@ -513,6 +513,35 @@ class AppLocalizationsEn extends AppLocalizations {
       'No stored identity key is available for this contact.';
 
   @override
+  String peerIdentityFingerprintChangedNotice(String name) {
+    return '$name\'s keys have changed. Compare the NEW fingerprint below — the previous one is shown only so you can see what changed.';
+  }
+
+  @override
+  String peerIdentityFingerprintServedNotice(String name) {
+    return 'This key came from the server and no message from $name has confirmed it yet. Comparing it out of band is the only check there is.';
+  }
+
+  @override
+  String peerIdentityFingerprintNewLabel(String name) {
+    return '$name\'s new fingerprint';
+  }
+
+  @override
+  String get peerIdentityFingerprintPreviousLabel =>
+      'Previously trusted fingerprint';
+
+  @override
+  String peerIdentityFingerprintUnchangedNotice(String name) {
+    return '$name\'s key has not changed since you last accepted it. Confirm below to dismiss this warning.';
+  }
+
+  @override
+  String peerIdentityFingerprintOfferUnavailable(String name) {
+    return '$name\'s current key could not be loaded, so there is nothing to compare yet. Check your connection and open this again.';
+  }
+
+  @override
   String peerIdentityChangedTimelineRow(String name) {
     return '$name\'s security keys have changed — usually a sign-in from a new device or browser. Tap to verify.';
   }

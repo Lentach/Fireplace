@@ -695,10 +695,40 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
       backgroundColor: messagesAreaBg,
       layer: settings.resolvedChatBackground,
       child: messages.isEmpty
-          ? Center(
-              child: Text(
-                AppLocalizations.of(context).noMessagesYet,
-                style: RpgTheme.bodyFont(fontSize: 14, color: mutedColor),
+          // The alarm must survive an EMPTY conversation. This row used to be
+          // rendered ONLY inside the ListView below, so a peer whose identity
+          // changed was announced NOWHERE in exactly the chats most likely to
+          // be empty: cleared history, fully expired history, or a peer who
+          // reset before the first message — and the server
+          // `peerIdentityChanged` event raises the warning with no local
+          // message required, so an empty chat is not a corner case.
+          ? Padding(
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 20,
+                top: topClearance,
+                bottom: 8 + listBottomPadding,
+              ),
+              child: Column(
+                children: [
+                  if (peerIdentityChanged)
+                    PeerIdentityChangedRow(
+                      // Only ever true when the peer is known; see build().
+                      peerId: peer!.id,
+                      peerName: _getContactName(),
+                    ),
+                  Expanded(
+                    child: Center(
+                      child: Text(
+                        AppLocalizations.of(context).noMessagesYet,
+                        style: RpgTheme.bodyFont(
+                          fontSize: 14,
+                          color: mutedColor,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             )
           : Listener(

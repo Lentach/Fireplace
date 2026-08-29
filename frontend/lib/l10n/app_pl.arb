@@ -180,6 +180,27 @@
     "placeholders": { "name": { "type": "String" } }
   },
   "peerIdentityFingerprintNoStoredKey": "Brak zapisanego klucza tożsamości dla tego kontaktu.",
+  "peerIdentityFingerprintChangedNotice": "Klucze użytkownika {name} uległy zmianie. Porównaj NOWY odcisk poniżej — poprzedni pokazujemy tylko po to, aby było widać, co się zmieniło.",
+  "@peerIdentityFingerprintChangedNotice": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "peerIdentityFingerprintServedNotice": "Ten klucz pochodzi z serwera i żadna wiadomość od użytkownika {name} go jeszcze nie potwierdziła. Porównanie go innym kanałem to jedyne zabezpieczenie.",
+  "@peerIdentityFingerprintServedNotice": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "peerIdentityFingerprintNewLabel": "Nowy odcisk tożsamości użytkownika {name}",
+  "@peerIdentityFingerprintNewLabel": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "peerIdentityFingerprintPreviousLabel": "Poprzednio zaufany odcisk",
+  "peerIdentityFingerprintUnchangedNotice": "Klucz użytkownika {name} nie zmienił się od czasu, gdy go zaakceptowałeś. Potwierdź poniżej, aby zamknąć to ostrzeżenie.",
+  "@peerIdentityFingerprintUnchangedNotice": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "peerIdentityFingerprintOfferUnavailable": "Nie udało się wczytać aktualnego klucza użytkownika {name}, więc nie ma jeszcze czego porównywać. Sprawdź połączenie i otwórz to ponownie.",
+  "@peerIdentityFingerprintOfferUnavailable": {
+    "placeholders": { "name": { "type": "String" } }
+  },
   "peerIdentityChangedTimelineRow": "Klucze bezpieczeństwa {name} uległy zmianie — zwykle to logowanie z nowego urządzenia lub przeglądarki. Dotknij, aby zweryfikować.",
   "@peerIdentityChangedTimelineRow": {
     "placeholders": { "name": { "type": "String" } }

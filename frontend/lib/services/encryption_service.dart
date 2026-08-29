@@ -251,8 +251,8 @@ class EncryptionService {
   /// Called when a peer's identity key changes. Set by the provider.
   void Function(int peerId)? onPeerIdentityChanged;
 
-  /// The user verified [peerId]'s fingerprint out of band. Drops the warning
-  /// for good — this is the ONLY thing that clears it.
+  /// The user compared [peerId]'s fingerprint out of band and accepted it.
+  /// Returns whether the account anchor actually advanced.
   ///
   /// It is also the ONLY thing that advances the I7 account anchor
   /// (amendment (xlvi)). A peer who completes a §6.2 reset presents a new
@@ -260,17 +260,74 @@ class EncryptionService {
   /// this device accepts it — but accepting it silently would let one injected
   /// ciphertext move the anchor and lock the peer out instead. Tying the two
   /// together means the anchor never moves without an alarm the user saw.
-  Future<void> acknowledgePeerIdentity(int peerId) async {
-    if (!_peersWithChangedIdentity.remove(peerId)) return;
-    final promoted = await _identityStore.promotePendingAccountIdentity(
-      peerId.toString(),
-    );
+  ///
+  /// [adoptIdentityBase64] is the key the UI actually DISPLAYED for comparison.
+  /// When present it wins outright over any stored candidate (amendment
+  /// (xlvii) clause 2): promoting a candidate the user was never shown is how
+  /// the ceremony came to verify one number and adopt another. When absent this
+  /// falls back to promoting the stored candidate, which is what a locally
+  /// detected change leaves behind.
+  ///
+  /// **The warning is cleared ONLY if the anchor advanced** (amendment (xlvii)
+  /// clause 1). It used to be dropped first and unconditionally, so a peer with
+  /// no candidate — every peer who completed §6.2, because the accept gate
+  /// withholds their row before Signal can record one — lost the single
+  /// persisted notice of a real event and got nothing repaired in exchange.
+  Future<bool> acknowledgePeerIdentity(
+    int peerId, {
+    String? adoptIdentityBase64,
+  }) async {
+    if (!_peersWithChangedIdentity.contains(peerId)) return false;
+    final name = peerId.toString();
+    final supplied = adoptIdentityBase64;
+    final bool advanced;
+    final String source;
+    if (supplied != null && supplied.isNotEmpty) {
+      // ONLY a key this device already recorded may be pinned. Verifying the
+      // supplied bytes against stored state is what keeps "the pinned key is
+      // the key the human was shown" a STRUCTURAL property: before this check
+      // the parameter was opaque caller input, so the guarantee rested on one
+      // call site happening to pass the right value, and any future caller
+      // could have moved the I7 anchor to a key nobody ever displayed.
+      final pending = await _identityStore.pendingAccountIdentity(name);
+      final pinned = await _identityStore.getAccountIdentity(name);
+      final matchesPending =
+          pending != null && base64Encode(pending.serialize()) == supplied;
+      final matchesPinned =
+          pinned != null && base64Encode(pinned.serialize()) == supplied;
+      if (!matchesPending && !matchesPinned) {
+        E2ePersistentDiag.record('PEER_IDENTITY_ADOPT_REFUSED', {
+          'peerId': peerId,
+          'reason': 'unrecorded_key',
+        });
+        return false;
+      }
+      if (matchesPending) {
+        advanced = await _identityStore.promotePendingAccountIdentity(name);
+        source = 'displayed_candidate';
+      } else {
+        // Re-affirming the key already pinned. Nothing advances, but the user
+        // compared it and said it is right, so the warning is resolved — the
+        // alternative is a standing alarm with no control, which is the dead
+        // end (xlvii) exists to remove.
+        await _identityStore.adoptAccountIdentity(name, pinned!);
+        advanced = true;
+        source = 'reaffirmed_pin';
+      }
+    } else {
+      advanced = await _identityStore.promotePendingAccountIdentity(name);
+      source = 'pending_candidate';
+    }
     E2ePersistentDiag.record('PEER_IDENTITY_ACKNOWLEDGED', {
       'peerId': peerId,
-      'anchorAdvanced': promoted,
+      'anchorAdvanced': advanced,
+      'source': source,
     });
+    if (!advanced) return false;
+    _peersWithChangedIdentity.remove(peerId);
     await _persistIdentityChanged();
     onPeerIdentityChanged?.call(peerId);
+    return true;
   }
 
   /// Server-corroborated peer identity change (Phase 0a `peerIdentityChanged`
@@ -1259,22 +1316,100 @@ class EncryptionService {
     return _formatIdentityFingerprint(keyPair.getPublicKey());
   }
 
-  /// Get the stored trusted fingerprint for [peerId], if one exists.
+  /// Get the pinned trusted fingerprint for [peerId]'s ACCOUNT, if one exists.
   ///
   /// This is deliberately a read of the trusted identity store rather than a
   /// server-supplied bundle: the user must compare the key this device actually
   /// accepted after the warning, not a fresh network value.
+  ///
+  /// ACCOUNT-scoped, not `(peer, device 1)` (amendment (xlvii) clause 2, the
+  /// same category error (xlvi) fixed everywhere else). The old address was
+  /// wrong twice: [SignalIdentityStore.promotePendingAccountIdentity] only ever
+  /// writes the account row, so the two diverged permanently after any
+  /// acknowledged change, and a post-§6.2 peer has NO device 1 at all — ids are
+  /// never reused — so the one out-of-band MITM check read an empty slot
+  /// precisely for the accounts that had most recently survived a takeover.
+  /// The legacy device-1 backfill inside [getAccountIdentity] keeps every
+  /// single-device peer showing exactly what it showed before.
   Future<String?> getPeerIdentityFingerprint(int peerId) async {
     if (!_initialized) return null;
     try {
-      final identity = await _identityStore.getIdentity(
-        SignalProtocolAddress(peerId.toString(), _deviceId),
+      final identity = await _identityStore.getAccountIdentity(
+        peerId.toString(),
       );
       return identity == null ? null : _formatIdentityFingerprint(identity);
     } catch (_) {
       // Verification UI is advisory. Storage damage or an unavailable key must
       // leave it visibly unavailable, never turn the warning into an exception.
       return null;
+    }
+  }
+
+  /// Both sides of the verify-security-keys ceremony for [peerId]: the key this
+  /// device currently trusts, and the key an acknowledgement would pin.
+  ///
+  /// [servedIdentityBase64] is a freshly served account identity, used ONLY
+  /// when no local candidate exists — the (xlvii) clause 3 shape, where the
+  /// peer completed §6.2 and the accept gate refused their row before Signal
+  /// could record anything to acknowledge. A stored candidate always wins over
+  /// it, because a candidate came from a real inbound ciphertext.
+  Future<PeerIdentityVerification> peerIdentityVerification(
+    int peerId, {
+    String? servedIdentityBase64,
+  }) async {
+    if (!_initialized) return const PeerIdentityVerification();
+    try {
+      final name = peerId.toString();
+      final pinned = await _identityStore.getAccountIdentity(name);
+      var offered = await _identityStore.pendingAccountIdentity(name);
+      var offeredWasServed = false;
+      if (offered == null &&
+          servedIdentityBase64 != null &&
+          servedIdentityBase64.isNotEmpty) {
+        offered = IdentityKey.fromBytes(
+          base64Decode(servedIdentityBase64),
+          0,
+        );
+        offeredWasServed = true;
+      }
+      // An offer identical to the pin is not a CHANGE to confirm — but it must
+      // still be offered, because clause 1 only clears a warning when the
+      // anchor advances. Nulling it here left a standing alarm with no control
+      // at all: an alarm the user cannot act on, which is the exact dead end
+      // this amendment exists to remove. Re-affirming the key the user just
+      // compared is a legitimate resolution, so the offer stays and only its
+      // PRESENTATION changes.
+      final offerMatchesPin =
+          offered != null &&
+          pinned != null &&
+          base64Encode(offered.serialize()) ==
+              base64Encode(pinned.serialize());
+      // RECORD a served offer as the pending candidate, so that every adoption
+      // promotes a key this device wrote down (see [acknowledgePeerIdentity]).
+      // This cannot clobber a genuine candidate: `offered` is taken from the
+      // served key only when there was no candidate to begin with. Recording
+      // grants no trust — the pending slot is read only by the display and by
+      // the human-gated promotion.
+      if (offeredWasServed && offered != null && !offerMatchesPin) {
+        await _identityStore.stagePendingAccountIdentity(name, offered);
+      }
+      return PeerIdentityVerification(
+        pinnedFingerprint: pinned == null
+            ? null
+            : _formatIdentityFingerprint(pinned),
+        // Suppressed when it equals the pin: showing the same number twice
+        // under "new" and "previous" labels reads as a mismatch.
+        offeredFingerprint: offered == null || offerMatchesPin
+            ? null
+            : _formatIdentityFingerprint(offered),
+        offeredIdentityBase64: offered == null
+            ? null
+            : base64Encode(offered.serialize()),
+        offeredWasServed: offeredWasServed && offered != null,
+        offerMatchesPin: offerMatchesPin,
+      );
+    } catch (_) {
+      return const PeerIdentityVerification();
     }
   }
 
@@ -3393,4 +3528,58 @@ class LocalHistoryWipeResult {
 
   /// Only this licenses telling the user their history is gone.
   bool get isComplete => failedKeys.isEmpty;
+}
+
+/// Both sides of the verify-security-keys ceremony (spec §12 amendment
+/// (xlvii) clause 2).
+///
+/// The dialog used to display [pinnedFingerprint] while its confirm button
+/// promoted a stored candidate nobody had seen, so the user compared one number
+/// and adopted another. Adoption now pins exactly [offeredIdentityBase64] — the
+/// key whose fingerprint was on screen.
+class PeerIdentityVerification {
+  const PeerIdentityVerification({
+    this.pinnedFingerprint,
+    this.offeredFingerprint,
+    this.offeredIdentityBase64,
+    this.offeredWasServed = false,
+    this.offerMatchesPin = false,
+  });
+
+  /// Fingerprint of the account anchor this device already accepted, or null
+  /// on genuine first contact with the account.
+  final String? pinnedFingerprint;
+
+  /// Fingerprint of the key an acknowledgement would pin, or null when there is
+  /// nothing NEW to compare — either no offer at all, or an offer that already
+  /// equals the pin (see [offerMatchesPin]). Never equal to
+  /// [pinnedFingerprint]: rendering the same number under "new" and "previous"
+  /// labels reads as a mismatch.
+  final String? offeredFingerprint;
+
+  /// Base64 of the offered key, passed straight back to
+  /// [EncryptionService.acknowledgePeerIdentity] so what was verified is what
+  /// gets pinned.
+  final String? offeredIdentityBase64;
+
+  /// The offer came from a FRESH server fetch rather than a stored candidate —
+  /// the (xlvii) clause 3 shape, where the peer completed §6.2 and no inbound
+  /// ciphertext ever got far enough to leave a candidate behind. Worth telling
+  /// the user apart: nothing about this key has been corroborated by a message
+  /// that actually decrypted, so the out-of-band comparison is the only check
+  /// there is.
+  final bool offeredWasServed;
+
+  /// The offered key IS the pinned one, so nothing actually changed.
+  ///
+  /// Kept as an offer rather than discarded: clause 1 clears a warning only
+  /// when the anchor advances, so discarding this left a standing alarm with no
+  /// control to resolve it — an alarm the user cannot act on, which is the dead
+  /// end this amendment exists to remove. Re-affirming the compared key is a
+  /// legitimate resolution; the UI presents it as "unchanged", not as a change.
+  final bool offerMatchesPin;
+
+  /// Is there a key to adopt?
+  bool get hasOffer =>
+      offeredIdentityBase64 != null && offeredIdentityBase64!.isNotEmpty;
 }

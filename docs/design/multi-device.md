@@ -1381,6 +1381,62 @@ that is the designed outcome).
     durable end state** — binding the account identity into the signed list would make the anchor
     unguessable rather than merely account-scoped — but it changes (d)-governed canonical bytes and
     needs a list-version migration, and a recovery-breaking defect must not wait on that.
+- **Amendment 2026-08-29 (D1/D2, ratified BEFORE the fix; found by following (xlvi)'s own
+  acknowledgement path out the other side, and reproduced with real production objects in
+  `frontend/test/providers/peer_reset_recovery_test.dart` before a line was changed):**
+  - **(xlvii) An alarm the user cannot act on is not a warning, it is a dead end.** (xlv) restored
+    the LIST a §6.2 recovery leaves behind and (xlvi) restored the ability to CHECK it, but the
+    only action either one offers the user — acknowledging the identity change — **repaired nothing
+    and destroyed the warning.** The three failures are independent and each is sufficient on its
+    own, which is why this is one amendment and not three.
+    **Clause 1 — acknowledgement MUST be atomic with adoption.** `acknowledgePeerIdentity` removed
+    the peer from the alarm set FIRST and UNCONDITIONALLY, then discovered
+    `promotePendingAccountIdentity` had nothing to promote and returned false. The anchor stayed
+    stale, the warning was gone for good (it is the ONLY thing that clears it, and it is
+    persisted), and the sole record was an `anchorAdvanced:false` diagnostic no user will ever
+    read. The warning MUST survive an acknowledgement that did not advance the anchor.
+    **Clause 2 — the user MUST be shown the key that adoption will pin.** The verify-security-keys
+    dialog displayed the PINNED anchor while the confirm button promoted a DIFFERENT, never-displayed
+    pending candidate: **the ceremony verified one number and adopted another.** For a legitimate
+    rotation the displayed number cannot match what the peer reads out, so a careful user refuses a
+    genuine change while a careless one accepts a key they never compared — the defence inverted.
+    The offered key MUST be displayed, labelled, and beside the pinned one.
+    **Clause 3 — recovery MUST NOT depend on a path that fail-closed.** For a peer who completed
+    §6.2 the pending candidate is never written at all: the accept gate withholds their row before
+    Signal runs, and the candidate's only writer is inside `isTrustedIdentity`. **(xlvi) clause 1
+    SUCCEEDING is what makes this unreachable** — a peer who has NOT re-enrolled still sends a
+    legacy row that takes the device-1 escape hatch, decrypts, and alarms correctly. The client MUST
+    therefore be able to obtain the peer's currently-served account identity **on explicit user
+    request**, show its fingerprint for out-of-band comparison, and pin it only on human
+    confirmation. That served key is untrusted input and is never adopted implicitly; the human
+    comparison is the entire defence, exactly as on first contact. Adoption MUST also drop the
+    state the stale anchor poisoned — the cached device list and the peer's sessions — or the anchor
+    advances while every send keeps failing.
+    **Clause 4 — a per-device row lagging the human-accepted account anchor is not news.** Meeting
+    a key that already EQUALS the accepted account anchor at some device address must not re-raise
+    the alarm, or the adoption in clause 3 would re-alarm on the peer's very next message and train
+    the user to dismiss the one surface that detects a real takeover.
+    Client-side only: no wire field, no migration, no change to (d)-governed DAK-signed bytes.
+    **(xl) remains the durable end state** and is untouched by this.
+    **What clause 3 COSTS, stated plainly, because it is a real widening.** Before (xlvii) a server
+    could raise the identity alarm but could NOT get a key adopted: with no candidate the
+    acknowledgement was a no-op. Making recovery possible necessarily makes the ceremony
+    server-summonable — `peerIdentityChanged` carries a userId the client does not contact-check,
+    and "no candidate" is the default state for any peer who has not messaged recently, so a
+    compromised server can put a key of its choosing in front of the user at a time of its
+    choosing. **The defence is the out-of-band comparison and nothing else — exactly as on first
+    contact, which has always been TOFU.** Three consequences are therefore load-bearing rather
+    than cosmetic: the served key MUST be labelled as uncorroborated by any decrypted message; the
+    copy MUST NOT invite a reflexive tap; and adoption MUST be restricted to a key this device
+    actually recorded, so an invented key cannot reach the anchor even from a future caller.
+    **Three residuals, recorded and NOT fixed here:** (a) the force-rebuild set is in memory only
+    while the anchor advance is persisted, so adopting and then closing the app leaves the anchor
+    advanced and the poisoned sessions intact until something else rebuilds them; (b) the persisted
+    warning set keeps the 200 numerically HIGHEST peer ids rather than the most recent, and accepts
+    warnings for non-contacts, so a server can evict a genuine warning across a restart — which
+    matters more now that this warning is the sole door to recovery; (c) the device-list rollback
+    pin is process-lifetime only. All three predate this amendment; (a) is newly load-bearing
+    because of clause 3.
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the
   test-integrity findings are folded at `4c0e0bf`; the four security findings were T9. **T10 (xlv)

@@ -1108,6 +1108,12 @@ class ConnectionProvider extends ChangeNotifier {
     _socketService.on('disappearingTimerUpdated', (data) {
       _conversationsProvider?.onDisappearingTimerUpdated(data);
     });
+    // The throttle refusal for the same request (spec §12 (xxxvii) class):
+    // without this the refused device keeps showing a timer the server never
+    // accepted.
+    _socketService.on('disappearingTimerFailed', (data) {
+      _conversationsProvider?.onDisappearingTimerFailed(data);
+    });
     _socketService.on('conversationMuteUpdated', (data) {
       _conversationsProvider?.onConversationMuteUpdated(data);
     });

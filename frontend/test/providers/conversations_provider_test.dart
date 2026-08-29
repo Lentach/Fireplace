@@ -610,6 +610,100 @@ void main() {
       });
     });
 
+    /// Same class as the refused pin above, and the reason it was owed: the
+    /// throttle guard refuses `setDisappearingTimer` BEFORE the handler runs,
+    /// so the refusal cannot carry the timer it displaced. Until this landed the
+    /// refused device kept showing a timer the server and the peer never had —
+    /// a user believing messages will vanish when they will not.
+    group('a refused disappearing timer restores what it overwrote', () {
+      ConversationsProvider seeded({int? timer}) {
+        final provider = ConversationsProvider();
+        provider.onConnect(false);
+        provider.onConversationsList([
+          {
+            'id': 10,
+            'userOne': {'id': 1, 'username': 'alice', 'tag': '0001'},
+            'userTwo': {'id': 2, 'username': 'bob', 'tag': '0002'},
+            'createdAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+            'disappearingTimer': ?timer,
+          },
+        ]);
+        return provider;
+      }
+
+      ConversationModel only(ConversationsProvider p) =>
+          p.conversations.firstWhere((c) => c.id == 10);
+
+      test('restores the PREVIOUS timer, not "off"', () {
+        final provider = seeded(timer: 3600);
+        provider.setDisappearingTimer(10, 60);
+        expect(only(provider).disappearingTimer, 60);
+
+        provider.onDisappearingTimerFailed({
+          'conversationId': 10,
+          'reason': 'rate_limited',
+        });
+
+        expect(
+          only(provider).disappearingTimer,
+          3600,
+          reason:
+              'reverting to null would look right on a conversation that '
+              'started with no timer, and silently disable this one',
+        );
+      });
+
+      test('restores OFF when there was no timer before', () {
+        final provider = seeded();
+        provider.setDisappearingTimer(10, 60);
+        expect(only(provider).disappearingTimer, 60);
+
+        provider.onDisappearingTimerFailed({'conversationId': 10});
+
+        expect(only(provider).disappearingTimer, isNull);
+      });
+
+      test('a settled timer is not undone by a LATER unrelated refusal', () {
+        final provider = seeded(timer: 3600);
+        provider.setDisappearingTimer(10, 60);
+        provider.onDisappearingTimerUpdated({
+          'conversationId': 10,
+          'seconds': 60,
+        });
+
+        provider.onDisappearingTimerFailed({'conversationId': 10});
+
+        expect(
+          only(provider).disappearingTimer,
+          60,
+          reason: 'the server accepted it; there is nothing left to undo',
+        );
+      });
+
+      test('an authoritative refresh supersedes a stranded snapshot', () {
+        final provider = seeded(timer: 3600);
+        provider.setDisappearingTimer(10, 60);
+        // The settling event never arrives and the snapshot is stranded.
+        provider.onConversationsList([
+          {
+            'id': 10,
+            'userOne': {'id': 1, 'username': 'alice', 'tag': '0001'},
+            'userTwo': {'id': 2, 'username': 'bob', 'tag': '0002'},
+            'createdAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+            'disappearingTimer': 900,
+          },
+        ]);
+
+        provider.onDisappearingTimerFailed({'conversationId': 10});
+
+        expect(
+          only(provider).disappearingTimer,
+          900,
+          reason: 'the server list is authoritative over a pending optimism',
+        );
+      });
+    });
+
     group('mute survives unrelated conversation mutations', () {
       ConversationsProvider mutedProvider() {
         final provider = ConversationsProvider();

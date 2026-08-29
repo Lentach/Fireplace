@@ -568,12 +568,19 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
     // reset — or a server introducing a device under an identity of its own
     // choosing — arrives on a device id we have never seen, so the per-address
     // rule read it as first contact and said nothing (amendment (xlvi)).
-    final accountBefore = existing == null
-        ? await getAccountIdentity(address.getName())
-        : null;
+    //
+    // Resolved for EVERY address now, not only unseen ones (amendment (xlvii)
+    // clause 4). The account anchor is the value a HUMAN accepted, so a
+    // per-device row still holding an older key is not news. Without this the
+    // explicit adoption (xlvii) clause 3 adds would re-raise the alarm on the
+    // peer's very next message — training the user to dismiss the one surface
+    // that detects a real takeover, which is the failure (xlvi) clause 2
+    // already refused to accept in the other direction.
+    final accountBefore = await getAccountIdentity(address.getName());
+    final matchesAccount =
+        accountBefore != null && _sameIdentity(accountBefore, identityKey);
     await saveIdentity(address, identityKey);
-    if (existing != null ||
-        (accountBefore != null && !_sameIdentity(accountBefore, identityKey))) {
+    if (!matchesAccount && (existing != null || accountBefore != null)) {
       // Hold the candidate rather than adopting it. The anchor moves only when
       // a human acknowledges the change, so a forged key can raise a VISIBLE
       // alarm but can never quietly become the thing the I7 chain trusts.
@@ -600,9 +607,11 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
   /// The user acknowledged [name]'s identity change, so the account anchor may
   /// now advance to the key that triggered it.
   ///
-  /// This is the ONLY way an established anchor moves. Without it a peer who
-  /// completes a §6.2 reset would stay unverifiable for good; with it, moving
-  /// the anchor always costs an alarm the user actually saw.
+  /// Moving the anchor always costs an alarm the user actually saw. This was
+  /// the ONLY way an established anchor moved until (xlvii) clause 3, which
+  /// added [adoptAccountIdentity] for the peer this path cannot serve at all:
+  /// one whose candidate was never recorded because the accept gate refused
+  /// their row before Signal could look at it.
   Future<bool> promotePendingAccountIdentity(String name) async {
     final pendingKey = _pendingKey(name);
     final stored = await _storage.read(key: pendingKey);
@@ -613,6 +622,61 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
     _trustedMemo[key] = identity;
     await _storage.delete(key: pendingKey);
     return true;
+  }
+
+  /// The identity awaiting acknowledgement for [name], or null when none is
+  /// held.
+  ///
+  /// Read by the verification UI so the user compares the key adoption will
+  /// ACTUALLY pin (amendment (xlvii) clause 2). The dialog used to display the
+  /// pinned anchor while the confirm button promoted this one, so the ceremony
+  /// verified one number and adopted another.
+  Future<IdentityKey?> pendingAccountIdentity(String name) async {
+    final stored = await _storage.read(key: _pendingKey(name));
+    if (stored == null) return null;
+    return IdentityKey.fromBytes(base64Decode(stored), 0);
+  }
+
+  /// Stage [identity] as [name]'s pending candidate — a key SEEN for this
+  /// account and awaiting human acceptance, exactly like one recorded by an
+  /// inbound ciphertext.
+  ///
+  /// Used for a key the server served on request (amendment (xlvii) clause 3),
+  /// so that every adoption promotes a candidate this device recorded. That
+  /// keeps "the pinned key is the key the human was shown" a STRUCTURAL
+  /// property rather than a convention held by one call site.
+  ///
+  /// Grants no trust whatsoever: the pending slot is read only by the display
+  /// and by [promotePendingAccountIdentity], which needs a standing alarm and a
+  /// human action.
+  Future<void> stagePendingAccountIdentity(
+    String name,
+    IdentityKey identity,
+  ) async {
+    await _storage.write(
+      key: _pendingKey(name),
+      value: encodedOf(identity),
+    );
+  }
+
+  /// The user compared [identity] against [name]'s own copy out of band and
+  /// accepted it. Pins it as the account anchor and drops any candidate.
+  ///
+  /// The escape hatch for a peer whose recovery path fail-closed before any
+  /// candidate could be recorded (amendment (xlvii) clause 3): after a
+  /// completed §6.2 reset the accept gate withholds the peer's row before
+  /// Signal runs, so [promotePendingAccountIdentity] has nothing to promote and
+  /// the peer stays permanently unreachable in BOTH directions.
+  ///
+  /// Only ever reached from an explicit human confirmation of a DISPLAYED
+  /// fingerprint — never from a path that merely received bytes. The key is
+  /// server-supplied and untrusted; the out-of-band comparison is the entire
+  /// defence, exactly as it is on first contact (I7).
+  Future<void> adoptAccountIdentity(String name, IdentityKey identity) async {
+    final key = _accountKey(name);
+    await _storage.write(key: key, value: encodedOf(identity));
+    _trustedMemo[key] = identity;
+    await _storage.delete(key: _pendingKey(name));
   }
 
   bool _sameIdentity(IdentityKey a, IdentityKey b) {

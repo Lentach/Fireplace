@@ -200,6 +200,30 @@ describe('WsThrottlerGuard — a throttled request answers in its own contract',
     });
   });
 
+  it('answers a throttled setDisappearingTimer on disappearingTimerFailed, carrying the conversation it was asked about', async () => {
+    const { context, emit } = contextFor('setDisappearingTimer', {
+      conversationId: 91,
+      seconds: 60,
+    });
+
+    await guard().refuse(context);
+
+    // Same contract as the pin, and the same reason it is a DEDICATED event:
+    // this guard refuses pre-handler, so it knows the requested `seconds` but
+    // not the timer being displaced. Echoing `disappearingTimerUpdated` would
+    // CONFIRM a change that never happened — and this value is a safety
+    // promise, so a device left showing a timer the server never accepted tells
+    // the user messages will vanish when they will not.
+    //
+    // The `seconds` must NOT appear: the client reverts from its own snapshot,
+    // and shipping the attempted value back invites a client to apply it.
+    expect(emit).toHaveBeenCalledWith('disappearingTimerFailed', {
+      conversationId: 91,
+      reason: RATE_LIMITED,
+      retryAfterMs: 42_000,
+    });
+  });
+
   it('never answers a throttled unpinMessage in-contract — it stakes no optimistic state', async () => {
     const { context, emit } = contextFor('unpinMessage', { conversationId: 91 });
 

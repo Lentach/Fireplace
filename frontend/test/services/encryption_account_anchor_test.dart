@@ -179,4 +179,59 @@ void main() {
 
     expect(changed, isEmpty);
   });
+
+  // --- (xlvii) clause 4: a lagging per-device row is not news -------------
+
+  /// An explicit adoption ((xlvii) clause 3) moves the ACCOUNT row only, so the
+  /// per-device row keeps the superseded key. The next message from that same
+  /// address then carries a key that differs from the per-device row but EQUALS
+  /// the key a human just accepted. Alarming on it would re-raise the warning
+  /// immediately after the user cleared it — and a warning that returns the
+  /// moment you dismiss it is a warning people learn to ignore, which is the
+  /// exact harm clause 2 of (xlvi) refused in the other direction.
+  test('a key matching the ACCEPTED account anchor is silent on an old '
+      'address', () async {
+    final oldKey = freshKey();
+    final acceptedKey = freshKey();
+    final address = SignalProtocolAddress('$peerId', 1);
+
+    await peerStore.saveIdentity(address, oldKey);
+    // The human compared fingerprints and accepted the new key.
+    await peerStore.adoptAccountIdentity('$peerId', acceptedKey);
+
+    final changed = <String>[];
+    peerStore.onIdentityChanged = (a) => changed.add(a.getName());
+    await peerStore.isTrustedIdentity(
+      address,
+      acceptedKey,
+      Direction.receiving,
+    );
+
+    expect(
+      changed,
+      isEmpty,
+      reason:
+          'the per-device row lags the anchor the user just accepted; that '
+          'is bookkeeping, not an event',
+    );
+  });
+
+  /// The companion guard, and the more important one: clause 4 must suppress
+  /// ONLY the lagging-row case. A key that matches neither the row nor the
+  /// accepted anchor is still the thing this whole surface exists to catch.
+  test('a key matching NEITHER the row nor the anchor still reports', () async {
+    final address = SignalProtocolAddress('$peerId', 1);
+    await peerStore.saveIdentity(address, freshKey());
+    await peerStore.adoptAccountIdentity('$peerId', freshKey());
+
+    final changed = <String>[];
+    peerStore.onIdentityChanged = (a) => changed.add(a.getName());
+    await peerStore.isTrustedIdentity(
+      address,
+      freshKey(),
+      Direction.receiving,
+    );
+
+    expect(changed, ['$peerId']);
+  });
 }

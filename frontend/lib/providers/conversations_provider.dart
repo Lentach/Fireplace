@@ -222,6 +222,7 @@ class ConversationsProvider extends ChangeNotifier {
     // (a socket drop between the server's commit and its emit, or a non-throttle
     // pin rejection, which rides the bare `error` event that no pin code reads).
     _prePinState.clear();
+    _preDisappearingTimerState.clear();
 
     for (final c in list) {
       final m = c as Map<String, dynamic>;
@@ -298,7 +299,46 @@ class ConversationsProvider extends ChangeNotifier {
         clearDisappearingTimer: seconds == null,
       );
     }
+    // Settled authoritatively: nothing left to undo, and keeping the snapshot
+    // would let a LATER unrelated refusal revert to stale state.
+    _preDisappearingTimerState.remove(conversationId);
 
+    notifyListeners();
+  }
+
+  /// The timer each conversation showed BEFORE an optimistic change overwrote
+  /// it.
+  ///
+  /// Same shape and same reason as [_prePinState]: the throttle guard refuses
+  /// `setDisappearingTimer` BEFORE the handler runs, so the refusal knows only
+  /// what was asked for, never what it displaced. Without this the refused
+  /// device kept showing a timer the server and the peer never had — messages
+  /// this user believes will vanish, and which will not.
+  ///
+  /// `null` is a real entry meaning "no timer before", so the map is consulted
+  /// with `containsKey`, never with a null check.
+  final Map<int, int?> _preDisappearingTimerState = {};
+
+  /// Handle 'disappearingTimerFailed' — the change was refused, so restore what
+  /// the optimistic apply overwrote.
+  ///
+  /// With no snapshot there is nothing to undo: either this device never made
+  /// the change, or a previous answer already settled it. Guessing a value here
+  /// would destroy state the server still holds.
+  void onDisappearingTimerFailed(dynamic data) {
+    final conversationId =
+        (data as Map<String, dynamic>)['conversationId'] as int?;
+    if (conversationId == null) return;
+    if (!_preDisappearingTimerState.containsKey(conversationId)) return;
+    final restored = _preDisappearingTimerState.remove(conversationId);
+    final index = _conversations.indexWhere((c) => c.id == conversationId);
+    if (index != -1) {
+      final oldConv = _conversations[index];
+      _conversations[index] = oldConv.copyWith(
+        disappearingTimer: restored,
+        clearDisappearingTimer: restored == null,
+      );
+    }
     notifyListeners();
   }
 
@@ -443,6 +483,14 @@ class ConversationsProvider extends ChangeNotifier {
     final index = _conversations.indexWhere((c) => c.id == conversationId);
     if (index != -1) {
       final oldConv = _conversations[index];
+      // Remember what is being overwritten BEFORE overwriting it, so a refusal
+      // can put it back. putIfAbsent: with two changes in flight the FIRST
+      // snapshot is the last server-confirmed state, and a revert to the
+      // second would restore a timer the server never accepted either.
+      _preDisappearingTimerState.putIfAbsent(
+        conversationId,
+        () => oldConv.disappearingTimer,
+      );
       _conversations[index] = oldConv.copyWith(
         disappearingTimer: timer,
         clearDisappearingTimer: timer == null,
@@ -609,6 +657,7 @@ class ConversationsProvider extends ChangeNotifier {
       _lastMessages.clear();
       _unreadCounts.clear();
       _prePinState.clear();
+      _preDisappearingTimerState.clear();
       _pendingOpenConversationId = null;
       _pendingNotificationConversationId = null;
       _activeConversationDeletedByOther = false;
@@ -638,6 +687,7 @@ class ConversationsProvider extends ChangeNotifier {
     _lastMessages.clear();
     _unreadCounts.clear();
     _prePinState.clear();
+    _preDisappearingTimerState.clear();
     _pendingOpenConversationId = null;
     _pendingNotificationConversationId = null;
     _activeConversationDeletedByOther = false;

@@ -1004,6 +1004,42 @@ abstract class AppLocalizations {
   /// **'Brak zapisanego klucza tożsamości dla tego kontaktu.'**
   String get peerIdentityFingerprintNoStoredKey;
 
+  /// No description provided for @peerIdentityFingerprintChangedNotice.
+  ///
+  /// In pl, this message translates to:
+  /// **'Klucze użytkownika {name} uległy zmianie. Porównaj NOWY odcisk poniżej — poprzedni pokazujemy tylko po to, aby było widać, co się zmieniło.'**
+  String peerIdentityFingerprintChangedNotice(String name);
+
+  /// No description provided for @peerIdentityFingerprintServedNotice.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ten klucz pochodzi z serwera i żadna wiadomość od użytkownika {name} go jeszcze nie potwierdziła. Porównanie go innym kanałem to jedyne zabezpieczenie.'**
+  String peerIdentityFingerprintServedNotice(String name);
+
+  /// No description provided for @peerIdentityFingerprintNewLabel.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nowy odcisk tożsamości użytkownika {name}'**
+  String peerIdentityFingerprintNewLabel(String name);
+
+  /// No description provided for @peerIdentityFingerprintPreviousLabel.
+  ///
+  /// In pl, this message translates to:
+  /// **'Poprzednio zaufany odcisk'**
+  String get peerIdentityFingerprintPreviousLabel;
+
+  /// No description provided for @peerIdentityFingerprintUnchangedNotice.
+  ///
+  /// In pl, this message translates to:
+  /// **'Klucz użytkownika {name} nie zmienił się od czasu, gdy go zaakceptowałeś. Potwierdź poniżej, aby zamknąć to ostrzeżenie.'**
+  String peerIdentityFingerprintUnchangedNotice(String name);
+
+  /// No description provided for @peerIdentityFingerprintOfferUnavailable.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się wczytać aktualnego klucza użytkownika {name}, więc nie ma jeszcze czego porównywać. Sprawdź połączenie i otwórz to ponownie.'**
+  String peerIdentityFingerprintOfferUnavailable(String name);
+
   /// No description provided for @peerIdentityChangedTimelineRow.
   ///
   /// In pl, this message translates to:

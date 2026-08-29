@@ -517,6 +517,35 @@ class AppLocalizationsPl extends AppLocalizations {
       'Brak zapisanego klucza tożsamości dla tego kontaktu.';
 
   @override
+  String peerIdentityFingerprintChangedNotice(String name) {
+    return 'Klucze użytkownika $name uległy zmianie. Porównaj NOWY odcisk poniżej — poprzedni pokazujemy tylko po to, aby było widać, co się zmieniło.';
+  }
+
+  @override
+  String peerIdentityFingerprintServedNotice(String name) {
+    return 'Ten klucz pochodzi z serwera i żadna wiadomość od użytkownika $name go jeszcze nie potwierdziła. Porównanie go innym kanałem to jedyne zabezpieczenie.';
+  }
+
+  @override
+  String peerIdentityFingerprintNewLabel(String name) {
+    return 'Nowy odcisk tożsamości użytkownika $name';
+  }
+
+  @override
+  String get peerIdentityFingerprintPreviousLabel =>
+      'Poprzednio zaufany odcisk';
+
+  @override
+  String peerIdentityFingerprintUnchangedNotice(String name) {
+    return 'Klucz użytkownika $name nie zmienił się od czasu, gdy go zaakceptowałeś. Potwierdź poniżej, aby zamknąć to ostrzeżenie.';
+  }
+
+  @override
+  String peerIdentityFingerprintOfferUnavailable(String name) {
+    return 'Nie udało się wczytać aktualnego klucza użytkownika $name, więc nie ma jeszcze czego porównywać. Sprawdź połączenie i otwórz to ponownie.';
+  }
+
+  @override
   String peerIdentityChangedTimelineRow(String name) {
     return 'Klucze bezpieczeństwa $name uległy zmianie — zwykle to logowanie z nowego urządzenia lub przeglądarki. Dotknij, aby zweryfikować.';
   }
