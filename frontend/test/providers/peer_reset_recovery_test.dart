@@ -248,21 +248,29 @@ void main() {
     return peerAfterReset.encrypt(ownUserId, 'hello after my reset');
   }
 
-  /// ACCEPTED RESIDUAL, not a defect to fix.
+  /// SUPERSEDED by amendment (lii). This WAS an accepted residual; RC-01 showed
+  /// the residual was the defect.
   ///
-  /// The withheld row raises no LOCAL alarm, and that is deliberate: the only
-  /// signal available at the gate is "this peer's list will not verify", which a
-  /// malicious or broken server can produce at will by serving garbage. Alarming
-  /// on it would let the server manufacture identity warnings for any peer and
-  /// train the user to dismiss the one surface that detects a real takeover —
-  /// exactly the harm (xlvi) clause 2 refused in the other direction.
+  /// The old rationale: the only signal at the gate is "this peer's list will
+  /// not verify", which a malicious or broken server can produce at will, so
+  /// alarming on it would let the server manufacture identity warnings for any
+  /// peer and train the user to dismiss the one surface that detects a real
+  /// takeover. Sound about fatigue, and it remains true that a genuine rotation
+  /// and a forged enrollment cannot be told apart locally.
   ///
-  /// The corroborated trigger is the server's `peerIdentityChanged` event
-  /// (`recordPeerIdentityChangedFromServer`), which is what the next two tests
-  /// use, and which is what fires in production for this shape.
+  /// What overturned it: the alternative was not silence but a PERMANENT
+  /// lockout. Every other path that could tell the peer is closed — the accept
+  /// gate withholds before Signal can stage a candidate, and the live
+  /// `peerIdentityChanged` never reaches a peer who was offline — and BOTH
+  /// (xlvii) doors are gated on this warning set. Decisively, the send ALREADY
+  /// fails in this state, so the alarm is not noise on a working conversation:
+  /// it names a failure the user can already see and exposes the only exit.
+  /// I7 mandated this surface all along.
+  ///
+  /// The candidate is still NOT staged — that half of the residual stands, and
+  /// it is why (xlvii) clause 3's served-key ceremony remains load-bearing.
   test(
-    'the reset peer row is withheld and the local path stays silent '
-    '(accepted residual)',
+    'the reset peer row is withheld AND the identity surface is raised ((lii))',
     () async {
       final ciphertext = await resetPeerCiphertext();
 
@@ -279,13 +287,58 @@ void main() {
       );
       expect(
         enc.peersWithChangedIdentity,
-        isEmpty,
+        contains(peerId),
         reason:
-            'no LOCAL alarm by design: the gate cannot tell a real reset from '
-            'a server serving an unverifiable list, so it must not alarm',
+            'I7: an enrollment that does not verify under the pinned anchor is '
+            'a loud identity-changed surface, and it is the only door back',
       );
     },
   );
+
+  /// The other half of (lii): the allow-list. A server must NOT be able to flag
+  /// every contact as identity-changed by answering garbage — that would trade a
+  /// silent lockout for a server-driven false alarm on the same surface.
+  test('a MALFORMED list raises no identity surface ((lii) allow-list)', () async {
+    // Separate own-user id for a clean `e2e_<uid>_` storage prefix.
+    final p = EncryptionProvider();
+    p.setEmitCallback((event, data) {
+      if (event == 'checkOwnKeyBundle') {
+        p.onOwnKeyBundleStatus({'exists': false});
+      }
+      if (event == 'getDeviceList') {
+        // Unparseable: `malformed_answer`, not an anchor mismatch.
+        p.onDeviceList({
+          'userId': peerId,
+          'authorization': {'dakPub': 'not-base64!!', 'listVersion': 1},
+        });
+      }
+    });
+    await p.initializeE2E(12);
+    // We DO hold an anchor, so the anchor gate is not what makes this silent —
+    // the reason code is.
+    await p.encryptionService.debugSavePeerIdentity(
+      peerId,
+      base64Encode(peerNewIdentity.getPublicKey().serialize()),
+    );
+
+    await expectLater(
+      p.getVerifiedDeviceList(peerId),
+      throwsA(isA<DeviceListVerificationException>()),
+      reason: 'still fail-closed — (lii) adds an alarm, not permissiveness',
+    );
+
+    // The recorder is fire-and-forget, so without this the assertion below
+    // races it and passes no matter what the guard does.
+    await pumpEventQueue(times: 200);
+
+    expect(
+      p.peersWithChangedIdentity,
+      isEmpty,
+      reason:
+          'garbage is not evidence about anyone key; alarming on it is what '
+          'trains users to dismiss the surface that catches a real takeover',
+    );
+  });
 
   /// (xlvii) clause 1. THIS IS THE INVERTED D1 ASSERTION: the warning used to
   /// be dropped here, unconditionally and before anything was checked, so the

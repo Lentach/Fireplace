@@ -1724,6 +1724,57 @@ that is the designed outcome).
        an unauthorized replacement still cannot reach, for the reason already recorded: the §6.1
        registration lock refuses a replacement that is neither signed nor spending a ceremony.
 
+- **Amendment 2026-08-29 (D7, ratified BEFORE the fix; from the pre-merge gate round, finding RC-01
+  — the THIRD variant of the T10/T11 defect):**
+  - **(lii) A device list that fails to verify against the pinned anchor MUST raise the
+    identity-changed surface, because I7 already says so and nothing implemented it.** The composed
+    failure is recorded in full under RC-01 above; the short form is that after a §6.2 recovery the
+    recovering device holds a FRESH id >= 2, a peer's list verification therefore fails against their
+    stale anchor, and every path that could tell the peer is closed: the verification failure only
+    records a diagnostic and rethrows, the accept gate withholds the recovering device's ciphertext
+    BEFORE Signal runs (so `isTrustedIdentity` never stages a candidate), and `peerIdentityChanged`
+    is a live room emit that an offline peer never receives. Both (xlvii) doors are gated on a
+    warning set that consequently stays empty, so the conversation is dead in both directions with
+    no explanation and no action available.
+    **The ruling is to route that failure into the SAME recorder the server event uses**, which
+    already carries the (xlviii) clause-2 anchor gate — a peer we hold no anchor for has no identity
+    to have changed — and already dedupes and persists. No wire change, and it re-opens both doors.
+    **It MUST discriminate on the reason, as an ALLOW-LIST of exactly two.** Raising on every failure
+    would let a server permanently flag every contact as identity-changed by answering junk, trading
+    a silent lockout for a server-driven false alarm on the same surface — and a surface that cries
+    wolf is the one users learn to dismiss. The full classification of every reason code the
+    exception can carry is recorded under RC-01; the two that qualify are
+    `invalid_enrollment_signature` (the enrollment does not verify under the identity THIS device
+    pinned — I7's "invalid chain", and precisely the post-recovery anchor mismatch) and
+    `version_rollback` (I7 names rollback explicitly). An allow-list rather than a deny-list, so a
+    reason code added later cannot silently begin raising alarms.
+    **Only for a PEER's list.** Our own list failing to verify is not a statement about any peer's
+    identity, and it has its own I7 own-skew path.
+    The send still fails closed exactly as before — this adds the missing alarm, it does not make a
+    broken list usable.
+    **This SUPERSEDES an explicitly accepted residual, and the reversal needs stating.** The gate's
+    silence was deliberate: `peer_reset_recovery_test.dart` argued that "this peer's list will not
+    verify" is something a malicious or broken server can produce at will, so alarming on it would
+    let the server manufacture identity warnings for any peer and train the user to dismiss the one
+    surface that detects a real takeover. That reasoning is sound about alarm fatigue and it is
+    still true that the two causes — a genuine rotation and a forged enrollment — CANNOT be told
+    apart locally. Three things settle it the other way:
+    1. RC-01 proves the alternative is not silence but a PERMANENT, unrecoverable lockout. Weighing
+       a false alarm against an inconvenience was the wrong comparison; the real comparison is a
+       false alarm against a conversation that is dead forever with no explanation.
+    2. **In this state the send ALREADY fails.** The user is not being interrupted in a working
+       conversation — they are already staring at "Could not verify this chat's devices", with no
+       explanation and nothing to do. The alarm does not add noise; it names the condition and
+       exposes the only exit. That materially changes the fatigue calculus the residual assumed.
+    3. The widening is one the spec has ALREADY accepted. (xlviii) records that a contact check
+       "NARROWS the (xlvii) widening without closing it: a server can still summon the ceremony for
+       any real contact, which remains governed by the out-of-band comparison and by (xl) as the
+       durable end state." A server forcing "verify keys with this contact" is exactly that
+       already-accepted shape, and its resolution is the same: two humans comparing a number.
+    What does NOT change: the local path still cannot STAGE a candidate, because the accept gate
+    withholds the ciphertext before Signal runs. The repair therefore still goes through (xlvii)
+    clause 3's served-key ceremony, which is why that mechanism remains load-bearing.
+
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the
   test-integrity findings are folded at `4c0e0bf`; the four security findings were T9. **T10 (xlv)

@@ -367,7 +367,10 @@ class EncryptionService {
   /// surface, cleared only by [acknowledgePeerIdentity]. Usually a legitimate
   /// new device/browser sign-in on the peer's side, so callers must not word
   /// it as an attack.
-  Future<void> recordPeerIdentityChangedFromServer(int peerId) async {
+  Future<void> recordPeerIdentityChangedFromServer(
+    int peerId, {
+    String source = 'server_event',
+  }) async {
     // (xlviii) clause 2. The userId on this event is whatever the server says,
     // and nothing here used to check it. A peer this device holds NO account
     // anchor for has no identity to have CHANGED — there is nothing to compare
@@ -386,7 +389,7 @@ class EncryptionService {
     if (!_peersWithChangedIdentity.add(peerId)) return;
     E2ePersistentDiag.record('PEER_IDENTITY_CHANGED', {
       'peerId': peerId,
-      'source': 'server_event',
+      'source': source,
     });
     onPeerIdentityChanged?.call(peerId);
     await _persistIdentityChanged();

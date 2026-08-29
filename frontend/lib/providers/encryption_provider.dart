@@ -425,6 +425,43 @@ class EncryptionProvider extends ChangeNotifier {
         'userId': userId,
         'reason': e.reason,
       });
+      // Amendment (lii). I7 says an invalid chain or a rollback IS a loud
+      // identity-changed surface, and nothing implemented that: this failure
+      // used to be a diagnostic and a rethrow, which is why a peer who was
+      // OFFLINE during a §6.2 recovery ended up permanently and silently
+      // locked out. Their list cannot verify against the anchor they still
+      // hold, the accept gate withholds the recovering device's ciphertext
+      // before Signal can stage a candidate, and the live `peerIdentityChanged`
+      // never reached them — so the warning set that gates BOTH recovery doors
+      // stayed empty.
+      //
+      // ALLOW-LIST of exactly two, never a deny-list: raising on every reason
+      // would let a server flag every contact as identity-changed by answering
+      // junk, which trades a silent lockout for a server-driven false alarm on
+      // the same surface. `malformed_answer`, `invalid_canonical`,
+      // `user_mismatch` and `version_mismatch` all mean "the server sent
+      // garbage", which is none of I7's conditions and is not evidence about
+      // anyone's key. `invalid_list_signature` is excluded too: the enrollment
+      // DID verify under our pinned anchor, so the identity is right and only
+      // the inner DAK signature failed. `no_tofu_identity` is definitionally
+      // not a change — we hold no anchor, so there is nothing to have changed.
+      //
+      // Our OWN list is excluded: it says nothing about a peer's identity.
+      const raisesI7Surface = {
+        'invalid_enrollment_signature',
+        'version_rollback',
+      };
+      if (userId != _currentUserId && raisesI7Surface.contains(e.reason)) {
+        // The recorder carries the (xlviii) clause-2 anchor gate, dedupes, and
+        // persists. Fire-and-forget: the send below still fails closed, and the
+        // alarm must not be blocked on a storage write.
+        unawaited(
+          _encryptionService.recordPeerIdentityChangedFromServer(
+            userId,
+            source: 'device_list_${e.reason}',
+          ),
+        );
+      }
       rethrow;
     }
   }
