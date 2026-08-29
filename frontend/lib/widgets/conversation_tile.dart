@@ -234,10 +234,14 @@ class ConversationTile extends StatelessWidget {
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 20),
         decoration: BoxDecoration(
-          color: Colors.red,
+          color: Theme.of(context).colorScheme.error,
           borderRadius: BorderRadius.circular(8),
         ),
-        child: const Icon(Icons.delete, color: Colors.white, size: 28),
+        child: Icon(
+          Icons.delete,
+          color: Theme.of(context).colorScheme.onError,
+          size: 28,
+        ),
       ),
       confirmDismiss: (direction) async {
         return await showDialog<bool>(

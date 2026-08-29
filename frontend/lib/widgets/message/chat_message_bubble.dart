@@ -112,9 +112,9 @@ class ChatMessageBubble extends StatelessWidget {
         }
       },
       icon: const Icon(Icons.refresh, size: 16),
-      label: const Text('Retry'),
+      label: Text(AppLocalizations.of(context).messageRetrySend),
       style: TextButton.styleFrom(
-        foregroundColor: Colors.red,
+        foregroundColor: Theme.of(context).colorScheme.error,
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       ),
     );

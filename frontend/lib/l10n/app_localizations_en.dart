@@ -480,6 +480,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get identityDamagedAction => 'Start fresh';
 
   @override
+  String get messageRetrySend => 'Retry';
+
+  @override
+  String get authStatusSavedSessionUnreadable =>
+      'Could not read the saved session from this device. Your sign-in may still be there — restart the app to try again.';
+
+  @override
+  String get authStatusRegisterSucceeded =>
+      'Account created. Sign in to continue.';
+
+  @override
+  String get authStatusServerUnreachable =>
+      'Cannot reach the server. Check your connection and try again.';
+
+  @override
+  String get authStatusUnexpectedError =>
+      'Something went wrong. Please try again.';
+
+  @override
   String get identityDamagedRecoveryFailed =>
       'Could not create new encryption keys. Try again.';
 

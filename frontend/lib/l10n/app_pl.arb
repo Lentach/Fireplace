@@ -164,7 +164,17 @@
   "encryptionNotInitialized": "Szyfrowanie niezainicjowane",
   "identityDamagedTitle": "Brak kluczy szyfrowania na tym urządzeniu",
   "identityDamagedBody": "Logujesz się na nowym urządzeniu lub w nowej przeglądarce? Twoje konto ma już klucze szyfrowania gdzie indziej, a to urządzenie ich nie ma. Jeśli to Twoje dotychczasowe urządzenie, zapisane klucze zostały utracone. Tak czy inaczej nic nie zostało odtworzone automatycznie — zrobienie tego po cichu zniszczyłoby możliwość odczytania historii.",
-  "identityDamagedAction": "Zacznij od nowa",
+  "identityDamagedAction": "Zacznij od nowa",
+  "messageRetrySend": "Ponów",
+  "@messageRetrySend": {"description": "Re-sends a message whose delivery failed."},
+  "authStatusSavedSessionUnreadable": "Nie udało się odczytać zapisanej sesji z tego urządzenia. Twoje logowanie może nadal tam być — uruchom aplikację ponownie.",
+  "@authStatusSavedSessionUnreadable": {"description": "Auth surface status, localized from an AuthStatusCode."},
+  "authStatusRegisterSucceeded": "Konto utworzone. Zaloguj się, aby kontynuować.",
+  "@authStatusRegisterSucceeded": {"description": "Auth surface status, localized from an AuthStatusCode."},
+  "authStatusServerUnreachable": "Nie można połączyć się z serwerem. Sprawdź połączenie i spróbuj ponownie.",
+  "@authStatusServerUnreachable": {"description": "Auth surface status, localized from an AuthStatusCode."},
+  "authStatusUnexpectedError": "Coś poszło nie tak. Spróbuj ponownie.",
+  "@authStatusUnexpectedError": {"description": "Auth surface status, localized from an AuthStatusCode."},
   "identityDamagedRecoveryFailed": "Nie udało się utworzyć nowych kluczy szyfrowania. Spróbuj ponownie.",
   "@identityDamagedRecoveryFailed": {"description": "Shown when regenerating a damaged Signal identity fails."},
   "identityAlertShowDetails": "Szczegóły",

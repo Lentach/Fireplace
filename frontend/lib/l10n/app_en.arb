@@ -164,7 +164,17 @@
   "encryptionNotInitialized": "Encryption not initialized",
   "identityDamagedTitle": "Encryption keys missing on this device",
   "identityDamagedBody": "Signed in on a new device or browser? Your account already has encryption keys elsewhere, and this device does not have them. If this is your usual device, its stored keys were lost. Either way nothing was regenerated automatically — doing that silently would destroy your ability to read your history.",
-  "identityDamagedAction": "Start fresh",
+  "identityDamagedAction": "Start fresh",
+  "messageRetrySend": "Retry",
+  "@messageRetrySend": {"description": "Re-sends a message whose delivery failed."},
+  "authStatusSavedSessionUnreadable": "Could not read the saved session from this device. Your sign-in may still be there — restart the app to try again.",
+  "@authStatusSavedSessionUnreadable": {"description": "Auth surface status, localized from an AuthStatusCode."},
+  "authStatusRegisterSucceeded": "Account created. Sign in to continue.",
+  "@authStatusRegisterSucceeded": {"description": "Auth surface status, localized from an AuthStatusCode."},
+  "authStatusServerUnreachable": "Cannot reach the server. Check your connection and try again.",
+  "@authStatusServerUnreachable": {"description": "Auth surface status, localized from an AuthStatusCode."},
+  "authStatusUnexpectedError": "Something went wrong. Please try again.",
+  "@authStatusUnexpectedError": {"description": "Auth surface status, localized from an AuthStatusCode."},
   "identityDamagedRecoveryFailed": "Could not create new encryption keys. Try again.",
   "@identityDamagedRecoveryFailed": {"description": "Shown when regenerating a damaged Signal identity fails."},
   "identityAlertShowDetails": "Details",

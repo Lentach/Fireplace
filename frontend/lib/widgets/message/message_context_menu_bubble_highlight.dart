@@ -68,7 +68,7 @@ class MessageContextMenuBubbleHighlight extends StatelessWidget {
             deliveryIcon,
             size: 12,
             color: message.deliveryStatus == MessageDeliveryStatus.failed
-                ? Colors.red
+                ? Theme.of(context).colorScheme.error
                 : deliveryColor,
           ),
         ],

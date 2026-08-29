@@ -267,7 +267,21 @@ class _FingerprintBlock extends StatelessWidget {
         if (fingerprint == null)
           Text(missing)
         else
-          SelectableText(fingerprint),
+          // MONOSPACE, with generous letter spacing. The entire defence of this
+          // ceremony is a human reading digits aloud and another human checking
+          // them one by one; proportional Inter makes 1/l and 0/O ambiguous and
+          // lets the columns drift, which is precisely the comparison we are
+          // asking them to perform accurately.
+          SelectableText(
+            fingerprint,
+            style: const TextStyle(
+              fontFamily: 'monospace',
+              fontFamilyFallback: ['Courier New', 'monospace'],
+              fontSize: 15,
+              letterSpacing: 1.2,
+              height: 1.5,
+            ),
+          ),
       ],
     );
   }

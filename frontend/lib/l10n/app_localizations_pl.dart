@@ -483,6 +483,25 @@ class AppLocalizationsPl extends AppLocalizations {
   String get identityDamagedAction => 'Zacznij od nowa';
 
   @override
+  String get messageRetrySend => 'Ponów';
+
+  @override
+  String get authStatusSavedSessionUnreadable =>
+      'Nie udało się odczytać zapisanej sesji z tego urządzenia. Twoje logowanie może nadal tam być — uruchom aplikację ponownie.';
+
+  @override
+  String get authStatusRegisterSucceeded =>
+      'Konto utworzone. Zaloguj się, aby kontynuować.';
+
+  @override
+  String get authStatusServerUnreachable =>
+      'Nie można połączyć się z serwerem. Sprawdź połączenie i spróbuj ponownie.';
+
+  @override
+  String get authStatusUnexpectedError =>
+      'Coś poszło nie tak. Spróbuj ponownie.';
+
+  @override
   String get identityDamagedRecoveryFailed =>
       'Nie udało się utworzyć nowych kluczy szyfrowania. Spróbuj ponownie.';
 

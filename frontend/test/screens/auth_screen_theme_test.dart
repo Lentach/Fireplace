@@ -49,4 +49,104 @@ void main() {
     );
     expect(pattern.layer, ChatBackgroundLayer.plain);
   });
+  // The login screen is the app's front door and its ONLY feedback channel.
+  // Every status it showed used to be a hardcoded English literal built in
+  // AuthProvider — including a developer message naming docker-compose and a
+  // raw exception passthrough — so on the Polish locale the whole channel was
+  // English and a failure could surface an unmapped backend string.
+  group('auth status is localized, never raw', () {
+    Future<void> pumpWith(
+      WidgetTester tester,
+      AuthStatusCode code,
+      Locale locale,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      final auth = _StatusAuthProvider(code);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: RpgTheme.themeDataLight,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: locale,
+          home: ChangeNotifierProvider<AuthProvider>.value(
+            value: auth,
+            child: const AuthScreen(),
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    testWidgets('an unreachable server reads as Polish, not English', (
+      tester,
+    ) async {
+      await pumpWith(
+        tester,
+        AuthStatusCode.serverUnreachable,
+        const Locale('pl'),
+      );
+      final pl = await AppLocalizations.delegate.load(const Locale('pl'));
+      final en = await AppLocalizations.delegate.load(const Locale('en'));
+
+      expect(find.text(pl.authStatusServerUnreachable), findsOneWidget);
+      expect(find.text(en.authStatusServerUnreachable), findsNothing);
+    });
+
+    testWidgets('no status names a developer tool or an exception', (
+      tester,
+    ) async {
+      for (final code in AuthStatusCode.values) {
+        await pumpWith(tester, code, const Locale('en'));
+        for (final leak in const [
+          'docker',
+          'Exception',
+          'SocketException',
+          'Hero created',
+        ]) {
+          expect(
+            find.textContaining(leak, findRichText: true),
+            findsNothing,
+            reason: '$code must not surface "$leak" to a user',
+          );
+        }
+      }
+    });
+
+    testWidgets('every code maps to a real string', (tester) async {
+      final en = await AppLocalizations.delegate.load(const Locale('en'));
+      final expected = {
+        AuthStatusCode.savedSessionUnreadable:
+            en.authStatusSavedSessionUnreadable,
+        AuthStatusCode.registerSucceeded: en.authStatusRegisterSucceeded,
+        AuthStatusCode.serverUnreachable: en.authStatusServerUnreachable,
+        AuthStatusCode.unexpectedError: en.authStatusUnexpectedError,
+      };
+      // A new code added without a mapping would render nothing at all, so the
+      // enum and the switch are pinned to each other here.
+      expect(expected.keys, containsAll(AuthStatusCode.values));
+      for (final entry in expected.entries) {
+        await pumpWith(tester, entry.key, const Locale('en'));
+        expect(find.text(entry.value), findsOneWidget, reason: '${entry.key}');
+      }
+    });
+  });
+}
+
+/// Reports a fixed status code without touching storage or the network.
+class _StatusAuthProvider extends AuthProvider {
+  _StatusAuthProvider(this._code);
+
+  final AuthStatusCode _code;
+
+  @override
+  AuthStatusCode? get statusCode => _code;
+
+  @override
+  String? get statusMessage => null;
+
+  @override
+  bool get isError => _code != AuthStatusCode.registerSucceeded;
+
+  @override
+  bool get isRestoringSession => false;
 }

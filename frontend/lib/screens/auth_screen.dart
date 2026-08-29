@@ -20,6 +20,21 @@ class AuthScreen extends StatefulWidget {
 class _AuthScreenState extends State<AuthScreen> {
   bool _isLogin = true;
 
+  /// The status line to show, localized here because the provider has no
+  /// locale. A code always wins over [AuthProvider.statusMessage]: the latter
+  /// is the pre-localized channel used for the device-revoked notice, and the
+  /// provider clears one whenever it sets the other.
+  String? _statusText(AuthProvider auth, AppLocalizations l10n) {
+    return switch (auth.statusCode) {
+      AuthStatusCode.savedSessionUnreadable =>
+        l10n.authStatusSavedSessionUnreadable,
+      AuthStatusCode.registerSucceeded => l10n.authStatusRegisterSucceeded,
+      AuthStatusCode.serverUnreachable => l10n.authStatusServerUnreachable,
+      AuthStatusCode.unexpectedError => l10n.authStatusUnexpectedError,
+      null => auth.statusMessage,
+    };
+  }
+
   Widget _tab(
     BuildContext context,
     String label,
@@ -162,21 +177,26 @@ class _AuthScreenState extends State<AuthScreen> {
                               }
                             },
                           ),
-                          if (authProvider.statusMessage != null) ...[
-                            const SizedBox(height: 16),
-                            Text(
-                              authProvider.statusMessage!,
-                              textAlign: TextAlign.center,
-                              style: RpgTheme.bodyFont(
-                                fontSize: 13,
-                                color: authProvider.isError
-                                    ? scheme.error
-                                    // Dark-only neon green is illegible on
-                                    // paper; this door is always light.
-                                    : RpgTheme.successColorLight,
+                          // The provider holds no locale, so it reports a CODE
+                          // and this layer picks the words. `statusMessage` is
+                          // the pre-localized channel (the device-revoked
+                          // notice), so a code always wins when both are set.
+                          if (_statusText(authProvider, l10n) case final text?)
+                            ...[
+                              const SizedBox(height: 16),
+                              Text(
+                                text,
+                                textAlign: TextAlign.center,
+                                style: RpgTheme.bodyFont(
+                                  fontSize: 13,
+                                  color: authProvider.isError
+                                      ? scheme.error
+                                      // Dark-only neon green is illegible on
+                                      // paper; this door is always light.
+                                      : RpgTheme.successColorLight,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
                         ],
                       ),
                     ),

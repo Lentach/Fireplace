@@ -950,6 +950,36 @@ abstract class AppLocalizations {
   /// **'Zacznij od nowa'**
   String get identityDamagedAction;
 
+  /// Re-sends a message whose delivery failed.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ponów'**
+  String get messageRetrySend;
+
+  /// Auth surface status, localized from an AuthStatusCode.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się odczytać zapisanej sesji z tego urządzenia. Twoje logowanie może nadal tam być — uruchom aplikację ponownie.'**
+  String get authStatusSavedSessionUnreadable;
+
+  /// Auth surface status, localized from an AuthStatusCode.
+  ///
+  /// In pl, this message translates to:
+  /// **'Konto utworzone. Zaloguj się, aby kontynuować.'**
+  String get authStatusRegisterSucceeded;
+
+  /// Auth surface status, localized from an AuthStatusCode.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie można połączyć się z serwerem. Sprawdź połączenie i spróbuj ponownie.'**
+  String get authStatusServerUnreachable;
+
+  /// Auth surface status, localized from an AuthStatusCode.
+  ///
+  /// In pl, this message translates to:
+  /// **'Coś poszło nie tak. Spróbuj ponownie.'**
+  String get authStatusUnexpectedError;
+
   /// Shown when regenerating a damaged Signal identity fails.
   ///
   /// In pl, this message translates to:
