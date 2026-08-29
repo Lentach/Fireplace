@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../l10n/app_localizations.dart';
 import '../providers/encryption_provider.dart';
 import '../services/encryption_service.dart';
+import 'glass/glass_dialog.dart';
 
 /// Side-by-side identity fingerprints for out-of-band verification.
 ///
@@ -126,7 +127,9 @@ class _PeerIdentityFingerprintDialogState
     final offered = verification?.offeredFingerprint;
     final offeredKey = verification?.offeredIdentityBase64;
 
-    return AlertDialog(
+    // GlassDialog is the app's dialog shell; a raw AlertDialog here was a
+    // second convention on a security surface.
+    return GlassDialog(
       title: Text(l10n.peerIdentityFingerprintDialogTitle),
       content: _loading
           ? const SizedBox(

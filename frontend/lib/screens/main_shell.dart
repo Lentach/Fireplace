@@ -308,19 +308,32 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       extendBody: true,
       body: Column(
         children: [
-          // Damaged Signal identity: E2E is DOWN and cannot recover on its own,
-          // because regenerating silently is the data-loss bug we refuse to
-          // commit. Without this banner the user would just see "[encrypted]"
-          // on every message forever with no explanation and no way out.
-          const IdentityDamagedBanner(),
-          // Phase 0a takeover alarm: another sign-in replaced this account's
-          // key bundle. Usually a legitimate new device/browser sign-in;
-          // durable until dismissed.
-          const OwnIdentityReplacedBanner(),
-          // Phase 0b reset ceremony: a countdown is running toward replacing
-          // this account's keys. Above the fold with a one-tap cancel, because
-          // the delay only protects anyone who actually sees it.
-          const IdentityResetPendingBanner(),
+          // ONE SafeArea for the whole identity stack, never one per banner.
+          // These are siblings, and a sibling `SafeArea` does not consume the
+          // inset for its neighbours — each one applies the FULL top inset, so
+          // three self-wrapping banners produced two phantom status-bar gaps
+          // between the red blocks. Each banner renders bare chrome now.
+          SafeArea(
+            bottom: false,
+            child: Column(
+              children: const [
+                // Damaged Signal identity: E2E is DOWN and cannot recover on
+                // its own, because regenerating silently is the data-loss bug
+                // we refuse to commit. Without this banner the user would just
+                // see "[encrypted]" on every message forever with no
+                // explanation and no way out.
+                IdentityDamagedBanner(),
+                // Phase 0a takeover alarm: another sign-in replaced this
+                // account's key bundle. Usually a legitimate new device/browser
+                // sign-in; durable until dismissed.
+                OwnIdentityReplacedBanner(),
+                // Phase 0b reset ceremony: a countdown is running toward
+                // replacing this account's keys. Above the fold with a one-tap
+                // cancel, because the delay only protects anyone who sees it.
+                IdentityResetPendingBanner(),
+              ],
+            ),
+          ),
           Expanded(
             child: IndexedStack(
               index: _selectedIndex,

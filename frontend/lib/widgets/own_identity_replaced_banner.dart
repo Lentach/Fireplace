@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../l10n/app_localizations.dart';
 import '../providers/encryption_provider.dart';
+import 'identity_alert_banner.dart';
 
 /// Phase 0a takeover alarm (multi-device spec §6.0): the server reported that
 /// ANOTHER sign-in replaced this account's key bundle (`ownIdentityReplaced`
@@ -26,58 +27,19 @@ class OwnIdentityReplacedBanner extends StatelessWidget {
     );
     if (!active) return const SizedBox.shrink();
     final l10n = AppLocalizations.of(context);
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
-    return Material(
-      color: colors.errorContainer,
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                Icons.phonelink_lock_outlined,
-                color: colors.onErrorContainer,
-                size: 20,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      l10n.ownIdentityReplacedTitle,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        color: colors.onErrorContainer,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      l10n.ownIdentityReplacedBody,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colors.onErrorContainer,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // Foreground pinned to onErrorContainer for the same contrast
-              // reason as IdentityDamagedBanner (theme primary is near
-              // invisible on the error container).
-              TextButton(
-                onPressed: () =>
-                    context.read<EncryptionProvider>().dismissOwnIdentityReplaced(),
-                style: TextButton.styleFrom(
-                  foregroundColor: colors.onErrorContainer,
-                ),
-                child: Text(l10n.ownIdentityReplacedDismissAction),
-              ),
-            ],
-          ),
-        ),
+    final colors = Theme.of(context).colorScheme;
+    return IdentityAlertBanner(
+      icon: Icons.phonelink_lock_outlined,
+      title: l10n.ownIdentityReplacedTitle,
+      detail: l10n.ownIdentityReplacedBody,
+      // Foreground pinned to onErrorContainer for the same contrast reason as
+      // IdentityDamagedBanner (theme primary is near invisible on the error
+      // container).
+      action: TextButton(
+        onPressed: () =>
+            context.read<EncryptionProvider>().dismissOwnIdentityReplaced(),
+        style: TextButton.styleFrom(foregroundColor: colors.onErrorContainer),
+        child: Text(l10n.ownIdentityReplacedDismissAction),
       ),
     );
   }

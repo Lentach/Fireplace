@@ -2,6 +2,7 @@ import 'package:fireplace/l10n/app_localizations.dart';
 import 'package:fireplace/providers/encryption_provider.dart';
 import 'package:fireplace/services/encryption_service.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
+import 'package:fireplace/widgets/glass/glass_dialog.dart';
 import 'package:fireplace/widgets/identity_damaged_banner.dart';
 import 'package:fireplace/widgets/own_identity_replaced_banner.dart';
 import 'package:fireplace/widgets/peer_identity_changed_row.dart';
@@ -158,6 +159,81 @@ void main() {
       expect(find.byType(TextButton), findsOneWidget);
     });
 
+    testWidgets('the paragraph is COLLAPSED, while the action stays visible', (
+      tester,
+    ) async {
+      final encryption = _FakeEncryption(damaged: true);
+      await tester.pumpWidget(_host(encryption, const IdentityDamagedBanner()));
+      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+
+      // The title says what happened; the four-sentence explanation does not
+      // occupy persistent chrome. A warning nobody finishes reading trains the
+      // dismissal reflex this whole surface exists to avoid.
+      expect(find.text(l10n.identityDamagedTitle), findsOneWidget);
+      expect(
+        find.text(l10n.identityDamagedBody),
+        findsNothing,
+        reason: 'the body must not be rendered until asked for',
+      );
+      // The ONLY way out of a damaged identity must never hide behind a
+      // disclosure control.
+      expect(find.byType(TextButton), findsOneWidget);
+    });
+
+    testWidgets('the explanation is one tap away and fully readable', (
+      tester,
+    ) async {
+      final encryption = _FakeEncryption(damaged: true);
+      await tester.pumpWidget(_host(encryption, const IdentityDamagedBanner()));
+      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+
+      await tester.tap(find.byIcon(Icons.expand_more));
+      await tester.pumpAndSettle();
+
+      expect(find.text(l10n.identityDamagedBody), findsOneWidget);
+      expect(find.byIcon(Icons.expand_less), findsOneWidget);
+
+      // And it collapses again.
+      await tester.tap(find.byIcon(Icons.expand_less));
+      await tester.pumpAndSettle();
+      expect(find.text(l10n.identityDamagedBody), findsNothing);
+    });
+
+    testWidgets('a screen reader gets the detail even while collapsed', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      final encryption = _FakeEncryption(damaged: true);
+      await tester.pumpWidget(_host(encryption, const IdentityDamagedBanner()));
+      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+
+      // Collapsing is a DENSITY decision, never a way to hide a warning from
+      // someone who cannot see the chevron.
+      expect(
+        find.bySemanticsLabel(RegExp(RegExp.escape(l10n.identityDamagedBody))),
+        findsOneWidget,
+      );
+      handle.dispose();
+    });
+
+    testWidgets('the banner carries no SafeArea of its own', (tester) async {
+      final encryption = _FakeEncryption(damaged: true);
+      await tester.pumpWidget(_host(encryption, const IdentityDamagedBanner()));
+
+      // These banners are SIBLINGS in the shell's Column, and a sibling
+      // SafeArea does not consume the inset for its neighbours — each one
+      // applies the FULL top inset. Three self-wrapping banners produced two
+      // phantom status-bar gaps between the red blocks. The shell wraps the
+      // stack once instead, so a SafeArea reappearing here is a regression.
+      expect(
+        find.descendant(
+          of: find.byType(IdentityDamagedBanner),
+          matching: find.byType(SafeArea),
+        ),
+        findsNothing,
+      );
+    });
+
     testWidgets('the destructive action is disabled while it runs', (
       tester,
     ) async {
@@ -265,7 +341,7 @@ void main() {
 
       await tester.tap(find.byType(InkWell));
       await tester.pumpAndSettle();
-      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.byType(GlassDialog), findsOneWidget);
 
       // The verify door still clears the warning exactly once from here.
       await tester.tap(find.text(l10n.peerIdentityMarkVerifiedAction));
@@ -304,7 +380,7 @@ void main() {
       await tester.pumpAndSettle();
 
       final l10n = await AppLocalizations.delegate.load(const Locale('en'));
-      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.byType(GlassDialog), findsOneWidget);
       expect(find.text('0123 4567 89ab cdef'), findsOneWidget);
       // Nothing to acknowledge: offering it would train the habit of clearing
       // a warning that was never raised.
@@ -350,7 +426,7 @@ void main() {
 
       expect(encryption.acknowledged, [7]);
       expect(encryption.peersWithChangedIdentity, isEmpty);
-      expect(find.byType(AlertDialog), findsNothing, reason: 'dialog closes');
+      expect(find.byType(GlassDialog), findsNothing, reason: 'dialog closes');
     });
 
     /// (xlvii) clause 2. The ceremony used to display the PINNED fingerprint
@@ -470,7 +546,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.byType(AlertDialog),
+        find.byType(GlassDialog),
         findsOneWidget,
         reason: 'the dialog must stay open so the ceremony can be re-run',
       );

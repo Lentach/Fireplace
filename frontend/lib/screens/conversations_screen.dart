@@ -251,7 +251,6 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
 
   Widget _buildDesktopLayout() {
     final convs = context.watch<ConversationsProvider>();
-    final isDark = RpgTheme.isDark(context);
     final borderColor = FireplaceColors.of(context).convItemBorder;
 
     return Scaffold(
@@ -281,18 +280,14 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                         Icon(
                           Icons.chat_bubble_outline,
                           size: 64,
-                          color: isDark
-                              ? RpgTheme.mutedDark
-                              : RpgTheme.textSecondaryLight,
+                          color: FireplaceColors.of(context).mutedText,
                         ),
                         const SizedBox(height: 16),
                         Text(
                           AppLocalizations.of(context).selectAConversation,
                           style: RpgTheme.bodyFont(
                             fontSize: 16,
-                            color: isDark
-                                ? RpgTheme.mutedDark
-                                : RpgTheme.textSecondaryLight,
+                            color: FireplaceColors.of(context).mutedText,
                           ),
                         ),
                       ],
@@ -308,9 +303,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     final convs = context.watch<ConversationsProvider>();
     final conversations = convs.sortedConversations;
     final isDark = RpgTheme.isDark(context);
-    final mutedColor = isDark
-        ? RpgTheme.mutedDark
-        : RpgTheme.textSecondaryLight;
+    final mutedColor = FireplaceColors.of(context).mutedText;
 
     final media = MediaQuery.paddingOf(context);
     final listPadding = floatingChrome

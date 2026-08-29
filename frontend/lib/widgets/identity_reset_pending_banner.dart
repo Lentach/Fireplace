@@ -7,6 +7,7 @@ import '../l10n/app_localizations.dart';
 import 'recovery_phrase_prompt.dart';
 import 'top_snackbar.dart';
 import '../providers/encryption_provider.dart';
+import 'identity_alert_banner.dart';
 
 /// Phase 0b reset ceremony (multi-device spec §6.2): somebody asked the server
 /// to let this account install new encryption keys, and a countdown is running.
@@ -111,75 +112,40 @@ class _IdentityResetPendingBannerState
     }
     if (deadline == null && !locked) return const SizedBox.shrink();
     final l10n = AppLocalizations.of(context);
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
+    final colors = Theme.of(context).colorScheme;
     final pending = deadline != null;
-    return Material(
-      color: colors.errorContainer,
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                pending ? Icons.lock_reset_outlined : Icons.key_off_outlined,
-                color: colors.onErrorContainer,
-                size: 20,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      pending
-                          ? l10n.identityResetPendingTitle
-                          : l10n.identityUploadLockedTitle,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        color: colors.onErrorContainer,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      pending
-                          ? l10n.identityResetPendingBody(
-                              _remaining(l10n, deadline),
-                            )
-                          : l10n.identityUploadLockedBody,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colors.onErrorContainer,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // Foreground pinned to onErrorContainer: theme primary is nearly
-              // invisible on the error container (same reason as the 0a banner).
-              TextButton(
-                onPressed: () {
-                  if (pending) {
-                    context.read<EncryptionProvider>().cancelIdentityReset();
-                  } else {
-                    // Ask for a recovery key first: it is the difference
-                    // between waiting an hour and waiting three days.
-                    startIdentityResetFlow(context);
-                  }
-                },
-                style: TextButton.styleFrom(
-                  foregroundColor: colors.onErrorContainer,
-                  textStyle: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                child: Text(
-                  pending
-                      ? l10n.identityResetCancelAction
-                      : l10n.identityResetStartAction,
-                ),
-              ),
-            ],
-          ),
+    return IdentityAlertBanner(
+      icon: pending ? Icons.lock_reset_outlined : Icons.key_off_outlined,
+      title: pending
+          ? l10n.identityResetPendingTitle
+          : l10n.identityUploadLockedTitle,
+      // The countdown is STATUS, not prose, so it stays visible while the
+      // explanation is collapsed — the whole point of the delay is that someone
+      // sees it running.
+      summary: pending ? _remaining(l10n, deadline) : null,
+      detail: pending
+          ? l10n.identityResetPendingBody(_remaining(l10n, deadline))
+          : l10n.identityUploadLockedBody,
+      // Foreground pinned to onErrorContainer: theme primary is nearly
+      // invisible on the error container (same reason as the 0a banner).
+      action: TextButton(
+        onPressed: () {
+          if (pending) {
+            context.read<EncryptionProvider>().cancelIdentityReset();
+          } else {
+            // Ask for a recovery key first: it is the difference between
+            // waiting an hour and waiting three days.
+            startIdentityResetFlow(context);
+          }
+        },
+        style: TextButton.styleFrom(
+          foregroundColor: colors.onErrorContainer,
+          textStyle: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+        child: Text(
+          pending
+              ? l10n.identityResetCancelAction
+              : l10n.identityResetStartAction,
         ),
       ),
     );

@@ -391,7 +391,7 @@ class ChatInputBarState extends State<ChatInputBar>
     if (!mounted) return;
     final duration = probed?.round();
     if (duration != null && duration > 60) {
-      showTopSnackBar(context, l10n.videoTooLong, backgroundColor: Colors.red);
+      showTopSnackBar(context, l10n.videoTooLong, backgroundColor: Theme.of(context).colorScheme.error);
       return;
     }
     final result = _attachment.stageVideo(
@@ -405,7 +405,7 @@ class ChatInputBarState extends State<ChatInputBar>
       result == StageResult.tooLarge
           ? l10n.videoTooLarge
           : l10n.videoUnsupportedFormat,
-      backgroundColor: Colors.red,
+      backgroundColor: Theme.of(context).colorScheme.error,
     );
   }
 

@@ -480,6 +480,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get identityDamagedAction => 'Start fresh';
 
   @override
+  String get identityDamagedRecoveryFailed =>
+      'Could not create new encryption keys. Try again.';
+
+  @override
+  String get identityAlertShowDetails => 'Details';
+
+  @override
+  String get identityAlertHideDetails => 'Hide details';
+
+  @override
   String get identityDamagedConfirmTitle => 'Start with new keys?';
 
   @override

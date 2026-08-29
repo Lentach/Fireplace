@@ -950,6 +950,24 @@ abstract class AppLocalizations {
   /// **'Zacznij od nowa'**
   String get identityDamagedAction;
 
+  /// Shown when regenerating a damaged Signal identity fails.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się utworzyć nowych kluczy szyfrowania. Spróbuj ponownie.'**
+  String get identityDamagedRecoveryFailed;
+
+  /// Reveals the full explanation on a collapsed identity banner.
+  ///
+  /// In pl, this message translates to:
+  /// **'Szczegóły'**
+  String get identityAlertShowDetails;
+
+  /// Collapses the explanation on an identity banner.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ukryj szczegóły'**
+  String get identityAlertHideDetails;
+
   /// No description provided for @identityDamagedConfirmTitle.
   ///
   /// In pl, this message translates to:

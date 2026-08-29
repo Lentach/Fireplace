@@ -483,6 +483,16 @@ class AppLocalizationsPl extends AppLocalizations {
   String get identityDamagedAction => 'Zacznij od nowa';
 
   @override
+  String get identityDamagedRecoveryFailed =>
+      'Nie udało się utworzyć nowych kluczy szyfrowania. Spróbuj ponownie.';
+
+  @override
+  String get identityAlertShowDetails => 'Szczegóły';
+
+  @override
+  String get identityAlertHideDetails => 'Ukryj szczegóły';
+
+  @override
   String get identityDamagedConfirmTitle => 'Utworzyć nowe klucze?';
 
   @override

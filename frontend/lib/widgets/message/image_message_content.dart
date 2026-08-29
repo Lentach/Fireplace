@@ -223,7 +223,7 @@ class _ImageMessageContentState extends State<ImageMessageContent> {
               padding: const EdgeInsets.all(8),
               child: Text(
                 AppLocalizations.of(context).imageFailedToLoad,
-                style: RpgTheme.bodyFont(fontSize: 12, color: Colors.red),
+                style: RpgTheme.bodyFont(fontSize: 12, color: Theme.of(context).colorScheme.error),
               ),
             );
           }

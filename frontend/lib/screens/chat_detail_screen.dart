@@ -574,17 +574,24 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                         horizontal: 6,
                         vertical: 2,
                       ),
-                      decoration: const BoxDecoration(
-                        color: Colors.blue,
-                        borderRadius: BorderRadius.all(Radius.circular(10)),
+                      // Theme tokens, not Colors.blue/Colors.white: the raw
+                      // pair is off-brand on the ember/teal/cosmic themes, and
+                      // white on #2196F3 is ~3.3:1 — under the 4.5:1 gate for
+                      // 11px text. primary/onPrimary is the pairing every other
+                      // count badge in the app already uses.
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary,
+                        borderRadius: const BorderRadius.all(
+                          Radius.circular(10),
+                        ),
                       ),
                       constraints: const BoxConstraints(minWidth: 18),
                       child: Text(
                         _newMessagesCount > 99 ? '99+' : '$_newMessagesCount',
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: RpgTheme.bodyFont(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
+                          color: Theme.of(context).colorScheme.onPrimary,
                         ),
                       ),
                     ),

@@ -3,6 +3,9 @@ import 'package:provider/provider.dart';
 
 import '../l10n/app_localizations.dart';
 import '../providers/encryption_provider.dart';
+import 'glass/glass_dialog.dart';
+import 'identity_alert_banner.dart';
+import 'top_snackbar.dart';
 
 /// Shown when the stored Signal identity is damaged (present but incomplete).
 ///
@@ -21,11 +24,13 @@ class IdentityDamagedBanner extends StatelessWidget {
 
   Future<void> _confirmAndRecover(BuildContext context) async {
     final l10n = AppLocalizations.of(context);
-    final messenger = ScaffoldMessenger.maybeOf(context);
     final encryption = context.read<EncryptionProvider>();
+    // GlassDialog, not a raw AlertDialog: it is the app's dialog shell (9 call
+    // sites) and it already mirrors AlertDialog's route semantics and platform
+    // label, so a screen reader still announces a dialog.
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => GlassDialog(
         title: Text(l10n.identityDamagedConfirmTitle),
         content: Text(l10n.identityDamagedConfirmBody),
         actions: [
@@ -41,13 +46,23 @@ class IdentityDamagedBanner extends StatelessWidget {
       ),
     );
     if (confirmed != true) return;
+    if (!context.mounted) return;
     try {
       await encryption.recoverFromIncompleteIdentity();
-    } catch (e) {
+    } catch (_) {
       // Key generation can fail (storage quota, platform error). Say so rather
       // than leaving a dead button and an unhandled async error.
-      messenger?.showSnackBar(
-        SnackBar(content: Text('${l10n.identityDamagedTitle}: $e')),
+      //
+      // showTopSnackBar, not ScaffoldMessenger: the tier file records the bottom
+      // snackbar as a regression because it covers the chat composer. The raw
+      // exception is no longer interpolated either — it was untranslated
+      // developer text in a user-facing surface, and it said nothing a user
+      // could act on.
+      if (!context.mounted) return;
+      showTopSnackBar(
+        context,
+        l10n.identityDamagedRecoveryFailed,
+        backgroundColor: Theme.of(context).colorScheme.error,
       );
     }
   }
@@ -64,68 +79,31 @@ class IdentityDamagedBanner extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
-    return Material(
-      color: colors.errorContainer,
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                Icons.gpp_bad_outlined,
-                color: colors.onErrorContainer,
-                size: 20,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      l10n.identityDamagedTitle,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        color: colors.onErrorContainer,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      l10n.identityDamagedBody,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colors.onErrorContainer,
-                      ),
-                    ),
-                  ],
+    return IdentityAlertBanner(
+      icon: Icons.gpp_bad_outlined,
+      title: l10n.identityDamagedTitle,
+      detail: l10n.identityDamagedBody,
+      // Disabled while running: key generation mints 100 prekeys, and a second
+      // tap would race a concurrent identity write.
+      //
+      // Foreground is pinned to onErrorContainer: the default TextButton colour
+      // is the theme PRIMARY, which renders near-invisible on the red error
+      // container (caught in a real Chrome render, not by analyze). This is the
+      // one action a user with damaged keys has, so it stays visible even while
+      // the explanation is collapsed.
+      action: TextButton(
+        onPressed: busy ? null : () => _confirmAndRecover(context),
+        style: TextButton.styleFrom(foregroundColor: colors.onErrorContainer),
+        child: busy
+            ? SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: colors.onErrorContainer,
                 ),
-              ),
-              // Disabled while running: key generation mints 100 prekeys, and a
-              // second tap would race a concurrent identity write.
-              //
-              // Foreground is pinned to onErrorContainer: the default TextButton
-              // colour is the theme PRIMARY, which renders near-invisible on the
-              // red error container (caught in a real Chrome render, not by
-              // analyze). This is the one action a user with damaged keys has.
-              TextButton(
-                onPressed: busy ? null : () => _confirmAndRecover(context),
-                style: TextButton.styleFrom(
-                  foregroundColor: colors.onErrorContainer,
-                ),
-                child: busy
-                    ? SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: colors.onErrorContainer,
-                        ),
-                      )
-                    : Text(l10n.identityDamagedAction),
-              ),
-            ],
-          ),
-        ),
+              )
+            : Text(l10n.identityDamagedAction),
       ),
     );
   }
