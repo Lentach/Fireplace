@@ -12,7 +12,7 @@
   "webPushEnableSubtitle": "Required on iOS after adding app to Home Screen",
   "webPushEnabled": "Push notifications enabled",
   "webPushPermissionDenied": "Push permission denied",
-  "webPushInstallRequired": "Add Fireplace to Home Screen first (Safari -> Share -> Add to Home Screen)",
+  "webPushInstallRequired": "Add Umbra to Home Screen first (Safari -> Share -> Add to Home Screen)",
   "webPushNotSupported": "Push is not supported in this browser/session",
   "webPushNoChanges": "Push is already enabled",
   "webPushEnableFailed": "Failed to enable push",
@@ -35,7 +35,7 @@
 
   "privacySafetyTitle": "Privacy & Safety",
   "e2eEncryptionEnabled": "End-to-end encryption is enabled",
-  "e2eEncryptionDescription": "Your messages are encrypted using the Signal Protocol. Only you and the recipient can read them. Not even Fireplace servers can access your message content.",
+  "e2eEncryptionDescription": "Your messages are encrypted using the Signal Protocol. Only you and the recipient can read them. Not even Umbra servers can access your message content.",
   "yourEncryptionKeys": "Your encryption keys",
   "yourEncryptionKeysDescription": "Keys are stored securely on this device. If you switch devices or reinstall the app, a new set of keys will be generated and previous message history cannot be recovered.",
   "singleDeviceEncryption": "Single-device encryption",
@@ -418,7 +418,7 @@
   "@rotateDeviceTitle": {
     "description": "Shown when app is used in landscape on phones/tablets"
   },
-  "rotateDeviceMessage": "Fireplace works in portrait mode only.",
+  "rotateDeviceMessage": "Umbra works in portrait mode only.",
   "@rotateDeviceMessage": {
     "description": "Body under rotateDeviceTitle"
   },

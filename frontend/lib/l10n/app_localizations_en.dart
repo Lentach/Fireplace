@@ -47,7 +47,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get webPushInstallRequired =>
-      'Add Fireplace to Home Screen first (Safari -> Share -> Add to Home Screen)';
+      'Add Umbra to Home Screen first (Safari -> Share -> Add to Home Screen)';
 
   @override
   String get webPushNotSupported =>
@@ -116,7 +116,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get e2eEncryptionDescription =>
-      'Your messages are encrypted using the Signal Protocol. Only you and the recipient can read them. Not even Fireplace servers can access your message content.';
+      'Your messages are encrypted using the Signal Protocol. Only you and the recipient can read them. Not even Umbra servers can access your message content.';
 
   @override
   String get yourEncryptionKeys => 'Your encryption keys';
@@ -1070,7 +1070,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get rotateDeviceTitle => 'Rotate your device';
 
   @override
-  String get rotateDeviceMessage => 'Fireplace works in portrait mode only.';
+  String get rotateDeviceMessage => 'Umbra works in portrait mode only.';
 
   @override
   String get messageActionReply => 'Reply';

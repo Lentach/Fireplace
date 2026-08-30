@@ -1,11 +1,11 @@
 {
-    "name": "Fireplace",
-    "short_name": "Fireplace",
+    "name": "Umbra",
+    "short_name": "Umbra",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#F7F4F0",
     "theme_color": "#F7F4F0",
-    "description": "Fireplace - chat app",
+    "description": "Umbra - chat app",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

@@ -16,7 +16,7 @@
          proxy (sealed voice notes play from memory through 127.0.0.1).
          Everything else keeps the API 28+ cleartext block. -->
     <application
-        android:label="Fireplace"
+        android:label="Umbra"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
@@ -53,7 +53,7 @@
              monochrome white-on-transparent. -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
-            android:resource="@drawable/ic_stat_fireplace" />
+            android:resource="@drawable/ic_stat_umbra" />
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_color"
             android:resource="@color/fireplace_notification_accent" />

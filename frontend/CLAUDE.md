@@ -104,7 +104,7 @@ git pull ; .\deploy-web.ps1
 - App → push-SW messages go through `PushSwChannel` using `getRegistration('/web-push-scope/')` and `reg.active.postMessage`. Do not use `serviceWorker.ready` / `.controller`; that targets Flutter's app SW.
 - Push SW owns notification tray and app badge. It close-before-shows stable `conversation-<id>` tags because iOS WebKit does not replace same-tag notifications reliably.
 - iOS killed/suspended PWA deep links: `clients.openWindow('/?notify_conv=...')` can lose the URL. SW persists `{conversationId, at}` in IndexedDB `fireplace-push/kv/pending-deep-link`; `main.dart` drains it before `runApp`.
-- Android native push is data-only FCM → `flutter_local_notifications`; small icon is `@drawable/ic_stat_fireplace` in notifications. Main plugin initialization still uses launcher icon; do not claim every native init path uses the drawable icon.
+- Android native push is data-only FCM → `flutter_local_notifications`; small icon is `@drawable/ic_stat_umbra` in notifications. Main plugin initialization still uses launcher icon; do not claim every native init path uses the drawable icon.
 - Notification small/badge icon must be monochrome white-on-transparent. Full-color opaque PNGs become white squares.
 - `deploy-web.ps1` validates generated `frontend/build/web/version.json`. If code does not change after deploy, run a clean build and hard-bust PWA cache by fully closing/reopening. Never uninstall/clear site data on a real user account.
 
