@@ -1514,6 +1514,24 @@ abstract class AppLocalizations {
   /// **'Dokument'**
   String get attachmentOptionDocument;
 
+  /// No description provided for @attachmentOptionGallery.
+  ///
+  /// In pl, this message translates to:
+  /// **'Galeria'**
+  String get attachmentOptionGallery;
+
+  /// No description provided for @attachmentOptionCamera.
+  ///
+  /// In pl, this message translates to:
+  /// **'Aparat'**
+  String get attachmentOptionCamera;
+
+  /// No description provided for @attachmentOptionFile.
+  ///
+  /// In pl, this message translates to:
+  /// **'Plik'**
+  String get attachmentOptionFile;
+
   /// No description provided for @actionTileDisappearingMessages.
   ///
   /// In pl, this message translates to:

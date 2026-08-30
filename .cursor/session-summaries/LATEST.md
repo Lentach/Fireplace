@@ -54,10 +54,14 @@ lifecycle found **GATE2-REVOKED-DEVICE-RELOGIN-CLOBBER**, every hop re-verified 
   REFUSED (`device_material_conflict`, row untouched). Full wire run against a live backend:
   **44/6sk green** — the refusal is OBSERVED on the wire. Ops: a bare
   `docker compose restart backend` wedged nest (the 08-22b trap); `down && up` cured it.
-- **Master-line work merged in the same day (docs-only, no code):** iOS orb parked + PR #151 draft +
-  prod reverted to master, README retitled to Umbra, /welcome/ no-cache fix — full accounts in
-  `2026-08-30-session-ios-orb-parked.md` and the deploy runbook; master's own LATEST index text was
-  superseded by this file at the merge (this copy is the surviving book).
+- **Master-line work merged in TWO waves the same day.** Wave 1 (docs-only): iOS orb parked + PR
+  #151 draft + prod reverted to master, README retitled to Umbra, /welcome/ no-cache fix
+  (`2026-08-30-session-ios-orb-parked.md` + deploy runbook). Wave 2 (CODE — merged here as
+  `origin/master` @ `c9abf46`): **0.1.21 SHIPPED — PR #151, the composer three-door Android
+  attachment sheet + picker-span protections; iOS reverted to the file_picker fallback** (touches
+  the composer, which keeps its standing owner warning), plus its ARB strings — auto-merged cleanly
+  with this branch's (lxiv) keys, gen-l10n re-run and counts re-measured post-merge. Master's own
+  LATEST index text was superseded by this file at each merge (this copy is the surviving book).
 - **FINAL (lxiv) REVIEW RAN (owner asked): one fresh reviewer pair, change-scoped.** Lens A found a
   REAL P1 in the fix itself — the confirmed own-device id survived reconnects into the new init
   gate, so a §6.2 rebind (and a §5.1 link reconnect) TOFU-stamped the STALE id before `socketReady`
@@ -427,3 +431,4 @@ programme moves.**
 - **Masters + SVG→PNG pipeline live in gitignored `.planning/branding/`** (`@resvg/resvg-js` via node — no inkscape/magick on this PC). Tweak = edit the 722 B SVG, `rasterize.mjs`, `dart run flutter_launcher_icons`.
 - **Trap avoided, config now idempotent:** `flutter_launcher_icons` overwrote `manifest.json` colors `#F7F4F0`→`#000000`; reverted and pinned the yaml `web:` colors to cream (re-run → zero diff). Also added `remove_alpha_ios: true` (App Store rejects alpha). `notification-badge-96` stays pure white-on-transparent per `web-push-sw.js:205-208`.
 - **Not device-verified:** every asset class checked by pixels/geometry; no phone homescreen was seen this session.
+

@@ -828,6 +828,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get attachmentOptionDocument => 'Document';
 
   @override
+  String get attachmentOptionGallery => 'Gallery';
+
+  @override
+  String get attachmentOptionCamera => 'Camera';
+
+  @override
+  String get attachmentOptionFile => 'File';
+
+  @override
   String get actionTileDisappearingMessages => 'Disappearing messages';
 
   @override

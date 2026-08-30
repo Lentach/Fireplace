@@ -73,6 +73,7 @@ StreamSubscription<web.Event>? registerPageShowRecoveryListener(
 /// the icon relaunch users already prefer over the broken revived window.
 StreamSubscription<web.Event>? installFreezeReloadGuard({
   required void Function() onFallbackRecover,
+  bool Function()? suppressReload,
 }) {
   var reloadArmed = false;
 
@@ -98,6 +99,7 @@ StreamSubscription<web.Event>? installFreezeReloadGuard({
       isVisible: web.document.visibilityState == 'visible',
       lastForcedReloadAtMs: _readMarkerMs(),
       nowMs: DateTime.now().millisecondsSinceEpoch,
+      nativeSurfaceActive: suppressReload?.call() ?? false,
     );
     switch (action) {
       case FrozenResumeAction.reloadNow:
@@ -113,6 +115,12 @@ StreamSubscription<web.Event>? installFreezeReloadGuard({
     if (!reloadArmed) return;
     if (web.document.visibilityState != 'visible') return;
     reloadArmed = false;
+    // Re-check at fire time: the picker surface may have opened between the
+    // hidden resume that armed this and the visibility flip.
+    if (suppressReload?.call() ?? false) {
+      onFallbackRecover();
+      return;
+    }
     forceReload();
   }
 

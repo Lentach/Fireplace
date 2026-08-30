@@ -835,6 +835,15 @@ class AppLocalizationsPl extends AppLocalizations {
   String get attachmentOptionDocument => 'Dokument';
 
   @override
+  String get attachmentOptionGallery => 'Galeria';
+
+  @override
+  String get attachmentOptionCamera => 'Aparat';
+
+  @override
+  String get attachmentOptionFile => 'Plik';
+
+  @override
   String get actionTileDisappearingMessages => 'Znikające wiadomości';
 
   @override

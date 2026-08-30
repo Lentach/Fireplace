@@ -24,6 +24,7 @@ import '../utils/notification_nav_decision.dart';
 import '../services/unread_badge_sync.dart';
 import '../services/encryption/native_content_store.dart';
 import '../widgets/top_snackbar.dart';
+import '../widgets/input/composer_keyboard_signals.dart';
 import '../widgets/console_glyphs.dart';
 import '../widgets/glass/glass_bottom_nav.dart';
 import '../widgets/device_mismatch_banner.dart';
@@ -95,6 +96,11 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           E2eDiagLog.add('PAGE_RESUME', {'source': 'freeze-loop-guard'});
           unawaited(_recoverForeground(markVisible: false));
         },
+        // The attachment camera/file dialog backgrounds the tab and freezes
+        // the page; reloading on that resume would destroy the pending
+        // <input type=file> and the picked bytes. Soft-recover instead while
+        // the picker surface is up (emulator-proven 2026-08-21).
+        suppressReload: () => composerNativePickerActive.value,
       );
       if (consumeFrozenReloadMarker()) {
         // This boot IS the replacement of a frozen page — the only surviving

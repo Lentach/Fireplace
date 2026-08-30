@@ -1,4 +1,4 @@
-# 2026-08-30 — iOS orb/flash: mechanism exonerated by 9-variant device probe; canvas-hide experiment failed; ALL composer work reverted from prod and PR #151 PARKED (draft) until MacBook + Web Inspector
+# 2026-08-30 — iOS orb/flash: mechanism exonerated by 9-variant device probe, investigation parked for MacBook; Android-only split SHIPPED same day as 0.1.21 (PR #151 merged)
 
 **Date:** 2026-08-30
 
@@ -10,6 +10,20 @@ yourself."* Executed: prod redeployed from clean master (`0.1.20 · cec96f1`,
 smoke rc=0), PR #151 converted to DRAFT with a full status comment, branch
 `fix/composer-regression` (head `5381315`, includes the Umbra merge-up) left
 intact for the future session.
+
+**SAME-DAY UPDATE — Android split SHIPPED.** After the revert, the owner
+re-confirmed the double-camera chooser on his REAL Android device (camera /
+camera / file, no gallery — matches emulator s27; his fresh Umbra WebAPK
+install also device-verified the rebrand name+icon). On his explicit go:
+`0135b57` reverted the experiment and removed the iOS anchored-input path
+(iOS = byte-identical pre-branch file_picker behavior; only the
+mechanism-independent picker-span wins remain: dismiss-slide gate +
+freeze-reload pick protection), merged master twice (docs conflicts only),
+CI 6/6 CLEAN at `9f03e7c`, **PR #151 MERGED** (`d64b9d3`), version bumped
+**0.1.21** (`af55eed`), deployed, smoke rc=0 (bundle sha verified). Android
+paperclip now opens Galeria/Aparat/Plik in prod. The iOS orb investigation
+remains parked exactly as below — the "reverted, parked" language in the
+rest of this file refers to the iOS-specific work only.
 
 ## What three iPhone passes established (do NOT re-derive)
 

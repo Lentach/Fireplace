@@ -34,6 +34,42 @@ void main() {
   });
 
   test(
+    'native picker surface active → soft recovery even when frozen+visible '
+    '(the attachment camera/file dialog backgrounds the tab; a reload would '
+    'destroy the pending <input type=file> and the picked bytes)',
+    () {
+      expect(
+        decideOnFrozenResume(
+          wasFrozen: true,
+          isVisible: true,
+          lastForcedReloadAtMs: null,
+          nowMs: t0,
+          nativeSurfaceActive: true,
+        ),
+        FrozenResumeAction.softRecover,
+      );
+    },
+  );
+
+  test(
+    'native picker suppression also clears reloadImminent so deep-link '
+    'clears behave normally again',
+    () {
+      final state = FrozenPageReloadState();
+      state.onFreeze();
+      expect(state.reloadImminent, isTrue);
+      final action = state.onResume(
+        isVisible: true,
+        lastForcedReloadAtMs: null,
+        nowMs: t0,
+        nativeSurfaceActive: true,
+      );
+      expect(action, FrozenResumeAction.softRecover);
+      expect(state.reloadImminent, isFalse);
+    },
+  );
+
+  test(
     'frozen but still hidden → arm the reload (resume fires BEFORE '
     'visibilitychange; a background unfreeze must not reload a hidden page)',
     () {
