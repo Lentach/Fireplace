@@ -1,6 +1,7 @@
-﻿# Fireplace
+﻿# Umbra
 
 End-to-end encrypted messenger built with Flutter and NestJS.
+*(Internal codename: Fireplace — code identifiers, storage keys, and paths keep that name by design; see `CLAUDE.md` §2.)*
 
 **Production:** https://fireplace.ignorelist.com
 
