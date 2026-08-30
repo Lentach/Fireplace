@@ -194,18 +194,22 @@ class ChatActionTiles extends StatelessWidget {
   static String _dotAccept(List<String> extensions) =>
       extensions.map((e) => '.$e').join(',');
 
-  /// Paperclip door, per platform (owner rulings 2026-08-19/21):
+  /// Paperclip door, per platform (owner rulings 2026-08-19/21/30):
   ///
-  /// - iOS PWA: ONE bare file input — Safari itself presents Photo Library /
-  ///   Take Photo or Video / Choose File, so an in-app chooser is a redundant
-  ///   hop. The input is opened ANCHORED at the paperclip tile and stays in
-  ///   the DOM until the menu resolves (see web_file_input.dart): file_picker's
-  ///   display:none + synchronous-detach input left Safari's popover with no
-  ///   source rect — the mid-open dark morph blob / black flash.
+  /// - iOS PWA: file_picker fallback, byte-identical to pre-branch behavior
+  ///   (owner ruling 2026-08-30). The anchored-input path was removed after a
+  ///   9-variant on-device probe proved the opening mechanism is NOT what
+  ///   causes the standalone orb/flash — the real app orbs identically on
+  ///   both paths, and only in the installed standalone shell. Parked until
+  ///   macOS Web Inspector can observe the presentation (PR #151 comment,
+  ///   2026-08-30 session summary). The native-picker span still wraps the
+  ///   fallback: the dismiss-slide gate and freeze-reload pick protection are
+  ///   mechanism-independent wins.
   /// - Android PWA: Chrome's chooser for a mixed image+video accept lists the
-  ///   camera twice (stills + camcorder, emulator-proven s27) and offers no
-  ///   gallery door, so the paperclip opens an in-app glass sheet with three
-  ///   unambiguous doors: Gallery / Camera / File (owner ruling 2026-08-19).
+  ///   camera twice (stills + camcorder; emulator s27 AND owner's real device
+  ///   2026-08-30) and offers no gallery door, so the paperclip opens an
+  ///   in-app glass sheet with three unambiguous doors: Gallery / Camera /
+  ///   File (owner ruling 2026-08-19, re-confirmed wanted 2026-08-30).
   /// - Desktop web + native: system picker via file_picker, unchanged.
   ///
   /// The result routes by extension: image/video STAGE (send button sends),
@@ -216,40 +220,12 @@ class ChatActionTiles extends StatelessWidget {
   ) async {
     if (_requireActiveConversation(context) == null) return;
 
-    if (kIsWeb && webAnchoredFileInputSupported) {
-      final anchor = _tileAnchorRect(tileContext);
-      if (isIOSWebKit()) {
-        // The dialog is about to dismiss the keyboard; that drop is not a
-        // user dismiss — flag the native surface so the viewport collapses
-        // silently instead of running the dismiss slide mid-open. A timed
-        // guard cannot cover this: the drop arrives whenever the OS delivers
-        // it (measured 1.6s after the tap on the emulator).
-        beginComposerNativePicker();
-        WebPickedFile? picked;
-        try {
-          picked = await pickFileViaAnchoredInput(
-            anchorRect: anchor,
-            accept: _dotAccept([
-              ..._galleryImageExtensions,
-              ..._galleryVideoExtensions,
-              ..._documentExtensions,
-            ]),
-          );
-        } finally {
-          endComposerNativePicker();
-        }
-        if (picked == null || !context.mounted) return;
-        await _routePickedFile(
-          context,
-          fileName: picked.name,
-          bytes: picked.bytes,
-        );
-        return;
-      }
-      if (defaultTargetPlatform == TargetPlatform.android) {
-        await _showAndroidAttachmentSheet(context, anchor);
-        return;
-      }
+    if (kIsWeb &&
+        webAnchoredFileInputSupported &&
+        !isIOSWebKit() &&
+        defaultTargetPlatform == TargetPlatform.android) {
+      await _showAndroidAttachmentSheet(context, _tileAnchorRect(tileContext));
+      return;
     }
 
     beginComposerNativePicker();
