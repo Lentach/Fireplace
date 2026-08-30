@@ -327,11 +327,22 @@ class EncryptionService {
         // nothing but resolves the warning.
         final pinned = await _identityStore.getAccountIdentity(name);
         if (pinned != null && base64Encode(pinned.serialize()) == supplied) {
-          await _identityStore.adoptAccountIdentity(
+          // (lviii) The slot was read BEFORE this write, so a candidate can
+          // still arrive during it. The store reports whether its guard held;
+          // if it did not, the warning MUST stand — the evidence survives, and
+          // without the warning the door back to this ceremony does not.
+          final guardHeld = await _identityStore.adoptAccountIdentity(
             name,
             pinned,
             expectedPendingBase64: pendingBase64,
           );
+          if (!guardHeld) {
+            E2ePersistentDiag.record('PEER_IDENTITY_ADOPT_REFUSED', {
+              'peerId': peerId,
+              'reason': 'candidate_changed_since_display',
+            });
+            return false;
+          }
           advanced = true;
           source = 'reaffirmed_pin';
         } else {
@@ -766,6 +777,13 @@ class EncryptionService {
 
   /// Durably record that [peerId]'s list verified at [version]. Monotonic: a
   /// lower version never lowers the floor.
+  ///
+  /// The WRITE deliberately does not throw ((lvii)). This serialises the ENTIRE
+  /// map on every advance, so a transient failure is repaired by the next
+  /// successful advance; and [DeviceListCache.onPinAdvanced] is a `void`
+  /// callback reached from inside verification, where throwing would turn a
+  /// storage hiccup into a failed verification. It records a diagnostic instead,
+  /// because the failure used to be entirely invisible.
   Future<void> recordDeviceListPin(int peerId, int version) async {
     final held = _deviceListPins[peerId];
     if (held != null && version <= held) return;
@@ -778,23 +796,66 @@ class EncryptionService {
         _deviceListPinsKey(userId),
         jsonEncode(_deviceListPins.map((k, v) => MapEntry(k.toString(), v))),
       );
-    } catch (_) {}
+    } catch (e) {
+      E2ePersistentDiag.record('DEVICELIST_PIN_WRITE_FAILED', {
+        'peerId': peerId,
+        'version': version,
+        'error': e.toString(),
+      });
+    }
   }
 
+  /// Restore the rollback floors recorded by previous processes.
+  ///
+  /// FAILS CLOSED ((lvii)): a storage or decode error PROPAGATES out of
+  /// [initialize]. This used to swallow everything, which made a read failure
+  /// indistinguishable from "never pinned" — and an empty floor is not neutral.
+  /// [DeviceListCache.adopt] refuses a `not enrolled` answer only when a pin
+  /// exists, and compares against the pin otherwise, so a silently empty floor
+  /// lets a server re-serve an older validly-signed list — including one that
+  /// re-admits a revoked device. That is the window (xix) refuses.
+  ///
+  /// This is the rule the identity load twenty lines below already states: a
+  /// storage error must never be read as an absence. A loud, retryable init
+  /// failure beats a permanent, undetectable downgrade.
+  ///
+  /// A missing key is a GENUINE absence and stays silent: a device that never
+  /// pinned anything has no floor to lose.
   Future<void> _loadDeviceListPins(int userId) async {
+    final prefs = await _sharedPrefs;
+    final raw = prefs.getString(_deviceListPinsKey(userId));
+    if (raw == null) return;
+    final Object? decoded;
     try {
-      final prefs = await _sharedPrefs;
-      final raw = prefs.getString(_deviceListPinsKey(userId));
-      if (raw == null) return;
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map) return;
-      decoded.forEach((key, value) {
-        final peerId = int.tryParse(key.toString());
-        if (peerId == null || value is! int) return;
-        final held = _deviceListPins[peerId];
-        if (held == null || value > held) _deviceListPins[peerId] = value;
+      decoded = jsonDecode(raw);
+    } catch (e) {
+      E2ePersistentDiag.record('DEVICELIST_PIN_LOAD_FAILED', {
+        'userId': userId,
+        'error': e.toString(),
       });
-    } catch (_) {}
+      rethrow;
+    }
+    if (decoded is! Map) {
+      E2ePersistentDiag.record('DEVICELIST_PIN_LOAD_FAILED', {
+        'userId': userId,
+        'error': 'stored pins are not a map',
+      });
+      throw StateError('device-list pins for $userId are malformed');
+    }
+    decoded.forEach((key, value) {
+      final peerId = int.tryParse(key.toString());
+      if (peerId == null || value is! int) {
+        // One unusable entry is one lost floor, not a lost store, so it must be
+        // visible without denying every other peer its pin.
+        E2ePersistentDiag.record('DEVICELIST_PIN_ENTRY_SKIPPED', {
+          'userId': userId,
+          'key': key.toString(),
+        });
+        return;
+      }
+      final held = _deviceListPins[peerId];
+      if (held == null || value > held) _deviceListPins[peerId] = value;
+    });
   }
 
   /// Construct the four Signal stores for prefix [p].

@@ -190,6 +190,97 @@ void main() {
     );
   });
 
+  // (lviii) Finding RC-03. The two (xlix) clauses each did their job and still
+  // lost between them: the slot is read BEFORE the write, the guard inside the
+  // store returned SILENTLY, and the caller — learning nothing — consumed the
+  // warning that is the only door back to the ceremony.
+  group('(lviii) the guarded write REPORTS whether its guard held', () {
+    SecureIdentityKeyStore storeWith(DualStorage storage) =>
+        SecureIdentityKeyStore(storage, 'lviii_test_');
+
+    test('reports FALSE when a candidate it was not told about is present',
+        () async {
+      final store = storeWith(DualStorage(const FlutterSecureStorage()));
+      final candidate = generateIdentityKeyPair().getPublicKey();
+      final accepted = generateIdentityKeyPair().getPublicKey();
+      await store.stagePendingAccountIdentity('99', candidate);
+
+      final guardHeld = await store.adoptAccountIdentity(
+        '99',
+        accepted,
+        expectedPendingBase64: null,
+      );
+
+      // This is the signal the caller needs to keep the warning standing.
+      expect(guardHeld, isFalse);
+      // And it still must not delete evidence it was never told about.
+      expect(await store.pendingAccountIdentity('99'), isNotNull);
+    });
+
+    test('reports FALSE when the staged candidate CHANGED', () async {
+      final store = storeWith(DualStorage(const FlutterSecureStorage()));
+      final displayed = generateIdentityKeyPair().getPublicKey();
+      final arrivedSince = generateIdentityKeyPair().getPublicKey();
+      await store.stagePendingAccountIdentity('99', arrivedSince);
+
+      final guardHeld = await store.adoptAccountIdentity(
+        '99',
+        displayed,
+        expectedPendingBase64: base64Encode(displayed.serialize()),
+      );
+
+      expect(guardHeld, isFalse);
+      expect(
+        base64Encode((await store.pendingAccountIdentity('99'))!.serialize()),
+        base64Encode(arrivedSince.serialize()),
+        reason: 'the key that arrived since must survive to be compared',
+      );
+    });
+
+    test('reports TRUE and consumes the candidate it WAS told about', () async {
+      final store = storeWith(DualStorage(const FlutterSecureStorage()));
+      final displayed = generateIdentityKeyPair().getPublicKey();
+      await store.stagePendingAccountIdentity('99', displayed);
+
+      final guardHeld = await store.adoptAccountIdentity(
+        '99',
+        displayed,
+        expectedPendingBase64: base64Encode(displayed.serialize()),
+      );
+
+      expect(guardHeld, isTrue);
+      expect(await store.pendingAccountIdentity('99'), isNull);
+    });
+
+    test('POSITIVE CONTROL: reports TRUE when the slot is genuinely empty',
+        () async {
+      final store = storeWith(DualStorage(const FlutterSecureStorage()));
+      final accepted = generateIdentityKeyPair().getPublicKey();
+
+      // The ordinary re-affirmation. If this reported false, every legitimate
+      // acknowledgement would refuse to clear its own warning.
+      expect(
+        await store.adoptAccountIdentity(
+          '99',
+          accepted,
+          expectedPendingBase64: null,
+        ),
+        isTrue,
+      );
+    });
+
+    // NOT COVERED END TO END, deliberately. Reaching the caller's branch
+    // requires a candidate to arrive BETWEEN the service reading the slot and
+    // `adoptAccountIdentity` reading it again, and EncryptionService builds its
+    // own stores from a key prefix — so there is no way to interleave a write
+    // without adding a test-only seam to production code, which this codebase
+    // does not do. A service-level test that merely STAGES a candidate first
+    // would pass for the WRONG reason: a non-null slot is caught by the
+    // pre-existing (xlix) clause-1 check and never reaches the new report.
+    // The contract above is the whole fix; the caller consuming it is a
+    // two-line branch.
+  });
+
   test('a confirmed recovery rebuild intent survives a restart', () async {
     await enc.encryptionService.recordPeerIdentityChangedFromServer(peerId);
     final pinned = await pinnedPeerKeyBase64();
@@ -381,5 +472,84 @@ void main() {
       ),
       throwsA(isA<DeviceListVerificationException>()),
     );
+  });
+
+  // (lvii) Finding F6. The floor used to be restored inside a bare
+  // `catch (_) {}`, so an unreadable store was indistinguishable from "never
+  // pinned" — and an empty floor is NOT neutral: it is exactly the state in
+  // which a server may replay an older validly-signed list, or downgrade a
+  // previously enrolled peer to the synthesised single device.
+  group('(lvii) the rollback floor fails CLOSED', () {
+    /// The key `_loadDeviceListPins` reads, for the OWN user.
+    String pinsKey(int userId) => 'e2e_${userId}_devicelist_pins_v1';
+
+    test('a CORRUPT pins blob makes initialize THROW, not start empty',
+        () async {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(pinsKey(ownUserId), '{not json at all');
+
+      final revived = EncryptionService();
+      await expectLater(
+        revived.initialize(
+          ownUserId,
+          checkServerBundleExists: () async => true,
+        ),
+        throwsA(anything),
+        reason: 'silently continuing would reopen the (xix) rollback window',
+      );
+      // Nothing was invented to fill the gap.
+      expect(revived.deviceListPins, isEmpty);
+    });
+
+    test('a non-map pins blob is refused too', () async {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(pinsKey(ownUserId), '["not", "a", "map"]');
+
+      final revived = EncryptionService();
+      await expectLater(
+        revived.initialize(
+          ownUserId,
+          checkServerBundleExists: () async => true,
+        ),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test('POSITIVE CONTROL: NO stored pins is a genuine absence, not an error',
+        () async {
+      // A device that never pinned anything has no floor to lose, so this must
+      // stay silent — otherwise every fresh install fails to initialize.
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(pinsKey(ownUserId));
+
+      final revived = EncryptionService();
+      await expectLater(
+        revived.initialize(
+          ownUserId,
+          checkServerBundleExists: () async => true,
+        ),
+        completes,
+      );
+      expect(revived.deviceListPins, isEmpty);
+    });
+
+    test('POSITIVE CONTROL: one unusable ENTRY does not deny the others',
+        () async {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        pinsKey(ownUserId),
+        '{"42": 7, "not-an-id": 3, "99": "not-an-int"}',
+      );
+
+      final revived = EncryptionService();
+      await revived.initialize(
+        ownUserId,
+        checkServerBundleExists: () async => true,
+      );
+
+      // One lost floor is not a lost store: peer 42 keeps its pin.
+      expect(revived.deviceListPins[42], 7);
+      expect(revived.deviceListPins.containsKey(99), isFalse);
+    });
   });
 }

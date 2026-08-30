@@ -1921,6 +1921,75 @@ that is the designed outcome).
     and surfaced rather than reported-and-built. That is the same trade as above, deliberately taken,
     and (xlvii) clause 3's served-key ceremony is the exit.
 
+- **Amendment 2026-08-30 (D12, ratified BEFORE the fix; from the pre-merge gate round, finding F6):**
+  - **(lvii) The persisted rollback floor MUST NOT fail OPEN.** `_loadDeviceListPins`
+    (`encryption_service.dart:784-798`) wrapped its whole body in `catch (_) {}`, so a storage or
+    decode failure was indistinguishable from "this device has never pinned anything". An empty floor
+    is not a neutral state: `DeviceListCache.adopt` refuses a `not enrolled` answer for a peer ONLY
+    when a pin exists (`device_list_cache.dart:183-186`), and shifts the rollback comparison off the
+    pin (`:194-202`). With the floor silently empty, a server may re-serve an older validly-signed
+    list — including one that re-admits a device the peer revoked — or collapse a previously enrolled
+    peer to the synthesised single device. That is exactly the window (xix) refuses and (xlviii)
+    clause 3 persisted the floor to close, reopened by the failure path.
+    It also contradicts the SAME FILE's stated rule twelve lines below the call site: "A THROWING read
+    propagates: a storage error must never be read as 'no keys'" (`:849-851`), which `initialize` is
+    already built to honour — it throws `E2eIdentityIncompleteException` on the analogous condition.
+    So a failed pin READ propagates out of `initialize`. A storage failure is not server-triggerable,
+    which is why this ranks P2 rather than P1, but the disposition must still be fail-closed: a
+    LOUD, retryable init failure is strictly better than a permanent, undetectable downgrade of the
+    rollback defence. `raw == null` remains a genuine absence and stays silent — a device that never
+    pinned anything has no floor to lose.
+    The WRITE side stays non-throwing, and the reason is specific rather than tolerance:
+    `recordDeviceListPin` serialises the ENTIRE map on every advance, so a transient write failure is
+    repaired by the next successful advance, and `onPinAdvanced` is a `void` callback reached from
+    inside verification — throwing there would convert a storage hiccup into a failed verification.
+    It gains a diagnostic instead, because the failure was previously invisible.
+
+- **Amendment 2026-08-30 (D13, ratified BEFORE the fix; from the pre-merge gate round, finding
+  RC-03):**
+  - **(lviii) A guarded write MUST REPORT whether its guard held.** (xlix) clause 1 reads the pending
+    slot before considering a re-affirmation (`encryption_service.dart:313-317`) and (xlix) clause 2
+    makes `adoptAccountIdentity` clear the candidate only when the slot still holds exactly what the
+    caller was told (`signal_stores.dart:704-717`). Both are right, and together they still lose: the
+    re-check is evaluated against the PRE-AWAIT slot, `adoptAccountIdentity` returns `void`, and its
+    guard `return`s SILENTLY — so a candidate that appears during the storage write is correctly
+    LEFT IN PLACE while the caller, learning nothing, sets `advanced = true`, drops the peer from
+    `_peersWithChangedIdentity` and clears the persisted warning (`:357-360`). The evidence survives
+    and the only door back to the ceremony does not, which is precisely the outcome (xlix) clause 2
+    exists to prevent, reached through the gap between its own two clauses.
+    **This is the FOURTH instance of this programme's single root cause** — a decision taken on state
+    re-read after an `await` (T10, T11, RC-01, and this) — and it is the one where the check and the
+    act were split across a file boundary, which is why three reviewers and two prior amendments
+    passed over it.
+    So `adoptAccountIdentity` returns whether the pending slot was EXACTLY as the caller expected,
+    and the caller treats "not as expected" as `candidate_changed_since_display`: it returns false and
+    leaves the warning standing. The anchor write itself is unaffected and needs no rollback — the
+    re-affirmation path passes the ALREADY-PINNED key, so that write is idempotent.
+    The `expectedPendingBase64 == null` case MUST also consult the slot. It previously returned before
+    reading, and null means "the caller observed no candidate" — the exact state in which a candidate
+    appearing under the dialog is invisible. Reporting it is the whole point; it still MUST NOT delete
+    a candidate it was never told about ((xlix) clause 2).
+
+- **Amendment 2026-08-30 (D14, ratified BEFORE the fix; from the pre-merge gate round, finding
+  RC-04):**
+  - **(lix) A consumed rebuild intent MUST be RESTORED when the rebuild fails.** `ensureSession`
+    removes the address from the in-memory `_forceSessionRebuild` on its first line
+    (`encryption_provider.dart:181`) so concurrent callers do not each rebuild — correct — and
+    (xlviii) clause 1 keeps the DURABLE intent until a session really exists (`:260`). But the
+    durable copy is re-read only at connect, so within one process a rebuild that THROWS between
+    those points leaves `needsRebuild` false for every later call, `hasSession` true, and the early
+    return at `:192` hands back the POISONED session for the rest of the process.
+    A malicious server reaches it deterministically by never answering `fetchPreKeyBundle`: the fetch
+    times out, the intent is gone, and the session the rebuild existed to replace is reused. It is
+    also reached by the (lvi) refusal, which now throws on this path by design.
+    The same file already names this exact hazard for a different map — "would leave the joiner with
+    no session AND with its force-rebuild flag already consumed" (`:42-45`) — so the shape was known
+    and only the failure branch was missed.
+    So the consumption is scoped to the ATTEMPT: on any failure the in-memory intent is restored
+    before the error propagates. Dedup is preserved, because the flag is absent exactly while an
+    attempt is in flight. The durable intent needs no change — it was already correct, and it is
+    what makes the NEXT process safe; (lix) is only about this one.
+
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the
   test-integrity findings are folded at `4c0e0bf`; the four security findings were T9. **T10 (xlv)

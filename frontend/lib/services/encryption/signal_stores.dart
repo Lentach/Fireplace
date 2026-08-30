@@ -701,7 +701,13 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
   /// since is then deliberately LEFT IN PLACE, because keeping evidence is the
   /// safe direction. The parameter is required rather than defaulted so no
   /// future caller can inherit the unguarded behaviour by omission.
-  Future<void> adoptAccountIdentity(
+  /// Returns whether the pending slot was EXACTLY as the caller expected
+  /// ((lviii)). False means a candidate appeared or changed during this write,
+  /// so the caller MUST NOT consume the warning that leads back here: the
+  /// evidence survives, and without the warning the door to the ceremony does
+  /// not. The anchor write always happens and is never rolled back — the
+  /// re-affirmation path passes the already-pinned key, so it is idempotent.
+  Future<bool> adoptAccountIdentity(
     String name,
     IdentityKey identity, {
     required String? expectedPendingBase64,
@@ -709,11 +715,18 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
     final key = _accountKey(name);
     await _storage.write(key: key, value: encodedOf(identity));
     _trustedMemo[key] = identity;
-    if (expectedPendingBase64 == null) return;
     final pendingKey = _pendingKey(name);
     final stored = await _storage.read(key: pendingKey);
-    if (stored != expectedPendingBase64) return;
+    if (expectedPendingBase64 == null) {
+      // The caller asserted it observed NO candidate. This used to return
+      // before reading, which is exactly the state where a candidate arriving
+      // under the open dialog is invisible. Report it — and still never delete
+      // a candidate we were not told about ((xlix) clause 2).
+      return stored == null;
+    }
+    if (stored != expectedPendingBase64) return false;
     await _storage.delete(key: pendingKey);
+    return true;
   }
 
   bool _sameIdentity(IdentityKey a, IdentityKey b) {

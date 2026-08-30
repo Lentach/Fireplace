@@ -258,3 +258,71 @@ jobs:
       - name: Tear down
         if: always()
         run: docker compose down   # no -v: CLAUDE.md 4 bans that flag; do not normalise it
+
+  # U7. The §6.2 reset probe is the ONLY proof that a completed ceremony re-keys
+  # strictly within `(identity, deviceId)` (falsification 12) and that the roster
+  # teardown runs — and until now nothing ran it, so that proof existed only on a
+  # developer's machine.
+  #
+  # IT MUST BE ITS OWN JOB WITH ITS OWN STACK. `/auth/register` is 10 per HOUR
+  # per IP, the limiter is in-memory in the backend process, and every account in
+  # `test_e2e/` shares that one bucket — the default run already spends it to the
+  # edge (measured 2026-08-22: a third account pushed `takeover_alarm_test.dart`
+  # into ThrottlerException). So this canNOT be a `--dart-define` bolted onto
+  # `e2e-wire`; it needs a FRESH backend, which is what resets the bucket. Never
+  # raise the production cap to fit a test.
+  #
+  # The ceremony is also DESTRUCTIVE — it replaces the account identity, revokes
+  # every device and burns a device id forward — so it needs an account nothing
+  # else depends on. A dedicated stack gives it exactly that.
+  e2e-reset-probe:
+    name: E2E reset teardown probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Start backend + Postgres
+        run: docker compose up -d --wait --wait-timeout 300 || docker compose up -d
+
+      - name: Wait for /health
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/health > /dev/null 2>&1; then
+              echo "backend healthy after ${i}0s"; exit 0
+            fi
+            sleep 10
+          done
+          echo "backend never became healthy"; docker compose logs --tail 100 backend; exit 1
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install Flutter dependencies
+        working-directory: frontend
+        run: flutter pub get
+
+      # REQUIRED here, unlike in e2e-wire where it is inert: this probe ages
+      # `identity_reset_requests."deadlineAt"` through `e2eSql`, whose container
+      # default is a developer's local compose project name and is wrong on a
+      # runner. The probe then lets the REAL per-minute completeDueResets sweep
+      # authorize the replacement, which is why the delay is aged and not waited.
+      - name: Resolve the db container for the SQL channel
+        run: echo "E2E_DB_CONTAINER=$(docker compose ps -q db)" >> "$GITHUB_ENV"
+
+      - name: Run the reset teardown probe
+        working-directory: frontend
+        run: flutter test test_e2e/identity_reset_teardown_test.dart --dart-define=RESET_PROBE=true
+
+      - name: Backend logs on failure
+        if: failure()
+        run: docker compose logs --tail 200 backend
+
+      - name: Tear down
+        if: always()
+        run: docker compose down   # no -v: CLAUDE.md 4 bans that flag; do not normalise it

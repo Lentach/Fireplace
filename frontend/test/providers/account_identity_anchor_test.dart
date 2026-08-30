@@ -45,6 +45,11 @@ void main() {
   /// Which identity the stubbed server serves for the peer's bundle.
   late EncryptionService served;
 
+  /// How many times the stubbed server was asked for a prekey bundle. This is
+  /// what distinguishes a REAL rebuild from `ensureSession` returning early
+  /// because a session already exists.
+  late int bundleFetches;
+
   Map<String, dynamic> flatBundleFrom(EncryptionService source) {
     final upload = source.getKeysForUpload();
     expect(upload, isNotNull);
@@ -67,6 +72,7 @@ void main() {
     mallory = EncryptionService();
     await mallory.initialize(99, checkServerBundleExists: () async => false);
     served = peer;
+    bundleFetches = 0;
 
     enc = EncryptionProvider();
     enc.setEmitCallback((event, data) {
@@ -74,6 +80,7 @@ void main() {
         enc.onOwnKeyBundleStatus({'exists': false});
       }
       if (event == 'fetchPreKeyBundle') {
+        bundleFetches++;
         enc.onPreKeyBundleResponse({
           'userId': peerId,
           'deviceId': (data as Map)['deviceId'] ?? 1,
@@ -195,6 +202,81 @@ void main() {
 
       await expectLater(enc.ensureSession(peerId), completes);
       expect(enc.peersWithChangedIdentity, isEmpty);
+    });
+  });
+
+  // (lix) Finding RC-04. The in-memory rebuild intent was consumed on the first
+  // line of ensureSession and never restored, so ONE failed rebuild made every
+  // later call in the process short-circuit on `hasSession` and hand back the
+  // very session the rebuild existed to replace.
+  group('(lix) a failed rebuild keeps its intent', () {
+    test('the intent SURVIVES a refused rebuild', () async {
+      await pinPeerHonestly();
+      await enc.ensureSession(peerId);
+      expect(await enc.encryptionService.hasSession(peerId), isTrue);
+
+      enc.markSessionRebuild(peerId);
+      expect(enc.needsSessionRebuild(peerId), isTrue);
+
+      // The rebuild is refused — the (lvi) path, and the same branch a server
+      // that never answers fetchPreKeyBundle reaches by timeout.
+      served = mallory;
+      await expectLater(
+        enc.ensureSession(peerId),
+        throwsA(isA<AccountIdentityMismatch>()),
+      );
+
+      // THE FINDING: without this the poisoned session is reused silently for
+      // the rest of the process.
+      expect(
+        enc.needsSessionRebuild(peerId),
+        isTrue,
+        reason: 'a consumed intent must be restored when the rebuild fails',
+      );
+    });
+
+    test('so a LATER attempt actually rebuilds instead of short-circuiting',
+        () async {
+      await pinPeerHonestly();
+      await enc.ensureSession(peerId);
+
+      enc.markSessionRebuild(peerId);
+      served = mallory;
+      await expectLater(
+        enc.ensureSession(peerId),
+        throwsA(isA<AccountIdentityMismatch>()),
+      );
+
+      // The server stops lying. The retry must go through the FULL rebuild —
+      // asserting only that it "completes" would pass even when the intent was
+      // lost, because the early return completes too. The fetch count is what
+      // tells a real rebuild from a short-circuit.
+      served = peer;
+      final fetchesBefore = bundleFetches;
+      await expectLater(enc.ensureSession(peerId), completes);
+      expect(
+        bundleFetches,
+        fetchesBefore + 1,
+        reason: 'a restored intent must drive a genuine refetch and rebuild',
+      );
+      expect(
+        enc.needsSessionRebuild(peerId),
+        isFalse,
+        reason: 'a successful rebuild finally consumes the intent',
+      );
+    });
+
+    test('POSITIVE CONTROL: a SUCCESSFUL rebuild consumes the intent once',
+        () async {
+      await pinPeerHonestly();
+      await enc.ensureSession(peerId);
+
+      enc.markSessionRebuild(peerId);
+      await expectLater(enc.ensureSession(peerId), completes);
+
+      // The restore must not re-arm a rebuild that succeeded, or every send
+      // would rebuild forever.
+      expect(enc.needsSessionRebuild(peerId), isFalse);
     });
   });
 }

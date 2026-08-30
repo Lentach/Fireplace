@@ -209,41 +209,55 @@ class EncryptionProvider extends ChangeNotifier {
       return;
     }
 
-    final completer = Completer<Map<String, dynamic>>();
-    _pendingPreKeyFetches[addressKey] = completer;
+    // (lix) The in-memory intent is consumed at the top of this method for
+    // dedup, but that consumption is scoped to THIS ATTEMPT. A throw past this
+    // point used to leave `needsRebuild` false for every later call in the
+    // process, so `hasSession` short-circuited at the early return above and
+    // handed back the very session the rebuild existed to replace. A malicious
+    // server reaches that deterministically by never answering
+    // `fetchPreKeyBundle`, and the (lvi) refusal now throws here by design.
+    // The DURABLE intent below is untouched: it was already correct, and it is
+    // what makes the next PROCESS safe.
+    try {
+      final completer = Completer<Map<String, dynamic>>();
+      _pendingPreKeyFetches[addressKey] = completer;
 
-    _e2eFlowLog('SESSION_FETCH_EMIT', {
-      'recipientId': recipientId,
-      'deviceId': deviceId,
-    });
-    // deviceId is omitted for 1 (the server default), so an older server that
-    // predates the field keeps answering — rollout order is server first.
-    _emit?.call('fetchPreKeyBundle', {
-      'userId': recipientId,
-      if (deviceId != 1) 'deviceId': deviceId,
-    });
+      _e2eFlowLog('SESSION_FETCH_EMIT', {
+        'recipientId': recipientId,
+        'deviceId': deviceId,
+      });
+      // deviceId is omitted for 1 (the server default), so an older server that
+      // predates the field keeps answering — rollout order is server first.
+      _emit?.call('fetchPreKeyBundle', {
+        'userId': recipientId,
+        if (deviceId != 1) 'deviceId': deviceId,
+      });
 
-    // Wait for the server response with a timeout
-    final bundle = await completer.future.timeout(
-      const Duration(seconds: 10),
-      onTimeout: () {
-        _pendingPreKeyFetches.remove(addressKey);
-        throw TimeoutException(
-          'Pre-key bundle fetch timed out for user $recipientId '
-          'device $deviceId',
-        );
-      },
-    );
+      // Wait for the server response with a timeout
+      final bundle = await completer.future.timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          _pendingPreKeyFetches.remove(addressKey);
+          throw TimeoutException(
+            'Pre-key bundle fetch timed out for user $recipientId '
+            'device $deviceId',
+          );
+        },
+      );
 
-    await _encryptionService.buildSession(
-      recipientId,
-      bundle,
-      deviceId: deviceId,
-      expectedIdentityBase64: await _accountIdentityAnchor(
+      await _encryptionService.buildSession(
         recipientId,
-        skipDeviceId: deviceId,
-      ),
-    );
+        bundle,
+        deviceId: deviceId,
+        expectedIdentityBase64: await _accountIdentityAnchor(
+          recipientId,
+          skipDeviceId: deviceId,
+        ),
+      );
+    } catch (_) {
+      if (needsRebuild) _forceSessionRebuild.add(addressKey);
+      rethrow;
+    }
     debugPrint(
       '[E2E] Session established with userId=$recipientId deviceId=$deviceId',
     );
