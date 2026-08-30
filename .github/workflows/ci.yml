@@ -320,8 +320,15 @@ jobs:
       # `flutter test` skips everything and EXITS 0 — the job would report green
       # while proving nothing, and this probe is the only automated proof that a
       # completed §6.2 reset re-keys strictly within (identity, deviceId)
-      # (falsification 12). So assert a test actually RAN: a fully skipped run
-      # prints `+0 ~N: All tests skipped.`, never `+N: All tests passed!`.
+      # (falsification 12). So assert a test actually PASSED.
+      #
+      # BOTH reporter shapes must be accepted, because they differ by
+      # environment and the first version of this guard matched only the local
+      # one and failed a genuinely green CI run:
+      #   CI:    `🎉 2 tests passed.`
+      #   local: `00:58 +2: All tests passed!`
+      # A fully skipped run reports a ZERO count in either shape, which the
+      # leading [1-9] rejects.
       - name: Run the reset teardown probe
         working-directory: frontend
         shell: bash
@@ -329,7 +336,7 @@ jobs:
           set -o pipefail
           flutter test test_e2e/identity_reset_teardown_test.dart \
             --dart-define=RESET_PROBE=true | tee probe.log
-          if ! grep -Eq '\+[1-9][0-9]*[ :].*All tests passed' probe.log; then
+          if ! grep -Eq '(^|[^0-9])[1-9][0-9]* tests? passed|\+[1-9][0-9]*[ :].*All tests passed' probe.log; then
             echo "::error::the reset probe reported no PASSING test — the RESET_PROBE define is not taking effect, so this job proves nothing"
             exit 1
           fi

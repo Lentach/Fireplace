@@ -1,8 +1,5 @@
-import 'dart:convert';
-
 import 'package:fireplace/services/device_list/device_authority_engine.dart';
 import 'package:fireplace/services/device_list/device_list_canonical.dart';
-import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
 // F4 / KA-02 (spec §12 amendment (lvi)): the (xxxix) expected-identity gate was
 // VACUOUS in the two states that are the default rather than the edge.
 //
