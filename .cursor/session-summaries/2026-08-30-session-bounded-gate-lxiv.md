@@ -88,7 +88,11 @@ pushed (a CONFLICTING PR gets zero CI scheduling — the 08-19 blindness lesson)
   the remaining formality; otherwise the gate question stands answered.
 - Residual 8 (reenroll latch) joins the post-merge queue alongside residual 7 (mocked-query-builder
   tests) — fix 7 first, per the handoff.
-- The wire harness was NOT extended for (lxiv) — the register bucket is at its edge; the guards are
-  unit-proven both ways and the CI `e2e-wire`/`e2e-isolated-probes` jobs cover the untouched flows.
-  If a live-Postgres proof of the regId guard is ever wanted, follow
-  `enrolled_identity_lock_test.dart` and budget its registers.
+- ⚠️ **CI falsified this file's own first draft:** it claimed the wire harness "covers the untouched
+  flows" — the first push went 6/7 with `e2e-wire` RED, because
+  `full_stack_e2e_test.dart` "an upload lands on the SESSION's device" pinned the PRE-(lxiv)
+  contract (same-identity `registrationId+1` accepted). Rewritten (`fbb35e5`): claim-ignoring proven
+  with the SAME registrationId, the foreign-registrationId upload asserted REFUSED
+  (`device_material_conflict`, row untouched). Full wire run against a live backend: **44/6sk
+  green** — the (lxiv) refusal is now OBSERVED on the wire, not only unit-proven. (Ops note: a bare
+  `docker compose restart backend` wedged nest again, the 08-22b trap; `down && up` cured it.)

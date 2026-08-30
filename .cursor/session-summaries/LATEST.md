@@ -47,6 +47,13 @@ lifecycle found **GATE2-REVOKED-DEVICE-RELOGIN-CLOBBER**, every hop re-verified 
   clean, ratchet PASS 906→890 (+1 real vs 889, floor untouched), both count verifiers OK,
   `CLAUDE.md` §3+§7 updated. New residual 8 under (lxiv): `_reenrollAfterReset` has no in-flight
   latch (SIXTH slot-root-cause instance) — RECORDED, not fixed.
+- ⚠️ **The first push went 6/7 — `e2e-wire` RED, and rightly:** the harness's "an upload lands on
+  the SESSION's device" test PINNED the pre-(lxiv) contract (same-identity `registrationId+1`
+  accepted onto the row — the clobber landing, asserted as correct). Rewritten (`fbb35e5`):
+  claim-ignoring proven with the SAME registrationId; the foreign-registrationId upload asserted
+  REFUSED (`device_material_conflict`, row untouched). Full wire run against a live backend:
+  **44/6sk green** — the refusal is OBSERVED on the wire. Ops: a bare
+  `docker compose restart backend` wedged nest (the 08-22b trap); `down && up` cured it.
 - Session start: branch was 1 docs commit behind master → merged clean (`5efd223`), PR #144
   MERGEABLE, CI green pre-existing. **The only open item is again the owner's merge decision.**
 
