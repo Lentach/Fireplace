@@ -341,8 +341,26 @@ abstract class AppLocalizations {
   /// No description provided for @deviceRevokedNotice.
   ///
   /// In pl, this message translates to:
-  /// **'To urządzenie zostało usunięte z Twojego konta. Twoje wiadomości na nim pozostały — zaloguj się ponownie, aby pisać dalej.'**
+  /// **'To urządzenie zostało usunięte z Twojego konta. Twoje wiadomości na nim pozostały — aby pisać dalej, zaloguj się i połącz to urządzenie ponownie.'**
   String get deviceRevokedNotice;
+
+  /// No description provided for @deviceMismatchTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'To urządzenie zostało usunięte z konta'**
+  String get deviceMismatchTitle;
+
+  /// No description provided for @deviceMismatchBody.
+  ///
+  /// In pl, this message translates to:
+  /// **'Klucze szyfrowania tego urządzenia należą do urządzenia usuniętego z Twojego konta, więc przestało ono wysyłać i odbierać zaszyfrowane wiadomości. Aby pisać dalej, połącz to urządzenie ponownie ze swojego drugiego urządzenia. Na pozostałych urządzeniach nic się nie zmieniło.'**
+  String get deviceMismatchBody;
+
+  /// No description provided for @deviceMismatchAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Połącz to urządzenie'**
+  String get deviceMismatchAction;
 
   /// No description provided for @devicesPrimaryBadge.
   ///

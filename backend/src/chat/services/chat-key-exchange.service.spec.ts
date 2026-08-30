@@ -699,6 +699,7 @@ describe('ChatKeyExchangeService', () => {
         validData.keys,
         undefined,
         1,
+        undefined,
       );
       expect(mockClient.emit).toHaveBeenCalledWith('oneTimePreKeysUploaded', {
         count: 2,
@@ -716,6 +717,23 @@ describe('ChatKeyExchangeService', () => {
         validData.keys,
         'epoch-2-identity',
         1,
+        undefined,
+      );
+    });
+
+    it('forwards the (lxiv) registrationId install proof when supplied', async () => {
+      await service.handleUploadOneTimePreKeys(mockClient as Socket, {
+        ...validData,
+        identityPublicKey: 'epoch-2-identity',
+        registrationId: 4242,
+      });
+
+      expect(keyBundlesService.uploadOneTimePreKeys).toHaveBeenCalledWith(
+        1,
+        validData.keys,
+        'epoch-2-identity',
+        1,
+        4242,
       );
     });
 

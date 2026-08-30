@@ -2110,6 +2110,70 @@ that is the designed outcome).
        green. The §6.2 ceremony is now the ONLY authorization for an enrolled account's identity
        change ((liv)), so it carries more weight than when those tests were written.
 
+- **Amendment 2026-08-30 (D16, ratified by the owner BEFORE the fix; from the bounded merge-gate
+  review — one question, "can a normal user with an honest server lose a message, lose access, or
+  get permanently stuck", three fresh reviewers, one BLOCKING finding):**
+  - **(lxiv) A key-bundle namespace belongs to the INSTALL that minted its material, and both tiers
+    MUST enforce it.** The finding (GATE2-REVOKED-DEVICE-RELOGIN-CLOBBER): a revoked linked device
+    that signs back in with the password — which `deviceRevokedNotice` explicitly invites — is
+    resolved by `resolveLoginDeviceId` onto the LIVE PRIMARY's device id ((xxii) built that door
+    while fixing the post-reset login lockout). The revoked device still holds the shared account
+    `ikPriv` (§5.1) plus its OWN locally minted signedPreKey/registrationId/OTPs, its Signal
+    material deliberately survives logout, its own device id is memory-only, and the client
+    re-uploads its bundle on EVERY connect. So the upload passes both §5.5 session gates (session
+    device id = live primary), carries the unchanged account identity (`identityChanged=false` — no
+    registration lock, no audit row, no alarm, no OTP purge) and silently UPSERTS the revoked
+    install's signedPreKey over the primary's row, while the served one-time-pre-key pool remains
+    the primary's. A peer's X3DH then needs private halves held by two different installs; no
+    device holds both, so every first message built on the mixed bundle is permanently
+    undecryptable while the sender sees it delivered. Normal taps, honest server — exactly the
+    merge-gate class. Ruling, two clauses:
+    1. **Server: a bundle row's `registrationId` MUST NOT change while its `identityPublicKey` is
+       unchanged.** Identity and registrationId are minted together, once, in every mint path
+       (initial generation, §5.1 adoption, consented regeneration), so "same identity, different
+       registrationId, same `(userId, deviceId)` row" is by construction a DIFFERENT physical
+       install writing into a namespace it does not own. `upsertKeyBundle` refuses it before any
+       write; the WS answer is `keyBundleUploaded { success:false, error:'device_material_conflict' }`.
+       A same-install re-upload (same registrationId) and every identity-changing path (which the
+       (liv)/§6.1 machinery already adjudicates) are untouched. The bundle guard alone does NOT
+       close the loss (caught in review of this very amendment's first draft): the OTP
+       replenishment path bypasses `upsertKeyBundle` and a foreign install sharing the account
+       identity could still deposit ITS one-time pre-keys into the owner's pool, mixing the halves
+       from the other side. So `uploadOneTimePreKeys` takes an OPTIONAL `registrationId` install
+       proof — refused on mismatch with the caller's own row, accepted when absent (a pre-(lxiv)
+       client predates device linking, so the foreign-install shape cannot exist for it; new
+       clients always send it). Together the two guards close the loss server-side for every
+       client shape.
+    2. **Client: the install stamps which device id its material was provisioned for, and refuses
+       E2E duty when the session disagrees.** One durable stamp per account
+       (`e2e_<uid>_material_device_v1`), moved by a single uniform rule: **every authorized
+       re-homing of the material clears the stamp, and the next server-confirmed own-device id
+       TOFU-stamps it.** The clearers are the two mint paths (fresh generation and consented
+       regeneration), the §5.1 adoption (inline with the mint it performs), and the §6.2 rebind
+       adoption (cleared BEFORE the reconnect, so the recovering device re-stamps its freshly
+       allocated id instead of tripping the gate). The TOFU write covers fresh accounts and every
+       pre-Phase-1 install. A contradiction is therefore only reachable by material that survived
+       a session-identity change it was never re-homed for — the revoked device signing back in.
+       On contradiction the client does not publish keys, does not join E2E flows
+       (`isE2EReady` stays false, which every send/decrypt path already consults), records
+       `E2E_DEVICE_MISMATCH`, and surfaces "this device was removed — link it again" routing to
+       the §5.1 ceremony — replacing the standing invitation to keep chatting. A storage READ
+       failure fails OPEN (a flaky read must not take a healthy device out of duty; clause 1
+       still refuses a genuinely foreign write). **The `rebind_failed` shape (§5.1 adoption
+       committed, session still bound to the primary id) is NOT caught by this clause** — the
+       adoption cleared the stamp, so the next confirm TOFU-stamps the primary id under the
+       adopted material; there the server-side clause 1 is the guard that refuses the clobbering
+       write, and the failure state already has its own error surface.
+    8. *(appended to the (lxiii) residual list, RECORDED and NOT fixed)* **`_reenrollAfterReset` has
+       no in-flight latch** — the rebind path and the every-upload owed-offer listener can run it
+       concurrently; both share one `_resetEnrollAck` completer and one pending-DAK slot, and
+       `promotePending` promotes whatever the slot holds, unbound to the enrollment the server
+       accepted. Worst case (narrow, not attacker-timeable under an honest server): the server pins
+       DAK A while the client arms DAK B — device authority stranded until another §6.2 ceremony,
+       no message or access loss. The SIXTH instance of the programme's one root cause, this time
+       on the DAK slot; the honest fix remains the compare-and-delete/compare-and-promote primitive
+       residual 1 already calls for.
+
 
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the

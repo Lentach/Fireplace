@@ -54,4 +54,19 @@ export class UploadOneTimePreKeysDto {
   // headroom while bounding the per-OTP write surface (defense in depth).
   @MaxLength(255)
   identityPublicKey?: string;
+
+  /**
+   * Optional install proof (amendment (lxiv)): the registrationId minted
+   * together with this client's identity material. When present the server
+   * refuses the batch if the caller's own bundle row carries the same
+   * identity but a DIFFERENT registrationId — a foreign install (e.g. a
+   * revoked linked device whose login resolved onto the primary's id) trying
+   * to deposit OTPs into a pool it does not own. Absent = pre-(lxiv) client,
+   * accepted for compatibility; such clients predate device linking, so the
+   * foreign-install shape cannot exist for them.
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  registrationId?: number;
 }

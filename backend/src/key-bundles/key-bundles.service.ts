@@ -90,6 +90,22 @@ export class IdentityLockedError extends Error {
   }
 }
 
+/**
+ * Amendment (lxiv) clause 1: a bundle row's registrationId may not change
+ * while its identityPublicKey is unchanged. Identity and registrationId are
+ * minted together, once, in every mint path, so this shape can only be a
+ * DIFFERENT physical install (e.g. a revoked linked device whose password
+ * login resolved onto the primary's device id) writing into a namespace it
+ * does not own — the write that mixes X3DH halves and makes peers' first
+ * messages permanently undecryptable.
+ */
+export class DeviceMaterialConflictError extends Error {
+  constructor() {
+    super('device_material_conflict');
+    this.name = 'DeviceMaterialConflictError';
+  }
+}
+
 @Injectable()
 export class KeyBundlesService {
   private readonly logger = new Logger(KeyBundlesService.name);
@@ -161,6 +177,28 @@ export class KeyBundlesService {
       this.logger.warn(
         `[identity-churn] userId=${userId} deviceId=${deviceId} via=${authorizedBy} oldIdentityPrefix=${existingBundle.identityPublicKey.slice(0, 12)} newIdentityPrefix=${data.identityPublicKey.slice(0, 12)}`,
       );
+    }
+    // (lxiv) clause 1 — refuse a foreign install's write BEFORE any mutation.
+    // The account-first row above answers "did the ACCOUNT's identity move";
+    // this guard needs THIS device's row: same identity + different
+    // registrationId on the same (userId, deviceId) row is another install
+    // clobbering the owner's published signedPreKey while the served OTP pool
+    // stays the owner's. Identity-changing uploads were adjudicated above and
+    // mint a fresh registrationId with the fresh identity, so they never
+    // match this predicate.
+    const ownRow =
+      existingBundle != null && existingBundle.deviceId === deviceId
+        ? existingBundle
+        : await this.keyBundleRepo.findOne({ where: { userId, deviceId } });
+    if (
+      ownRow != null &&
+      ownRow.identityPublicKey === data.identityPublicKey &&
+      ownRow.registrationId !== data.registrationId
+    ) {
+      this.logger.warn(
+        `[device-material-conflict] REFUSED same-identity upload with foreign registrationId userId=${userId} deviceId=${deviceId} stored=${ownRow.registrationId} attempted=${data.registrationId}`,
+      );
+      throw new DeviceMaterialConflictError();
     }
     // Atomic upsert — handles concurrent connections from the same device
     // (e.g. two tabs), and keeps other devices' bundles untouched.
@@ -399,6 +437,7 @@ export class KeyBundlesService {
     keys: OneTimePreKeyData[],
     identityPublicKey?: string,
     deviceId: number = DEFAULT_DEVICE_ID,
+    registrationId?: number,
   ): Promise<void> {
     // Untagged OTPs are cryptographic material whose identity epoch cannot be
     // proven. Never infer an epoch from the currently stored bundle: a legacy
@@ -444,6 +483,29 @@ export class KeyBundlesService {
           `[identity-lock] REFUSED one-time pre-keys under an unpublished identity userId=${userId} deviceId=${deviceId} publishedPrefix=${published.identityPublicKey.slice(0, 12)} attemptedPrefix=${identityPublicKey.slice(0, 12)}`,
         );
         throw new IdentityLockedError();
+      }
+    }
+
+    // (lxiv) clause 1, OTP half: the bundle guard alone does not close the
+    // mixed-halves loss — a foreign install sharing the account identity could
+    // still deposit ITS one-time pre-keys into this device's pool via the
+    // `preKeysLow` replenishment path, and a peer fetch would then mix the
+    // owner's signedPreKey with the foreigner's OTP. When the caller proves
+    // its install (new clients always do), the proof must match the row.
+    if (registrationId != null) {
+      const ownRow =
+        published != null && published.deviceId === deviceId
+          ? published
+          : await this.keyBundleRepo.findOne({ where: { userId, deviceId } });
+      if (
+        ownRow != null &&
+        ownRow.identityPublicKey === identityPublicKey &&
+        ownRow.registrationId !== registrationId
+      ) {
+        this.logger.warn(
+          `[device-material-conflict] REFUSED one-time pre-keys from foreign install userId=${userId} deviceId=${deviceId} stored=${ownRow.registrationId} attempted=${registrationId}`,
+        );
+        throw new DeviceMaterialConflictError();
       }
     }
 

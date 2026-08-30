@@ -3,6 +3,7 @@ import { randomBytes } from 'crypto';
 import { Server, Socket } from 'socket.io';
 import {
   DEFAULT_DEVICE_ID,
+  DeviceMaterialConflictError,
   IdentityLockedError,
   KeyBundlesService,
 } from '../../key-bundles/key-bundles.service';
@@ -396,6 +397,20 @@ export class ChatKeyExchangeService {
         });
         return;
       }
+      if (error instanceof DeviceMaterialConflictError) {
+        // (lxiv) clause 1: the guard did its job — a foreign install tried to
+        // write into a namespace whose material it does not hold (the
+        // revoked-device-signs-back-in shape). Never a retry; the device's
+        // route forward is the §5.1 link ceremony.
+        this.logger.warn(
+          `uploadKeyBundle refused by device material guard userId=${userId}`,
+        );
+        client.emit('keyBundleUploaded', {
+          success: false,
+          error: 'device_material_conflict',
+        });
+        return;
+      }
       this.logger.error(
         `uploadKeyBundle failed userId=${userId}: ${error.message}`,
       );
@@ -488,6 +503,7 @@ export class ChatKeyExchangeService {
         dto.keys,
         dto.identityPublicKey,
         deviceId,
+        dto.registrationId,
       );
       client.emit('oneTimePreKeysUploaded', { count: dto.keys.length });
     } catch (error) {
@@ -497,6 +513,12 @@ export class ChatKeyExchangeService {
         // the bundle refusal — the route forward is the reset ceremony.
         this.logger.warn(
           `uploadOneTimePreKeys refused by registration lock userId=${userId}`,
+        );
+      } else if (error instanceof DeviceMaterialConflictError) {
+        // (lxiv) clause 1, OTP half: a foreign install may not deposit OTPs
+        // into a pool it does not own. The emitted message carries the code.
+        this.logger.warn(
+          `uploadOneTimePreKeys refused by device material guard userId=${userId}`,
         );
       } else {
         this.logger.error(

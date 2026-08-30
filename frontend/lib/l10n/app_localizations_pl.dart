@@ -141,7 +141,17 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get deviceRevokedNotice =>
-      'To urządzenie zostało usunięte z Twojego konta. Twoje wiadomości na nim pozostały — zaloguj się ponownie, aby pisać dalej.';
+      'To urządzenie zostało usunięte z Twojego konta. Twoje wiadomości na nim pozostały — aby pisać dalej, zaloguj się i połącz to urządzenie ponownie.';
+
+  @override
+  String get deviceMismatchTitle => 'To urządzenie zostało usunięte z konta';
+
+  @override
+  String get deviceMismatchBody =>
+      'Klucze szyfrowania tego urządzenia należą do urządzenia usuniętego z Twojego konta, więc przestało ono wysyłać i odbierać zaszyfrowane wiadomości. Aby pisać dalej, połącz to urządzenie ponownie ze swojego drugiego urządzenia. Na pozostałych urządzeniach nic się nie zmieniło.';
+
+  @override
+  String get deviceMismatchAction => 'Połącz to urządzenie';
 
   @override
   String get devicesPrimaryBadge => 'główne';

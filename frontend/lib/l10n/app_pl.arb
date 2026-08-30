@@ -40,7 +40,10 @@
   "devicesRevokeTitle": "Usun\u0105\u0107 to urz\u0105dzenie?",
   "devicesRevokeExplainer": "Zostanie wylogowane i przestanie odbiera\u0107 nowe wiadomo\u015bci. Wiadomo\u015bci ju\u017c zapisane na tym urz\u0105dzeniu nie zostan\u0105 usuni\u0119te.",
   "devicesRevokeFailed": "Nie uda\u0142o si\u0119 usun\u0105\u0107 tego urz\u0105dzenia. Spr\u00f3buj ponownie.",
-  "deviceRevokedNotice": "To urz\u0105dzenie zosta\u0142o usuni\u0119te z Twojego konta. Twoje wiadomo\u015bci na nim pozosta\u0142y \u2014 zaloguj si\u0119 ponownie, aby pisa\u0107 dalej.",
+  "deviceRevokedNotice": "To urz\u0105dzenie zosta\u0142o usuni\u0119te z Twojego konta. Twoje wiadomo\u015bci na nim pozosta\u0142y \u2014 aby pisa\u0107 dalej, zaloguj si\u0119 i po\u0142\u0105cz to urz\u0105dzenie ponownie.",
+  "deviceMismatchTitle": "To urz\u0105dzenie zosta\u0142o usuni\u0119te z konta",
+  "deviceMismatchBody": "Klucze szyfrowania tego urz\u0105dzenia nale\u017c\u0105 do urz\u0105dzenia usuni\u0119tego z Twojego konta, wi\u0119c przesta\u0142o ono wysy\u0142a\u0107 i odbiera\u0107 zaszyfrowane wiadomo\u015bci. Aby pisa\u0107 dalej, po\u0142\u0105cz to urz\u0105dzenie ponownie ze swojego drugiego urz\u0105dzenia. Na pozosta\u0142ych urz\u0105dzeniach nic si\u0119 nie zmieni\u0142o.",
+  "deviceMismatchAction": "Po\u0142\u0105cz to urz\u0105dzenie",
   "devicesPrimaryBadge": "główne",
   "devicesThisDeviceKeyless": "To urządzenie nie ma jeszcze kluczy. Połącz je ze swoim głównym urządzeniem.",
   "linkPrimaryTitle": "Połącz urządzenie",
@@ -164,7 +167,11 @@
   "encryptionNotInitialized": "Szyfrowanie niezainicjowane",
   "identityDamagedTitle": "Brak kluczy szyfrowania na tym urządzeniu",
   "identityDamagedBody": "Logujesz się na nowym urządzeniu lub w nowej przeglądarce? Twoje konto ma już klucze szyfrowania gdzie indziej, a to urządzenie ich nie ma. Jeśli to Twoje dotychczasowe urządzenie, zapisane klucze zostały utracone. Tak czy inaczej nic nie zostało odtworzone automatycznie — zrobienie tego po cichu zniszczyłoby możliwość odczytania historii.",
-  "identityDamagedAction": "Zacznij od nowa",
+  "identityDamagedAction": "Zacznij od nowa",
+
+
+
+
   "messageRetrySend": "Ponów",
   "@messageRetrySend": {"description": "Re-sends a message whose delivery failed."},
   "authStatusSavedSessionUnreadable": "Nie udało się odczytać zapisanej sesji z tego urządzenia. Twoje logowanie może nadal tam być — uruchom aplikację ponownie.",

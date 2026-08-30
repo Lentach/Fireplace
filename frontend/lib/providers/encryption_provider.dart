@@ -401,8 +401,31 @@ class EncryptionProvider extends ChangeNotifier {
     // Set BEFORE the no-op guard: device 1 being told it is device 1 is still
     // the server confirming the value.
     _ownDeviceIdConfirmed = true;
-    if (deviceId == _ownDeviceId) return;
-    _ownDeviceId = deviceId;
+    if (deviceId != _ownDeviceId) _ownDeviceId = deviceId;
+    // (lxiv) clause 2: the confirmed id must agree with the id this install's
+    // material was provisioned for — checked on EVERY confirm because the
+    // reconnect path skips _initializeE2EInner and its gate.
+    unawaited(_verifyMaterialDeviceStamp(deviceId));
+  }
+
+  /// True when the server-confirmed device id contradicts the (lxiv)
+  /// material-device stamp: this install's Signal material was provisioned
+  /// for a DIFFERENT device id (the revoked-device-signs-back-in shape).
+  /// E2E duty is refused while set; the way out is the §5.1 link ceremony.
+  bool get deviceMaterialMismatch => _deviceMaterialMismatch;
+  bool _deviceMaterialMismatch = false;
+
+  Future<void> _verifyMaterialDeviceStamp(int deviceId) async {
+    if (!_e2eInitialized) return; // the init path runs its own gate
+    final ok = await _encryptionService.confirmMaterialDeviceId(deviceId);
+    if (ok) return;
+    _deviceMaterialMismatch = true;
+    _e2eInitialized = false;
+    E2ePersistentDiag.record('E2E_DEVICE_MISMATCH', {
+      'sessionDeviceId': deviceId,
+    });
+    _e2eFlowLog('E2E_DEVICE_MISMATCH', {'sessionDeviceId': deviceId});
+    notifyListeners();
   }
 
   /// The cached verified list for [userId], or null when none is held.
@@ -1316,6 +1339,25 @@ class EncryptionProvider extends ChangeNotifier {
       // SESSION_* probes.
       await _logSessionInventory();
 
+      // (lxiv) clause 2 gate: refuse E2E duty when the session's device id
+      // contradicts the id this install's material was provisioned for —
+      // placed before ANY publish so a mismatched install never uploads.
+      if (_ownDeviceIdConfirmed &&
+          !await _encryptionService.confirmMaterialDeviceId(_ownDeviceId)) {
+        _deviceMaterialMismatch = true;
+        _e2eInitialized = false;
+        E2ePersistentDiag.record('E2E_DEVICE_MISMATCH', {
+          'sessionDeviceId': _ownDeviceId,
+        });
+        _e2eFlowLog('E2E_DEVICE_MISMATCH', {'sessionDeviceId': _ownDeviceId});
+        notifyListeners();
+        return;
+      }
+      if (_deviceMaterialMismatch) {
+        // A healthy confirm (e.g. after re-linking) clears the standing flag.
+        _deviceMaterialMismatch = false;
+        notifyListeners();
+      }
       if (_encryptionService.needsKeyUpload) {
         final keys = _encryptionService.getKeysForUpload();
         if (keys != null) {
@@ -1337,6 +1379,7 @@ class EncryptionProvider extends ChangeNotifier {
           _stashOneTimePreKeyUpload(
             (keys['oneTimePreKeys'] as List).cast<Map<String, dynamic>>(),
             identity,
+            registrationId: keyBundle['registrationId'] as int?,
           );
           _emit?.call('uploadKeyBundle', keyBundle);
           debugPrint('[E2E] Key bundle emitted; pre-keys wait for its ack');
@@ -1442,6 +1485,7 @@ class EncryptionProvider extends ChangeNotifier {
         _stashOneTimePreKeyUpload(
           (keys['oneTimePreKeys'] as List).cast<Map<String, dynamic>>(),
           identity,
+          registrationId: keyBundle['registrationId'] as int?,
         );
         _emit?.call('uploadKeyBundle', keyBundle);
       }
@@ -1527,11 +1571,15 @@ class EncryptionProvider extends ChangeNotifier {
 
   void _stashOneTimePreKeyUpload(
     List<Map<String, dynamic>> keys,
-    String identityPublicKey,
-  ) {
+    String identityPublicKey, {
+    int? registrationId,
+  }) {
     _pendingOneTimePreKeyUpload = {
       'keys': keys,
       'identityPublicKey': identityPublicKey,
+      // (lxiv) install proof: lets the server refuse a foreign install's
+      // deposit even when the identity tag matches.
+      'registrationId': ?registrationId,
     };
   }
 
@@ -1541,6 +1589,12 @@ class EncryptionProvider extends ChangeNotifier {
   bool _flushStashedOneTimePreKeyUpload() {
     final pending = _pendingOneTimePreKeyUpload;
     if (pending == null) return false;
+    if (_deviceMaterialMismatch) {
+      // (lxiv): a mismatched install must not deposit OTPs it minted for a
+      // different device id into the session device's pool.
+      _dropStashedOneTimePreKeyUpload('device_material_mismatch');
+      return false;
+    }
     _pendingOneTimePreKeyUpload = null;
     _emit?.call('uploadOneTimePreKeys', pending);
     final count = (pending['keys'] as List).length;
@@ -1997,6 +2051,9 @@ class EncryptionProvider extends ChangeNotifier {
   /// server refuses a batch tagged with an identity it does not publish.
   void _replenishOneTimePreKeys({required String reason}) {
     if (_generatingMoreKeys) return;
+    // (lxiv): a mismatched install must not deposit OTPs into a pool it does
+    // not own; the server would refuse them anyway.
+    if (_deviceMaterialMismatch) return;
     _generatingMoreKeys = true;
     debugPrint('[E2E] Replenishing one-time pre-keys (reason=$reason)');
     Future<void>(() async {
@@ -2012,9 +2069,12 @@ class EncryptionProvider extends ChangeNotifier {
             return;
           }
           final keys = await _encryptionService.generateMorePreKeys();
+          final registrationId = await _encryptionService
+              .currentRegistrationId();
           _emit?.call('uploadOneTimePreKeys', {
             'keys': keys,
             'identityPublicKey': identity,
+            'registrationId': ?registrationId,
           });
           debugPrint(
             '[E2E] Uploaded ${keys.length} new one-time pre-keys ($reason)',
@@ -2062,6 +2122,7 @@ class EncryptionProvider extends ChangeNotifier {
       _decryptedLedger.clear();
       _forceSessionRebuild.clear();
       _generatingMoreKeys = false;
+      _deviceMaterialMismatch = false;
       _currentUserId = null;
       // Fresh connect may be a different account: forget verified lists AND
       // their rollback pins (they are per-account TOFU state).

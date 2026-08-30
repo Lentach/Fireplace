@@ -1118,6 +1118,11 @@ class EncryptionService {
 
     final registrationId = generateRegistrationId(false);
     await _identityStore.initialize(identityKeyPair, registrationId);
+    // (lxiv): adopted material is re-homed by this ceremony — drop any stamp
+    // from a previous life; the post-rebind connect re-stamps the assigned id.
+    try {
+      await _storage.delete(key: _materialDeviceKey(userId));
+    } catch (_) {}
 
     final signedPreKey = generateSignedPreKey(identityKeyPair, 0);
     await _signedPreKeyStore.storeSignedPreKey(signedPreKey.id, signedPreKey);
@@ -1215,6 +1220,12 @@ class EncryptionService {
     final registrationId = generateRegistrationId(false);
 
     await _identityStore.initialize(identityKeyPair, registrationId);
+
+    // (lxiv): freshly minted material has no home yet — drop any stamp from a
+    // previous life so the next server-confirmed device id re-stamps.
+    try {
+      await _storage.delete(key: _materialDeviceKey(uid));
+    } catch (_) {}
 
     // Generate signed pre-key (id = 0)
     final signedPreKey = generateSignedPreKey(identityKeyPair, 0);
@@ -1918,6 +1929,58 @@ class EncryptionService {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Current locally minted registrationId — the (lxiv) install proof sent
+  /// with one-time pre-key uploads so the server can tell this install from a
+  /// foreign one sharing the account identity. Null before init.
+  Future<int?> currentRegistrationId() async {
+    if (!_initialized) return null;
+    try {
+      return await _identityStore.getLocalRegistrationId();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _materialDeviceKey(int userId) => 'e2e_${userId}_material_device_v1';
+
+  /// (lxiv) clause 2 — which device id this install's Signal material was
+  /// provisioned for. TOFU: absent → stamp [deviceId] and answer true; present
+  /// → answer whether the stamp agrees. Every mint/adopt/rebind path CLEARS
+  /// the stamp (an authorized re-homing of the material), so a contradiction
+  /// can only mean material that survived a session-identity change it was
+  /// never re-homed for — the revoked-device-signs-back-in shape, whose bundle
+  /// re-upload would clobber the primary's published keys.
+  Future<bool> confirmMaterialDeviceId(int deviceId) async {
+    final userId = _userId;
+    if (userId == null) return true;
+    final key = _materialDeviceKey(userId);
+    try {
+      final existing = await _storage.read(key: key);
+      final parsed = existing == null ? null : int.tryParse(existing);
+      if (parsed == null) {
+        await _storage.write(key: key, value: deviceId.toString());
+        return true;
+      }
+      return parsed == deviceId;
+    } catch (_) {
+      // A storage failure is not evidence of a foreign install; fail open so
+      // a flaky read cannot take a healthy device out of E2E duty. The server
+      // guard ((lxiv) clause 1) still refuses a genuinely foreign write.
+      return true;
+    }
+  }
+
+  /// Clears the (lxiv) material-device stamp — called by every authorized
+  /// re-homing of this install's material (the §6.2 rebind adoption; the mint
+  /// paths clear inline). The next server-confirmed device id re-stamps.
+  Future<void> clearMaterialDeviceStamp() async {
+    final userId = _userId;
+    if (userId == null) return;
+    try {
+      await _storage.delete(key: _materialDeviceKey(userId));
+    } catch (_) {}
   }
 
   static Map<String, dynamic> _preKeyToUploadFormat(PreKeyRecord pk) => {

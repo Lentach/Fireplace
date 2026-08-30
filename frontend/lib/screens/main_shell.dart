@@ -26,6 +26,7 @@ import '../services/encryption/native_content_store.dart';
 import '../widgets/top_snackbar.dart';
 import '../widgets/console_glyphs.dart';
 import '../widgets/glass/glass_bottom_nav.dart';
+import '../widgets/device_mismatch_banner.dart';
 import '../widgets/identity_damaged_banner.dart';
 import '../widgets/own_identity_replaced_banner.dart';
 import '../widgets/identity_reset_pending_banner.dart';
@@ -323,6 +324,12 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                 // see "[encrypted]" on every message forever with no
                 // explanation and no way out.
                 IdentityDamagedBanner(),
+                // (lxiv) material-device mismatch: this install's keys belong
+                // to a device that was removed from the account (revoked
+                // device signed back in). E2E is DOWN by decision — operating
+                // under the wrong device id is what destroys peers' messages —
+                // and the way out is re-linking, which the action routes to.
+                DeviceMismatchBanner(),
                 // Phase 0a takeover alarm: another sign-in replaced this
                 // account's key bundle. Usually a legitimate new device/browser
                 // sign-in; durable until dismissed.

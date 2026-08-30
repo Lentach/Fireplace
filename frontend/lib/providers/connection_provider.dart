@@ -764,6 +764,11 @@ class ConnectionProvider extends ChangeNotifier {
         // "recovered account has no pre-keys" three subsystems away.
         E2ePersistentDiag.record('RESET_REBIND_UNWIRED', {});
       } else {
+        // (lxiv): the teardown re-homes this install's material onto the
+        // freshly allocated device id — drop the old stamp BEFORE the
+        // reconnect below, so the new session's confirm re-stamps instead of
+        // tripping the material-device gate on the recovering device.
+        await _encryptionProvider?.encryptionService.clearMaterialDeviceStamp();
         await onSessionRebound!(tokens);
         if (userId != null) {
           await connect(

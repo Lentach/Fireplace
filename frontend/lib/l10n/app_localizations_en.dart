@@ -139,7 +139,17 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get deviceRevokedNotice =>
-      'This device was removed from your account. Your messages on it were kept — sign in again to keep chatting.';
+      'This device was removed from your account. Your messages on it were kept — to keep chatting here, sign in and link this device again.';
+
+  @override
+  String get deviceMismatchTitle => 'This device was removed from the account';
+
+  @override
+  String get deviceMismatchBody =>
+      'This device\'s encryption keys belong to a device that was removed from your account, so it stopped sending and receiving encrypted messages. To keep chatting here, link this device again from your other device. Nothing changed on your other devices.';
+
+  @override
+  String get deviceMismatchAction => 'Link this device';
 
   @override
   String get devicesPrimaryBadge => 'primary';
