@@ -2057,6 +2057,45 @@ that is the designed outcome).
     clears and the only door out of the (lvi) refusal stays shut. Fail-closed, so P2, but it defeats
     the mechanism (lv) exists to guarantee. The staging takes the same guard as (xlvii) clause 3:
     write only when the slot is EMPTY or already holds exactly this key.
+    **RESIDUALS from the second gate round, ACCEPTED and NOT fixed here.** All P3 except the last,
+    all recorded so a later reader does not have to rediscover them:
+    1. **A read→delete window survives inside the pending slot.** (lviii) moved the race from
+       (write + read) to (read + delete): `adoptAccountIdentity` reads the slot and then deletes
+       unconditionally, and `promotePendingAccountIdentity` has the same shape. A candidate staged
+       between those two awaits — by `isTrustedIdentity` on a concurrent decrypt, or by the (lv)
+       refusal on a concurrent send — is destroyed while success is reported. Two awaits wide and not
+       attacker-timeable. The real fix is a compare-and-delete primitive on the slot; it is the FIFTH
+       instance of this programme's one root cause and the honest statement is that the pattern needs
+       a primitive, not a fifth hand-rolled guard.
+    2. **(li)'s plausibility ceiling is one day, not zero.** `occurredAt = now + 23 h` parses and is
+       stored canonically, so one crafted event plus the user's natural dismissal buys ~24 h of
+       suppressed CONNECT-TIME (offline-learn) reports. The live event path is unaffected. Bounded
+       rather than permanent, which is what (li) required, but the amendment's text does not quantify
+       it.
+    3. **(li) clause 2's one-shot can be HELD by a server.** It is armed only by our own publish ack,
+       so a server cannot arm it — but by withholding `identityReplacedAt` a server leaves it armed
+       and spends it on a later, genuine report. Materially bounded by (liv): an enrolled account's
+       identity can now only move through a ceremony that broadcasts 1–72 h earlier.
+    4. **`invalid_list_signature` has no user-visible surface.** (lii) correctly excludes it from the
+       I7 alarm, but the plain send path never fetches the list, so the condition lands on the
+       catch-all "Recipient may not have encryption enabled". Wrong copy for a chain failure.
+    5. **(l) also withholds the account's OWN roster**, and `refreshDeviceList` has no timeout, so the
+       devices screen spins indefinitely while a replacement is owed. Recovery is unaffected — the
+       offer rides `keyBundleUploaded`, never the list read — so this is cosmetic, but it is a mute
+       fail-closed state.
+    6. **(liv) leaves an enrolled account no fast rotation after a linked-device compromise.** §5.5
+       revocation is logout semantics and does not rotate the account IK, so a compromised linked
+       device keeps a copy of `ikPriv`, and any session may cancel a ceremony (keyless by §6.2
+       design) and arm a 24 h cooldown. Mitigation is immediate and adequate: REVOKE the device
+       first, then start the ceremony. Worth one line of operator guidance in §6.2.
+    7. **P2, PRE-EXISTING, and the one to fix first after merge:** the reset cooldown, the
+       password-change carve-out and the completed-grant TTL are asserted only by inspecting a MOCKED
+       query builder's `innerJoin`/`andWhere` calls
+       (`backend/src/key-bundles/identity-reset.service.spec.ts:249-274`, `:621-649`), and the author
+       disclaims behavioural proof in-line. An inverted WHERE carrying the same parameter stays
+       green. The §6.2 ceremony is now the ONLY authorization for an enrolled account's identity
+       change ((liv)), so it carries more weight than when those tests were written.
+
 
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the

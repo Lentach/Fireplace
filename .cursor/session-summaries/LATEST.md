@@ -140,6 +140,48 @@ the buggy early return also satisfies (now counts real refetches); and (lviii)'s
 documented in-tree as NOT covered end to end, because reaching it needs an interleave that would
 require a test-only seam in production code.
 
+**⚠ A SECOND GATE ROUND RE-REVIEWED THE TEN FIXES AND FOUND THREE MORE P1s — IN THEM
+(`4e63871` → `8ba90fa`, amendments (lx)–(lxiii)).** The index now runs **(a)–(lxiii)**; CI green on
+all five jobs at `8ba90fa`. **This is the round to read, because two of my own amendments were
+protecting the wrong thing.**
+**(lx) — F3 WAS NEVER ACTUALLY CLOSED.** (l) put the replacement-owed refusal on `getDeviceList`, and
+**the send path never opens that door**: `_resolveFanOut` deliberately does not fetch and the
+verified-list cache is memory-only, so the first send of every session goes out LEGACY and is
+answered by the server's `deviceListStale` bounce — which shipped the account's FULL signed record
+with no guard at all. The peer then VERIFIES that orphaned roster (it was signed by the very key the
+peer pinned — (l)'s own premise), adopts a roster of revoked devices and re-sends into it. I verified
+every hop myself; `pendingReplacementVersion` had exactly two production call sites and neither was
+on the send path. Falsification printed the leak verbatim. A second variant needed no bounce at all:
+for a never-enrolled account post-reset, `envelopeRefusal` is skipped for a legacy send and
+`staleLists` contributes nothing, so the send committed straight to the revoked device 1 — the exact
+shape (xlv) clause 2 was written for. **Lesson: a guard on the READ door proves nothing when the loss
+happens on the WRITE path.**
+**(lxi) — (lvi) resolved the expectation from the WEAKER of two sources.** It scanned per-device rows
+first and used the account anchor only as a fallback. The account anchor moves ONLY on human
+acknowledgement; a per-device row is overwritten unconditionally by `saveIdentity` inside
+`isTrustedIdentity`, which is TOFU. So the scan let a server-delivered ciphertext CHOOSE the
+expectation the gate compares against — poison `(P,2)`, trigger a rebuild of `(P,1)`, and the gate
+compares the attacker's key to itself and BUILDS with only a dismissible banner. Reverting the order
+in the falsification harness built the session to the attacker. The reason for the old order was
+OBSOLETE, not arguable: (xxxix) preferred the scan because that helper was then a hardcoded
+`(peer, device 1)` slot, and (xlvi) had since made it account-scoped.
+**(lxii)/(lxiii)** closed a failed anchor READ looking like an absence (two contracts now, because the
+two callers need opposite polarities) and (lv) staging unconditionally over a genuine candidate,
+which also handed a hostile server a durable ceremony DoS.
+⚠️ **My own CI guard broke CI, and that is the good outcome.** The guard added so a silently SKIPPED
+reset probe cannot report green matched only the LOCAL reporter shape and failed a genuinely green
+run whose log said "2 tests passed" directly above my error. Fixed to accept both shapes, verified
+against five recorded output shapes first. Same commit fixed two unused imports — **I had run the
+targeted test file but not `flutter analyze`.**
+**Seven residuals are recorded in the spec under (lxiii) and NOT fixed** (six P3 + one P2). The P2 is
+pre-existing and now matters more: the reset cooldown / password-change carve-out / completed-grant
+TTL are asserted only against a MOCKED query builder's `innerJoin`/`andWhere` calls, so an inverted
+WHERE stays green — and after (liv) the §6.2 ceremony is the ONLY authorization for an enrolled
+account's identity change, so it carries more weight than when those tests were written. The P3s
+include a FIFTH instance of this programme's one root cause (a read→delete window inside the pending
+slot); the honest statement there is that the pattern needs a compare-and-delete primitive, not a
+fifth hand-rolled guard.
+
 The last two open defects are closed. **D1 (P0):** a completed §6.2 reset left the peer unreachable
 in both directions, and the only action offered to the user destroyed the warning while repairing
 nothing — the accept gate withholds the peer's rows before Signal runs, so no candidate is ever
