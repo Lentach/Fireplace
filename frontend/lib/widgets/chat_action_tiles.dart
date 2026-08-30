@@ -234,6 +234,9 @@ class ChatActionTiles extends StatelessWidget {
               ..._galleryVideoExtensions,
               ..._documentExtensions,
             ]),
+            // iOS standalone orb/flash experiment: hide the CanvasKit surface
+            // for the sheet-presentation frames (see web_file_input_web.dart).
+            hideFlutterSurfaceDuringOpen: true,
           );
         } finally {
           endComposerNativePicker();

@@ -38,8 +38,10 @@ Future<WebPickedFile?> pickFileViaAnchoredInput({
   required Rect anchorRect,
   required String accept,
   String? capture,
+  bool hideFlutterSurfaceDuringOpen = false,
 }) => impl.pickFileViaAnchoredInput(
   anchorRect: anchorRect,
   accept: accept,
   capture: capture,
+  hideFlutterSurfaceDuringOpen: hideFlutterSurfaceDuringOpen,
 );
