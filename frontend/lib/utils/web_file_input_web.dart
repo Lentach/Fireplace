@@ -25,7 +25,6 @@ Future<WebPickedFile?> pickFileViaAnchoredInput({
   required Rect anchorRect,
   required String accept,
   String? capture,
-  bool hideFlutterSurfaceDuringOpen = false,
 }) {
   final completer = Completer<WebPickedFile?>();
 
@@ -65,9 +64,6 @@ Future<WebPickedFile?> pickFileViaAnchoredInput({
   JSFunction? changeListener;
   JSFunction? cancelListener;
 
-  web.HTMLElement? hiddenSurface;
-  Timer? surfaceRestoreTimer;
-
   void cleanup() {
     if (changeListener != null) {
       input.removeEventListener('change', changeListener);
@@ -80,9 +76,6 @@ Future<WebPickedFile?> pickFileViaAnchoredInput({
 
   void resolve(WebPickedFile? value) {
     if (completer.isCompleted) return;
-    surfaceRestoreTimer?.cancel();
-    hiddenSurface?.style.visibility = '';
-    hiddenSurface = null;
     cleanup();
     completer.complete(value);
   }
@@ -121,30 +114,6 @@ Future<WebPickedFile?> pickFileViaAnchoredInput({
   // (composer_keyboard_signals.dart) force-clears it; the sweep above
   // reclaims the DOM node.
   cancelListener = ((web.Event _) => resolve(null)).toJS;
-
-  // EXPERIMENT (iOS standalone orb/flash): the bug reproduces ONLY with the
-  // full Flutter app on screen — a bare page with the identical input
-  // mechanism is clean in the same standalone shell (probe matrix,
-  // 2026-08-30: 9 variants incl. occlusion, delay, jank, pointerup). Prime
-  // suspect is iOS snapshotting the full-screen CanvasKit canvas for its
-  // sheet-presentation animation. Hiding the Flutter surface for the
-  // presentation frames removes that snapshot source; the native menu covers
-  // the screen while hidden, and the surface is restored on resolution or
-  // after a short timer, whichever comes first.
-  if (hideFlutterSurfaceDuringOpen) {
-    final surface =
-        (web.document.querySelector('flutter-view') ??
-                web.document.querySelector('flt-glass-pane'))
-            as web.HTMLElement?;
-    if (surface != null) {
-      hiddenSurface = surface;
-      surface.style.visibility = 'hidden';
-      surfaceRestoreTimer = Timer(const Duration(milliseconds: 1200), () {
-        hiddenSurface?.style.visibility = '';
-        hiddenSurface = null;
-      });
-    }
-  }
 
   input.addEventListener('change', changeListener);
   input.addEventListener('cancel', cancelListener);
