@@ -1707,6 +1707,17 @@ extension MessagingSend on MessagingProvider {
       final who = otherName ?? 'Recipient';
       return 'Cannot send: $who does not have encryption keys yet. Ask them to open the app.';
     }
+    // (lv) This is a SECURITY refusal, not a missing-keys problem, and it has a
+    // specific remedy: the banner the refusal just raised opens the
+    // out-of-band fingerprint comparison. The catch-all below told the user to
+    // ask the recipient to open an app they already have open, which is why
+    // this state read as an unexplained permanent outage.
+    if (e is AccountIdentityMismatch ||
+        s.contains('AccountIdentityMismatch')) {
+      return 'Cannot send: this contact\'s security keys changed and could not '
+          'be verified. Open the security warning for this chat and compare '
+          'their safety number before sending.';
+    }
     if (e is TimeoutException ||
         s.contains('timed out') ||
         s.contains('Timeout')) {

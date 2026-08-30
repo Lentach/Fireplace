@@ -260,13 +260,14 @@ class EncryptionProvider extends ChangeNotifier {
     await _encryptionService.clearSessionRebuild(recipientId, deviceId);
   }
 
-  /// The identity key already trusted for [recipientId] on ANY of its devices
-  /// other than [skipDeviceId], or null if the account is unknown to us.
+  /// The identity key already trusted for [recipientId] — from any of its
+  /// devices other than [skipDeviceId], else from the ACCOUNT anchor — or null
+  /// only when this device has never trusted this account at all.
   ///
   /// This is the anchor [EncryptionService.buildSession] checks the served
-  /// bundle against (spec §12 amendment (xxxix)). §3 guarantees every device of
-  /// an account shares one identity key, so ANY device we have already trusted
-  /// answers for all of them.
+  /// bundle against (spec §12 amendments (xxxix) and (lvi)). §3 guarantees every
+  /// device of an account shares one identity key, so ANY key we have already
+  /// trusted for the account answers for all of them.
   ///
   /// Sourced from the VERIFIED device list, never from a fixed device slot:
   /// ids are never reused and a post-§6.2 account has no device 1, so anchoring
@@ -276,10 +277,18 @@ class EncryptionProvider extends ChangeNotifier {
   /// fetch, because this runs inside session setup and a network round trip
   /// here would deadlock against the fetch that triggered it.
   ///
-  /// [skipDeviceId] is excluded because that is the very address being built:
-  /// on a REBUILD it already holds the old key, and comparing the bundle to
-  /// itself would make the check vacuous while also blocking the legitimate
-  /// account-wide key rotation that the same-address alarm exists to report.
+  /// [skipDeviceId] is excluded FROM THE PER-DEVICE SCAN because that is the
+  /// very address being built: on a REBUILD it already holds the old key, and
+  /// comparing the bundle to itself would make the check vacuous while also
+  /// blocking the legitimate account-wide key rotation that the same-address
+  /// alarm exists to report.
+  ///
+  /// It does NOT apply to the (lvi) account-anchor fallback, which is reached
+  /// precisely when the scan resolves nothing — a cold cache, or a peer whose
+  /// only live device is the one being built. Both are default states, and
+  /// returning null there left the gate unenforced for almost every send. A
+  /// null return now means genuine first contact with the ACCOUNT, which is
+  /// irreducibly TOFU.
   Future<String?> _accountIdentityAnchor(
     int recipientId, {
     required int skipDeviceId,
@@ -296,7 +305,21 @@ class EncryptionProvider extends ChangeNotifier {
       );
       if (identity != null) return identity;
     }
-    return null;
+    // (lvi) The per-device scan above resolves NOTHING in two states that are
+    // the default rather than the edge: any cold cache (the verified-list cache
+    // is memory-only, so every first send after launch lands here) and any
+    // single-live-device peer (notEnrolled() synthesises device 1 alone, which
+    // is the very device being built and is skipped). Returning null there made
+    // the §3 account-wide binding vacuous for almost every send.
+    //
+    // Fall back to the ACCOUNT anchor, which is account-scoped by (xlvi) and is
+    // the same key the I7 device-list chain already anchors on. `skipDeviceId`
+    // deliberately does NOT apply: it exists so a REBUILD does not compare an
+    // address to itself, which is a per-device concern. On a legitimate
+    // account-wide rotation the account anchor still holds the old key, so the
+    // offer is refused and SURFACED ((lv)) instead of reported-and-built —
+    // the fail-closed trade (lvi) takes deliberately.
+    return _encryptionService.peerTofuIdentityBase64(recipientId);
   }
 
   /// Whether the session for [recipientId]'s [deviceId] should be force-rebuilt.

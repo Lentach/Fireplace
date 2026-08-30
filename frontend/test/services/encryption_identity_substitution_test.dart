@@ -172,6 +172,80 @@ void main() {
       expect(await alice.peerIdentityAt(bobId, 2), isNull);
     });
 
+    // (lv) Finding F5. Failing closed is right; failing closed SILENTLY made
+    // the chat a permanent unexplained outage, because the banner is the only
+    // door to the out-of-band comparison that repairs it.
+    test('the refusal RAISES the identity surface, so the ceremony is reachable',
+        () async {
+      final warned = <int>[];
+      alice.onPeerIdentityChanged = warned.add;
+
+      await alice.buildSession(
+        bobId,
+        flatBundleFrom(bob),
+        expectedIdentityBase64: null,
+      );
+      final anchor = await alice.peerIdentityAt(bobId, 1);
+      expect(alice.peersWithChangedIdentity, isEmpty);
+
+      await expectLater(
+        alice.buildSession(
+          bobId,
+          flatBundleFrom(mallory),
+          deviceId: 2,
+          expectedIdentityBase64: anchor,
+        ),
+        throwsA(isA<AccountIdentityMismatch>()),
+      );
+
+      // The banner exists and the UI was told, or the user sees a dead chat.
+      expect(alice.peersWithChangedIdentity, contains(bobId));
+      expect(warned, contains(bobId));
+      // Still fail-closed: raising the alarm must not have trusted anything.
+      expect(await alice.peerIdentityAt(bobId, 2), isNull);
+    });
+
+    test('the refused key is STAGED, so the ceremony has a candidate to adopt',
+        () async {
+      await alice.buildSession(
+        bobId,
+        flatBundleFrom(bob),
+        expectedIdentityBase64: null,
+      );
+      final anchor = await alice.peerIdentityAt(bobId, 1);
+
+      await expectLater(
+        alice.buildSession(
+          bobId,
+          flatBundleFrom(mallory),
+          deviceId: 2,
+          expectedIdentityBase64: anchor,
+        ),
+        throwsA(isA<AccountIdentityMismatch>()),
+      );
+
+      // The staged candidate is what an adoption promotes, which keeps "the
+      // pinned key is the key the human was shown" structural ((xlvii) cl. 3).
+      // No servedIdentityBase64 is passed, so a candidate can only come from
+      // the slot the refusal itself staged.
+      final verification = await alice.peerIdentityVerification(bobId);
+      expect(
+        verification.offeredFingerprint,
+        isNotNull,
+        reason: 'the offered key must be recorded for the comparison',
+      );
+      expect(
+        verification.offeredIdentityBase64,
+        flatBundleFrom(mallory)['identityPublicKey'],
+        reason: 'the candidate must be exactly the key that was refused',
+      );
+      expect(
+        verification.offeredFingerprint,
+        isNot(verification.pinnedFingerprint),
+        reason: 'a candidate equal to the pin would be nothing to decide',
+      );
+    });
+
     test('a NEW device carrying the ACCOUNT identity is accepted, silently',
         () async {
       await alice.buildSession(

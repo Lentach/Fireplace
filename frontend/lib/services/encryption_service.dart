@@ -395,6 +395,45 @@ class EncryptionService {
     await _persistIdentityChanged();
   }
 
+  /// A session build was REFUSED because the served identity did not match the
+  /// account's anchor ((xxxix)/(lv)). Stages the offered key as the pending
+  /// candidate and raises the identity surface, so the refusal is visible and
+  /// the out-of-band ceremony can repair it.
+  ///
+  /// Deliberately NOT routed through [recordPeerIdentityChangedFromServer]:
+  /// that method's (xlviii) clause 2 guard drops any peer whose
+  /// `getAccountIdentity` is null, which is precisely the shape this path hits
+  /// when the anchor was resolved from a per-device row instead. Reusing it
+  /// would discard the alarm on the exact path (lv) exists to light up. The
+  /// guard filters ids a SERVER asserted with no local anchor; here an anchor
+  /// is what produced the refusal, so its condition is already known true.
+  ///
+  /// Staging grants no trust: the pending slot is read only by the fingerprint
+  /// display and by an explicit human confirmation.
+  Future<void> _recordAccountIdentityRefusal(
+    int peerId,
+    IdentityKey offered,
+  ) async {
+    try {
+      await _identityStore.stagePendingAccountIdentity(
+        peerId.toString(),
+        offered,
+      );
+    } catch (e) {
+      // A failed staging must not swallow the refusal or the alarm: the banner
+      // is worth more than the candidate, and (xlvii) clause 3's ceremony can
+      // still adopt a served key without one.
+      debugPrint('[EncryptionService] stage pending identity failed: $e');
+    }
+    if (!_peersWithChangedIdentity.add(peerId)) return;
+    E2ePersistentDiag.record('PEER_IDENTITY_CHANGED', {
+      'peerId': peerId,
+      'source': 'account_identity_mismatch',
+    });
+    onPeerIdentityChanged?.call(peerId);
+    await _persistIdentityChanged();
+  }
+
   /// Whether this device holds a pinned ACCOUNT identity for [peerId].
   ///
   /// Uncertainty answers YES on purpose: losing a genuine identity warning is
@@ -1258,6 +1297,11 @@ class EncryptionService {
           '[EncryptionService] REFUSED session userId=$userId '
           'deviceId=$deviceId reason=account_identity_mismatch',
         );
+        // (lv) Refusing is right; refusing SILENTLY is what made this a
+        // permanent outage. Stage the offered key and raise the identity
+        // surface BEFORE throwing, so the banner exists and the out-of-band
+        // comparison — the only door out — has a candidate to promote.
+        await _recordAccountIdentityRefusal(userId, identityKey);
         throw AccountIdentityMismatch(userId: userId, deviceId: deviceId);
       }
     }

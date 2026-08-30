@@ -1856,6 +1856,71 @@ that is the designed outcome).
        NOT tear the roster down — the account still holds its other devices" stands for the
        non-enrolled case and is now unreachable for the enrolled one.
 
+- **Amendment 2026-08-30 (D10, ratified BEFORE the fix; from the pre-merge gate round, finding F5):**
+  - **(lv) A refused session MUST leave the ceremony that repairs it REACHABLE.** The (xxxix) gate
+    fails closed on an account-identity mismatch — correctly, and (lii) has since widened the same
+    reasoning — but `_buildSessionSerialized` throws `AccountIdentityMismatch`
+    (`encryption_service.dart:1261`) after staging NO candidate and raising NO alarm. The peer never
+    enters `_peersWithChangedIdentity`, so no banner appears; `promotePendingAccountIdentity` has
+    nothing to promote; and `_userFriendlySendError` maps the exception to the catch-all "Recipient
+    may not have encryption enabled – ask them to open the app."
+    (`messaging_provider.send.dart:1695-1720`). The user is told to ask the recipient to open an app
+    they already have open, and the ONE door out — the out-of-band fingerprint comparison — is
+    unreachable. This is the same defect class as (xlvii) clause 3 and RC-01: fail-closed is right,
+    but a refusal with no surfaced alarm is indistinguishable from a permanent unexplained outage.
+    So a refusal MUST, before it throws:
+    1. STAGE the offered key as the pending account-identity candidate, so the adoption the ceremony
+       performs promotes a candidate THIS DEVICE recorded — the structural property (xlvii) clause 3
+       and `stagePendingAccountIdentity`'s own contract already require.
+    2. Add the peer to `_peersWithChangedIdentity`, fire `onPeerIdentityChanged` and persist, so the
+       banner and the verify action exist.
+    3. Then throw, unchanged. Staging grants no trust: the pending slot is read only by the display
+       and by an explicit human confirmation.
+    **It MUST NOT route through `recordPeerIdentityChangedFromServer`.** That method's (xlviii)
+    clause 2 guard drops any peer for which `getAccountIdentity` is null — which is exactly the state
+    F4 is about — so reusing it would silently discard the alarm on the very path this amendment
+    exists to light up, restoring the lockout under a different mechanism. The guard is there to
+    filter ids a SERVER asserted with no local anchor; here the anchor is the thing that produced
+    the refusal, so the condition it tests is already known true.
+    `_userFriendlySendError` additionally gains a branch naming the security condition and pointing
+    at the verify action, because a message the user cannot act on is why this went unnoticed.
+
+- **Amendment 2026-08-30 (D11, ratified BEFORE the fix; from the pre-merge gate round, finding F4 /
+  KA-02, and taking the spec call (xlix) explicitly deferred):**
+  - **(lvi) The (xxxix) expected-identity gate MUST fall back to the ACCOUNT anchor, and a peer whose
+    offered key cannot be matched to it is REFUSED.** (xlix) recorded this as narrower than it is.
+    `_accountIdentityAnchor` (`encryption_provider.dart:283-299`) resolves the anchor by scanning
+    per-device rows of the CACHED verified list, EXCLUDING the device being built, and `buildSession`
+    no-ops on a null expected identity (`encryption_service.dart:1253-1254`). The candidate list is
+    therefore empty — and the gate vacuous — in two states that are the DEFAULT, not the edge:
+    1. **Any cold cache.** The verified-list cache is memory-only, so every first send after launch
+       resolves no anchor at all.
+    2. **Any single-live-device peer.** `VerifiedDeviceList.notEnrolled()` synthesises device 1
+       alone, so the only candidate IS the device being built and is skipped. That is every
+       non-enrolled account, i.e. most users.
+    So the §3 account-wide identity binding — the whole defence against a server serving its own key
+    for a device the DAK-signed list legitimately names — was unenforced for almost every send.
+    **THE RULING IS FAIL CLOSED**, consistent with (xxxix), (xlvii) clause 3, (lii) and every other
+    disposition in this programme: the per-device scan runs first, and when it yields nothing the
+    anchor comes from `peerTofuIdentityBase64` (already ACCOUNT-scoped per (xlvi)). A mismatch is
+    refused, exactly as it is today for a resolved anchor.
+    **This is a real behaviour change and it is intended.** Before: a peer who reinstalled or rotated
+    keys was reported by libsignal's same-address `onIdentityChanged` and the session BUILT anyway.
+    After: the send is REFUSED until the human compares fingerprints out of band. That is the
+    industry-standard shape (a changed safety number blocks sending until accepted) and it is the
+    only disposition consistent with (xxxix)'s own argument that a dismissible banner over a live
+    MITM is worse than a refusal, because the plaintext is already encrypted to the attacker by the
+    time the banner is read.
+    **(lv) IS A HARD PREREQUISITE, not a companion.** Without it this ruling trades a MITM window for
+    a permanent lockout on the most common path in the app: the refusal would raise no banner, stage
+    no candidate, and report "Recipient may not have encryption enabled". (lv) is what makes the
+    refusal a first-class, recoverable alarm, and it MUST land first.
+    The `skipDeviceId` exclusion is kept for the per-device scan, where its reasoning still holds — a
+    rebuild must not compare an address to itself. It does NOT extend to the account anchor: on a
+    legitimate account-wide rotation the account anchor holds the old key, so the offer is refused
+    and surfaced rather than reported-and-built. That is the same trade as above, deliberately taken,
+    and (xlvii) clause 3's served-key ceremony is the exit.
+
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the
   test-integrity findings are folded at `4c0e0bf`; the four security findings were T9. **T10 (xlv)
