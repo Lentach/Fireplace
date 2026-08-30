@@ -799,17 +799,19 @@ void main() {
         () async {
           // A client naming someone else's device could scatter key material
           // across namespaces peers later fetch, or park a bundle where the
-          // account's real device-1 lookup never sees it (spec §5.1).
+          // account's real device-1 lookup never sees it (spec §5.1). The
+          // SAME-install re-upload (same registrationId — amendment (lxiv))
+          // proves the claim is ignored:
           final claimed = await alice.uploadDeviceKeyBundle(
             deviceId: 2,
             identityPublicKey: sharedIdentity,
-            registrationId: deviceOneRegistration + 1,
+            registrationId: deviceOneRegistration,
           );
           expect(claimed['success'], isTrue);
 
           // It went to device 1 — this session's device...
           final one = await alice.fetchBundleFor(alice.userId, deviceId: 1);
-          expect(one['registrationId'], deviceOneRegistration + 1);
+          expect(one['registrationId'], deviceOneRegistration);
           expect(
             one['identityPublicKey'],
             sharedIdentity,
@@ -820,7 +822,26 @@ void main() {
           final two = await alice.fetchBundleRawFor(alice.userId, deviceId: 2);
           expect(two['bundle'], isNull);
 
-          deviceOneRegistration = deviceOneRegistration + 1;
+          // Amendment (lxiv) clause 1: the same upload with a DIFFERENT
+          // registrationId is by construction a foreign install writing into a
+          // namespace it does not own (identity and registrationId are minted
+          // together, once) — the revoked-device-signs-back-in shape whose
+          // clobber mixes two installs' X3DH halves. Refused, nothing written.
+          // Pre-(lxiv) this very upload SUCCEEDED and this test asserted the
+          // clobber landing; the contract changed deliberately.
+          final foreign = await alice.uploadDeviceKeyBundle(
+            deviceId: 2,
+            identityPublicKey: sharedIdentity,
+            registrationId: deviceOneRegistration + 1,
+          );
+          expect(foreign['success'], isFalse);
+          expect(foreign['error'], 'device_material_conflict');
+          final after = await alice.fetchBundleFor(alice.userId, deviceId: 1);
+          expect(
+            after['registrationId'],
+            deviceOneRegistration,
+            reason: 'a refused foreign write must leave the row untouched',
+          );
         },
         timeout: const Timeout(Duration(minutes: 1)),
       );
