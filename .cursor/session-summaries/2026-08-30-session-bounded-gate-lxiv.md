@@ -108,3 +108,10 @@ pushed (a CONFLICTING PR gets zero CI scheduling — the 08-19 blindness lesson)
   **SHIP** with full writer-coverage audit (every bundle/OTP writer guarded or inherently safe) and
   two P3s, both folded: spec now records the served-`registrationId`-is-public scope limit of
   clause 1, and the OTP DTO `registrationId` bound tightened `@Min(0)`→`@IsPositive`.
+- **Lens C completed the 3-reviewer gate round (the 2-lens shape was called out as under the
+  standing rule): SHIP, zero findings** — scoped to the code A/B never saw (the `onConnect`
+  confirmation reset + the 0.1.21 merge). Consumers defer safely per (xii); rapid-reconnect
+  interleavings self-heal; first login always stamps first; merge kept both features (ARB en=pl
+  482/482 non-@, zero dupes); the strand test and the sibling reconnect test pin both halves of the
+  falsification contract. Final round tally: A SHIP-WITH-FIXES (P1, folded+falsified) · B SHIP
+  (2 P3, folded) · C SHIP (0).
