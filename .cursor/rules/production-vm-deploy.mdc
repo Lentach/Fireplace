@@ -67,6 +67,17 @@ Until excluded: on exit-21 run the manual staged publish (identical to the scrip
 mv ~/web-staging/web frontend-build && chmod -R a+rX frontend-build && echo PUBLISHED_OK'` →
 `cd scripts/smoke && node post-deploy-smoke.mjs`. Never pipe the script to `tail` (swallows the failure).
 
+**Stale-page trap (fixed 2026-08-30):** the landing block in `/etc/nginx/sites-enabled/fireplace`
+now sends `Cache-Control: no-cache` for everything under `/welcome/` — without it browsers used
+heuristic freshness and replayed cached pre-deploy HTML for hours without revalidating (owner kept
+seeing the old brand after the Umbra deploy; the app settings footer links there). Hashed assets
+just 304 via ETag, cost is one RTT. The Flutter app shell (`/` → index.html, flutter.js,
+version.json) still has NO cache headers — same trap, unfixed; add the same header there if "old
+app after deploy" complaints recur. Also removed `fireplace.bak.1784434246` from `sites-enabled/`
+(a July config backup nginx was loading as live config — caused "conflicting server name" warns;
+never leave backups in that dir, they are live). Backup of the current config:
+`/home/ubuntu/nginx-fireplace.bak.<epoch>`.
+
 ## Contact inbox service (standalone, VM-only)
 
 The landing contact form + owner push inbox is a **separate** service — repo
