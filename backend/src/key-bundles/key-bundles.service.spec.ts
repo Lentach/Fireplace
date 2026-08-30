@@ -5,6 +5,7 @@ import { KeyBundlesService, KeyBundleData } from './key-bundles.service';
 import { KeyBundle } from './key-bundle.entity';
 import { OneTimePreKey } from './one-time-pre-key.entity';
 import { IdentityChangeAudit } from './identity-change-audit.entity';
+import { AccountAuthorization } from './account-authorization.entity';
 import { IdentityResetService } from './identity-reset.service';
 
 describe('KeyBundlesService', () => {
@@ -12,6 +13,7 @@ describe('KeyBundlesService', () => {
   let keyBundleRepo: Record<string, jest.Mock>;
   let otpRepo: Record<string, jest.Mock>;
   let auditRepo: Record<string, jest.Mock>;
+  let authorizationRepo: Record<string, jest.Mock>;
   let identityResetService: Record<string, jest.Mock>;
   // Chainable query-builder mock for the stale-OTP purge in upsertKeyBundle.
   let purgeBuilder: {
@@ -62,6 +64,13 @@ describe('KeyBundlesService', () => {
       insert: jest.fn().mockResolvedValue({ identifiers: [{ id: 1 }] }),
     };
 
+    // Default: NOT enrolled, so §6.1's signature path stays available. Every
+    // pre-(liv) test models a single-device Phase 0b account, which is exactly
+    // this shape; the (liv) tests opt into enrollment explicitly.
+    authorizationRepo = {
+      findOne: jest.fn().mockResolvedValue(null),
+    };
+
     // Default: no completed reset ceremony exists, so an unsigned identity
     // replacement is refused. Tests that model a LEGITIMATE replacement opt in
     // explicitly, which keeps the locked case the default everywhere.
@@ -78,6 +87,10 @@ describe('KeyBundlesService', () => {
         {
           provide: getRepositoryToken(IdentityChangeAudit),
           useValue: auditRepo,
+        },
+        {
+          provide: getRepositoryToken(AccountAuthorization),
+          useValue: authorizationRepo,
         },
         {
           provide: IdentityResetService,
@@ -405,6 +418,87 @@ describe('KeyBundlesService', () => {
 
       expect(identityResetService.consumeCompletedReset).not.toHaveBeenCalled();
       expect(keyBundleRepo.upsert).toHaveBeenCalledTimes(1);
+    });
+
+    // Amendment (liv), finding F1. The §5.1 link blob ships ikPriv to every
+    // linked device, so on an ENROLLED account "holds the old identity key" no
+    // longer means "is the primary" and the signature path must close.
+    describe('(liv) an ENROLLED account loses the signature path', () => {
+      beforeEach(() => {
+        authorizationRepo.findOne.mockResolvedValue({ userId: SIGNED_USER_ID });
+      });
+
+      it('REFUSES a validly signed identity change and writes NOTHING', async () => {
+        const warnSpy = jest
+          .spyOn(Logger.prototype, 'warn')
+          .mockImplementation(() => undefined);
+
+        // Byte-identical to the proof the non-enrolled test accepts above —
+        // the ONLY difference is that the account is enrolled.
+        await expect(
+          service.upsertKeyBundle(
+            SIGNED_USER_ID,
+            { ...mockKeyBundleData, identityPublicKey: REPLACEMENT },
+            { signature: SIGNATURE, nonce: NONCE },
+          ),
+        ).rejects.toThrow('identity_locked');
+
+        expect(keyBundleRepo.upsert).not.toHaveBeenCalled();
+        expect(purgeBuilder.execute).not.toHaveBeenCalled();
+        expect(auditRepo.insert).not.toHaveBeenCalled();
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining('(liv) signature path REFUSED'),
+        );
+        warnSpy.mockRestore();
+      });
+
+      it('still admits the §6.2 ceremony, which is now the ONLY way', async () => {
+        identityResetService.consumeCompletedReset.mockResolvedValue(true);
+
+        const result = await service.upsertKeyBundle(
+          SIGNED_USER_ID,
+          { ...mockKeyBundleData, identityPublicKey: REPLACEMENT },
+          { signature: SIGNATURE, nonce: NONCE },
+        );
+
+        // The gate must not have made an enrolled account unrecoverable: a
+        // completed ceremony authorizes, and it is what gets spent.
+        expect(result.identityChanged).toBe(true);
+        expect(result.authorizedBy).toBe('reset');
+        expect(identityResetService.consumeCompletedReset).toHaveBeenCalledWith(
+          SIGNED_USER_ID,
+        );
+      });
+
+      it('leaves a same-identity re-upload untouched (the every-connect path)', async () => {
+        // Enrollment must not disturb the normal reconnect, which carries no
+        // proof and changes nothing.
+        await service.upsertKeyBundle(SIGNED_USER_ID, {
+          ...mockKeyBundleData,
+          identityPublicKey: STORED,
+        });
+
+        expect(keyBundleRepo.upsert).toHaveBeenCalledTimes(1);
+        expect(
+          identityResetService.consumeCompletedReset,
+        ).not.toHaveBeenCalled();
+      });
+
+      it('POSITIVE CONTROL: the same proof is accepted when NOT enrolled', async () => {
+        authorizationRepo.findOne.mockResolvedValue(null);
+
+        const result = await service.upsertKeyBundle(
+          SIGNED_USER_ID,
+          { ...mockKeyBundleData, identityPublicKey: REPLACEMENT },
+          { signature: SIGNATURE, nonce: NONCE },
+        );
+
+        // Phase 0b is unchanged: one device, one holder of ikPriv.
+        expect(result.authorizedBy).toBe('signature');
+        expect(
+          identityResetService.consumeCompletedReset,
+        ).not.toHaveBeenCalled();
+      });
     });
   });
 

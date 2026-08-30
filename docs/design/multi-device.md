@@ -1814,6 +1814,48 @@ that is the designed outcome).
     offer to arrive as the ANSWER to an upload this device actually made rather than as an unsolicited
     push. Both are cheap; neither is needed for correctness now.
 
+- **Amendment 2026-08-30 (D9, ratified BEFORE the fix; from the pre-merge gate round, finding F1):**
+  - **(liv) The §6.1 old-IK signature is NOT sufficient authorization for an identity change on an
+    ENROLLED account.** §6.1 admits an identity replacement on either a signature by the PREVIOUS
+    identity key or a completed §6.2 ceremony. That was sound in Phase 0b and multi-device
+    DELIBERATELY FALSIFIED ITS PREMISE: the §5.1 link blob ships `ikPriv` to every linked device
+    (`link_ceremony_controller.dart:460`), because a device must sign its own X3DH signed prekey
+    under the account identity. So "holds `ikPriv`" no longer means "is the account's primary", and
+    the signature path silently became available to every linked device.
+    A compromised LINKED device therefore reaches, with no ceremony and no 72 h delay: mint a new
+    IK → `authorizeIdentityChange` returns `'signature'` (`key-bundles.service.ts:311-319`) →
+    `purgeSupersededDevices` wipes the primary's bundle (`:171`) → the primary can never republish,
+    because it does not hold the new `ikPriv` and cannot sign a prekey under it → the stored
+    enrollment no longer verifies (`device-list.service.ts:139-146`) → the replacement-enrollment
+    branch admits the laptop's OWN DAK (`:243-290`) → every later list update from the primary dies
+    on `invalid_list_signature` (`:351-360`). This violates the §2 matrix row "Add/replace a device:
+    L=no" and invariant I2, and it is strictly worse than losing list authority: the ACCOUNT IDENTITY
+    is now the attacker's, so peers encrypt to it and the primary cannot read its own mail. It is
+    neither silent (the §6.0 takeover alarm fires on the primary) nor permanent (the 72 h ceremony
+    remains an exit), which is why it ranks below a silent MITM.
+    **The fix is at ADMISSION, not at the enrollment.** An earlier draft of this ruling constrained
+    the replacement enrollment to the SAME `dakPub`, so that list authority stayed with the holder of
+    `dakPriv`. That was rejected during review as protecting the wrong asset: it leaves the attacker
+    holding the account identity, which is the actual prize, and revoking the laptop does not undo
+    it. Gating the identity change instead makes every downstream hop unreachable.
+    So: when an `account_authorizations` row EXISTS, the signature path is not consulted at all and
+    ONLY `consumeCompletedReset` can authorize an identity change.
+    1. A NON-enrolled account keeps §6.1 exactly as specified. There, the Phase 0b premise still
+       holds — one device, one holder of `ikPriv` — so the path is still sound, and every Phase 0b
+       wire test (`registration_lock_test`, `takeover_alarm_test`, `stale_otp_epoch_test`,
+       `e2e_incident_regression_test`) exercises single-device accounts and is unaffected.
+    2. No new column and no migration: enrollment is already a single row keyed by `userId`, and it
+       is exactly the state the decision needs. Persisting `authorizedBy` was considered and is
+       unnecessary once the gate moves to admission.
+    3. Cost to a legitimate primary: an enrolled account must use the ceremony to rotate its IK.
+       This is not a regression in practice — a primary that needs a NEW identity has lost its key
+       material, which is precisely what §6.2 exists for, and the production client never used the
+       signature path at all (no client code requests `getRegistrationLockNonce`; only the e2e
+       harness does).
+    4. The `IdentityChangeAuthorization` docstring's claim that "a signed rotation deliberately does
+       NOT tear the roster down — the account still holds its other devices" stands for the
+       non-enrolled case and is now unreachable for the enrolled one.
+
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the
   test-integrity findings are folded at `4c0e0bf`; the four security findings were T9. **T10 (xlv)

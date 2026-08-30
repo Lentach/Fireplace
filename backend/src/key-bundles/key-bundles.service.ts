@@ -4,6 +4,7 @@ import { EntityManager, Repository } from 'typeorm';
 import { KeyBundle } from './key-bundle.entity';
 import { OneTimePreKey } from './one-time-pre-key.entity';
 import { IdentityChangeAudit } from './identity-change-audit.entity';
+import { AccountAuthorization } from './account-authorization.entity';
 import { IdentityResetService } from './identity-reset.service';
 import { verifyIdentityChangeSignature } from './identity-signature.util';
 
@@ -100,6 +101,10 @@ export class KeyBundlesService {
     private readonly otpRepo: Repository<OneTimePreKey>,
     @InjectRepository(IdentityChangeAudit)
     private readonly identityChangeAuditRepo: Repository<IdentityChangeAudit>,
+    // Read-only here, and only to answer "is this account enrolled?" for the
+    // (liv) admission gate. KeyBundlesService never writes the enrollment.
+    @InjectRepository(AccountAuthorization)
+    private readonly authorizationRepo: Repository<AccountAuthorization>,
     private readonly identityResetService: IdentityResetService,
   ) {}
 
@@ -301,6 +306,26 @@ export class KeyBundlesService {
    * Order matters: the signature path is checked first because it is cheap and
    * self-contained, and because consuming a reset ceremony is a side effect
    * that must not happen when a perfectly good signature was supplied.
+   *
+   * (liv) AN ENROLLED ACCOUNT DOES NOT GET THE SIGNATURE PATH AT ALL. §6.1's
+   * signature clause assumed the Phase 0b world where holding `ikPriv` meant
+   * being the account's only device. Multi-device deliberately broke that: the
+   * §5.1 link blob ships `ikPriv` to EVERY linked device, because a device must
+   * sign its own X3DH signed prekey under the account identity. So a
+   * compromised linked device could mint a new IK, sign the change with the old
+   * one, and take the account identity with no ceremony and no delay — wiping
+   * the primary's bundle, which the primary can then never republish (it does
+   * not hold the new `ikPriv`). That violates the §2 matrix row "Add/replace a
+   * device: L=no" and I2.
+   *
+   * The gate is here, at ADMISSION, and not on the downstream replacement
+   * enrollment: constraining that enrollment would keep list authority with the
+   * holder of `dakPriv` while leaving the ACCOUNT IDENTITY — the actual prize —
+   * with the attacker. Refusing the identity change makes every later hop
+   * unreachable instead.
+   *
+   * A non-enrolled account is unchanged: one device, one holder of `ikPriv`, so
+   * §6.1 still holds there.
    */
   private async authorizeIdentityChange(
     userId: number,
@@ -308,7 +333,17 @@ export class KeyBundlesService {
     newIdentityPublicKey: string,
     proof?: IdentityChangeProof,
   ): Promise<IdentityChangeAuthorization> {
-    if (proof?.signature && proof?.nonce) {
+    const enrolled =
+      (await this.authorizationRepo.findOne({
+        where: { userId },
+        select: { userId: true },
+      })) !== null;
+    if (enrolled && proof?.signature && proof?.nonce) {
+      this.logger.warn(
+        `[identity-lock] (liv) signature path REFUSED for an enrolled account userId=${userId} — a linked device holds ikPriv, so only a §6.2 ceremony authorizes an identity change`,
+      );
+    }
+    if (!enrolled && proof?.signature && proof?.nonce) {
       const signatureValid = verifyIdentityChangeSignature({
         storedIdentityPublicKey,
         newIdentityPublicKey,
