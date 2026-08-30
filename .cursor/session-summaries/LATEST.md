@@ -191,6 +191,33 @@ programme — **but it lives in the composer, which carries the owner's standing
 a green repro AND his explicit OK" warning, so it was NOT touched.** Worth a deflake ticket; if it
 ever fails twice on the same SHA, that is a different story.
 
+**F1 NOW HAS BEHAVIOURAL PROOF, and on-device verification ran (`b5be22f` →).** Raised in review: the
+most severe finding on the branch was covered only by a mocked `authorizationRepo.findOne`, which
+proves the branch but **not the query** — it stays green if the gate is wired to the wrong table, if
+the partial `select` misbehaves against real TypeORM, or if the entity is missing from the DataSource,
+**and that last one actually shipped in Phase 0a and only the live harness caught it.** New
+`frontend/test_e2e/enrolled_identity_lock_test.dart` enrolls an account through the real engine and
+wire, attempts a validly signed identity change, and asserts `identity_locked` plus an unchanged
+`key_bundles` row / `dakPub` / `listVersion`, zero `identity_change_audit` rows, and a served bundle
+still carrying the original identity. **Falsified against a live Postgres: reopening the gate makes
+the server answer `{success: true, identityChanged: true, deviceId: 1, nextListVersion: 2}`** — the
+attack landing AND the replacement-enrollment slot being offered, i.e. hops 2–6 of the F1 chain
+OBSERVED rather than reasoned about. The non-enrolled positive control stayed green through the
+reversion, so the probe discriminates on enrollment, not on upload health. It runs in the isolated CI
+job (renamed `e2e-reset-probe` → `e2e-isolated-probes`, budget 4 registers of 10) because
+`/auth/register` is 10/hr/IP and the shared run is already at the edge.
+**On-device 12/12 on the Pixel 7** (`emulator-5554`, `adb reverse tcp:3000 tcp:3000`,
+`--dart-define=BASE_URL=http://localhost:3000`), run because this session changed
+`lib/services/encryption/signal_stores.dart`, which is inside the destructive test's re-run mandate.
+The load-bearing one: **"rollback pin survives a REAL relaunch and still refuses an older list"** —
+(lvii) made that read THROW on failure, and no mock-store unit test can show that `initialize()` still
+works against the real Keystore and real SharedPreferences. `pre_destructive` snapshot verified
+present in `snapshot list` (79M) BEFORE running the destructive file, not after.
+⚠️ Two process notes. The backend compose service mounts `./backend:/app` and runs `start:dev`, so a
+**wire falsification needs no rebuild** — edit, wait ~12s for "Found 0 errors", run, restore. And the
+emulator boots fine while `hub`'s readiness pattern never matches its stdout: check
+`adb shell getprop sys.boot_completed` instead of trusting the readiness timeout.
+
 The last two open defects are closed. **D1 (P0):** a completed §6.2 reset left the peer unreachable
 in both directions, and the only action offered to the user destroyed the warning while repairing
 nothing — the accept gate withholds the peer's rows before Signal runs, so no candidate is ever

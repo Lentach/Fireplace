@@ -1855,6 +1855,20 @@ that is the designed outcome).
     4. The `IdentityChangeAuthorization` docstring's claim that "a signed rotation deliberately does
        NOT tear the roster down — the account still holds its other devices" stands for the
        non-enrolled case and is now unreachable for the enrolled one.
+    5. **PROVEN BEHAVIOURALLY, not only by a mock** (`frontend/test_e2e/enrolled_identity_lock_test.dart`,
+       added after the second gate round raised that the gate's only coverage was a mocked
+       `authorizationRepo.findOne`). A mocked predicate proves the BRANCH but not the QUERY: it stays
+       green if the gate is wired to the wrong table, if the partial `select` misbehaves against real
+       TypeORM, or if the entity is missing from the DataSource — the last of which shipped in Phase
+       0a and only the live harness caught it. The probe enrolls an account through the real engine
+       and wire, then attempts a validly signed identity change and asserts `identity_locked` plus an
+       unchanged `key_bundles` row, `dakPub`, `listVersion`, zero `identity_change_audit` rows, and a
+       served bundle still carrying the original identity. FALSIFIED against a live Postgres:
+       reopening the gate makes the server answer
+       `{success: true, identityChanged: true, deviceId: 1, nextListVersion: 2}` — the attack landing
+       AND the replacement-enrollment slot being offered, i.e. hops 2 through 6 of the F1 chain
+       observed end to end rather than reasoned about. The non-enrolled positive control stayed green
+       through the reversion, so the probe discriminates on enrollment and not on upload health.
 
 - **Amendment 2026-08-30 (D10, ratified BEFORE the fix; from the pre-merge gate round, finding F5):**
   - **(lv) A refused session MUST leave the ceremony that repairs it REACHABLE.** The (xxxix) gate
