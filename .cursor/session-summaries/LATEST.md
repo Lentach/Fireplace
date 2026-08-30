@@ -182,6 +182,15 @@ include a FIFTH instance of this programme's one root cause (a read→delete win
 slot); the honest statement there is that the pattern needs a compare-and-delete primitive, not a
 fifth hand-rolled guard.
 
+**⚠ A FLAKY TEST EXISTS AND IT IS NOT MINE — do not read it as a composer regression.**
+`test/widgets/input/chat_input_bar_attachment_test.dart` "video-then-caption keeps the media-first
+ordering contract" failed once on the DOCS-ONLY commit `dd56a93` (`Expected: ['VIDEO', 'TEXT'] /
+Actual: ['VIDEO']` — the caption send lost a race), having been green one commit earlier at `8ba90fa`
+with identical code. A `--failed` rerun passed. So: intermittent, pre-existing, and unrelated to this
+programme — **but it lives in the composer, which carries the owner's standing "ship nothing without
+a green repro AND his explicit OK" warning, so it was NOT touched.** Worth a deflake ticket; if it
+ever fails twice on the same SHA, that is a different story.
+
 The last two open defects are closed. **D1 (P0):** a completed §6.2 reset left the peer unreachable
 in both directions, and the only action offered to the user destroyed the warning while repairing
 nothing — the accept gate withholds the peer's rows before Signal runs, so no candidate is ever
