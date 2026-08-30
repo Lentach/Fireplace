@@ -2143,7 +2143,12 @@ that is the designed outcome).
        proof — refused on mismatch with the caller's own row, accepted when absent (a pre-(lxiv)
        client predates device linking, so the foreign-install shape cannot exist for it; new
        clients always send it). Together the two guards close the loss server-side for every
-       client shape.
+       client shape. **Scope, recorded so nobody overstates it later: the served bundle exposes
+       `registrationId` to any authenticated fetcher, so clause 1 is a CORRECTNESS gate against the
+       honest-but-displaced install (the real client always quotes its OWN minted value), not an
+       authorization control — a MODIFIED client already holding the account password could quote
+       the primary's value, but that adversary can already run the §6.2 reset outright and is
+       outside this gate's threat model.**
     2. **Client: the install stamps which device id its material was provisioned for, and refuses
        E2E duty when the session disagrees.** One durable stamp per account
        (`e2e_<uid>_material_device_v1`), moved by a single uniform rule: **every authorized

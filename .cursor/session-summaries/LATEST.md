@@ -58,6 +58,19 @@ lifecycle found **GATE2-REVOKED-DEVICE-RELOGIN-CLOBBER**, every hop re-verified 
   prod reverted to master, README retitled to Umbra, /welcome/ no-cache fix — full accounts in
   `2026-08-30-session-ios-orb-parked.md` and the deploy runbook; master's own LATEST index text was
   superseded by this file at the merge (this copy is the surviving book).
+- **FINAL (lxiv) REVIEW RAN (owner asked): one fresh reviewer pair, change-scoped.** Lens A found a
+  REAL P1 in the fix itself — the confirmed own-device id survived reconnects into the new init
+  gate, so a §6.2 rebind (and a §5.1 link reconnect) TOFU-stamped the STALE id before `socketReady`
+  delivered the fresh one, stranding the exact device the ceremony had just recovered
+  (`initializeE2E` runs on TRANSPORT connect, `connection_provider.dart:307`, always before ready).
+  Verified hop-by-hop, reproduced RED, fixed by making the confirmation per-socket
+  (`onConnect` resets `_ownDeviceIdConfirmed` — unconfirmed is the documented-safe (xii) state),
+  falsified (only the strand test reddens), flutter now **1659/10sk**. Lens B (defensively
+  re-framed after two content-filter refusals) verdict **SHIP**: every `key_bundles`/`one_time_pre_keys`
+  writer is guarded or inherently safe; two P3s folded — the spec now records that the served
+  `registrationId` is public so clause 1 is a CORRECTNESS gate, not an authorization control (a
+  modified same-account client is outside the gate's threat model — it can already run a §6.2
+  reset), and the OTP DTO bound tightened to `@IsPositive`.
 - Session start: branch was 1 docs commit behind master → merged clean (`5efd223`), PR #144
   MERGEABLE, CI green pre-existing. **The only open item is again the owner's merge decision.**
 

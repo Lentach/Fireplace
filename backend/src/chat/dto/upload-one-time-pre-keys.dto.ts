@@ -67,6 +67,6 @@ export class UploadOneTimePreKeysDto {
    */
   @IsOptional()
   @IsInt()
-  @Min(0)
+  @IsPositive()
   registrationId?: number;
 }

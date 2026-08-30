@@ -2115,6 +2115,16 @@ class EncryptionProvider extends ChangeNotifier {
   /// (CLAUDE.md gotcha: `_initializeE2E()` skips when `_e2eInitialized = true`).
   void onConnect(bool isReconnect) {
     _error = null;
+    // (lxiv) final-review P1: the confirmed own-device id is a PER-SOCKET
+    // fact — the new socket's id is unknown until ITS socketReady, and after a
+    // §6.2 rebind or §5.1 link reconnect it is guaranteed DIFFERENT. Carrying
+    // the old confirmation into the transport-connect init gate TOFU-stamped
+    // the just-cleared material slot with the STALE id, and the fresh id then
+    // tripped the mismatch gate — stranding the exact device the ceremony had
+    // just recovered. Unconfirmed is the documented-safe state between connect
+    // and ready (amendment (xii)): sends behave as device 1 and own-row
+    // scoping defers, costing nothing for the ~1 RTT until socketReady.
+    _ownDeviceIdConfirmed = false;
     if (!isReconnect) {
       _e2eInitialized = false;
       _decryptedContentCache.clear();

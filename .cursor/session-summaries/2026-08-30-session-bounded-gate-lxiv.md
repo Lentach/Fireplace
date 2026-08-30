@@ -96,3 +96,15 @@ pushed (a CONFLICTING PR gets zero CI scheduling — the 08-19 blindness lesson)
   (`device_material_conflict`, row untouched). Full wire run against a live backend: **44/6sk
   green** — the (lxiv) refusal is now OBSERVED on the wire, not only unit-proven. (Ops note: a bare
   `docker compose restart backend` wedged nest again, the 08-22b trap; `down && up` cured it.)
+- **FINAL REVIEW ROUND (owner-requested, change-scoped).** Lens A (correctness): SHIP WITH FIXES —
+  one REAL P1 in (lxiv)'s own client half: the confirmed own-device id survived reconnects into the
+  init gate, so the §6.2 rebind / §5.1 link reconnect TOFU-stamped the STALE id before socketReady
+  delivered the fresh one (transport-connect `initializeE2E` always wins that race,
+  `connection_provider.dart:307`) — stranding the recovered device. Verified first-hand, reproduced
+  RED (`device_material_mismatch_test.dart` "re-homing RECONNECT ... final-review P1"), fixed by
+  resetting `_ownDeviceIdConfirmed` on EVERY `onConnect` (per-socket fact; unconfirmed is the (xii)
+  documented-safe state), falsified one-way-red, flutter 1659/10sk. Lens B: first two dispatches
+  content-filtered (adversarial wording — the standing trap); defensively re-framed run returned
+  **SHIP** with full writer-coverage audit (every bundle/OTP writer guarded or inherently safe) and
+  two P3s, both folded: spec now records the served-`registrationId`-is-public scope limit of
+  clause 1, and the OTP DTO `registrationId` bound tightened `@Min(0)`→`@IsPositive`.
