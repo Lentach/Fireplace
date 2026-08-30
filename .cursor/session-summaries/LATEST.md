@@ -218,6 +218,31 @@ present in `snapshot list` (79M) BEFORE running the destructive file, not after.
 emulator boots fine while `hub`'s readiness pattern never matches its stdout: check
 `adb shell getprop sys.boot_completed` instead of trusting the readiness timeout.
 
+➡ **FULL SELF-CONTAINED HANDOFF: `2026-08-30-session-pre-merge-gate.md`.** Written for a reader with
+ZERO context — the merge rule and its data, all thirteen amendments with their falsification REDs, the
+seven residuals, every environment gotcha, the register-bucket constraint, the CI job map, the
+falsification harness pattern, the reason-code taxonomy, and the four hollow tests it caught. **Start
+there, not here.**
+
+⚠ **A CORRECTION I OWE THE RECORD, because the owner was deciding on it.** I told him round 2 found
+"zero findings in code written before today". **That was wrong.** (lx)'s vulnerable code is
+PRE-EXISTING — `staleLists` emitting the full signed authorization on the send path
+(`chat-message.service.ts:211-245`) and `envelopeRefusal` being skipped for legacy sends (`:341`).
+Round 1's three reviewers reviewed the whole programme and **missed it entirely**; only my incomplete
+guard was new. So the accurate statement is: **the old code has survived two reviews for everything
+EXCEPT the send path, and that exception was a real normal-user, honest-server, permanent-message-loss
+bug.** That WEAKENS any convergence claim and strengthens the case for one bounded final check rather
+than a merge on vibes. Do not repeat the overstatement.
+
+**THE OPEN QUESTION IS THE MERGE RULE, NOT MORE WORK.** Owner, verbatim: *"how do we merge this if
+every check there is a critical errors"* — a fair objection to an unbounded loop. "Zero findings" is
+not reachable, because most findings are of the form "IF someone controlled the server, they could do
+X", which is the correct bar for E2E messaging and never returns nothing. Proposed gate instead: **can
+a normal user, with an honest server, lose a message, lose access, or get permanently stuck?** Round 1
+said yes four ways; round 2 said yes one way; everything now outstanding says no. He has NOT yet chosen
+between (A) one bounded review asking ONLY that question, (B) merge now and fix residuals on master,
+or (C) abandon. **A was recommended. Do not run a third open-ended round.**
+
 The last two open defects are closed. **D1 (P0):** a completed §6.2 reset left the peer unreachable
 in both directions, and the only action offered to the user destroyed the warning while repairing
 nothing — the accept gate withholds the peer's rows before Signal runs, so no candidate is ever
