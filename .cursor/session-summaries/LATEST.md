@@ -54,6 +54,10 @@ lifecycle found **GATE2-REVOKED-DEVICE-RELOGIN-CLOBBER**, every hop re-verified 
   REFUSED (`device_material_conflict`, row untouched). Full wire run against a live backend:
   **44/6sk green** — the refusal is OBSERVED on the wire. Ops: a bare
   `docker compose restart backend` wedged nest (the 08-22b trap); `down && up` cured it.
+- **Master-line work merged in the same day (docs-only, no code):** iOS orb parked + PR #151 draft +
+  prod reverted to master, README retitled to Umbra, /welcome/ no-cache fix — full accounts in
+  `2026-08-30-session-ios-orb-parked.md` and the deploy runbook; master's own LATEST index text was
+  superseded by this file at the merge (this copy is the surviving book).
 - Session start: branch was 1 docs commit behind master → merged clean (`5efd223`), PR #144
   MERGEABLE, CI green pre-existing. **The only open item is again the owner's merge decision.**
 
