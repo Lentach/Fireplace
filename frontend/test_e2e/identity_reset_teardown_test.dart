@@ -399,20 +399,39 @@ void main() {
           // recovering device re-enrolls, the surviving row still names the
           // devices this teardown just revoked and omits the id it allocated,
           // and the DAK that signed it died with the lost devices — so
-          // `updateDeviceList` is not open to this client. A peer that
-          // re-TOFUs the new identity cannot verify that row at all.
-          final orphaned = await recovering!.fetchDeviceList(carol.userId);
-          expect(
-            () => DeviceListCache().adopt(
-              userId: carol.userId,
-              authorization:
-                  orphaned['authorization'] as Map<String, dynamic>?,
-              tofuIdentityKeyBase64: freshIdentity,
-            ),
-            throwsA(isA<DeviceListVerificationException>()),
+          // `updateDeviceList` is not open to this client.
+          //
+          // AMENDMENT (l) — this used to FETCH that row and assert it does not
+          // verify under the new identity. The server no longer serves it at
+          // all. (xlv) clause 2 already withheld the roster for the
+          // never-enrolled shape; (l) widened that to the SURVIVING-row shape
+          // for the reason finding F3 proved: the row still names the pre-reset
+          // devices LIVE, so a peer holding the pre-reset anchor VERIFIES that
+          // dead roster — it was signed by the very key it pinned — commits
+          // with a null envelope, and the loss is silent, permanent and
+          // bidirectional. Withholding downgrades that to a visible send
+          // failure. Silence is fail-closed on the client (I5: "cannot verify",
+          // never "no devices"), matching the entitlement and error paths.
+          //
+          // The property the old fetch asserted still holds and is still
+          // proven, deductively and by stronger evidence than a wire read: the
+          // enrollment row is byte-identical to the pre-reset one (asserted
+          // immediately above) while the served identity is the NEW epoch
+          // (asserted at the key_bundles check), so the surviving row is signed
+          // by a key that is no longer the account's and cannot verify under
+          // it. If the reset had NOT changed the identity, that key_bundles
+          // assertion would already have failed.
+          recovering!.events.discard('deviceList');
+          recovering!.socketService.socket!.emit('getDeviceList', {
+            'userId': carol.userId,
+          });
+          await recovering!.events.none(
+            'deviceList',
+            within: const Duration(seconds: 4),
             reason:
-                'the orphaned row must not verify under the new identity — if '
-                'it did, the reset would not have changed the identity at all',
+                'a surviving enrollment row names only revoked devices, and a '
+                'peer with the pre-reset anchor would VERIFY that dead roster '
+                'and lose every message in both directions ((l))',
           );
 
           // The server names the version the replacement must carry, because
