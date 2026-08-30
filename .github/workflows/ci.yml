@@ -259,26 +259,36 @@ jobs:
         if: always()
         run: docker compose down   # no -v: CLAUDE.md 4 bans that flag; do not normalise it
 
-  # U7. The §6.2 reset probe is the ONLY proof that a completed ceremony re-keys
-  # strictly within `(identity, deviceId)` (falsification 12) and that the roster
-  # teardown runs — and until now nothing ran it, so that proof existed only on a
-  # developer's machine.
+  # U7 + (liv). The isolated probes: wire tests that need a FRESH `/auth/register`
+  # bucket and so cannot live in the shared `test_e2e` run.
   #
-  # IT MUST BE ITS OWN JOB WITH ITS OWN STACK. `/auth/register` is 10 per HOUR
-  # per IP, the limiter is in-memory in the backend process, and every account in
-  # `test_e2e/` shares that one bucket — the default run already spends it to the
-  # edge (measured 2026-08-22: a third account pushed `takeover_alarm_test.dart`
-  # into ThrottlerException). So this canNOT be a `--dart-define` bolted onto
-  # `e2e-wire`; it needs a FRESH backend, which is what resets the bucket. Never
-  # raise the production cap to fit a test.
+  #  * The §6.2 reset probe is the ONLY proof that a completed ceremony re-keys
+  #    strictly within `(identity, deviceId)` (falsification 12) and that the
+  #    roster teardown runs. Until U7 nothing ran it, so that proof existed only
+  #    on a developer's machine.
+  #  * The (liv) enrolled-identity-lock probe is the only BEHAVIOURAL proof of
+  #    finding F1 — the most severe finding on this branch. Its other coverage
+  #    mocks `authorizationRepo.findOne`, which proves the branch but not the
+  #    QUERY: it would stay green if the gate were wired to the wrong table, if
+  #    the partial `select` misbehaved against real TypeORM, or if the entity were
+  #    missing from the DataSource — the last of which actually shipped in Phase
+  #    0a and only the live harness caught it.
   #
-  # The ceremony is also DESTRUCTIVE — it replaces the account identity, revokes
-  # every device and burns a device id forward — so it needs an account nothing
-  # else depends on. A dedicated stack gives it exactly that.
-  e2e-reset-probe:
-    name: E2E reset teardown probe
+  # THEY MUST BE OFF `e2e-wire`. `/auth/register` is 10 per HOUR per IP, the
+  # limiter is in-memory in the backend process, and every account in `test_e2e/`
+  # shares that one bucket — the default run already spends it to the edge
+  # (measured 2026-08-22: a third account pushed `takeover_alarm_test.dart` into
+  # ThrottlerException). A fresh backend is what resets it. Never raise the
+  # production cap to fit a test.
+  #
+  # Budget on THIS stack: reset probe 2 registers + lock probe 2 = 4 of 10.
+  # Both probes are also destructive or state-heavy (the ceremony replaces the
+  # account identity, revokes every device and burns a device id forward), so
+  # they need accounts nothing else depends on. A dedicated stack gives them that.
+  e2e-isolated-probes:
+    name: E2E isolated probes
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -338,6 +348,21 @@ jobs:
             --dart-define=RESET_PROBE=true | tee probe.log
           if ! grep -Eq '(^|[^0-9])[1-9][0-9]* tests? passed|\+[1-9][0-9]*[ :].*All tests passed' probe.log; then
             echo "::error::the reset probe reported no PASSING test — the RESET_PROBE define is not taking effect, so this job proves nothing"
+            exit 1
+          fi
+
+      # Same skip-gate and therefore the same silent-green hazard as above: the
+      # (liv) group is gated on bool.fromEnvironment('ENROLLED_LOCK_PROBE'), so
+      # the guard is what stops a dropped define reporting success.
+      - name: Run the enrolled identity-lock probe ((liv), finding F1)
+        working-directory: frontend
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter test test_e2e/enrolled_identity_lock_test.dart \
+            --dart-define=ENROLLED_LOCK_PROBE=true | tee lock-probe.log
+          if ! grep -Eq '(^|[^0-9])[1-9][0-9]* tests? passed|\+[1-9][0-9]*[ :].*All tests passed' lock-probe.log; then
+            echo "::error::the enrolled-lock probe reported no PASSING test — the ENROLLED_LOCK_PROBE define is not taking effect, so F1 is unproven"
             exit 1
           fi
 
