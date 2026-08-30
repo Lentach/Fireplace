@@ -37,9 +37,19 @@ FrozenResumeAction decideOnFrozenResume({
   required bool isVisible,
   required int? lastForcedReloadAtMs,
   required int nowMs,
+  bool nativeSurfaceActive = false,
   int minIntervalMs = kFrozenReloadMinIntervalMs,
 }) {
   if (!wasFrozen) return FrozenResumeAction.softRecover;
+  if (nativeSurfaceActive) {
+    // The freeze was caused by OUR OWN full-screen native surface (the
+    // attachment camera/file dialog backgrounds the tab). The user was away
+    // seconds, not minutes, and a reload would destroy the pending
+    // <input type=file> and its picked bytes (emulator-proven 2026-08-21:
+    // the camera door returned to a cold-booted chat list). Soft recovery
+    // re-syncs the socket; the picker Future stays alive to deliver the file.
+    return FrozenResumeAction.softRecover;
+  }
   if (lastForcedReloadAtMs != null &&
       nowMs - lastForcedReloadAtMs < minIntervalMs) {
     // Loop guard tripped — a second freeze/resume within the window rides the
@@ -85,6 +95,7 @@ class FrozenPageReloadState {
     required bool isVisible,
     required int? lastForcedReloadAtMs,
     required int nowMs,
+    bool nativeSurfaceActive = false,
     int minIntervalMs = kFrozenReloadMinIntervalMs,
   }) {
     final action = decideOnFrozenResume(
@@ -92,6 +103,7 @@ class FrozenPageReloadState {
       isVisible: isVisible,
       lastForcedReloadAtMs: lastForcedReloadAtMs,
       nowMs: nowMs,
+      nativeSurfaceActive: nativeSurfaceActive,
       minIntervalMs: minIntervalMs,
     );
     _frozen = false;

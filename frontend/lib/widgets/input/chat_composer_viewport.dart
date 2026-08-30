@@ -170,6 +170,11 @@ class _ChatComposerViewportState extends State<ChatComposerViewport>
         if (raw == 0 &&
             droppedFrom >= kMinKeyboardInset &&
             !composerBottomPanelPinned.value &&
+            // A native file surface (picker sheet / OS chooser / iOS popover)
+            // caused this drop — collapse silently, never ease (the surface
+            // covers or dims the composer; motion behind it is the owner's
+            // "input drops a little" report).
+            !composerNativePickerActive.value &&
             !MediaQuery.disableAnimationsOf(context)) {
           _dismissSlideFrom = droppedFrom;
           _dismissSlideController.forward(from: 0);

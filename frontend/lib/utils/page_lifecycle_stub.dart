@@ -8,6 +8,7 @@ StreamSubscription<dynamic>? registerPageShowRecoveryListener(
 
 StreamSubscription<dynamic>? installFreezeReloadGuard({
   required void Function() onFallbackRecover,
+  bool Function()? suppressReload,
 }) => null;
 
 bool consumeFrozenReloadMarker() => false;

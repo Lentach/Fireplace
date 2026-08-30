@@ -88,6 +88,3 @@ Entries are newest-first. Each one links its dated file, which holds the full ac
 
 
 
-
-
-
