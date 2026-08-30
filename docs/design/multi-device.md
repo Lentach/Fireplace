@@ -1990,6 +1990,74 @@ that is the designed outcome).
     attempt is in flight. The durable intent needs no change — it was already correct, and it is
     what makes the NEXT process safe; (lix) is only about this one.
 
+- **Amendment 2026-08-30 (D15, ratified BEFORE the fixes; from the SECOND pre-merge gate round, which
+  reviewed (l)–(lix) themselves and found three P1s in them):**
+  - **(lx) The replacement-owed refusal MUST live on the SEND path, not only on `getDeviceList`.**
+    (l) is correct where it sits and sits on the door the send path never opens. `_resolveFanOut`
+    deliberately does NOT fetch (`messaging_provider.send.dart:36-61`) — the memory-only cache is
+    empty after every reload — so the first send of every session goes out in the LEGACY shape and is
+    answered by the server's bounce, not by the guarded read. That bounce, `deviceListStale`, ships
+    the account's FULL signed record — `dakPub`, `enrollmentSig`, `enrollmentCreatedAt`,
+    `listCanonical`, `listSignature` — with no guard at all (`chat-message.service.ts:211-245`,
+    emitted at `:362-378` and again on the edit path at `:1062-1078`). `pendingReplacementVersion` has
+    exactly two production call sites, `chat-device-list.service.ts:168` and
+    `chat-key-exchange.service.ts:328`; it is never consulted on the send path. So F3's loss is NOT
+    closed: the peer verifies the orphaned roster under its PRE-RESET anchor — successfully, because
+    that enrollment was signed by the very key it pinned, which is (l)'s own premise — adopts the dead
+    roster, and re-sends into it. Where the surviving roster's only live entry is device 1 the
+    envelope passes the liveness check (device 1 is exempt, `:183-191`), the row commits with a null
+    ciphertext, and the recovering device reads `none_for_device` forever while the sender sees
+    success.
+    A SECOND, quieter variant needs no bounce at all: for a NEVER-enrolled account post-reset,
+    `envelopeRefusal` is skipped entirely for a legacy send (`if (isNewModel)`, `:341`) and
+    `staleLists` returns EMPTY because neither party has a row (`if (!auth) continue`, `:227`), so the
+    send commits straight to the revoked device 1. That is the exact shape (xlv) clause 2 was written
+    for, and the protection is never consulted.
+    So the refusal moves to the write path: **before any persistence, and for BOTH send shapes, a send
+    is REFUSED when either party owes a replacement enrollment.** Refusing both directions is
+    deliberate — a recipient that owes one cannot receive, and a sender that owes one cannot be
+    verified by the peer's accept gate, so both are silent loss. The window is short: the offer rides
+    `keyBundleUploaded` on every authenticated upload and the client re-uploads on every connect.
+  - **(lxi) The ACCOUNT anchor MUST WIN over a per-device row, reversing (lvi)'s scan order.** (lvi)
+    kept the per-device scan first and used the account anchor only as a fallback. That is backwards,
+    and the reason it was ordered that way is OBSOLETE rather than merely debatable: (xxxix) preferred
+    the scan because `peerTofuIdentityBase64` was then a hardcoded `(peer, device 1)` slot, and
+    (xlvi) has since made it ACCOUNT-scoped. Meanwhile the two sources have opposite trust
+    properties. The account anchor moves ONLY on human acknowledgement
+    (`promotePendingAccountIdentity`). A per-device row is overwritten unconditionally by
+    `saveIdentity` from inside `isTrustedIdentity` (`signal_stores.dart:582`), which is TOFU and
+    accepts any key an admitted inbound ciphertext presents. So the scan let a server-delivered
+    ciphertext CHOOSE the expectation that the (lvi) gate then compares the served bundle against: the
+    server poisons `(P, device 2)`'s row, triggers a rebuild of `(P, device 1)`, and the gate compares
+    the served key to the attacker's own key and BUILDS. A banner stands, but the send is not refused
+    — the precise disposition (xxxix) and (lvi) both reject in writing. It also contradicts
+    `isTrustedIdentity`'s own stated principle three lines above the write: "a forged key can raise a
+    VISIBLE alarm but can never quietly become the thing the I7 chain trusts."
+    So: consult the account anchor FIRST; the per-device scan answers only when no account anchor
+    exists. `skipDeviceId` continues to apply to the scan alone. A legitimate account-wide rotation
+    now refuses and surfaces instead of silently building, which is (lvi)'s ruling applied
+    consistently rather than a new trade.
+  - **(lxii) A failed anchor READ is not "no anchor".** `peerTofuIdentityBase64` returns null both
+    when nothing is stored and when the read THREW, and a null expectation is treated as genuine first
+    contact and stays trusting. So one transient storage error silently restores the vacuous gate for
+    that send. Its own comment says "fail closed at the caller", which is true for
+    `DeviceListCache.adopt` (it raises `no_tofu_identity`) and false for this caller. This is the same
+    polarity error (lvii) just ruled on for the persisted pin, and the same file already answers the
+    analogous question the other way in `_hasPinnedAccountIdentity` ("uncertainty answers YES on
+    purpose"). The anchor read used by the gate MUST distinguish the two and let a read failure
+    propagate out of `ensureSession`, where (lix) already restores the rebuild intent and (lv) makes
+    the failure visible.
+  - **(lxiii) The (lv) staging MUST NOT clobber a genuine candidate.** (xlvii) clause 3 stages a
+    served key only when the slot is empty, and says why: the slot is the evidence a human will
+    compare. (lv)'s refusal path stages UNCONDITIONALLY, so a candidate recorded from a real inbound
+    ciphertext is overwritten by a key the server just served — the "candidate moves under the open
+    dialog" shape (xlix) clause 2 and (lviii) spent two amendments preserving, reached from the writer
+    side. It also hands a hostile server a durable ceremony DoS: vary the served key on every
+    `fetchPreKeyBundle` and every confirmation loses its compare-and-swap, so the warning never
+    clears and the only door out of the (lvi) refusal stays shut. Fail-closed, so P2, but it defeats
+    the mechanism (lv) exists to guarantee. The staging takes the same guard as (xlvii) clause 3:
+    write only when the slot is EMPTY or already holds exactly this key.
+
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the
   test-integrity findings are folded at `4c0e0bf`; the four security findings were T9. **T10 (xlv)

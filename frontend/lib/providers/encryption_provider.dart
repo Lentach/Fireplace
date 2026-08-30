@@ -295,18 +295,42 @@ class EncryptionProvider extends ChangeNotifier {
   /// very address being built: on a REBUILD it already holds the old key, and
   /// comparing the bundle to itself would make the check vacuous while also
   /// blocking the legitimate account-wide key rotation that the same-address
-  /// alarm exists to report.
+  /// alarm exists to report. It does NOT apply to the account anchor, which is
+  /// account-scoped by (xlvi) and so has no device to skip.
   ///
-  /// It does NOT apply to the (lvi) account-anchor fallback, which is reached
-  /// precisely when the scan resolves nothing — a cold cache, or a peer whose
-  /// only live device is the one being built. Both are default states, and
-  /// returning null there left the gate unenforced for almost every send. A
-  /// null return now means genuine first contact with the ACCOUNT, which is
-  /// irreducibly TOFU.
+  /// A null return means genuine first contact with the ACCOUNT, which is
+  /// irreducibly TOFU. A failed READ is not an absence and throws ((lxii)).
   Future<String?> _accountIdentityAnchor(
     int recipientId, {
     required int skipDeviceId,
   }) async {
+    // (lxi) THE ACCOUNT ANCHOR WINS. (lvi) had this backwards — it scanned
+    // per-device rows first and used the anchor only as a fallback — and the
+    // reason for that order is OBSOLETE, not merely arguable: (xxxix) preferred
+    // the scan because this helper was then a hardcoded `(peer, device 1)` slot,
+    // and (xlvi) has since made it account-scoped.
+    //
+    // The two sources have opposite trust properties. The account anchor moves
+    // ONLY on human acknowledgement. A per-device row is overwritten
+    // unconditionally by `saveIdentity` from inside `isTrustedIdentity`, which
+    // is TOFU and accepts any key an admitted inbound ciphertext presents. So
+    // scanning first let a server-delivered ciphertext CHOOSE the expectation
+    // this gate then compares the served bundle against — poison `(P, 2)`,
+    // trigger a rebuild of `(P, 1)`, and the gate compares the attacker's key
+    // to the attacker's key and BUILDS, with only a dismissible banner. That is
+    // the disposition (xxxix) and (lvi) both reject in writing, and it
+    // contradicts `isTrustedIdentity`'s own rule that a forged key "can never
+    // quietly become the thing the I7 chain trusts".
+    final anchor = await _encryptionService.peerAccountAnchorForGate(
+      recipientId,
+    );
+    if (anchor != null) return anchor;
+
+    // No account anchor: fall back to a per-device row. Reached for a peer this
+    // device knew before (xlvi) made the anchor account-scoped, and for one
+    // whose anchor never landed. Weaker, but strictly better than no
+    // expectation at all — which is what made the gate vacuous for almost
+    // every send before (lvi).
     final verified = cachedDeviceList(recipientId);
     final candidates = <int>[
       for (final device in verified?.devices ?? const [])
@@ -319,21 +343,7 @@ class EncryptionProvider extends ChangeNotifier {
       );
       if (identity != null) return identity;
     }
-    // (lvi) The per-device scan above resolves NOTHING in two states that are
-    // the default rather than the edge: any cold cache (the verified-list cache
-    // is memory-only, so every first send after launch lands here) and any
-    // single-live-device peer (notEnrolled() synthesises device 1 alone, which
-    // is the very device being built and is skipped). Returning null there made
-    // the §3 account-wide binding vacuous for almost every send.
-    //
-    // Fall back to the ACCOUNT anchor, which is account-scoped by (xlvi) and is
-    // the same key the I7 device-list chain already anchors on. `skipDeviceId`
-    // deliberately does NOT apply: it exists so a REBUILD does not compare an
-    // address to itself, which is a per-device concern. On a legitimate
-    // account-wide rotation the account anchor still holds the old key, so the
-    // offer is refused and SURFACED ((lv)) instead of reported-and-built —
-    // the fail-closed trade (lvi) takes deliberately.
-    return _encryptionService.peerTofuIdentityBase64(recipientId);
+    return null;
   }
 
   /// Whether the session for [recipientId]'s [deviceId] should be force-rebuilt.

@@ -194,6 +194,52 @@ export class ChatMessageService {
   }
 
   /**
+   * Whether this send must be refused because a party owes a replacement
+   * enrollment (spec §12 amendment (lx)), or null when it may proceed.
+   *
+   * (l) put this refusal on `getDeviceList`. The send path never opens that
+   * door: `_resolveFanOut` deliberately does not fetch, and the client's
+   * verified-list cache is memory-only, so the first send of every session goes
+   * out in the LEGACY shape and is answered by the `deviceListStale` bounce —
+   * which shipped the account's full signed record with no guard at all. The
+   * peer then VERIFIES that orphaned roster (it was signed by exactly the key
+   * the peer pinned, which is (l)'s own premise), adopts a roster of revoked
+   * devices, and re-sends into it. Where the only live entry is device 1 the
+   * envelope passes the liveness check, the row commits with a null ciphertext,
+   * and the recovering device reads `none_for_device` forever while the sender
+   * is shown success.
+   *
+   * A never-enrolled account post-reset is quieter still: `envelopeRefusal` is
+   * skipped for a legacy send and `staleLists` contributes nothing for a party
+   * with no row, so nothing bounces and the send commits to the revoked device
+   * 1. So this check runs for BOTH shapes and BEFORE any persistence.
+   *
+   * BOTH directions are refused. A recipient that owes a replacement cannot
+   * receive; a sender that owes one cannot be verified by the peer's accept
+   * gate. Both are silent, permanent, bidirectional loss. The window is short —
+   * the replacement offer rides `keyBundleUploaded` on every authenticated
+   * upload and the client re-uploads on every connect.
+   */
+  private async replacementOwedRefusal(
+    senderId: number,
+    recipientId: number,
+  ): Promise<string | null> {
+    // Recipient first: it is the party whose freshness decides delivery.
+    if (
+      (await this.deviceListService.pendingReplacementVersion(recipientId)) !==
+      null
+    ) {
+      return 'recipient_device_list_replacement_owed';
+    }
+    if (
+      (await this.deviceListService.pendingReplacementVersion(senderId)) !== null
+    ) {
+      return 'sender_device_list_replacement_owed';
+    }
+    return null;
+  }
+
+  /**
    * The parties whose device list the sender must (re)learn before this send
    * can be delivered, recipient first (spec §5.2 freshness layer 1 + §12
    * amendments (vi)/(x)).
@@ -349,6 +395,19 @@ export class ChatMessageService {
         client.emit('error', { message: refusal });
         return;
       }
+    }
+
+    // (lx) Shape-independent, and BEFORE the stale bounce below: that bounce
+    // hands out the very orphaned record (l) refuses to serve on
+    // `getDeviceList`, and a legacy send to a never-enrolled post-reset account
+    // bounces nothing at all and commits straight to the revoked device 1.
+    const owed = await this.replacementOwedRefusal(senderId, send.recipientId);
+    if (owed) {
+      this.logger.warn(
+        `[send] REFUSED replacement owed senderId=${senderId} recipientId=${send.recipientId} reason=${owed}`,
+      );
+      client.emit('error', { message: owed });
+      return;
     }
 
     // A LEGACY single-ciphertext send reaches device 1 only. That is correct
@@ -1057,6 +1116,17 @@ export class ChatMessageService {
         client.emit('editMessageFailed', { messageId, reason: refusal });
         return;
       }
+    }
+
+    // (lx) Same refusal as the send path, on the edit path's own event: the
+    // bounce below ships the orphaned signed record too.
+    const owed = await this.replacementOwedRefusal(userId, otherUserId);
+    if (owed) {
+      this.logger.warn(
+        `[edit] REFUSED replacement owed senderId=${userId} otherUserId=${otherUserId} messageId=${messageId} reason=${owed}`,
+      );
+      client.emit('editMessageFailed', { messageId, reason: owed });
+      return;
     }
 
     if (envelopes.length > 0) {

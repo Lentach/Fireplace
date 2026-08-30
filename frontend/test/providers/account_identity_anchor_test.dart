@@ -1,3 +1,8 @@
+import 'dart:convert';
+
+import 'package:fireplace/services/device_list/device_authority_engine.dart';
+import 'package:fireplace/services/device_list/device_list_canonical.dart';
+import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
 // F4 / KA-02 (spec §12 amendment (lvi)): the (xxxix) expected-identity gate was
 // VACUOUS in the two states that are the default rather than the edge.
 //
@@ -50,6 +55,10 @@ void main() {
   /// because a session already exists.
   late int bundleFetches;
 
+  /// The authorization the stubbed server answers `getDeviceList` with, or null
+  /// to leave the verified-list cache COLD (the default every launch begins in).
+  Map<String, dynamic>? servedAuthorization;
+
   Map<String, dynamic> flatBundleFrom(EncryptionService source) {
     final upload = source.getKeysForUpload();
     expect(upload, isNotNull);
@@ -73,6 +82,7 @@ void main() {
     await mallory.initialize(99, checkServerBundleExists: () async => false);
     served = peer;
     bundleFetches = 0;
+    servedAuthorization = null;
 
     enc = EncryptionProvider();
     enc.setEmitCallback((event, data) {
@@ -87,8 +97,15 @@ void main() {
           'bundle': flatBundleFrom(served),
         });
       }
-      // No 'getDeviceList' handler on purpose: the verified-list cache stays
-      // EMPTY, which is the cold-cache state every launch begins in.
+      if (event == 'getDeviceList') {
+        // Answered ONLY when a test opts in. Left null the cache stays EMPTY,
+        // which is the cold-cache state every launch begins in.
+        if (servedAuthorization == null) return;
+        enc.onDeviceList({
+          'userId': peerId,
+          'authorization': servedAuthorization,
+        });
+      }
     });
     await enc.initializeE2E(ownUserId);
   });
@@ -266,6 +283,7 @@ void main() {
       );
     });
 
+
     test('POSITIVE CONTROL: a SUCCESSFUL rebuild consumes the intent once',
         () async {
       await pinPeerHonestly();
@@ -277,6 +295,167 @@ void main() {
       // The restore must not re-arm a rebuild that succeeded, or every send
       // would rebuild forever.
       expect(enc.needsSessionRebuild(peerId), isFalse);
+    });
+  });
+
+  // (lxi)/(lxii)/(lxiii), from the SECOND gate round, which reviewed (lv)/(lvi)
+  // themselves. The gate is only as good as the value it compares against, and
+  // (lvi) resolved that value from the WEAKER of two sources.
+  group('(lxi) the ACCOUNT anchor wins over a per-device row', () {
+    test('a poisoned per-device row cannot arm the gate', () async {
+      // The peer's REAL pair, so the enrollment that signs their device list is
+      // made by the same identity their served bundle carries (§3: one IK per
+      // account). Overriding the bundle's identityPublicKey instead would
+      // invalidate its signed-prekey signature and fail for the wrong reason.
+      final peerIdentity = await peer.identityKeyPairForLinking();
+      final peerIdentityB64 =
+          flatBundleFrom(peer)['identityPublicKey'] as String;
+      final engine = DeviceAuthorityEngine();
+      final enrollment = engine.mintEnrollment(
+        userId: peerId,
+        identity: peerIdentity,
+        createdAtMs: 1234567890,
+      );
+      final signed = engine.signList(
+        DeviceList(
+          userId: peerId,
+          version: 1,
+          devices: const [
+            DeviceListEntry(deviceId: 1, platform: 'web', addedAtMs: 1000),
+            DeviceListEntry(deviceId: 2, platform: 'web', addedAtMs: 2000),
+          ],
+        ),
+      );
+
+      // 1. Pin the peer's REAL key as the account anchor, the honest way.
+      await enc.encryptionService.buildSession(
+        peerId,
+        flatBundleFrom(peer),
+        expectedIdentityBase64: null,
+      );
+      expect(
+        await enc.encryptionService.peerTofuIdentityBase64(peerId),
+        peerIdentityB64,
+      );
+
+      // 2. Cache a genuinely VERIFIED list naming devices 1 and 2, so the
+      //    per-device scan has a candidate to find at all. Driven through the
+      //    real request/answer round trip: onDeviceList completes a pending
+      //    fetch, so an unsolicited push caches nothing.
+      servedAuthorization = {
+        'dakPub': enrollment['dakPub'],
+        'enrollmentSig': enrollment['enrollmentSig'],
+        'enrollmentCreatedAt': enrollment['createdAt'],
+        'listVersion': 1,
+        'listSignature': signed['listSignature'],
+        'listCanonical': signed['listCanonical'],
+      };
+      final verified = await enc.getVerifiedDeviceList(peerId);
+      expect(
+        verified.liveDeviceIds,
+        [1, 2],
+        reason: 'the scan needs a cached list, or this proves nothing',
+      );
+      expect(enc.cachedDeviceList(peerId), isNotNull);
+
+      // 3. POISON the (peer, device 2) row through the production TOFU path:
+      //    a build with no expectation saves whatever key arrives. This is
+      //    what an admitted inbound ciphertext does via isTrustedIdentity.
+      await enc.encryptionService.buildSession(
+        peerId,
+        flatBundleFrom(mallory),
+        deviceId: 2,
+        expectedIdentityBase64: null,
+      );
+      expect(
+        await enc.encryptionService.peerIdentityAt(peerId, 2),
+        flatBundleFrom(mallory)['identityPublicKey'],
+        reason: 'the per-device row is now the attacker key',
+      );
+      // The ACCOUNT anchor must NOT have moved — only a human moves it.
+      expect(
+        await enc.encryptionService.peerTofuIdentityBase64(peerId),
+        peerIdentityB64,
+      );
+
+      // 4. Now rebuild device 1 while the server serves the attacker key.
+      //    Pre-(lxi) the scan skipped device 1, found the poisoned device-2
+      //    row, and compared the attacker's key to itself — a silent BUILD.
+      served = mallory;
+      enc.markSessionRebuild(peerId);
+      await expectLater(
+        enc.ensureSession(peerId),
+        throwsA(isA<AccountIdentityMismatch>()),
+        reason: 'the human-gated anchor must decide, not a TOFU-written row',
+      );
+    });
+
+    test('POSITIVE CONTROL: the per-device row still answers with NO anchor',
+        () async {
+      // A peer known only from a per-device row (pre-(xlvi) storage, or an
+      // anchor that never landed) must still get an expectation rather than
+      // none — that fallback is what (lvi) exists for.
+      expect(
+        await enc.encryptionService.peerTofuIdentityBase64(peerId),
+        isNull,
+      );
+      await expectLater(enc.ensureSession(peerId), completes);
+      expect(enc.peersWithChangedIdentity, isEmpty);
+    });
+  });
+
+  group('(lxii) a failed anchor READ is not an absence', () {
+    test('the gate accessor THROWS rather than answering null', () async {
+      // The device-list chain wants null on failure (it becomes
+      // no_tofu_identity and refuses); this gate treats null as first contact
+      // and stays TRUSTING, so null on failure is fail-OPEN. Two contracts.
+      final fresh = EncryptionService();
+      await expectLater(
+        fresh.peerAccountAnchorForGate(peerId),
+        throwsA(isA<StateError>()),
+      );
+      // The other contract is unchanged and still answers null.
+      expect(await fresh.peerTofuIdentityBase64(peerId), isNull);
+    });
+  });
+
+  group('(lxiii) the refusal must not clobber a genuine candidate', () {
+    test('an existing candidate SURVIVES a later refusal', () async {
+      await pinPeerHonestly();
+
+      // A candidate recorded from a real inbound key, via the production TOFU
+      // path: this stages mallory's key as the pending candidate.
+      await enc.encryptionService.buildSession(
+        peerId,
+        flatBundleFrom(mallory),
+        deviceId: 2,
+        expectedIdentityBase64: null,
+      );
+      final staged = (await enc.encryptionService.peerIdentityVerification(
+        peerId,
+      )).offeredIdentityBase64;
+      expect(staged, flatBundleFrom(mallory)['identityPublicKey']);
+
+      // Now a refusal offering a THIRD key. Pre-(lxiii) this overwrote the
+      // candidate, destroying the evidence a human was about to compare — and,
+      // repeated with a rotating key, held the ceremony permanently
+      // un-completable.
+      final rotating = EncryptionService();
+      await rotating.initialize(77, checkServerBundleExists: () async => false);
+      served = rotating;
+      enc.markSessionRebuild(peerId);
+      await expectLater(
+        enc.ensureSession(peerId),
+        throwsA(isA<AccountIdentityMismatch>()),
+      );
+
+      expect(
+        (await enc.encryptionService.peerIdentityVerification(
+          peerId,
+        )).offeredIdentityBase64,
+        staged,
+        reason: 'the candidate the human will compare must not be replaced',
+      );
     });
   });
 }

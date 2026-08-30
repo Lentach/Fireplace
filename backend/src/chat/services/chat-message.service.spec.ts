@@ -100,6 +100,7 @@ describe('ChatMessageService', () => {
   let isActiveMock: jest.Mock;
   let isRevokedMock: jest.Mock;
   let getAuthorizationMock: jest.Mock;
+  let pendingReplacementVersionMock: jest.Mock;
   let schedulePushMock: jest.Mock;
   let findByConversationMock: jest.Mock;
   let findEnvelopeCiphertextsMock: jest.Mock;
@@ -117,6 +118,9 @@ describe('ChatMessageService', () => {
     // getServedMessageIds law below is unchanged.
     isRevokedMock = jest.fn().mockResolvedValue(false);
     getAuthorizationMock = jest.fn().mockResolvedValue(null);
+    // Default: nobody owes a replacement enrollment, which is the ordinary
+    // shape. The (lx) tests opt into the owed state explicitly.
+    pendingReplacementVersionMock = jest.fn().mockResolvedValue(null);
     schedulePushMock = jest.fn().mockResolvedValue(undefined);
     findByConversationMock = jest.fn().mockResolvedValue([]);
     findEnvelopeCiphertextsMock = jest.fn().mockResolvedValue(new Map());
@@ -188,7 +192,10 @@ describe('ChatMessageService', () => {
           // Unenrolled by default: a single-device account quotes no list
           // version, so the §5.2 cross-check does not apply to it.
           provide: DeviceListService,
-          useValue: { getAuthorization: getAuthorizationMock },
+          useValue: {
+            getAuthorization: getAuthorizationMock,
+            pendingReplacementVersion: pendingReplacementVersionMock,
+          },
         },
       ],
     }).compile();
@@ -711,6 +718,116 @@ describe('ChatMessageService', () => {
 
       expect(isActiveMock).not.toHaveBeenCalled();
       expect(createMock).toHaveBeenCalled();
+    });
+
+    // Amendment (lx), from the second gate round. (l) put the
+    // replacement-owed refusal on `getDeviceList`, which the send path never
+    // calls — so the bounce below handed peers the orphaned signed record and a
+    // legacy send to a never-enrolled post-reset account committed straight to
+    // the revoked device 1.
+    describe('(lx) a send is refused while a replacement enrollment is owed', () => {
+      it('REFUSES a NEW-MODEL send and writes ZERO rows', async () => {
+        arrangeSend();
+        pendingReplacementVersionMock.mockImplementation((userId: number) =>
+          Promise.resolve(userId === 2 ? 4 : null),
+        );
+
+        await send({
+          recipientId: 2,
+          content: '[encrypted]',
+          tempId: 'temp-1',
+          envelopes: [{ userId: 2, deviceId: 1, ciphertext: '3:for-bob-1' }],
+        });
+
+        expect(emittedPayload('error')).toEqual({
+          message: 'recipient_device_list_replacement_owed',
+        });
+        expect(createMock).not.toHaveBeenCalled();
+      });
+
+      it('REFUSES a LEGACY send, which used to bounce nothing and commit', async () => {
+        arrangeSend();
+        // The never-enrolled post-reset shape: no authorization row anywhere,
+        // so `staleLists` contributes nothing and the old code committed to the
+        // revoked device 1.
+        getAuthorizationMock.mockResolvedValue(null);
+        pendingReplacementVersionMock.mockImplementation((userId: number) =>
+          Promise.resolve(userId === 2 ? 1 : null),
+        );
+
+        await send({
+          recipientId: 2,
+          content: 'plain legacy body',
+          tempId: 'temp-2',
+        });
+
+        expect(emittedPayload('error')).toEqual({
+          message: 'recipient_device_list_replacement_owed',
+        });
+        expect(emittedPayload('deviceListStale')).toBeUndefined();
+        expect(createMock).not.toHaveBeenCalled();
+      });
+
+      it('REFUSES when the SENDER owes one, naming the sender', async () => {
+        arrangeSend();
+        pendingReplacementVersionMock.mockImplementation((userId: number) =>
+          Promise.resolve(userId === 1 ? 3 : null),
+        );
+
+        await send({
+          recipientId: 2,
+          content: '[encrypted]',
+          envelopes: [{ userId: 2, deviceId: 1, ciphertext: '3:for-bob-1' }],
+        });
+
+        expect(emittedPayload('error')).toEqual({
+          message: 'sender_device_list_replacement_owed',
+        });
+        expect(createMock).not.toHaveBeenCalled();
+      });
+
+      it('the orphaned record is NEVER handed back on the bounce', async () => {
+        arrangeSend();
+        // A surviving enrollment row AND a replacement owed: exactly the
+        // post-reset shape whose record a peer would VERIFY under its
+        // pre-reset anchor and then adopt as a roster of revoked devices.
+        getAuthorizationMock.mockImplementation((userId: number) =>
+          Promise.resolve(userId === 2 ? authorization(2, 7) : null),
+        );
+        pendingReplacementVersionMock.mockImplementation((userId: number) =>
+          Promise.resolve(userId === 2 ? 8 : null),
+        );
+
+        await send({
+          recipientId: 2,
+          content: '[encrypted]',
+          tempId: 'temp-3',
+          recipientListVersion: 6,
+          envelopes: [{ userId: 2, deviceId: 1, ciphertext: '3:for-bob-1' }],
+        });
+
+        // Pre-(lx) this emitted deviceListStale carrying dakPub/enrollmentSig/
+        // listCanonical/listSignature for the dead roster.
+        expect(emittedPayload('deviceListStale')).toBeUndefined();
+        expect(emittedPayload('error')).toEqual({
+          message: 'recipient_device_list_replacement_owed',
+        });
+        expect(createMock).not.toHaveBeenCalled();
+      });
+
+      it('POSITIVE CONTROL: an ordinary send is untouched', async () => {
+        arrangeSend();
+
+        await send({
+          recipientId: 2,
+          content: '[encrypted]',
+          envelopes: [{ userId: 2, deviceId: 1, ciphertext: '3:for-bob-1' }],
+        });
+
+        // Nobody owes anything, so the refusal must stand aside entirely.
+        expect(emittedPayload('error')).toBeUndefined();
+        expect(createMock).toHaveBeenCalled();
+      });
     });
 
     it('falsification 5: a stale recipient stamp refuses the send with ZERO rows written', async () => {

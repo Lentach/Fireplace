@@ -426,14 +426,24 @@ class EncryptionService {
     IdentityKey offered,
   ) async {
     try {
-      await _identityStore.stagePendingAccountIdentity(
-        peerId.toString(),
-        offered,
-      );
+      // (lxiii) Only when the slot is EMPTY, matching (xlvii) clause 3's guard
+      // and for its stated reason: the slot is the evidence a human will
+      // compare. Staging unconditionally overwrote a candidate recorded from a
+      // REAL inbound ciphertext with a key the server just served — the
+      // "candidate moves under the open dialog" shape (xlix) clause 2 and
+      // (lviii) preserve, reached from the writer side. It also handed a
+      // hostile server a durable ceremony DoS: vary the served key on every
+      // fetch and every confirmation loses its compare-and-swap, so the warning
+      // never clears and the only door out of the (lvi) refusal stays shut.
+      final name = peerId.toString();
+      final existing = await _identityStore.pendingAccountIdentity(name);
+      if (existing == null) {
+        await _identityStore.stagePendingAccountIdentity(name, offered);
+      }
     } catch (e) {
       // A failed staging must not swallow the refusal or the alarm: the banner
-      // is worth more than the candidate, and (xlvii) clause 3's ceremony can
-      // still adopt a served key without one.
+      // is worth more than the candidate, and (xlvii) clause 3's ceremony
+      // re-stages a served key when it finds a standing warning with no offer.
       debugPrint('[EncryptionService] stage pending identity failed: $e');
     }
     if (!_peersWithChangedIdentity.add(peerId)) return;
@@ -1821,6 +1831,35 @@ class EncryptionService {
       // the device-list cache refuses to trust anything without the anchor.
       return null;
     }
+  }
+
+  /// The account anchor for the (xxxix)/(lvi) SESSION GATE, where a failed read
+  /// MUST NOT look like an absence ((lxii)).
+  ///
+  /// Deliberately a second contract rather than a flag on
+  /// [peerTofuIdentityBase64], because the two callers need OPPOSITE polarities
+  /// and a shared method cannot have both:
+  ///  * The device-list chain wants null on failure — `DeviceListCache.adopt`
+  ///    turns that into `no_tofu_identity` and refuses, so null is already
+  ///    fail-closed there.
+  ///  * This gate treats null as "genuine first contact with the ACCOUNT, which
+  ///    is irreducibly TOFU" and stays TRUSTING, so null on failure is
+  ///    fail-OPEN: one transient storage error would silently restore the
+  ///    vacuous gate for that send and let a served substitute key through.
+  ///
+  /// So: a genuine absence still returns null; a read error THROWS, out of
+  /// `ensureSession`, where (lix) restores the rebuild intent and the send fails
+  /// visibly. Same polarity (lvii) just ruled for the persisted rollback pin,
+  /// and the same answer `_hasPinnedAccountIdentity` already gives for the
+  /// analogous question ("uncertainty answers YES on purpose").
+  Future<String?> peerAccountAnchorForGate(int peerId) async {
+    if (!_initialized) {
+      throw StateError(
+        'account anchor requested for $peerId before initialization',
+      );
+    }
+    final identity = await _identityStore.getAccountIdentity(peerId.toString());
+    return identity == null ? null : base64Encode(identity.serialize());
   }
 
   /// The identity key already trusted for [peerId] at [deviceId], or null if

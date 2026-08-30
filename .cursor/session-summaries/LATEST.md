@@ -93,6 +93,53 @@ names meant it tested against EMPTY tables. Introspect the schema; never seed fr
 Still open, non-blocking: KA-02 (owner spec decision), Q5/(xl), U7, and the two-party verify-keys
 ceremony on a real phone.
 
+**PRE-MERGE GATE ROUND, then ALL TEN FINDINGS FIXED (2026-08-30, `949a0e1` → `a73ecaa`).** Three
+fresh reviewers over the whole programme returned **DO NOT MERGE, six P1-class findings** (F1–F6)
+plus four follow-ups (RC-01–RC-04). All ten are now fixed under **nine amendments (l)–(lix)**, each
+ratified BEFORE its fix and each falsified by reverting the fix and observing RED. The index now runs
+**(a)–(lix)**. CI green on **five** jobs at `a73ecaa`. **Nothing merged, nothing deployed.**
+⚠️ **One reviewer claim was REJECTED with evidence** (that the wire harness does not run in CI —
+`ci.yml:206-260` boots compose and runs `flutter test test_e2e`, observed green); the adjacent claim
+was UPHELD and became **U7**.
+**The two biggest were not what the review said they were, and both corrections came from being
+challenged mid-fix.** **F1:** a compromised LINKED device could seize the account with no ceremony —
+the §5.1 blob ships `ikPriv` to every linked device (it must sign its own X3DH prekey), so §6.1's
+old-IK signature clause, sound in Phase 0b where holding `ikPriv` MEANT being the only device,
+silently became available to every linked device. My first draft constrained the downstream
+replacement enrollment to the same `dakPub`; that was **rejected in review for protecting the wrong
+asset** — it keeps list authority with the phone while leaving the attacker holding the ACCOUNT
+IDENTITY, which is the prize, and revoking the laptop does not undo it. **(liv)** gates at ADMISSION
+instead: an enrolled account loses the signature path entirely. **No migration, no new column** —
+enrollment is already one row keyed by `userId`. Non-enrolled accounts are untouched, and the
+production client never used the path at all (nothing requests `getRegistrationLockNonce`).
+**F4/KA-02 — the owner's long-open spec decision, now taken as (lvi).** The (xxxix) gate was
+**vacuous for almost every send**: `_accountIdentityAnchor` scanned per-device rows of a MEMORY-ONLY
+cache excluding the device being built, so it resolved nothing on any cold cache and for any
+single-live-device peer — the default states, not edges. Now falls back to the account anchor and
+**fails closed**. This is a real UX change (a contact who reinstalls blocks sending until verified,
+the Signal shape) and **(lv) was its hard prerequisite**: the refusal previously staged no candidate,
+raised no alarm and reported "Recipient may not have encryption enabled", so enforcing the gate alone
+would have traded a MITM window for a permanent lockout on the most common path.
+**(l)/(li)/(lii)/(liii)** closed silent bidirectional message loss for the enrolled shape, a server
+timestamp arming a PERMANENT alarm suppressor, a permanent unrecoverable lockout when a peer's list
+fails to verify, and a crafted event DESTROYING the account's only DAK private half.
+**(lvii)/(lviii)/(lix)** closed three fail-open gaps: the rollback floor read as "never pinned" on any
+storage error (contradicting the same file's own rule twelve lines below the call site), a guarded
+write that returned `void` so its caller cleared the warning after a candidate appeared — **the
+FOURTH instance of this programme's single root cause, and the first split across a file boundary** —
+and a consumed rebuild intent never restored, letting a poisoned session be reused for the rest of
+the process (reachable deterministically by a server that never answers `fetchPreKeyBundle`).
+**U7 closed, and it immediately earned its keep:** the reset teardown probe now runs as its OWN CI
+job with its OWN compose stack (it cannot be a `--dart-define` on `e2e-wire` — `/auth/register` is
+10/hr/IP, in-memory per backend process, and the shared suite already spends that bucket to the edge;
+a fresh backend is what resets it). **Its first-ever run FAILED and caught a real contract change**:
+the probe fetched the surviving enrollment row, which (l) had correctly stopped serving. Fixed by
+asserting the refusal with the `events.none()` shape the sibling test in that same file already used.
+⚠️ **Falsification caught two hollow tests of mine again** — one asserted only `completes()`, which
+the buggy early return also satisfies (now counts real refetches); and (lviii)'s CALLER branch is
+documented in-tree as NOT covered end to end, because reaching it needs an interleave that would
+require a test-only seam in production code.
+
 The last two open defects are closed. **D1 (P0):** a completed §6.2 reset left the peer unreachable
 in both directions, and the only action offered to the user destroyed the warning while repairing
 nothing — the accept gate withholds the peer's rows before Signal runs, so no candidate is ever
