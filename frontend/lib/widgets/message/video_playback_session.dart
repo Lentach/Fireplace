@@ -25,9 +25,9 @@ enum VideoStageError {
 
 /// Owns ONE decrypted video and the platform resources behind it.
 ///
-/// Shared by the in-bubble tile player and the fullscreen viewer so the two can
-/// never drift apart on cleanup: web holds an object URL, native holds a temp
-/// file, and BOTH leak without a matching teardown. Callers own the lifecycle —
+/// Used only by the fullscreen viewer (the bubble is a static poster and never
+/// plays in place). Web holds an object URL, native holds a temp file, and
+/// BOTH leak without a matching teardown. Callers own the lifecycle —
 /// construct, [load], then [dispose] exactly once.
 class VideoPlaybackSession {
   final MessageModel message;

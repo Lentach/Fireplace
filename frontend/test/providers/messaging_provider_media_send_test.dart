@@ -53,6 +53,37 @@ class _FakeMediaUpload extends EncryptedMediaUploadService {
   }
 }
 
+/// Simulates a socket reconnect landing while the upload bytes are on the
+/// wire: `onConnect(isReconnect: true)` wipes `_pendingSendContent` and the
+/// exactly-once latch (messaging_provider.dart, "retry was cancelled"), and
+/// the send path resumes to find its entry gone.
+class _ReconnectMidUpload extends EncryptedMediaUploadService {
+  _ReconnectMidUpload(this.onMidUpload)
+    : super(api: ApiService(baseUrl: 'http://test'));
+
+  final void Function() onMidUpload;
+
+  @override
+  Future<EncryptedMediaUpload> encryptAndUpload({
+    required Uint8List bytes,
+    required String token,
+    required String mediaType,
+    int? duration,
+    int? expiresIn,
+    String? fileName,
+    void Function(String keyBase64, String ivBase64)? onEncrypted,
+  }) async {
+    onEncrypted?.call('K', 'IV');
+    onMidUpload();
+    return EncryptedMediaUpload(
+      mediaUrl: 'http://test/media/msgs/x.bin',
+      keyBase64: 'K',
+      ivBase64: 'IV',
+      mediaDuration: duration,
+    );
+  }
+}
+
 /// E2E-ready fake so _encryptAndSend reaches the socket emit (send path only).
 class _SendReadyEncryption extends EncryptionProvider {
   @override
@@ -500,6 +531,62 @@ void main() {
       expect(
         E2eDiagLog.entries.where((e) => e.contains('MEDIA_ORPHAN_LIKELY')),
         isEmpty,
+      );
+    });
+  });
+
+  group('reconnect during an in-flight media upload', () {
+    // onConnect(isReconnect: true) clears _pendingSendContent while the
+    // upload await is still pending. The old code then crashed on
+    // `_pendingSendContent[tempId]!` into the generic catch; the contract is
+    // a CLEAN failure — bubble marked failed, send returns false, no emit.
+    test('video send fails cleanly instead of throwing', () async {
+      final provider = _newProvider();
+      provider.setMediaUploadServiceForTest(
+        _ReconnectMidUpload(() => provider.onConnect(true)),
+      );
+      provider.setEncryptionProvider(_SendReadyEncryption());
+      final emitted = <String>[];
+      provider.setEmitCallback((event, data) {
+        if (event == 'sendMessage') emitted.add(event);
+      });
+
+      final ok = await provider.sendVideoMessage(
+        'tok',
+        List<int>.filled(64, 7),
+        2,
+        duration: 5,
+      );
+
+      expect(ok, isFalse);
+      expect(emitted, isEmpty);
+      final msg = provider.messages.last;
+      expect(msg.messageType, MessageType.video);
+      expect(msg.deliveryStatus, MessageDeliveryStatus.failed);
+    });
+
+    test('image send fails cleanly instead of throwing', () async {
+      final provider = _newProvider();
+      provider.setMediaUploadServiceForTest(
+        _ReconnectMidUpload(() => provider.onConnect(true)),
+      );
+      provider.setEncryptionProvider(_SendReadyEncryption());
+      final emitted = <String>[];
+      provider.setEmitCallback((event, data) {
+        if (event == 'sendMessage') emitted.add(event);
+      });
+
+      final ok = await provider.sendImageMessage(
+        'tok',
+        XFile.fromData(Uint8List.fromList([1, 2, 3]), name: 'a.jpg'),
+        2,
+      );
+
+      expect(ok, isFalse);
+      expect(emitted, isEmpty);
+      expect(
+        provider.messages.last.deliveryStatus,
+        MessageDeliveryStatus.failed,
       );
     });
   });

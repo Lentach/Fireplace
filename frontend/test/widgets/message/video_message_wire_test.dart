@@ -4,6 +4,7 @@ import 'package:fireplace/providers/auth_provider.dart';
 import 'package:fireplace/utils/reply_preview_helper.dart';
 import 'package:fireplace/widgets/message/media_preview_frame.dart';
 import 'package:fireplace/widgets/message/message_content_factory.dart';
+import 'package:fireplace/widgets/message/video_fullscreen_view.dart';
 import 'package:fireplace/widgets/message/video_message_content.dart';
 import 'package:video_player/video_player.dart';
 import 'package:flutter/material.dart';
@@ -185,19 +186,21 @@ void main() {
       expect(find.byType(CircularProgressIndicator), findsNothing);
     });
 
-    // Deliberately NOT a double-tap test. `onDoubleTap` is still wired, but it
-    // was PROVEN not to fire inside the real message list (raw CDP touch pairs
-    // 71 ms apart, plus an on-screen marker that never appeared) because the
-    // bubble's swipe/long-press wrapper shares the gesture arena. A widget
-    // test WOULD pass — Flutter's own gesture simulation fires it — so
-    // asserting on it here would document behaviour the user cannot get.
-    testWidgets('expand button opens the fullscreen viewer', (tester) async {
+    // Deliberately NOT a double-tap test. The bubble's swipe/long-press
+    // wrapper shares the gesture arena and was PROVEN to eat double-taps in
+    // the real message list (raw CDP touch pairs 71 ms apart, plus an
+    // on-screen marker that never appeared). The Telegram model — single tap
+    // opens the fullscreen player — is the guaranteed route, and playback
+    // controls live ONLY there.
+    testWidgets('tapping the tile opens the fullscreen viewer', (
+      tester,
+    ) async {
       await _pumpBubble(
         tester,
         _videoMessage(mediaWidth: 360, mediaHeight: 480),
       );
 
-      await tester.tap(find.byKey(const ValueKey('video_expand_button')));
+      await tester.tapAt(tester.getCenter(find.byType(VideoMessageContent)));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
@@ -206,22 +209,71 @@ void main() {
         findsOneWidget,
       );
     });
+  });
 
-    testWidgets('tapping the tile does NOT open fullscreen', (tester) async {
-      await _pumpBubble(
-        tester,
-        _videoMessage(mediaWidth: 360, mediaHeight: 480),
+  group('fullscreen seek bar', () {
+    // A constructed-but-never-initialized controller is a plain
+    // ValueNotifier<VideoPlayerValue>: setting .value notifies listeners with
+    // no platform channel involved, and seekTo() self-guards into a no-op.
+    // Deliberately NOT isInitialized: that flag would route seekTo to the
+    // (absent) platform. Never initialize()d or dispose()d here.
+    VideoPlayerController fakeController() =>
+        VideoPlayerController.networkUrl(Uri.parse('https://example.com/v'))
+          ..value = const VideoPlayerValue(
+            duration: Duration(seconds: 8),
+            position: Duration(milliseconds: 1200),
+          );
+    Future<void> pumpBar(
+      WidgetTester tester,
+      VideoPlayerController controller,
+    ) {
+      return tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: VideoSeekBar(controller: controller)),
+        ),
       );
+    }
 
-      // Hits the tile body, away from the expand button in the corner.
-      await tester.tapAt(tester.getCenter(find.byType(VideoMessageContent)));
-      await tester.pump(const Duration(milliseconds: 500));
-      await tester.pumpAndSettle();
+    testWidgets('thumb glides on sub-second position updates', (tester) async {
+      // Regression: the fullscreen state's rebuild gate only fires on whole-
+      // second changes, which stepped the thumb at 1 Hz. The bar must
+      // subscribe to the controller itself: 1200 ms -> 1700 ms crosses NO
+      // second boundary, yet the Slider value must follow.
+      final controller = fakeController();
+      await pumpBar(tester, controller);
 
-      expect(
-        find.byKey(const ValueKey('video_fullscreen_close')),
-        findsNothing,
+      final sliderFinder = find.byKey(const ValueKey('video_seek_slider'));
+      expect(tester.widget<Slider>(sliderFinder).value, 1200);
+
+      controller.value = controller.value.copyWith(
+        position: const Duration(milliseconds: 1700),
       );
+      await tester.pump();
+
+      expect(tester.widget<Slider>(sliderFinder).value, 1700);
+      // The label stays at second granularity — same second, same text.
+      expect(find.text('0:01'), findsOneWidget);
+    });
+
+    testWidgets('dragging pins the thumb to the finger, not the controller', (
+      tester,
+    ) async {
+      final controller = fakeController();
+      await pumpBar(tester, controller);
+
+      final sliderFinder = find.byKey(const ValueKey('video_seek_slider'));
+      final gesture = await tester.startGesture(
+        tester.getCenter(sliderFinder),
+      );
+      await gesture.moveBy(const Offset(150, 0));
+      await tester.pump();
+
+      // Mid-drag the Slider must follow the finger via the widget's own drag
+      // state (the controller cannot help: seekTo is a no-op here).
+      expect(tester.widget<Slider>(sliderFinder).value, greaterThan(1200));
+
+      await gesture.up();
+      await tester.pump();
     });
   });
 
@@ -234,7 +286,7 @@ void main() {
     ) async {
       await _pumpBubble(tester, _videoMessage(mediaUrl: null));
 
-      await tester.tap(find.byKey(const ValueKey('video_expand_button')));
+      await tester.tapAt(tester.getCenter(find.byType(VideoMessageContent)));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pumpAndSettle();
@@ -252,7 +304,7 @@ void main() {
     ) async {
       await _pumpBubble(tester, _videoMessage());
 
-      await tester.tap(find.byKey(const ValueKey('video_expand_button')));
+      await tester.tapAt(tester.getCenter(find.byType(VideoMessageContent)));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pumpAndSettle();

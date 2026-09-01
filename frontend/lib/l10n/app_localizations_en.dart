@@ -1290,10 +1290,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get videoMessage => 'Video';
 
   @override
-  String get videoTooLarge => 'Video is too large (max 20 MB)';
+  String videoTooLarge(String size) {
+    return 'Video is too large ($size MB, max 20 MB)';
+  }
 
   @override
-  String get videoTooLong => 'Video is too long (max 3 minutes)';
+  String videoTooLong(String duration) {
+    return 'Video is too long ($duration, max 3 minutes)';
+  }
+
+  @override
+  String get videoCompressing => 'Compressing video…';
 
   @override
   String get videoUnsupportedFormat => 'Unsupported video format (MP4 only)';

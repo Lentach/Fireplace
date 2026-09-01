@@ -435,7 +435,65 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text('Video is too large (max 20 MB)'), findsOneWidget);
+      // maxBytes + 1 is 20.000001 MB; the toast names the actual size so the
+      // user learns WHY the clip failed, not just that a limit exists.
+      expect(
+        find.text('Video is too large (20.0 MB, max 20 MB)'),
+        findsOneWidget,
+      );
+      expect(h.emitted, isEmpty);
+      await tester.pump(const Duration(seconds: 3)); // flush snackbar timer
+    });
+
+    testWidgets('oversize video transcodes and sends when the codec fits it', (
+      tester,
+    ) async {
+      final h = await pumpComposer(tester);
+      addTearDown(() => ChatInputBarState.debugTranscodeOverride = null);
+      final received = <int>[];
+      ChatInputBarState.debugTranscodeOverride = (bytes) async {
+        received.add(bytes.length);
+        return Uint8List(1024); // codec fit it under the cap
+      };
+
+      await tester.runAsync(
+        () => h.key.currentState!.sendPickedVideo(
+          bytes: Uint8List(MediaCryptoService.maxBytes + 1),
+          filename: 'huge.mp4',
+        ),
+      );
+      await tester.pump();
+
+      // The transcode saw the ORIGINAL bytes, the user saw the progress toast,
+      // and the send went out — no "too large" refusal.
+      expect(received, [MediaCryptoService.maxBytes + 1]);
+      expect(h.emitted, ['VIDEO']);
+      expect(find.textContaining('too large'), findsNothing);
+      await tester.pump(const Duration(seconds: 3)); // flush snackbar timer
+    });
+
+    testWidgets('transcode that stays oversize still refuses the send', (
+      tester,
+    ) async {
+      // Physics case: the codec's 2 Mbps floor means a long clip can come out
+      // of the transcode still over the cap. That MUST refuse, not upload.
+      final h = await pumpComposer(tester);
+      addTearDown(() => ChatInputBarState.debugTranscodeOverride = null);
+      ChatInputBarState.debugTranscodeOverride = (bytes) async =>
+          Uint8List(MediaCryptoService.maxBytes + 1);
+
+      await tester.runAsync(
+        () => h.key.currentState!.sendPickedVideo(
+          bytes: Uint8List(MediaCryptoService.maxBytes + 1),
+          filename: 'huge.mp4',
+        ),
+      );
+      await tester.pump();
+
+      expect(
+        find.text('Video is too large (20.0 MB, max 20 MB)'),
+        findsOneWidget,
+      );
       expect(h.emitted, isEmpty);
       await tester.pump(const Duration(seconds: 3)); // flush snackbar timer
     });

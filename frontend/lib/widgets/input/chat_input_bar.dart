@@ -32,6 +32,9 @@ import '../../utils/video_probe_stub.dart'
     if (dart.library.html) '../../utils/video_probe_web.dart'
     if (dart.library.io) '../../utils/video_probe_io.dart'
     as video_probe;
+import '../../utils/video_transcode_stub.dart'
+    if (dart.library.io) '../../utils/video_transcode_io.dart'
+    as video_transcode;
 import '../chat_action_tiles.dart';
 import '../hearth_fade_arc.dart';
 import '../top_snackbar.dart' show showTopSnackBar;
@@ -60,6 +63,11 @@ class ChatInputBarState extends State<ChatInputBar>
     milliseconds: 175,
   );
   static const Object _composerTapRegionGroup = Object();
+  /// Test seam for the oversize-video transcode: unit tests cannot reach the
+  /// native codec channel, and the real thing is pinned on-device instead.
+  /// Non-null only under test.
+  @visibleForTesting
+  static Future<Uint8List?> Function(Uint8List bytes)? debugTranscodeOverride;
 
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
@@ -410,8 +418,20 @@ class ChatInputBarState extends State<ChatInputBar>
       return;
     }
     if (bytes.length > MediaCryptoService.maxBytes) {
-      showTopSnackBar(context, l10n.videoTooLarge, backgroundColor: Colors.red);
-      return;
+      final transcoded = await _transcodeOversizeVideo(bytes);
+      if (!mounted) return;
+      if (transcoded == null) {
+        // Named actuals, not just the limit: "34 MB, max 20 MB" tells the user
+        // WHY this clip failed and roughly how much to trim.
+        final sizeMb = (bytes.length / (1024 * 1024)).toStringAsFixed(1);
+        showTopSnackBar(
+          context,
+          l10n.videoTooLarge(sizeMb),
+          backgroundColor: Colors.red,
+        );
+        return;
+      }
+      bytes = transcoded;
     }
 
     final preview = await video_probe.probeVideoPreview(bytes);
@@ -419,7 +439,13 @@ class ChatInputBarState extends State<ChatInputBar>
     final duration = preview.durationInSeconds;
     if (duration != null &&
         duration > MediaCryptoService.maxVideoDurationSeconds) {
-      showTopSnackBar(context, l10n.videoTooLong, backgroundColor: Colors.red);
+      final minutes = duration ~/ 60;
+      final seconds = duration % 60;
+      showTopSnackBar(
+        context,
+        l10n.videoTooLong('$minutes:${seconds.toString().padLeft(2, '0')}'),
+        backgroundColor: Colors.red,
+      );
       return;
     }
 
@@ -434,6 +460,30 @@ class ChatInputBarState extends State<ChatInputBar>
       height: preview.height,
       thumbHash: preview.thumbHash,
     );
+  }
+
+  /// Move-4 on-device transcode for an oversize pick (owner decision
+  /// 2026-09-01: native first; the PWA keeps the 20 MB wall until chunked
+  /// streaming exists).
+  ///
+  /// Returns bytes that fit [MediaCryptoService.maxBytes], or null when no
+  /// transcode path exists (web), it failed, or the output is STILL oversize —
+  /// possible by physics: the codec's bitrate floor is 2 Mbps, so a ~3-minute
+  /// clip cannot always reach 18 MB. The caller shows the honest "too large"
+  /// toast for every null.
+  Future<Uint8List?> _transcodeOversizeVideo(Uint8List bytes) async {
+    final override = debugTranscodeOverride;
+    if (override == null && !video_transcode.isVideoTranscodeSupported) {
+      return null;
+    }
+    // Hardware transcode of a multi-minute clip takes seconds to tens of
+    // seconds; without this the composer just sits there silently.
+    showTopSnackBar(context, AppLocalizations.of(context).videoCompressing);
+    final out = override != null
+        ? await override(bytes)
+        : await video_transcode.transcodeVideoToFit(bytes);
+    if (out == null || out.length > MediaCryptoService.maxBytes) return null;
+    return out;
   }
 
   /// Mixed text+image paste: preventDefault suppressed the native insertion,

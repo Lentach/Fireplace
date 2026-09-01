@@ -161,7 +161,11 @@ extension MessagingSend on MessagingProvider {
       }
       final preview = await _extractMediaPreviewMetadata(rawBytes);
       if (preview != null) {
-        _pendingSendContent[tempId]!.addAll({
+        // Same reconnect-clears-the-map hazard as after the upload await:
+        // readAsBytes + preview extraction are awaits too.
+        final pending = _pendingAfterUpload(tempId);
+        if (pending == null) return false;
+        pending.addAll({
           'mediaWidth': preview.width,
           'mediaHeight': preview.height,
           if (preview.thumbHash != null) 'mediaThumbHash': preview.thumbHash,
@@ -194,7 +198,9 @@ extension MessagingSend on MessagingProvider {
           };
         },
       );
-      _pendingSendContent[tempId]!['mediaUrl'] = upload.mediaUrl;
+      final pending = _pendingAfterUpload(tempId);
+      if (pending == null) return false;
+      pending['mediaUrl'] = upload.mediaUrl;
 
       final idx = _messages.indexWhere((m) => m.tempId == tempId);
       if (idx != -1) {
@@ -320,7 +326,9 @@ extension MessagingSend on MessagingProvider {
       );
 
       final serverDuration = upload.mediaDuration ?? duration;
-      _pendingSendContent[tempId]!['mediaUrl'] = upload.mediaUrl;
+      final pending = _pendingAfterUpload(tempId);
+      if (pending == null) return;
+      pending['mediaUrl'] = upload.mediaUrl;
 
       final index = _messages.indexWhere((m) => m.tempId == tempId);
       if (index != -1) {
@@ -451,7 +459,9 @@ extension MessagingSend on MessagingProvider {
         },
       );
       final serverDuration = upload.mediaDuration ?? duration;
-      _pendingSendContent[tempId]!['mediaUrl'] = upload.mediaUrl;
+      final pending = _pendingAfterUpload(tempId);
+      if (pending == null) return false;
+      pending['mediaUrl'] = upload.mediaUrl;
 
       final idx = _messages.indexWhere((m) => m.tempId == tempId);
       if (idx != -1) {
@@ -479,11 +489,35 @@ extension MessagingSend on MessagingProvider {
         mediaHeight: height,
         mediaThumbHash: thumbHash,
       );
-    } catch (e) {
-      debugPrint('[MessagingProvider] Video send failed: $e');
+    } catch (e, st) {
+      debugPrint('[MessagingProvider] Video send failed: $e\n$st');
       _markMessageFailed(tempId, 'Video send failed: ${e.toString()}');
       return false;
     }
+  }
+
+  /// Post-await guard for every media send path — used after ANY await that
+  /// precedes a `_pendingSendContent[tempId]` write (file read, preview
+  /// extraction, Giphy download, the upload itself).
+  ///
+  /// The reconnect handler wipes `_pendingSendContent` AND the exactly-once
+  /// latch (`messaging_provider.dart` onConnect(isReconnect: true) — a
+  /// reconnect cancels any queued retry). A send that was IN FLIGHT across
+  /// that reconnect resumes here to find its entry gone. Proceeding anyway
+  /// would emit with reset exactly-once state; indexing with `!` (the old
+  /// code) crashed into the generic catch. The only safe move is to fail the
+  /// bubble cleanly for a manual retry.
+  ///
+  /// Returns the live entry, or null after marking the message failed.
+  Map<String, dynamic>? _pendingAfterUpload(String tempId) {
+    final pending = _pendingSendContent[tempId];
+    if (pending == null) {
+      _markMessageFailed(
+        tempId,
+        'Connection was reset during send. Please retry.',
+      );
+    }
+    return pending;
   }
 
   /// Send a GIF message. Downloads from Giphy, encrypts bytes, uploads blob, E2E envelope.
@@ -533,7 +567,12 @@ extension MessagingSend on MessagingProvider {
       }
       final preview = await _extractMediaPreviewMetadata(gifBytes);
       if (preview != null) {
-        _pendingSendContent[tempId]!.addAll({
+        // Giphy download + preview extraction sit before this write; a
+        // reconnect in that window cleared the map (same hazard as post-
+        // upload).
+        final pending = _pendingAfterUpload(tempId);
+        if (pending == null) return;
+        pending.addAll({
           'mediaWidth': preview.width,
           'mediaHeight': preview.height,
           if (preview.thumbHash != null) 'mediaThumbHash': preview.thumbHash,
@@ -567,7 +606,9 @@ extension MessagingSend on MessagingProvider {
           };
         },
       );
-      _pendingSendContent[tempId]!['mediaUrl'] = upload.mediaUrl;
+      final pending = _pendingAfterUpload(tempId);
+      if (pending == null) return;
+      pending['mediaUrl'] = upload.mediaUrl;
 
       final idx = _messages.indexWhere((m) => m.tempId == tempId);
       if (idx != -1) {
@@ -655,7 +696,9 @@ extension MessagingSend on MessagingProvider {
           };
         },
       );
-      _pendingSendContent[tempId]!['mediaUrl'] = upload.mediaUrl;
+      final pending = _pendingAfterUpload(tempId);
+      if (pending == null) return;
+      pending['mediaUrl'] = upload.mediaUrl;
 
       final idx = _messages.indexWhere((m) => m.tempId == tempId);
       if (idx != -1) {
