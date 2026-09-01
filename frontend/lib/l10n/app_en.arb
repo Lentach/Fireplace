@@ -507,7 +507,9 @@
   "chatPickerInviteButton": "Invite someone",
   "videoMessage": "Video",
   "videoTooLarge": "Video is too large (max 20 MB)",
-  "videoTooLong": "Video is too long (max 60 seconds)",
+  "videoTooLong": "Video is too long (max 3 minutes)",
   "videoUnsupportedFormat": "Unsupported video format (MP4 only)",
+  "videoFailedToLoad": "Video failed to load",
+  "videoStillSending": "Still sending…",
   "attachmentUnsupportedFileType": "Unsupported file type"
 }

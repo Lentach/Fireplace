@@ -317,6 +317,9 @@ class MessagingProvider extends ChangeNotifier {
     required int? effectiveReplyToId,
     String? mediaUrl,
     int? mediaDuration,
+    int? mediaWidth,
+    int? mediaHeight,
+    String? mediaThumbHash,
   }) {
     return MessageModel(
       id: -(++MessagingProvider._tempIdSeq),
@@ -329,6 +332,9 @@ class MessagingProvider extends ChangeNotifier {
       messageType: messageType,
       mediaUrl: mediaUrl,
       mediaDuration: mediaDuration,
+      mediaWidth: mediaWidth,
+      mediaHeight: mediaHeight,
+      mediaThumbHash: mediaThumbHash,
       disappearAfterSeconds: effectiveExpiresIn,
       expiresAt: null,
       tempId: tempId,

@@ -18,6 +18,17 @@ class EncryptedMedia {
 class MediaCryptoService {
   static const int maxBytes = 20 * 1024 * 1024;
 
+  /// Client video-length policy, in seconds. Enforced by the composer with a
+  /// toast and re-checked in `sendVideoMessage` as a backstop.
+  ///
+  /// Sized against the real constraint, which is bytes rather than seconds:
+  /// iOS HTML Media Capture downsamples to ~360x480 and measures ~103 KB/s in
+  /// production, so 180 s lands near 18.5 MB — inside [maxBytes] and inside
+  /// nginx's `client_max_body_size`. A full-quality gallery clip is an order
+  /// of magnitude denser and will hit [maxBytes] long before this cap; that
+  /// asymmetry only disappears with on-device transcoding.
+  static const int maxVideoDurationSeconds = 180;
+
   Future<EncryptedMedia> encrypt(Uint8List bytes) async {
     if (bytes.length > maxBytes) {
       throw ArgumentError('File exceeds 20MB limit');

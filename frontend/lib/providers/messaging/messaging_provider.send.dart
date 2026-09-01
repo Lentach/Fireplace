@@ -358,8 +358,14 @@ extension MessagingSend on MessagingProvider {
   /// Send a video message. Mirrors [sendVoiceMessage]/[sendFileMessage]:
   /// optimistic bubble, AES-GCM encrypt+upload (keys stashed into
   /// _pendingSendContent BEFORE any await — durability invariant), then the
-  /// E2E envelope send. [duration] is seconds, when the picker knows it
-  /// (native gallery picks and some web files don't expose it — omitted then).
+  /// E2E envelope send.
+  ///
+  /// [duration], [width], [height] and [thumbHash] come from the composer's
+  /// single `probeVideoPreview` pass — the provider deliberately does NOT
+  /// re-probe, because loading a multi-megabyte clip into a decoder twice
+  /// costs seconds on a phone. Each is omitted when the platform could not
+  /// read it; [width]/[height] drive the receiving bubble's aspect ratio and
+  /// [thumbHash] its placeholder, exactly as for images and GIFs.
   ///
   /// Returns true only AFTER the video's `sendMessage` socket emit (same
   /// caption-ordering contract as [sendImageMessage]); false = failed before
@@ -369,6 +375,9 @@ extension MessagingSend on MessagingProvider {
     List<int> videoBytes,
     int recipientId, {
     int? duration,
+    int? width,
+    int? height,
+    String? thumbHash,
   }) async {
     final activeConversationId = _conversationsProvider?.activeConversationId;
     if (activeConversationId == null || _currentUserId == null) return false;
@@ -388,12 +397,18 @@ extension MessagingSend on MessagingProvider {
         effectiveExpiresIn: effectiveExpiresIn,
         effectiveReplyToId: effectiveReplyToId,
         mediaDuration: duration,
+        mediaWidth: width,
+        mediaHeight: height,
+        mediaThumbHash: thumbHash,
       ),
     );
     _pendingSendContent[tempId] = <String, dynamic>{
       'content': '',
       'messageType': 'VIDEO',
       'mediaDuration': ?duration,
+      'mediaWidth': ?width,
+      'mediaHeight': ?height,
+      'mediaThumbHash': ?thumbHash,
     };
     _clearReplyingToAfterSendStart();
     notifyListeners();
@@ -403,11 +418,16 @@ extension MessagingSend on MessagingProvider {
         _markMessageFailed(tempId, 'Video too large (max 20 MB)');
         return false;
       }
-      // Client policy: 60 s cap. The composer already rejects with a toast
-      // when it knows the duration; this is the defensive backstop for
-      // programmatic callers.
-      if (duration != null && duration > 60) {
-        _markMessageFailed(tempId, 'Video too long (max 60 seconds)');
+      // Client policy: MediaCryptoService.maxVideoDurationSeconds. The
+      // composer already rejects with a toast when it knows the duration;
+      // this is the defensive backstop for programmatic callers.
+      if (duration != null &&
+          duration > MediaCryptoService.maxVideoDurationSeconds) {
+        _markMessageFailed(
+          tempId,
+          'Video too long (max '
+          '${MediaCryptoService.maxVideoDurationSeconds} seconds)',
+        );
         return false;
       }
 
@@ -422,6 +442,9 @@ extension MessagingSend on MessagingProvider {
             'content': '',
             'messageType': 'VIDEO',
             'mediaDuration': ?duration,
+            'mediaWidth': ?width,
+            'mediaHeight': ?height,
+            'mediaThumbHash': ?thumbHash,
             'mediaKey': key,
             'mediaIv': iv,
           };
@@ -452,6 +475,9 @@ extension MessagingSend on MessagingProvider {
         mediaDuration: serverDuration,
         mediaKey: upload.keyBase64,
         mediaIv: upload.ivBase64,
+        mediaWidth: width,
+        mediaHeight: height,
+        mediaThumbHash: thumbHash,
       );
     } catch (e) {
       debugPrint('[MessagingProvider] Video send failed: $e');

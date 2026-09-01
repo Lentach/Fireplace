@@ -1311,11 +1311,17 @@ class AppLocalizationsPl extends AppLocalizations {
   String get videoTooLarge => 'Wideo jest za duże (maks. 20 MB)';
 
   @override
-  String get videoTooLong => 'Wideo jest za długie (maks. 60 sekund)';
+  String get videoTooLong => 'Wideo jest za długie (maks. 3 minuty)';
 
   @override
   String get videoUnsupportedFormat =>
       'Nieobsługiwany format wideo (tylko MP4)';
+
+  @override
+  String get videoFailedToLoad => 'Nie udało się załadować wideo';
+
+  @override
+  String get videoStillSending => 'Trwa wysyłanie…';
 
   @override
   String get attachmentUnsupportedFileType => 'Nieobsługiwany typ pliku';

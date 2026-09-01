@@ -489,7 +489,9 @@
   "chatPickerInviteButton": "Zaproś kogoś",
   "videoMessage": "Wideo",
   "videoTooLarge": "Wideo jest za duże (maks. 20 MB)",
-  "videoTooLong": "Wideo jest za długie (maks. 60 sekund)",
+  "videoTooLong": "Wideo jest za długie (maks. 3 minuty)",
   "videoUnsupportedFormat": "Nieobsługiwany format wideo (tylko MP4)",
+  "videoFailedToLoad": "Nie udało się załadować wideo",
+  "videoStillSending": "Trwa wysyłanie…",
   "attachmentUnsupportedFileType": "Nieobsługiwany typ pliku"
 }

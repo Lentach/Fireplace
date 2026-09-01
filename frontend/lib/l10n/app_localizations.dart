@@ -2369,7 +2369,7 @@ abstract class AppLocalizations {
   /// No description provided for @videoTooLong.
   ///
   /// In pl, this message translates to:
-  /// **'Wideo jest za długie (maks. 60 sekund)'**
+  /// **'Wideo jest za długie (maks. 3 minuty)'**
   String get videoTooLong;
 
   /// No description provided for @videoUnsupportedFormat.
@@ -2377,6 +2377,18 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Nieobsługiwany format wideo (tylko MP4)'**
   String get videoUnsupportedFormat;
+
+  /// No description provided for @videoFailedToLoad.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się załadować wideo'**
+  String get videoFailedToLoad;
+
+  /// No description provided for @videoStillSending.
+  ///
+  /// In pl, this message translates to:
+  /// **'Trwa wysyłanie…'**
+  String get videoStillSending;
 
   /// No description provided for @attachmentUnsupportedFileType.
   ///

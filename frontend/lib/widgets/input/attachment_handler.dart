@@ -69,13 +69,23 @@ class AttachmentHandler {
 
   // ── video sending ─────────────────────────────────────────────────────────
 
-  /// Sends a staged video from bytes. Mirrors [sendImage]: returns true only
-  /// after the video's socket emit (caption ordering contract); false when
-  /// the send failed before the emit (the optimistic bubble owns retry).
+  /// Sends a picked video from bytes — IMMEDIATELY, with no staging step.
+  /// Mirrors [sendImage]: returns true only after the video's socket emit
+  /// (caption ordering contract); false when the send failed before the emit
+  /// (the optimistic bubble owns retry).
+  ///
+  /// [width], [height] and [thumbHash] come from the composer's single
+  /// `probeVideoPreview` pass and ride inside the E2E envelope, so the
+  /// receiving bubble can size itself to the real aspect ratio and paint a
+  /// placeholder before fetching anything. Any of them may be null when the
+  /// platform could not read the container.
   static Future<bool> sendVideo(
     BuildContext context, {
     required Uint8List videoBytes,
     int? durationSeconds,
+    int? width,
+    int? height,
+    String? thumbHash,
   }) async {
     final messaging = context.read<MessagingProvider>();
     final auth = context.read<AuthProvider>();
@@ -97,6 +107,9 @@ class AttachmentHandler {
       videoBytes,
       recipientId,
       duration: durationSeconds,
+      width: width,
+      height: height,
+      thumbHash: thumbHash,
     );
   }
 

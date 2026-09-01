@@ -372,135 +372,88 @@ void main() {
     await tester.pump(const Duration(seconds: 3)); // flush snackbar timer
   });
 
-  group('staged video (media-picker redesign)', () {
-    testWidgets('picking a video STAGES it — chip visible, nothing sent', (
+  group('picked video sends immediately (owner ruling 2026-08-31)', () {
+    // The duration probe resolves to the dart:io implementation under
+    // flutter_test, where path_provider has no platform binding, so it answers
+    // VideoPreview.unknown. That is the honest "platform could not read it"
+    // path: duration/geometry are omitted and the send proceeds regardless.
+    testWidgets('picking a video SENDS it — no chip, VIDEO emitted', (
       tester,
     ) async {
       final h = await pumpComposer(tester);
 
-      await h.key.currentState!.stagePickedVideo(
-        bytes: Uint8List(64),
-        filename: 'clip.mp4',
+      await tester.runAsync(
+        () => h.key.currentState!.sendPickedVideo(
+          bytes: Uint8List(64),
+          filename: 'clip.mp4',
+        ),
       );
-      await tester.pumpAndSettle();
-
-      expect(
-        find.byKey(const ValueKey('composer_attachment_video_thumb')),
-        findsOneWidget,
-      );
-      expect(find.text('clip.mp4'), findsOneWidget);
-      expect(h.emitted, isEmpty); // staged, NOT auto-sent
-
-      // Trailing control shows the text-send state with staged video + empty text.
-      final layer = find.byKey(const ValueKey('composer_text_send_layer'));
-      final opacity = tester.widget<AnimatedOpacity>(
-        find.descendant(of: layer, matching: find.byType(AnimatedOpacity)),
-      );
-      expect(opacity.opacity, 1.0);
-    });
-
-    testWidgets('discard clears the staged video', (tester) async {
-      final h = await pumpComposer(tester);
-
-      await h.key.currentState!.stagePickedVideo(
-        bytes: Uint8List(64),
-        filename: 'clip.mp4',
-      );
-      await tester.pumpAndSettle();
-
-      await tester.tap(
-        find.byKey(const ValueKey('composer_attachment_remove')),
-      );
-      await tester.pumpAndSettle();
-
-      expect(
-        find.byKey(const ValueKey('composer_attachment_video_thumb')),
-        findsNothing,
-      );
-      expect(h.key.currentState!.attachmentControllerForTest.staged, isNull);
-    });
-
-    testWidgets('send emits VIDEO with the staged bytes and duration', (
-      tester,
-    ) async {
-      final h = await pumpComposer(tester);
-
-      h.key.currentState!.attachmentControllerForTest.stageVideo(
-        bytes: Uint8List(64),
-        filename: 'clip.mp4',
-        durationSeconds: 12,
-      );
-      await tester.pumpAndSettle();
-
-      await tester.runAsync(() => h.key.currentState!.sendForTest());
       await tester.pumpAndSettle();
       await tester.pump(const Duration(milliseconds: 200));
 
       expect(h.emitted, ['VIDEO']);
-      expect(h.emittedData.single['mediaDuration'], 12);
+      // Nothing stages: no chip, and the staging controller stays empty.
       expect(
-        find.byKey(const ValueKey('composer_attachment_video_thumb')),
-        findsNothing, // composer drained
+        find.byKey(const ValueKey('composer_attachment_thumb')),
+        findsNothing,
       );
+      expect(h.key.currentState!.attachmentControllerForTest.staged, isNull);
     });
 
-    testWidgets('video-then-caption keeps the media-first ordering contract', (
+    testWidgets('a typed caption is NOT consumed by the video send', (
       tester,
     ) async {
       final h = await pumpComposer(tester);
+      await tester.enterText(find.byType(TextField), 'my caption');
 
-      h.key.currentState!.attachmentControllerForTest.stageVideo(
-        bytes: Uint8List(64),
-        filename: 'clip.mp4',
-        durationSeconds: 5,
+      await tester.runAsync(
+        () => h.key.currentState!.sendPickedVideo(
+          bytes: Uint8List(64),
+          filename: 'clip.mp4',
+        ),
       );
-      await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField), 'video caption');
-
-      await tester.runAsync(() => h.key.currentState!.sendForTest());
       await tester.pumpAndSettle();
       await tester.pump(const Duration(milliseconds: 200));
 
-      expect(h.emitted, ['VIDEO', 'TEXT']);
+      // Immediate send has no staging step to attach a caption to, so the
+      // draft must survive rather than be silently sent or dropped.
+      expect(h.emitted, ['VIDEO']);
       expect(
         tester.widget<TextField>(find.byType(TextField)).controller!.text,
-        isEmpty,
+        'my caption',
       );
     });
 
-    testWidgets('oversize video: toast, nothing staged', (tester) async {
+    testWidgets('oversize video: toast, nothing sent', (tester) async {
       final h = await pumpComposer(tester);
 
-      await h.key.currentState!.stagePickedVideo(
-        bytes: Uint8List(MediaCryptoService.maxBytes + 1),
-        filename: 'huge.mp4',
+      await tester.runAsync(
+        () => h.key.currentState!.sendPickedVideo(
+          bytes: Uint8List(MediaCryptoService.maxBytes + 1),
+          filename: 'huge.mp4',
+        ),
       );
       await tester.pump();
 
       expect(find.text('Video is too large (max 20 MB)'), findsOneWidget);
-      expect(
-        find.byKey(const ValueKey('composer_attachment_video_thumb')),
-        findsNothing,
-      );
-      expect(h.key.currentState!.attachmentControllerForTest.staged, isNull);
+      expect(h.emitted, isEmpty);
       await tester.pump(const Duration(seconds: 3)); // flush snackbar timer
     });
 
-    testWidgets('wrong extension: toast, nothing staged', (tester) async {
+    testWidgets('wrong extension: toast, nothing sent', (tester) async {
       final h = await pumpComposer(tester);
 
-      await h.key.currentState!.stagePickedVideo(
-        bytes: Uint8List(64),
-        filename: 'clip.avi',
+      await tester.runAsync(
+        () => h.key.currentState!.sendPickedVideo(
+          bytes: Uint8List(64),
+          filename: 'clip.avi',
+        ),
       );
       await tester.pump();
 
+      // The last gate before an IMMEDIATE, unconfirmed send.
       expect(find.text('Unsupported video format (MP4 only)'), findsOneWidget);
-      expect(
-        find.byKey(const ValueKey('composer_attachment_video_thumb')),
-        findsNothing,
-      );
-      expect(h.key.currentState!.attachmentControllerForTest.staged, isNull);
+      expect(h.emitted, isEmpty);
       await tester.pump(const Duration(seconds: 3));
     });
   });

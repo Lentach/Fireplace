@@ -36,9 +36,10 @@ typedef StageImageCallback =
       required String filename,
     });
 
-/// Stages a picked video into the composer (staged-video flow; policy checks
-/// and rejection toasts happen inside).
-typedef StageVideoCallback =
+/// Hands a picked video to the composer, which sends it IMMEDIATELY (policy
+/// checks and rejection toasts happen inside). Unlike images, video never
+/// stages — iOS's own `Retake / Use Video` screen is the confirmation step.
+typedef PickedVideoCallback =
     Future<void> Function({required Uint8List bytes, required String filename});
 
 class ChatActionTiles extends StatelessWidget {
@@ -50,20 +51,19 @@ class ChatActionTiles extends StatelessWidget {
   /// composer heals the blur post-frame through this callback.
   final VoidCallback? onPingSent;
 
-  /// Composer staging seams (null only in standalone test mounts —
+  /// Composer seams (null only in standalone test mounts —
   /// [_routePickedFile]'s media branches then no-op per branch; the
   /// document branch is seam-free and still works). Media routes by
-  /// extension: image → staged-image flow, video → staged-video flow.
+  /// extension: image → staged-image flow, video → immediate send.
   final StageImageCallback? onStageImage;
-  final StageVideoCallback? onStageVideo;
-
+  final PickedVideoCallback? onPickedVideo;
 
   const ChatActionTiles({
     super.key,
     this.bottomPadding = 0,
     this.onPingSent,
     this.onStageImage,
-    this.onStageVideo,
+    this.onPickedVideo,
   });
 
   @override
@@ -368,11 +368,11 @@ class ChatActionTiles extends StatelessWidget {
   }
 
   /// Routes a picked file by extension. Routing is EXPLICIT: whitelisted
-  /// image extensions stage as image, video extensions stage as video
-  /// (media staging no-ops in callback-less test mounts), document
-  /// extensions send immediately, and anything else (e.g. an iOS HEIC the
-  /// device did not transcode) gets an honest unsupported-file toast —
-  /// never a video-shaped error for an image.
+  /// image extensions stage as image, video and document extensions send
+  /// immediately (both no-op in callback-less test mounts for the seamed
+  /// branches), and anything else (e.g. an iOS HEIC the device did not
+  /// transcode) gets an honest unsupported-file toast — never a video-shaped
+  /// error for an image.
   Future<void> _routePickedFile(
     BuildContext context, {
     required String fileName,
@@ -400,8 +400,11 @@ class ChatActionTiles extends StatelessWidget {
       return;
     }
     if (_galleryVideoExtensions.contains(ext)) {
-      if (onStageVideo == null) return;
-      await onStageVideo!(bytes: Uint8List.fromList(bytes), filename: fileName);
+      if (onPickedVideo == null) return;
+      await onPickedVideo!(
+        bytes: Uint8List.fromList(bytes),
+        filename: fileName,
+      );
       return;
     }
     if (_documentExtensions.contains(ext)) {
