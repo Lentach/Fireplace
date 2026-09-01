@@ -68,7 +68,7 @@ gallery clip (~12 Mbps) hits 11 MB in ~7 s.
 
 ## Verification
 
-- `flutter analyze --no-fatal-infos` clean; **`flutter test` 1342 passed / 10 skipped** (was 1330);
+- `flutter analyze --no-fatal-infos` clean; **`flutter test` 1344 passed / 10 skipped** (was 1330);
   CLAUDE.md §3 bumped and `verify-claude-frontend-test-counts.mjs` OK.
 - **On-device probe acceptance (new): `integration_test/video_probe_device_test.dart`, 3/3 on a
   Pixel 7.** Asserts the EXACT values the native probe returns — `width == 1080`, `height == 2400`,
@@ -80,9 +80,20 @@ gallery clip (~12 Mbps) hits 11 MB in ~7 s.
     storage (stats fine, throws on open) and anything under the app's own dirs is destroyed every
     run — **`flutter test integration_test` UNINSTALLS the package when it finishes**. Missing
     fixture SKIPS, never fails.
-- **Live two-account browser E2E** (isolated backend on :3010, real Signal): pick → immediate send →
-  portrait bubble → tap → decrypt → fullscreen playback, on BOTH sender and receiver. Receiver sized
-  the bubble portrait from the encrypted envelope alone.
+- **Live browser E2E, SENDER side only** (isolated backend on :3010, real Signal): pick → immediate
+  send → portrait bubble → real poster frame → tap → fullscreen playback. Verified twice, including
+  after the raw-RGBA poster fix.
+- **⛔ RETRACTED — an earlier draft of this file claimed "receiver sized the bubble portrait from the
+  encrypted envelope alone." That DID NOT REPRODUCE.** On a re-run with two fresh accounts and a
+  fresh database, the receiver rendered LANDSCAPE + blank and playback failed. The `0:08` duration
+  that made it look correct comes from the **plaintext `mediaDuration` DB column**, not the envelope
+  — so a receiver can show the right duration while having decrypted nothing. **Receive-side
+  geometry is UNVERIFIED.**
+  - Cause is not this change: the control test — a plain TEXT message on the same fresh pair — also
+    failed, showing "Wiadomość zaszyfrowana". Encryption code is untouched on this branch
+    (`git diff master...feat/video-messages -- backend/` is empty). This is the standing
+    `[Decryption failed]` issue, now reproduced **web→web** on fresh state, which is a tighter repro
+    than the Android→web one. Unknown whether it also hits established production sessions.
 - **Android emulator (Pixel 7) UI pass**: picked `clip.mp4` → sent immediately, portrait bubble,
   `0:08` from the native probe, fullscreen decrypt+playback OK. web→Android also carried geometry.
 - **Prod ceiling proven moved**: `POST /media/upload` with 15 MB → **401** (body reached the backend;
