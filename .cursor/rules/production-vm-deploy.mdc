@@ -67,16 +67,18 @@ Until excluded: on exit-21 run the manual staged publish (identical to the scrip
 mv ~/web-staging/web frontend-build && chmod -R a+rX frontend-build && echo PUBLISHED_OK'` →
 `cd scripts/smoke && node post-deploy-smoke.mjs`. Never pipe the script to `tail` (swallows the failure).
 
-**Stale-page trap (fixed 2026-08-30):** the landing block in `/etc/nginx/sites-enabled/fireplace`
-now sends `Cache-Control: no-cache` for everything under `/welcome/` — without it browsers used
-heuristic freshness and replayed cached pre-deploy HTML for hours without revalidating (owner kept
-seeing the old brand after the Umbra deploy; the app settings footer links there). Hashed assets
-just 304 via ETag, cost is one RTT. The Flutter app shell (`/` → index.html, flutter.js,
-version.json) still has NO cache headers — same trap, unfixed; add the same header there if "old
-app after deploy" complaints recur. Also removed `fireplace.bak.1784434246` from `sites-enabled/`
-(a July config backup nginx was loading as live config — caused "conflicting server name" warns;
-never leave backups in that dir, they are live). Backup of the current config:
-`/home/ubuntu/nginx-fireplace.bak.<epoch>`.
+**Stale-page trap (fixed 2026-08-30 for `/welcome/`, 2026-09-02 for the app shell):** both the
+landing block and the Flutter `location /` block in `/etc/nginx/sites-enabled/fireplace` send
+`Cache-Control: no-cache` — without it browsers used heuristic freshness and replayed cached
+pre-deploy HTML for hours without revalidating (owner kept seeing the old brand after the Umbra
+deploy; the app settings footer links there). Flutter web output is NOT content-hashed, so
+`immutable` would be wrong; `no-cache` = revalidate via ETag, cost is one RTT/304. Verify after any
+nginx edit: `curl -sI https://fireplace.ignorelist.com/{,index.html,flutter.js,version.json,main.dart.js}`
+must show `cache-control: no-cache`. The file has no server-level `add_header`; if one is ever added,
+remember nginx `add_header` in a location REPLACES the inherited set — repeat the server-level ones
+in both blocks. Also removed `fireplace.bak.1784434246` from `sites-enabled/` (a July config backup
+nginx was loading as live config — caused "conflicting server name" warns; never leave backups in
+that dir, they are live). Backups of the config: `/home/ubuntu/nginx-fireplace.bak.<epoch>`.
 
 ## Contact inbox service (standalone, VM-only)
 
