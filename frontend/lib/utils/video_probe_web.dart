@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -108,6 +109,14 @@ Future<bool> _awaitMetadata(web.HTMLVideoElement video) {
 ///
 /// The seek target is deliberately not 0: cameras routinely open on a black or
 /// half-exposed frame, which would ThumbHash to a featureless grey smear.
+///
+/// iOS Safari needs more than a seek. It fires `seeked` once the playhead
+/// moves, which is NOT a promise that a frame has been decoded, and it will
+/// not decode at all for a `<video>` that has never played — so `drawImage`
+/// lands on an empty canvas and the bubble shows a blank poster. The fix is to
+/// nudge playback (muted + playsinline, already set) to force a decode, then
+/// wait for a REAL presented frame via `requestVideoFrameCallback` where it
+/// exists. Both steps degrade to the old behaviour elsewhere.
 Future<String?> _capturePosterThumbHash(
   web.HTMLVideoElement video, {
   required int width,
@@ -115,6 +124,8 @@ Future<String?> _capturePosterThumbHash(
   required double? durationSeconds,
 }) async {
   try {
+    await _forceDecode(video);
+
     if (durationSeconds != null) {
       final target = math.min(durationSeconds * 0.1, 1.0);
       if (target > 0) {
@@ -122,6 +133,7 @@ Future<String?> _capturePosterThumbHash(
         if (!await _awaitSeek(video)) return null;
       }
     }
+    await _awaitPresentedFrame(video);
 
     final scale = math.min(1.0, _kPosterMaxSide / math.max(width, height));
     final targetWidth = math.max(1, (width * scale).round());
@@ -145,7 +157,47 @@ Future<String?> _capturePosterThumbHash(
     return metadata?.thumbHash;
   } catch (_) {
     return null;
+  } finally {
+    video.pause();
   }
+}
+
+/// Nudges muted playback so the decoder produces at least one frame.
+///
+/// iOS will not decode for a `<video>` that has never played. `play()` can
+/// reject (autoplay policy) — that is fine and non-fatal, since desktop
+/// browsers decode on seek alone.
+Future<void> _forceDecode(web.HTMLVideoElement video) async {
+  try {
+    await video.play().toDart;
+  } catch (_) {
+    // Autoplay refused; the seek path may still yield a frame.
+  }
+}
+
+/// Resolves once the compositor has actually presented a frame.
+///
+/// Uses `requestVideoFrameCallback` when the browser has it (Safari 15.4+,
+/// Chrome 83+); otherwise yields briefly, which is what the code did before.
+Future<void> _awaitPresentedFrame(web.HTMLVideoElement video) {
+  final completer = Completer<void>();
+  void finish() {
+    if (!completer.isCompleted) completer.complete();
+  }
+
+  final target = video as JSObject;
+  final hasCallback = target
+      .hasProperty('requestVideoFrameCallback'.toJS)
+      .toDart;
+  if (hasCallback) {
+    target.callMethod(
+      'requestVideoFrameCallback'.toJS,
+      ((JSAny _, JSAny _) => finish()).toJS,
+    );
+  }
+  // Backstop: a paused/exhausted decoder may never present another frame.
+  Timer(const Duration(milliseconds: 320), finish);
+  return completer.future;
 }
 
 /// Completes true on `seeked`, false on `error` or timeout.

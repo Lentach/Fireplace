@@ -185,13 +185,19 @@ void main() {
       expect(find.byType(CircularProgressIndicator), findsNothing);
     });
 
-    testWidgets('tap opens the fullscreen viewer', (tester) async {
+    // Deliberately NOT a double-tap test. `onDoubleTap` is still wired, but it
+    // was PROVEN not to fire inside the real message list (raw CDP touch pairs
+    // 71 ms apart, plus an on-screen marker that never appeared) because the
+    // bubble's swipe/long-press wrapper shares the gesture arena. A widget
+    // test WOULD pass — Flutter's own gesture simulation fires it — so
+    // asserting on it here would document behaviour the user cannot get.
+    testWidgets('expand button opens the fullscreen viewer', (tester) async {
       await _pumpBubble(
         tester,
         _videoMessage(mediaWidth: 360, mediaHeight: 480),
       );
 
-      await tester.tap(find.byType(VideoMessageContent));
+      await tester.tap(find.byKey(const ValueKey('video_expand_button')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
@@ -200,9 +206,26 @@ void main() {
         findsOneWidget,
       );
     });
+
+    testWidgets('tapping the tile does NOT open fullscreen', (tester) async {
+      await _pumpBubble(
+        tester,
+        _videoMessage(mediaWidth: 360, mediaHeight: 480),
+      );
+
+      // Hits the tile body, away from the expand button in the corner.
+      await tester.tapAt(tester.getCenter(find.byType(VideoMessageContent)));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('video_fullscreen_close')),
+        findsNothing,
+      );
+    });
   });
 
-  group('fullscreen viewer failure states', () {
+  group('failure states', () {
     // An optimistic bubble is tappable while its blob is still uploading, so
     // this branch is reachable by the SENDER on their own message. It must not
     // accuse the app of a decryption failure: nothing has been decrypted yet.
@@ -211,9 +234,10 @@ void main() {
     ) async {
       await _pumpBubble(tester, _videoMessage(mediaUrl: null));
 
-      await tester.tap(find.byType(VideoMessageContent));
+      await tester.tap(find.byKey(const ValueKey('video_expand_button')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
 
       expect(find.text('Still sending…'), findsOneWidget);
       expect(find.text('Video failed to load'), findsNothing);
@@ -228,7 +252,7 @@ void main() {
     ) async {
       await _pumpBubble(tester, _videoMessage());
 
-      await tester.tap(find.byType(VideoMessageContent));
+      await tester.tap(find.byKey(const ValueKey('video_expand_button')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pumpAndSettle();

@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
@@ -6,12 +5,8 @@ import 'package:video_player/video_player.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
 import '../../providers/auth_provider.dart';
-import '../../utils/encrypted_media_loader.dart';
 import '../../utils/video_preview.dart';
-import '../../utils/video_blob_url_stub.dart'
-    if (dart.library.html) '../../utils/video_blob_url_web.dart' as video_blob;
-import '../../utils/video_temp_file_stub.dart'
-    if (dart.library.io) '../../utils/video_temp_file_io.dart' as video_temp;
+import 'video_playback_session.dart';
 
 /// Opens the fullscreen video player for [message].
 ///
@@ -40,26 +35,11 @@ double _rotationAwareAspectRatio(VideoPlayerValue value) {
       : size.width / size.height;
 }
 
-/// Why the stage has no video to show.
-///
-/// Two cases, not three: [loadDecryptedMediaBytes] throws ONE undifferentiated
-/// exception for fetch failure, oversize and decrypt failure alike, so this
-/// screen cannot honestly name decryption as the cause of a load error.
-enum _VideoStageError {
-  /// The bubble is still optimistic — the blob has not finished uploading, so
-  /// there is nothing to fetch yet. Not a failure; never say "failed" here.
-  stillSending,
 
-  /// Fetch, size guard, decrypt or codec initialisation failed. Which one is
-  /// not knowable at this layer.
-  unplayable,
-}
 
-/// Fullscreen player that owns the ONLY [VideoPlayerController] in the app.
-///
-/// The chat bubble is deliberately a static poster: a scrolling list must
-/// never hold N live players or N decrypted multi-megabyte buffers, so the
-/// fetch, the decrypt and the player all live here and die with the dialog.
+/// Fullscreen player. Owns its own [VideoPlaybackSession], separate from the
+/// bubble's: the dialog is torn down independently, and sharing one decrypted
+/// buffer across both would mean neither could safely free it.
 class _VideoFullscreenView extends StatefulWidget {
   final MessageModel message;
 
@@ -70,14 +50,14 @@ class _VideoFullscreenView extends StatefulWidget {
 }
 
 class _VideoFullscreenViewState extends State<_VideoFullscreenView> {
-  VideoPlayerController? _controller;
-  String? _objectUrl;
-  String? _tempFilePath;
+  VideoPlaybackSession? _session;
   bool _loading = true;
-  _VideoStageError? _error;
+  VideoStageError? _error;
   bool _playing = false;
 
-  bool get _ready => _controller?.value.isInitialized ?? false;
+  VideoPlayerController? get _controller => _session?.controller;
+
+  bool get _ready => _session?.isReady ?? false;
 
   @override
   void initState() {
@@ -87,23 +67,9 @@ class _VideoFullscreenViewState extends State<_VideoFullscreenView> {
 
   @override
   void dispose() {
-    _teardown();
+    _controller?.removeListener(_onControllerTick);
+    _session?.dispose();
     super.dispose();
-  }
-
-  void _teardown() {
-    final controller = _controller;
-    _controller = null;
-    controller?.removeListener(_onControllerTick);
-    controller?.dispose();
-    if (_objectUrl != null) {
-      video_blob.revokeVideoObjectUrl(_objectUrl);
-      _objectUrl = null;
-    }
-    if (_tempFilePath != null) {
-      video_temp.deleteVideoTempFile(_tempFilePath).ignore();
-      _tempFilePath = null;
-    }
   }
 
   void _onControllerTick() {
@@ -115,64 +81,30 @@ class _VideoFullscreenViewState extends State<_VideoFullscreenView> {
   }
 
   Future<void> _load() async {
-    final url = widget.message.mediaUrl;
-    // An optimistic bubble has no uploaded blob yet; nothing to fetch.
-    if (url == null || url.isEmpty || !url.startsWith('http')) {
+    final session = VideoPlaybackSession(
+      message: widget.message,
+      token: context.read<AuthProvider>().token ?? '',
+    );
+    _session = session;
+    final failure = await session.load();
+    if (!mounted) {
+      session.dispose();
+      return;
+    }
+    if (failure != null) {
       setState(() {
         _loading = false;
-        _error = _VideoStageError.stillSending;
+        _error = failure;
       });
       return;
     }
-    final token = context.read<AuthProvider>().token ?? '';
-    try {
-      final bytes = await loadDecryptedMediaBytes(
-        url: url,
-        token: token,
-        key: widget.message.mediaKey,
-        iv: widget.message.mediaIv,
-      );
-      if (!mounted) return;
-
-      final VideoPlayerController controller;
-      if (kIsWeb) {
-        final blobUrl = video_blob.createVideoObjectUrl(bytes);
-        _objectUrl = blobUrl;
-        controller = VideoPlayerController.networkUrl(Uri.parse(blobUrl));
-      } else {
-        final path = await video_temp.writeVideoTempFile(
-          bytes,
-          widget.message.id,
-        );
-        if (!mounted) {
-          // dispose() already ran with a null _tempFilePath; nothing else
-          // will ever delete this file.
-          video_temp.deleteVideoTempFile(path).ignore();
-          return;
-        }
-        _tempFilePath = path;
-        controller = video_temp.controllerForPath(path);
-      }
-      // Assign before initialize() so a dispose during the await still tears
-      // the controller down.
-      _controller = controller;
-      await controller.initialize();
-      if (!mounted) return;
-      controller.addListener(_onControllerTick);
-      setState(() {
-        _loading = false;
-        _playing = true;
-      });
-      await controller.setLooping(false);
-      await controller.play();
-    } catch (_) {
-      if (!mounted) return;
-      _teardown();
-      setState(() {
-        _loading = false;
-        _error = _VideoStageError.unplayable;
-      });
-    }
+    session.controller!.addListener(_onControllerTick);
+    setState(() {
+      _loading = false;
+      _playing = true;
+    });
+    await session.controller!.setLooping(false);
+    await session.controller!.play();
   }
 
   void _togglePlayback() {
@@ -262,7 +194,7 @@ class _VideoFullscreenViewState extends State<_VideoFullscreenView> {
       // One error surface, not two: the glyph and its explanation belong in
       // the same branch. This used to render `videoMessage` — the bubble's
       // LABEL ("Video") — which told the user nothing.
-      final stillSending = error == _VideoStageError.stillSending;
+      final stillSending = error == VideoStageError.stillSending;
       final l10n = AppLocalizations.of(context);
       return Center(
         child: Column(
