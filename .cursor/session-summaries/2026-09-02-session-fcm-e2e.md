@@ -76,14 +76,35 @@ Owner: *"emulator shouldn't lag that hard, something is wrong with it."* Correct
 | App-shell no-cache | `curl -I` on `/`, `/index.html`, `/flutter.js`, `/version.json`, `/main.dart.js` → `cache-control: no-cache`; `nginx -t` ok before reload |
 | Downloads key gone | `rm -v` output |
 
+## Later the same day — `.jks` backup, first signed release APK, emulator pre-smoke
+
+- `.jks` backed up off-PC (USB plain copy + AES-256 `.enc` in the owner's cloud), restore proven by
+  signing an APK from the USB copy → production cert. Fingerprints + recipe in
+  `docs/runbooks/android-release.md` §"Backing it up".
+- `build-android.ps1` reads the Giphy key ONLY from `$env:GIPHY_API_KEY` (dot-source
+  `deploy-web.config.ps1` first). Built `0.1.24` / versionCode **10024** from `feat/video-messages`
+  `1f9d96f` (what prod web runs — owner: "the number doesn't really matter"), release cert, 16 KB ELF
+  10/10, SHA256 `743612453b44ff2a961760cb010a4dac9b87868594080517c9c1ac1a2bc40ef1`.
+- Emulator pre-smoke on prod, release build: `test_apk_release` (id 106) registered → `fcm_token` row;
+  invite from web accepted; `am kill` → `pidof` empty, `stopped=false`; web message → NEW process,
+  `FLTFireMsgReceiver: broadcast received for message` → `FlutterFirebaseMessagingBackgroundService
+  started!` → shade card "Umbra · You have a new message"; tap cold-starts `MainActivity`.
+  Screenshots `.planning/push-release-shade.png`, `.planning/push-release-statusbar.png`.
+- **Trap 1:** the first attempt used `am force-stop` → package in Android *stopped state* → FCM
+  dropped silently. Kill = `am kill` / swipe-away only.
+- **Trap 2:** release `MainActivity` sets `FLAG_SECURE` → `screencap` rc=1 while the app window is
+  live. Verify via logcat / prod DB / shade with the app dead.
+- **versionCode floor 10024** — master is 0.1.21 → 10021 is a downgrade; bump past 0.1.24 always.
+- Runbook wording changed to NEW ACCOUNTS ONLY (owner green-lit).
+
 ## Still owed (owner decisions / actions)
 
-- **Domain name** (blocks the APK: BASE_URL bakes into it; old origin must serve forever for PWA users).
+- **Release waits for the owner's PIN/passcode-to-enter-app feature** → bump version, rebuild,
+  re-run emulator pre-smoke, real-phone smoke (runbook items 2/4/5/6 + tap opens the right chat),
+  GitHub Release with SHA256 + new-accounts wording.
+- Domain: NOT an APK blocker (see LATEST 09-02); owner's pick pending.
 - GitHub repo renames → then remotes, landing README link, landing `CLAUDE.md:5`, dependabot comment.
-- `.jks` off-PC backup + recorded SHA-256 **before** anything ships signed; Play listing must say
-  one-account-one-device.
-- Kaspersky exclusions for both repo dirs before re-enabling AV (it has now deleted deploy scripts 3×
-  and a whole `build/app/` tree once).
+- Kaspersky stays off by owner's choice — exclusions are no longer a gate.
 - Personal iOS reinstall for the ember icon.
-- Throwaway prod accounts from this session (`test_web_sender`, `test_apk_receiver`) can be deleted
-  from Settings whenever.
+- Throwaway prod accounts (`test_web_sender` 104, `test_apk_receiver` 105, `test_apk_release` 106)
+  can be deleted from Settings whenever.

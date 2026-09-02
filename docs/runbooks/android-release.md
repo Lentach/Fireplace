@@ -119,9 +119,22 @@ write the password twice.
 ```
 
 Output: `frontend/build/app/outputs/flutter-apk/app-release.apk` + SHA256 in the summary.
-The script reuses `deploy-web.config.ps1` for `GiphyApiKey` if present. `BASE_URL` defaults to
-production; override with `-BaseUrl` for a staging build. Requires an Android SDK with build-tools
-(for `apksigner`) via `ANDROID_HOME`/`ANDROID_SDK_ROOT`/`%LOCALAPPDATA%\Android\Sdk`.
+The script reads `GiphyApiKey` ONLY from the `GIPHY_API_KEY` env var — dot-source the config first:
+`. .\deploy-web.config.ps1; $env:GIPHY_API_KEY = $GiphyApiKey; .\build-android.ps1` (there is no
+embedded fallback key despite the script's warning text; empty = GIF search disabled). `BASE_URL`
+defaults to production; override with `-BaseUrl` for a staging build. Requires an Android SDK with
+build-tools (for `apksigner`) via `ANDROID_HOME`/`ANDROID_SDK_ROOT`/`%LOCALAPPDATA%\Android\Sdk`.
+
+**versionCode floor — 10024.** The first release build (2026-09-02) was `0.1.24` from
+`feat/video-messages` (`1f9d96f`) → versionCode `10024`, SHA256
+`743612453b44ff2a961760cb010a4dac9b87868594080517c9c1ac1a2bc40ef1`, built for the owner's phone.
+`master` was still `0.1.21` at the time, so a build from master would derive `10021` and Android
+would REFUSE it as a downgrade. Every build meant to install over an existing one must bump
+`frontend/pubspec.yaml` past the highest version ever installed — regardless of branch.
+
+**Release builds cannot be screenshotted** — `MainActivity.kt` sets `FLAG_SECURE` when not
+debuggable, so `screencap` returns rc=1 while the app window is live (even from recents). Verify
+release behavior via logcat, the prod DB, and the notification shade with the app dead.
 
 ## Device smoke checklist (before any distribution)
 
@@ -131,11 +144,23 @@ Build from a **fresh clone** at least once (proves no local-only file is load-be
 2. E2E round trip with a PWA peer: PreKey (`3:`) first message, whisper (`2:`) replies, both directions decrypt.
 3. **Push with the app killed** (data-only FCM → local notification, tap opens the right chat). This
    specifically validates the no-options Firebase init from `google-services.json`.
+   ⚠️ "Killed" = swipe away from recents or `adb shell am kill <pkg>` — **never `am force-stop`**:
+   force-stop puts the package in Android's *stopped state*, in which the OS drops every FCM message
+   until the user launches the app again. A force-stopped app receiving nothing is not a push bug.
 4. Voice note record + playback; image send/receive (validates the 16KB-patched webcrypto at runtime).
 5. Delete-for-everyone + expiry: plaintext purged locally (Privacy & Safety diags clean).
 6. **Same-account flip-flop drill**: log the SAME account into APK + PWA, force reconnects on both →
    observe identity thrash (peers see repeated identity-changed banners). Log OUT of the PWA → epochs
    stabilize, E2E round trip recovers. We ship migration instructions we have watched fail and recover.
+
+**Emulator pre-smoke of the first release build (2026-09-02, Pixel_7 AVD, prod backend):** items 1
+and 3 PASS on the release-signed, R8-minified APK — fresh account registered on prod, `fcm_token` row
+written, process killed with `am kill`, a web→APK message woke a NEW process
+(`FLTFireMsgReceiver: broadcast received for message` → background engine → local notification),
+shade shows "Umbra / You have a new message" with the hex icon, tap cold-starts `MainActivity`.
+Screenshots (gitignored): `.planning/push-release-shade.png`, `.planning/push-release-statusbar.png`.
+Items 2, 4, 5, 6 and "tap opens the RIGHT chat" remain for the real phone (release screenshots are
+impossible, see `FLAG_SECURE` above).
 
 ## Distribution (decision 2026-07-29: direct APK first, Play later)
 
@@ -145,14 +170,24 @@ Build from a **fresh clone** at least once (proves no local-only file is load-be
 - Play Store later: needs `flutter build appbundle` (same gates apply), data-safety forms, and the
   16KB + targetSdk requirements already satisfied here.
 
-## User migration wording (PWA → APK) — use EXACTLY this
+## User wording (APK) — decision 2026-09-02: NEW ACCOUNTS ONLY (until multi-device DEPLOYS)
 
-> Install the Fireplace app, **log in with your existing account**, then **log out of the web app**.
-> Don't run both at once. Your friends and chats come with you; old message history stays on the old
-> device (end-to-end encryption means it physically cannot follow). Your friends will see a one-time
-> "security identity changed" notice — that's expected; the fingerprint dialog lets them verify it's you.
-> **Never delete your account and never clear the browser's site data** — that destroys data for nothing.
-> iPhone users: keep using the web app as-is; nothing changes for you.
+The 0.1.24 APK was built from `feat/video-messages`, i.e. the single-device protocol prod runs today
+(one key bundle per account, no `deviceId`): an existing PWA user logging into it would either
+thrash identities (both live) or have to abandon the PWA. **PR #144 (multi-device, linked devices)
+merged to master on 2026-09-02 but is NOT deployed** — once it ships on both tiers AND the APK is
+rebuilt from master, replace this section with the link-device ceremony wording
+(`docs/design/multi-device.md`). Until then the APK is marketed as **a fresh start** — use EXACTLY this:
+
+> Umbra for Android is a new install: **create a new account in the app** (pick a new username — your
+> web account stays as it is). One account works on one device; don't log the same account into the
+> app and the web at the same time. Friends can re-add you by your new `username#tag`.
+> **Never delete your web account and never clear the browser's site data** — that destroys your web
+> history for nothing. iPhone users: keep using the web app as-is; nothing changes for you.
+
+(Superseded 2026-09-02: the previous "log in with your existing account, then log out of the web app"
+migration text. It still works technically — see the flip-flop drill — but is no longer what we tell
+users.) A Play listing must state one-account-one-device.
 
 Why logout matters: the client re-uploads its key bundle on EVERY socket connect
 (`encryption_provider.dart`), so two live devices on one account clobber each other's identity epoch
