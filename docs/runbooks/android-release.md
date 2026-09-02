@@ -77,12 +77,12 @@ their Signal keys and history. This outranks every other gate in this runbook.
 | `fireplace-release.jks.enc` (4448 bytes, AES-256-CBC, PBKDF2 600k iters) | `B0FF9B2F7F412D48D772DB7CC25D0BAF5A61D47BDE0590A4A18EE2C1F7165BED` | the cloud copy; check before decrypting |
 
 **Where the copies are (two failure domains, neither is the dev PC):**
-1. Plain `.jks` + `README.txt` on the owner's external USB drive (label `maxone`), folder
-   `umbra-keystore-backup/`. Written, cache-flushed (`Write-VolumeCache`), read back → file hash matched.
-2. `fireplace-release.jks.enc` in the owner's Google Drive — ciphertext only; Google never sees the key.
-   Passphrase is NOT the keystore password and exists only on paper (transcription was PROVEN: the
-   paper copy was typed back and decrypted the archive to the file hash above; the first attempt had
-   three base64 confusables wrong — `l`/`1`, `E`/`e` — which is why the round-trip check is mandatory).
+1. Plain `.jks` + a restore `README.txt` on an external USB drive the owner keeps off-site.
+   Written, cache-flushed (`Write-VolumeCache`), read back → file hash matched.
+2. `fireplace-release.jks.enc` in the owner's personal cloud storage — ciphertext only; the provider
+   never sees the key. Passphrase is NOT the keystore password and exists only on paper (transcription
+   was PROVEN: the paper copy was typed back and decrypted the archive to the file hash above; the first
+   attempt had several base64 confusables mistranscribed, which is why the round-trip check is mandatory).
 3. **Passwords are on paper, hidden, separate from the USB**: the keystore/key password (also in the
    gitignored `frontend/android/key.properties` on the dev PC) and the archive passphrase.
 
