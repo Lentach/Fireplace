@@ -44,6 +44,9 @@ class _DevicesScreenState extends State<DevicesScreen> {
       emit: connection.emit,
       identity: EncryptionServiceLinkGateway(encryption.encryptionService),
       adoptSession: auth.adoptProvisionedSession,
+      // (lxv): the ceremony may dispose (lxiv)-mismatched stale material.
+      // Read live at blob time — the flag is the provider's, not a snapshot.
+      staleDisposalAuthorized: () => encryption.deviceMaterialMismatch,
       reconnect: (accessToken) async {
         await connection.connect(userId, accessToken, AppConfig.baseUrl);
       },
@@ -70,7 +73,15 @@ class _DevicesScreenState extends State<DevicesScreen> {
     final colors = theme.colorScheme;
     final l10n = AppLocalizations.of(context);
     final controller = _controller;
-    final keyless = context.watch<EncryptionProvider>().identityIncomplete;
+    final encryption = context.watch<EncryptionProvider>();
+    // The device-side (§5.1 N) CTA is the way out for BOTH shapes of "this
+    // install cannot do E2E duty here": no identity at all, and (lxiv) stale
+    // material stamped for a different device id (a revoked install that
+    // signed back in). The mismatch shape is NOT keyless — without this OR the
+    // screen would offer the primary-side flow, which such a device can never
+    // complete (it holds no DAK), dead-ending the banner's promised recovery.
+    final keyless =
+        encryption.identityIncomplete || encryption.deviceMaterialMismatch;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,

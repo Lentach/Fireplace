@@ -28,6 +28,7 @@ class _NoIdentity implements LinkIdentityGateway {
     required String ikPubBase64,
     required String ikPrivBase64,
     required String dakPubBase64,
+    bool disposeStaleMaterial = false,
   }) async {}
 
   @override

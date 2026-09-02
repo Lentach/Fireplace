@@ -1037,24 +1037,8 @@ class EncryptionService {
     final p = 'e2e_${userId}_';
     E2ePersistentDiag.record('IDENTITY_REGEN_CONSENTED', {'userId': userId});
 
-    try {
-      final all = await _storage.readAll();
-      for (final key in all.keys.toList()) {
-        if (!key.startsWith(p)) continue;
-        final suffix = key.substring(p.length);
-        final isSignalMaterial =
-            suffix.startsWith('session_') ||
-            suffix.startsWith('pre_key_') ||
-            suffix.startsWith('signed_pre_key_') ||
-            suffix.startsWith('trusted_identity_') ||
-            suffix.startsWith('identity_') ||
-            suffix == 'registration_id' ||
-            suffix == 'next_pre_key_id';
-        if (isSignalMaterial) {
-          await _storage.delete(key: key);
-        }
-      }
-    } catch (_) {}
+    await _wipeSignalMaterial(p);
+
 
     _buildStores(p);
     // Our own identity is new, so every peer will legitimately see a change and
@@ -1073,6 +1057,33 @@ class EncryptionService {
     _initialized = true;
   }
 
+  /// Deletes every Signal-material key under [p] — identity, sessions,
+  /// pre-keys, signed pre-keys, peer trust — leaving the content store and
+  /// non-Signal records untouched. Shared by the consented-loss regeneration
+  /// and the (lxv) stale-material disposal; best-effort by design (a partial
+  /// wipe is strictly better than none, and both callers immediately
+  /// overwrite the identity slot).
+  Future<void> _wipeSignalMaterial(String p) async {
+    try {
+      final all = await _storage.readAll();
+      for (final key in all.keys.toList()) {
+        if (!key.startsWith(p)) continue;
+        final suffix = key.substring(p.length);
+        final isSignalMaterial =
+            suffix.startsWith('session_') ||
+            suffix.startsWith('pre_key_') ||
+            suffix.startsWith('signed_pre_key_') ||
+            suffix.startsWith('trusted_identity_') ||
+            suffix.startsWith('identity_') ||
+            suffix == 'registration_id' ||
+            suffix == 'next_pre_key_id';
+        if (isSignalMaterial) {
+          await _storage.delete(key: key);
+        }
+      }
+    } catch (_) {}
+  }
+
   /// §5.1 provisioning adopt (Phase 2 T3, spec §12 item (ii)): install the
   /// account identity the primary transported in the ceremony blob, on a
   /// device that has NO identity of its own.
@@ -1083,26 +1094,39 @@ class EncryptionService {
   /// Signed pre-key and one-time pre-keys are minted into the local stores
   /// but NOT uploaded — the upload rides the existing OTP-gate path after
   /// the session rebinds to the assigned deviceId (amendment (b)).
+  ///
+  /// Amendment (lxv): [disposeStaleMaterial] authorizes wiping an EXISTING
+  /// identity before adopting. Passed ONLY by the ceremony when this install
+  /// is in the (lxiv) device-material-mismatch state — material stamped for a
+  /// device the account has revoked. The SAS confirmation plus authenticated
+  /// blob is the user's consent; the content store (sealed history) is
+  /// untouched, so the §5.5 "messages stay" promise holds.
   Future<void> adoptProvisionedIdentity({
     required int userId,
     required String ikPubBase64,
     required String ikPrivBase64,
     required String dakPubBase64,
+    bool disposeStaleMaterial = false,
   }) async {
     // Invariant lock (T3 review NOTE): adopting over a device that already
     // holds ANY identity would silently orphan every session keyed to it —
     // the UI gates this flow on identityIncomplete, but the service must
     // refuse on its own too. Both record shapes checked (atomic + legacy).
+    // Amendment (lxv) carves out exactly ONE exception: a ceremony-authorized
+    // disposal of (lxiv)-mismatched stale material.
     final existingPrefix = 'e2e_${userId}_';
-    if (await _storage.read(key: '${existingPrefix}identity_record_v1') !=
+    final holdsIdentity =
+        await _storage.read(key: '${existingPrefix}identity_record_v1') !=
             null ||
-        await _storage.read(key: '${existingPrefix}identity_key_pair') !=
-            null) {
+        await _storage.read(key: '${existingPrefix}identity_key_pair') != null;
+    if (holdsIdentity && !disposeStaleMaterial) {
       throw StateError(
         'adoptProvisionedIdentity: device already holds an identity',
       );
     }
-    // Parse EVERYTHING first: a malformed blob must fail before any write.
+    // Parse EVERYTHING first: a malformed blob must fail before any write —
+    // including the (lxv) wipe, or a bad blob would strand the install
+    // keyless without the adopt that justified the disposal.
     final identityKeyPair = IdentityKeyPair(
       IdentityKey.fromBytes(base64Decode(ikPubBase64), 0),
       Curve.decodePrivatePoint(
@@ -1111,6 +1135,14 @@ class EncryptionService {
       ),
     );
     base64Decode(dakPubBase64); // validity gate only
+
+    if (holdsIdentity) {
+      // (lxv): every input parsed; the stale material may now go.
+      E2ePersistentDiag.record('LINK_STALE_MATERIAL_DISPOSED', {
+        'userId': userId,
+      });
+      await _wipeSignalMaterial(existingPrefix);
+    }
 
     _userId = userId;
     final p = 'e2e_${userId}_';

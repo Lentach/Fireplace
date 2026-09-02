@@ -67,11 +67,14 @@ abstract class LinkIdentityGateway {
   /// The full identity pair (primary side, blob building). READ ONLY.
   Future<dynamic> ownIdentityKeyPair();
 
+  /// [disposeStaleMaterial] is the (lxv) authorization: wipe an existing
+  /// (lxiv)-mismatched identity before adopting. Only the ceremony passes it.
   Future<void> adoptProvisionedIdentity({
     required int userId,
     required String ikPubBase64,
     required String ikPrivBase64,
     required String dakPubBase64,
+    bool disposeStaleMaterial = false,
   });
 
   Future<void> discardProvisionedIdentity(int userId);
@@ -96,11 +99,13 @@ class EncryptionServiceLinkGateway implements LinkIdentityGateway {
     required String ikPubBase64,
     required String ikPrivBase64,
     required String dakPubBase64,
+    bool disposeStaleMaterial = false,
   }) => _service.adoptProvisionedIdentity(
     userId: userId,
     ikPubBase64: ikPubBase64,
     ikPrivBase64: ikPrivBase64,
     dakPubBase64: dakPubBase64,
+    disposeStaleMaterial: disposeStaleMaterial,
   );
 
   @override
@@ -142,12 +147,14 @@ class LinkCeremonyController extends ChangeNotifier
     required LinkIdentityGateway identity,
     required Future<void> Function(Map<String, dynamic> tokens) adoptSession,
     required Future<void> Function(String accessToken) reconnect,
+    bool Function()? staleDisposalAuthorized,
     DakStore? dakStore,
     DeviceAuthorityEngine? engine,
   }) : _emit = emit,
        _identity = identity,
        _adoptSession = adoptSession,
        _reconnect = reconnect,
+       _staleDisposalAuthorized = staleDisposalAuthorized,
        _dakStore = dakStore ?? DakStore(),
        _engine = engine ?? DeviceAuthorityEngine();
 
@@ -156,6 +163,10 @@ class LinkCeremonyController extends ChangeNotifier
   final LinkIdentityGateway _identity;
   final Future<void> Function(Map<String, dynamic> tokens) _adoptSession;
   final Future<void> Function(String accessToken) _reconnect;
+
+  /// Live (lxiv) mismatch state, read at blob time (amendment (lxv)). Null —
+  /// the historical ctor shape — means "never authorized".
+  final bool Function()? _staleDisposalAuthorized;
   final DakStore _dakStore;
   final DeviceAuthorityEngine _engine;
 
@@ -762,6 +773,10 @@ class LinkCeremonyController extends ChangeNotifier
         ikPubBase64: payload.ikPub,
         ikPrivBase64: payload.ikPriv,
         dakPubBase64: payload.dakPub,
+        // (lxv): blob authenticated (MAC before decrypt) and user-matched;
+        // if this install carries (lxiv)-mismatched material, the ceremony
+        // is its authorized disposal.
+        disposeStaleMaterial: _staleDisposalAuthorized?.call() ?? false,
       );
       _identityAdopted = true;
       newDeviceStep = NewDeviceLinkStep.completing;
