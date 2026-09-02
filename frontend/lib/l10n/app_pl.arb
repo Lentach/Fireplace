@@ -37,6 +37,10 @@
   "devicesEnrollFailed": "Nie udało się włączyć łączenia. Spróbuj ponownie.",
   "devicesChainInvalid": "Nie można zweryfikować listy urządzeń. Spróbuj ponownie później.",
   "devicesRevokedBadge": "cofnięte",
+  "devicesRevokedSection": "{count, plural, one{Cofnięte urządzenia (1)} other{Cofnięte urządzenia ({count})}}",
+  "@devicesRevokedSection": {
+    "placeholders": { "count": { "type": "num" } }
+  },
   "devicesRevokeAction": "Usu\u0144 urz\u0105dzenie",
   "devicesRevokeTitle": "Usun\u0105\u0107 to urz\u0105dzenie?",
   "devicesRevokeExplainer": "Zostanie wylogowane i przestanie odbiera\u0107 nowe wiadomo\u015bci. Wiadomo\u015bci ju\u017c zapisane na tym urz\u0105dzeniu nie zostan\u0105 usuni\u0119te.",

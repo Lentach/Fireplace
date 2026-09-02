@@ -130,6 +130,17 @@ class AppLocalizationsPl extends AppLocalizations {
   String get devicesRevokedBadge => 'cofnięte';
 
   @override
+  String devicesRevokedSection(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Cofnięte urządzenia ($count)',
+      one: 'Cofnięte urządzenia (1)',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get devicesRevokeAction => 'Usuń urządzenie';
 
   @override

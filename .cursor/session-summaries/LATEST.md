@@ -45,6 +45,11 @@ Nothing merged, nothing deployed.** ➡ **`2026-09-02-session-perfection-pass-lx
   holder is offered "Połącz urządzenie" (`holdsDak` from the Keystore; linked devices get a note); a
   keyless install no longer sees the red chain line. Live: 4 s after "done", the same screen showed
   `web · #4` as this device.
+- **(lxix), owner-directed from the (lxviii) screenshot**: revoked rows are permanent tombstones in
+  the signed bytes (§3 + never-reused ids), so they piled up by id ABOVE the newest live device. Wire
+  untouched (pruning = (d)-bytes migration for no security gain); the SCREEN now leads with live rows
+  and collapses tombstones behind "Cofnięte urządzenia (N)" (`devices-revoked-toggle`), collapsed per
+  visit. Falsified two-way, +3 tests, live on 696 (`#1`, `#3`, toggle → struck `#2`).
 - **Migration dry-run (subagent, artifacts spot-checked)**: master's harness seeded a pre-programme DB;
   the branch backend in PRODUCTION mode applied 0013–0016 in ~150 ms; legacy rows all served; branch
   harness 44/6sk; old client 12/15 (the 3 are the intended §6.1 lock, the amended edit echo, an
@@ -54,7 +59,7 @@ Nothing merged, nothing deployed.** ➡ **`2026-09-02-session-perfection-pass-lx
   `flutter run` UNINSTALLED the app → keys + DAK gone; account 693 is now a real lost-primary case.
   `disk.dataPartition.size=16G` + one `-wipe-data`. Owner's "emulator is laggy" was host RAM (1.1 GB
   free: web compile + idle Gradle daemon) — never overlap a release web build with the emulator.
-- Verified: analyze clean · **flutter 1693/10sk** · verifier OK · backend untouched. Open: a linked device
+- Verified: analyze clean · **flutter 1696/10sk** · verifier OK · backend untouched. Open: a linked device
   cannot know its primary is gone (no server signal until a reset); a locked install can still send.
 
 **Date:** 2026-09-02 — **THE WHOLE MULTI-DEVICE PROGRAMME RAN LIVE ON TWO REAL SURFACES (Pixel 7

@@ -125,6 +125,23 @@ non-default stack must set `E2E_DB_CONTAINER`, or `e2eSql` fires at the dev DB.
   non-durable across relaunches. 693 and 695 are burned; **696 `mdqa0902d` is the clean pair**
   (primary #1 on the AVD, web #3 on the headless probe context).
 
+## Addendum 2 — (lxix) revoked tombstones collapse (owner-directed, squeezed into #144)
+- Owner asked why revoked devices sit crossed-out forever. Source answer: §3 keeps `revokedAt?`
+  rows in the DAK-signed bytes and (a) never reuses ids, so a revoke + re-link leaves a permanent
+  tombstone ordered by id ABOVE the newest live device. Wire left alone (pruning changes
+  (d)-governed bytes, needs a list-version migration, buys no security — peers already fail closed
+  on absent OR revoked per (e)/(xxvii)). Screen only: live rows first, revoked rows behind one
+  counted `TextButton` disclosure (`devices-revoked-toggle`, ARB `devicesRevokedSection` plural
+  en/pl), collapsed per visit, absent when there are none. `_showRevoked` state on the screen.
+- Falsified two-way: flat render → `Found 1 widget with key device-row-2`; tombstones-first order →
+  `Expected: less than <196.0> / Actual: <316.0>`. +3 tests in
+  `devices_screen_mismatch_cta_test.dart` (group `revoked tombstones`). Suite 1696/10sk, analyze
+  clean. Live on the 16:24 web bundle, account 696: `#1`, `#3`, then "Cofnięte urządzenia (1)";
+  one click reveals struck `web · #2`.
+- Trap for the record: two mutation runs "passed" before the real one — perl `\n` patterns miss a
+  CRLF working copy and the formatter had re-split the target line. Always print the mutated line
+  from `git diff` before trusting a red.
+
 ## Notes for next session
 - Throwaway accounts: 693 and 695 are BURNED (lost primaries, both by the `flutter run` uninstall
   trap in the addendum); 694 untouched on `:8095`. **696 `mdqa0902d` is the clean pair** — primary

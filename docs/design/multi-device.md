@@ -2324,6 +2324,21 @@ that is the designed outcome).
     the whole message. The verification result itself is unchanged (still `chainInvalid`, still
     `no_local_identity`) — this is presentation, and the fresh-identity re-verification of
     clause 1 is what turns it into a list.
+- **Amendment 2026-09-02 (D21, owner-directed on the (lxviii) screenshot; client-only):**
+  - **(lxix) — the devices screen collapses revoked tombstones.** §3 makes revoked rows permanent
+    in the DAK-signed bytes (`revokedAt?` on the entry) and (a) never reuses an id, so a device
+    that is revoked and re-linked leaves a struck-through row behind forever: twenty revokes are
+    twenty tombstones ordered by id ABOVE the newest live device. The tombstone earns its place
+    only briefly — it is the user's confirmation that the revoke took. Rule (presentation only;
+    the canonical bytes, the version discipline and the peer-side "absent OR revoked fails
+    closed" check of (e)/(xxvii) are untouched, and the signed list is NOT pruned — pruning changes
+    (d)-governed bytes and needs a list-version migration for no security gain): live rows lead
+    in id order; revoked rows collapse behind a single counted disclosure
+    (`devicesRevokedSection`, "Cofnięte urządzenia (N)") rendered after the last live row,
+    absent when there are none, collapsed on every visit. Falsified two-way: flat rendering →
+    `Found 1 widget with key device-row-2`; tombstones-first ordering → `Expected: less than
+    <196.0> / Actual: <316.0>`.
+
 
 
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase

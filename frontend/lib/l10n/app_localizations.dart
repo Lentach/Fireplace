@@ -320,6 +320,12 @@ abstract class AppLocalizations {
   /// **'cofnięte'**
   String get devicesRevokedBadge;
 
+  /// No description provided for @devicesRevokedSection.
+  ///
+  /// In pl, this message translates to:
+  /// **'{count, plural, one{Cofnięte urządzenia (1)} other{Cofnięte urządzenia ({count})}}'**
+  String devicesRevokedSection(num count);
+
   /// No description provided for @devicesRevokeAction.
   ///
   /// In pl, this message translates to:

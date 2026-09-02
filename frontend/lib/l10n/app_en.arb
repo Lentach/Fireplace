@@ -37,6 +37,10 @@
   "devicesEnrollFailed": "Could not enable linking. Try again.",
   "devicesChainInvalid": "The device list could not be verified. Try again later.",
   "devicesRevokedBadge": "revoked",
+  "devicesRevokedSection": "{count, plural, one{Revoked devices (1)} other{Revoked devices ({count})}}",
+  "@devicesRevokedSection": {
+    "placeholders": { "count": { "type": "num" } }
+  },
   "devicesRevokeAction": "Remove device",
   "devicesRevokeTitle": "Remove this device?",
   "devicesRevokeExplainer": "It will be signed out and will stop receiving new messages. Messages already on that device are not erased.",

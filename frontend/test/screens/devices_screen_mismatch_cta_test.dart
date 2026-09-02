@@ -231,5 +231,80 @@ void main() {
       expect(find.byKey(const Key('devices-link-a-device')), findsNothing);
       expect(find.byKey(const Key('devices-linked-device-note')), findsNothing);
     });
+
+    // Amendment (lxix) — tombstones are permanent in the signed bytes (§3:
+    // ids are never reused), so the SCREEN collapses them: live rows lead,
+    // revoked rows sit behind one disclosure, and the ordering is by liveness
+    // first, never by id alone.
+    group('revoked tombstones', () {
+      const withTombstones = DeviceList(
+        userId: 7,
+        version: 9,
+        devices: [
+          DeviceListEntry(deviceId: 1, platform: 'android', addedAtMs: 1000),
+          DeviceListEntry(
+            deviceId: 2,
+            platform: 'web',
+            addedAtMs: 2000,
+            revokedAtMs: 2500,
+          ),
+          DeviceListEntry(
+            deviceId: 3,
+            platform: 'web',
+            addedAtMs: 3000,
+            revokedAtMs: 3500,
+          ),
+          DeviceListEntry(deviceId: 4, platform: 'web', addedAtMs: 4000),
+        ],
+      );
+
+      Future<void> pumpTombstones(WidgetTester tester) async {
+        await tester.pumpWidget(
+          _host(_FakeEncryptionProvider(mismatch: false, incomplete: false)),
+        );
+        await tester.pumpAndSettle();
+        final controller = _connection.sink!;
+        controller.listState = DeviceListState.enrolled;
+        controller.verifiedList = withTombstones;
+        controller.holdsDak = true;
+        controller.notifyListeners();
+        await tester.pumpAndSettle();
+      }
+
+      testWidgets('collapsed by default: live rows only, counted toggle', (
+        tester,
+      ) async {
+        await pumpTombstones(tester);
+        expect(find.byKey(const Key('device-row-1')), findsOneWidget);
+        expect(find.byKey(const Key('device-row-4')), findsOneWidget);
+        expect(find.byKey(const Key('device-row-2')), findsNothing);
+        expect(find.byKey(const Key('device-row-3')), findsNothing);
+        expect(find.text('Revoked devices (2)'), findsOneWidget);
+        // The live #4 sits ABOVE the toggle — never below a graveyard.
+        final row4 = tester.getTopLeft(find.byKey(const Key('device-row-4')));
+        final toggle = tester.getTopLeft(
+          find.byKey(const Key('devices-revoked-toggle')),
+        );
+        expect(row4.dy, lessThan(toggle.dy));
+      });
+
+      testWidgets('the toggle reveals the tombstones, and hides them again', (
+        tester,
+      ) async {
+        await pumpTombstones(tester);
+        await tester.tap(find.byKey(const Key('devices-revoked-toggle')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('device-row-2')), findsOneWidget);
+        expect(find.byKey(const Key('device-row-3')), findsOneWidget);
+        await tester.tap(find.byKey(const Key('devices-revoked-toggle')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('device-row-2')), findsNothing);
+      });
+
+      testWidgets('no tombstones: no toggle at all', (tester) async {
+        await pumpEnrolled(tester, holdsDak: true);
+        expect(find.byKey(const Key('devices-revoked-toggle')), findsNothing);
+      });
+    });
   });
 }

@@ -31,6 +31,9 @@ class _DevicesScreenState extends State<DevicesScreen> {
   LinkCeremonyController? _controller;
   ConnectionProvider? _connection;
 
+  /// (lxix): tombstones start collapsed; the toggle is per screen visit.
+  bool _showRevoked = false;
+
   @override
   void initState() {
     super.initState();
@@ -206,29 +209,59 @@ class _DevicesScreenState extends State<DevicesScreen> {
       case DeviceListState.enrolled:
         final list = controller.verifiedList;
         if (list == null) return const [];
+        // (lxix): revoked rows are permanent tombstones in the DAK-signed
+        // bytes (§3 — ids are never reused, so a revoked device re-links as a
+        // fresh id and its old row stays forever). Live devices lead; the
+        // tombstones collapse behind one disclosure so twenty old revokes do
+        // not bury the device that matters. Wire bytes untouched.
+        final live = [
+          for (final e in list.devices)
+            if (e.revokedAtMs == null) e,
+        ];
+        final revoked = [
+          for (final e in list.devices)
+            if (e.revokedAtMs != null) e,
+        ];
+        Widget row(DeviceListEntry entry) => _DeviceRow(
+          entry: entry,
+          l10n: l10n,
+          // Only the primary may revoke, and never itself (amendment
+          // (xxi)) — the server enforces both; this just does not offer an
+          // action guaranteed to be refused. The signed canonical list
+          // carries NO primary flag (spec §3), so "primary" is read as
+          // device 1, which is exactly true until §6.3 primary migration
+          // ships. When it does, the flag has to reach the client (either
+          // in the canonical list or beside it) and this condition must
+          // move to it — a §6.2 reset already makes the primary a
+          // freshly allocated id server-side.
+          onRevoke:
+              entry.revokedAtMs == null &&
+                  entry.deviceId != 1 &&
+                  entry.deviceId !=
+                      context.read<EncryptionProvider>().ownDeviceId
+              ? () => _confirmRevoke(context, controller, entry, l10n)
+              : null,
+          busy: controller.revokingDeviceId == entry.deviceId,
+        );
         return [
-          for (final entry in list.devices)
-            _DeviceRow(
-              entry: entry,
-              l10n: l10n,
-              // Only the primary may revoke, and never itself (amendment
-              // (xxi)) — the server enforces both; this just does not offer an
-              // action guaranteed to be refused. The signed canonical list
-              // carries NO primary flag (spec §3), so "primary" is read as
-              // device 1, which is exactly true until §6.3 primary migration
-              // ships. When it does, the flag has to reach the client (either
-              // in the canonical list or beside it) and this condition must
-              // move to it — a §6.2 reset already makes the primary a
-              // freshly allocated id server-side.
-              onRevoke:
-                  entry.revokedAtMs == null &&
-                      entry.deviceId != 1 &&
-                      entry.deviceId !=
-                          context.read<EncryptionProvider>().ownDeviceId
-                  ? () => _confirmRevoke(context, controller, entry, l10n)
-                  : null,
-              busy: controller.revokingDeviceId == entry.deviceId,
+          for (final entry in live) row(entry),
+          if (revoked.isNotEmpty) ...[
+            TextButton.icon(
+              key: const Key('devices-revoked-toggle'),
+              onPressed: () => setState(() => _showRevoked = !_showRevoked),
+              icon: Icon(
+                _showRevoked ? Icons.expand_less : Icons.expand_more,
+                size: 18,
+              ),
+              label: Text(l10n.devicesRevokedSection(revoked.length)),
+              style: TextButton.styleFrom(
+                foregroundColor: colors.onSurfaceVariant,
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+              ),
             ),
+            if (_showRevoked)
+              for (final entry in revoked) row(entry),
+          ],
           if (controller.revokeError != null)
             Padding(
               padding: const EdgeInsets.only(top: 4),
