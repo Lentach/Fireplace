@@ -30,7 +30,7 @@ which holds the full account — **rotating an entry out of this file loses noth
 END (server safe, client's exits closed), fixed under (lxvii); the three devices-screen residuals fixed
 under (lxviii); migrations 0013–0016 REHEARSED in production mode over a pre-programme DB — no blocker.
 Each fix proven from source → §12 → built → falsified two-way → re-verified live on rebuilt bundles.
-**MERGED** 2026-09-02 16:44Z as master `2c553b2` (owner's go; CI 33656795980 green 5/5; rollback tags `pre-multidevice-master`=9b6ea1a, `multidevice-merge-candidate`=05b9df1); deploy the same evening — see the dated file.** ➡ **`2026-09-02-session-perfection-pass-lxvii-lxviii.md`**.
+**MERGED** 2026-09-02 16:44Z as master `2c553b2` (owner's go; CI 33656795980 green 5/5; rollback tags `pre-multidevice-master`=9b6ea1a, `multidevice-merge-candidate`=05b9df1); **DEPLOYED 0.2.0** the same evening (backend `5ffef19b` 16:57Z, web 17:0x Z): backup `chatdb-20260902T165331Z.dump.gpg` decrypt-tested first; `0013`–`0016` applied in 120 ms; legacy account on prod decrypts history, sends (envelopes rows appear), devices screen reads "not enrolled"; smoke PASSED; 0 backend errors. NOTE: prod web had been serving `feat/video-messages` 0.1.24 — its 8 frontend commits are OFF prod until that branch merges.** ➡ **`2026-09-02-session-perfection-pass-lxvii-lxviii.md`**.
 - **⚠️ "Zacznij od nowa" on a keyless second install does NOT clobber the primary** (the (0b) lock
   refused: `KEY_BUNDLE_IDENTITY_LOCKED`, device 1's row byte-untouched) **but it closed every safe
   exit**: the link CTA's gate was `identityIncomplete`, which the regeneration clears, so the install

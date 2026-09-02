@@ -154,6 +154,29 @@ non-default stack must set `E2E_DB_CONTAINER`, or `e2eSql` fires at the dev DB.
   refusal test). Suite 1698/10sk. Harness lesson: back up to a temp copy, never `git checkout --`,
   when the baseline is uncommitted — it restored HEAD once and the refinement had to be re-applied. Live pass RE-RUN on the shipped gated code: re-linked web `#4`, revoked it → section opened, `#4` struck, "(3)". **Web `#4` on the probe context is now revoked too.**
 
+## Addendum 3 — E7 MERGED and DEPLOYED (owner's "lets do it" / "deploy lets face it")
+- Rollback tags pushed first: `pre-multidevice-master` = `9b6ea1a`, `multidevice-merge-candidate` =
+  `05b9df1`. PR #144 merged as merge commit `2c553b2` (parents `9b6ea1a` + `05b9df1`); master CI
+  33656795980 SUCCESS 5/5. `FINISH-HERE.md` + `.planning/.active_plan` deleted per expiry.
+- Pre-deploy surprises: prod web was `feat/video-messages` **0.1.24** (8 frontend-only commits, deployed
+  as a branch test); the VM backend was master `be7c095` started bare (`/version` = `0.0.1/unknown`).
+  Master pubspec was 0.1.21 → bumped to 0.1.25, then **0.2.0 at the owner's call** (`5ffef19`). Two
+  perl misfires on the way (CRLF pubspec line; LATEST substitution hit 4 entries) — repaired in `127429a`.
+- Backend: `./backup-db.sh` → `chatdb-20260902T165331Z.dump.gpg` (183 K) decrypt-tested (`pg_restore
+  --list` 16 data tables) BEFORE `./deploy-backend.sh`. Migrations `0013`–`0016` applied 16:55:21.52–.65Z
+  (120 ms), 104 users → 104 `devices` rows, healthy in 10 s. Re-stamped at 0.2.0 (`5ffef19b`).
+- Web: `deploy-web.ps1` from the master worktree — first run cancelled because `deploy-web.config.ps1`
+  (gitignored: Giphy key + ssh target) lives only in the main checkout; copied, rebuilt, `PUBLISHED_OK`.
+  The script's stale-build gate needs `scripts/smoke/node_modules` (absent in the worktree) → ran
+  `post-deploy-smoke.mjs --commit 5ffef19` from the main checkout: 5/5 PASS.
+- Live proof on prod with a PRE-PROGRAMME account (the shared browser was already signed in): history
+  decrypts to plaintext, a send creates a `message_envelopes` row (5 new messages / 5 envelopes), devices
+  screen = "not enrolled" + "Włącz łączenie", no identity alarm, 0 backend errors in 12 min. The
+  `messages` count dropping 629 → 618 is the `MessageCleanupService` expiry sweep (logged per minute).
+- **Open for the owner:** video messages are OFF prod until `feat/video-messages` merges to master (it
+  is 8 frontend commits behind nothing — master has 182 it lacks; merge master in, then PR). Android
+  APK: 0.2.0 → versionCode above the 10024 floor; build when the PIN feature lands.
+
 ## Notes for next session
 - Throwaway accounts: 693 and 695 are BURNED (lost primaries, both by the `flutter run` uninstall
   trap in the addendum); 694 untouched on `:8095`. **696 `mdqa0902d` is the clean pair** — primary
