@@ -30,7 +30,7 @@ which holds the full account — **rotating an entry out of this file loses noth
 END (server safe, client's exits closed), fixed under (lxvii); the three devices-screen residuals fixed
 under (lxviii); migrations 0013–0016 REHEARSED in production mode over a pre-programme DB — no blocker.
 Each fix proven from source → §12 → built → falsified two-way → re-verified live on rebuilt bundles.
-**MERGED** 2026-09-02 16:44Z as master `2c553b2` (owner's go; CI 33656795980 green 5/5; rollback tags `pre-multidevice-master`=9b6ea1a, `multidevice-merge-candidate`=05b9df1). Deploy in progress the same evening — see the dated file.** ➡ **`2026-09-02-session-perfection-pass-lxvii-lxviii.md`**.
+**MERGED** 2026-09-02 16:44Z as master `2c553b2` (owner's go; CI 33656795980 green 5/5; rollback tags `pre-multidevice-master`=9b6ea1a, `multidevice-merge-candidate`=05b9df1); deploy the same evening — see the dated file.** ➡ **`2026-09-02-session-perfection-pass-lxvii-lxviii.md`**.
 - **⚠️ "Zacznij od nowa" on a keyless second install does NOT clobber the primary** (the (0b) lock
   refused: `KEY_BUNDLE_IDENTITY_LOCKED`, device 1's row byte-untouched) **but it closed every safe
   exit**: the link CTA's gate was `identityIncomplete`, which the regeneration clears, so the install
@@ -69,7 +69,7 @@ emulator primary + release-web install) — link, fan-out, self-sync both ways, 
 relogin, (lxv) re-link recovery — ALL OBSERVED. The 08-31 session's uncommitted (lxv) fix is
 proven end to end and committed; the same run found THREE more defects on that path, fixed under
 owner-ratified (lxvi) (three clauses), each falsified two-way AND re-verified live on rebuilt
-surfaces. Index now (a)–(lxvi). **MERGED** 2026-09-02 16:44Z as master `2c553b2` (owner's go; CI 33656795980 green 5/5; rollback tags `pre-multidevice-master`=9b6ea1a, `multidevice-merge-candidate`=05b9df1). Deploy in progress the same evening — see the dated file.** ➡
+surfaces. Index now (a)–(lxvi). Nothing merged, nothing deployed.** ➡
 **`2026-09-02-session-two-device-live-qa-lxv-lxvi.md`** (environment recipe, DB evidence, the
 four UX observations left for the owner).
 - **(lxv) live:** revoke web #2 → relogin lands on device 1 → `E2E_DEVICE_MISMATCH` banner, device
@@ -105,7 +105,7 @@ four UX observations left for the owner).
 
 **Date:** 2026-08-30b — **THE BOUNDED MERGE-GATE REVIEW (Option A) RAN — 2× MERGE-SAFE, 1× BLOCKING —
 AND THE ONE BLOCKING FINDING IS FIXED UNDER OWNER-RATIFIED (lxiv), both halves falsified. The index
-now runs (a)–(lxiv). **MERGED** 2026-09-02 16:44Z as master `2c553b2` (owner's go; CI 33656795980 green 5/5; rollback tags `pre-multidevice-master`=9b6ea1a, `multidevice-merge-candidate`=05b9df1). Deploy in progress the same evening — see the dated file.** ➡ **`2026-08-30-session-bounded-gate-lxiv.md`**.
+now runs (a)–(lxiv). Nothing merged, nothing deployed.** ➡ **`2026-08-30-session-bounded-gate-lxiv.md`**.
 Owner said "get it ready to merge and deploy" → the recommended one-question round ran (normal user,
 honest server, working storage: lose a message / lose access / get stuck?). Message lifecycle SAFE;
 stuck states SAFE with all seven (lxiii) residuals re-judged non-blocking one by one; identity
@@ -246,7 +246,7 @@ ceremony on a real phone.
 fresh reviewers over the whole programme returned **DO NOT MERGE, six P1-class findings** (F1–F6)
 plus four follow-ups (RC-01–RC-04). All ten are now fixed under **nine amendments (l)–(lix)**, each
 ratified BEFORE its fix and each falsified by reverting the fix and observing RED. The index now runs
-**(a)–(lix)**. CI green on **five** jobs at `a73ecaa`. ****MERGED** 2026-09-02 16:44Z as master `2c553b2` (owner's go; CI 33656795980 green 5/5; rollback tags `pre-multidevice-master`=9b6ea1a, `multidevice-merge-candidate`=05b9df1). Deploy in progress the same evening — see the dated file.**
+**(a)–(lix)**. CI green on **five** jobs at `a73ecaa`. **Nothing merged, nothing deployed.**
 ⚠️ **One reviewer claim was REJECTED with evidence** (that the wire harness does not run in CI —
 `ci.yml:206-260` boots compose and runs `flutter test test_e2e`, observed green); the adjacent claim
 was UPHELD and became **U7**.
