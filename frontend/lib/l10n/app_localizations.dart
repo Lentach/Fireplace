@@ -260,6 +260,294 @@ abstract class AppLocalizations {
   /// **'Ładowanie…'**
   String get devicesLoading;
 
+  /// No description provided for @devicesExplainer.
+  ///
+  /// In pl, this message translates to:
+  /// **'Urządzenia połączone z tym kontem. Nowe urządzenie można dodać tylko z urządzenia głównego.'**
+  String get devicesExplainer;
+
+  /// No description provided for @devicesLinkedDeviceNote.
+  ///
+  /// In pl, this message translates to:
+  /// **'To urządzenie jest połączone. Nowe urządzenia dodaje się z urządzenia głównego.'**
+  String get devicesLinkedDeviceNote;
+
+  /// No description provided for @devicesNotEnrolled.
+  ///
+  /// In pl, this message translates to:
+  /// **'Łączenie urządzeń nie jest jeszcze włączone dla tego konta.'**
+  String get devicesNotEnrolled;
+
+  /// No description provided for @devicesEnableLinking.
+  ///
+  /// In pl, this message translates to:
+  /// **'Włącz łączenie'**
+  String get devicesEnableLinking;
+
+  /// No description provided for @devicesLinkADevice.
+  ///
+  /// In pl, this message translates to:
+  /// **'Połącz urządzenie'**
+  String get devicesLinkADevice;
+
+  /// No description provided for @devicesLinkThisDevice.
+  ///
+  /// In pl, this message translates to:
+  /// **'Połącz to urządzenie'**
+  String get devicesLinkThisDevice;
+
+  /// No description provided for @devicesAlreadyEnrolled.
+  ///
+  /// In pl, this message translates to:
+  /// **'Inna instalacja tego konta już włączyła łączenie. Urządzenia można dodawać tylko z tamtego urządzenia.'**
+  String get devicesAlreadyEnrolled;
+
+  /// No description provided for @devicesEnrollFailed.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się włączyć łączenia. Spróbuj ponownie.'**
+  String get devicesEnrollFailed;
+
+  /// No description provided for @devicesChainInvalid.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie można zweryfikować listy urządzeń. Spróbuj ponownie później.'**
+  String get devicesChainInvalid;
+
+  /// No description provided for @devicesRevokedBadge.
+  ///
+  /// In pl, this message translates to:
+  /// **'cofnięte'**
+  String get devicesRevokedBadge;
+
+  /// No description provided for @devicesRevokedSection.
+  ///
+  /// In pl, this message translates to:
+  /// **'{count, plural, one{Cofnięte urządzenie (1)} other{Cofnięte urządzenia ({count})}}'**
+  String devicesRevokedSection(num count);
+
+  /// No description provided for @devicesRevokeAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Usuń urządzenie'**
+  String get devicesRevokeAction;
+
+  /// No description provided for @devicesRevokeTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Usunąć to urządzenie?'**
+  String get devicesRevokeTitle;
+
+  /// No description provided for @devicesRevokeExplainer.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zostanie wylogowane i przestanie odbierać nowe wiadomości. Wiadomości już zapisane na tym urządzeniu nie zostaną usunięte.'**
+  String get devicesRevokeExplainer;
+
+  /// No description provided for @devicesRevokeFailed.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się usunąć tego urządzenia. Spróbuj ponownie.'**
+  String get devicesRevokeFailed;
+
+  /// No description provided for @deviceRevokedNotice.
+  ///
+  /// In pl, this message translates to:
+  /// **'To urządzenie zostało usunięte z Twojego konta. Twoje wiadomości na nim pozostały — aby pisać dalej, zaloguj się i połącz to urządzenie ponownie.'**
+  String get deviceRevokedNotice;
+
+  /// No description provided for @deviceMismatchTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'To urządzenie zostało usunięte z konta'**
+  String get deviceMismatchTitle;
+
+  /// No description provided for @deviceMismatchBody.
+  ///
+  /// In pl, this message translates to:
+  /// **'Klucze szyfrowania tego urządzenia należą do urządzenia usuniętego z Twojego konta, więc przestało ono wysyłać i odbierać zaszyfrowane wiadomości. Aby pisać dalej, połącz to urządzenie ponownie ze swojego drugiego urządzenia. Na pozostałych urządzeniach nic się nie zmieniło.'**
+  String get deviceMismatchBody;
+
+  /// No description provided for @deviceMismatchAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Połącz to urządzenie'**
+  String get deviceMismatchAction;
+
+  /// No description provided for @devicesPrimaryBadge.
+  ///
+  /// In pl, this message translates to:
+  /// **'główne'**
+  String get devicesPrimaryBadge;
+
+  /// No description provided for @devicesThisDeviceKeyless.
+  ///
+  /// In pl, this message translates to:
+  /// **'To urządzenie nie ma jeszcze kluczy. Połącz je ze swoim głównym urządzeniem.'**
+  String get devicesThisDeviceKeyless;
+
+  /// No description provided for @linkPrimaryTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Połącz urządzenie'**
+  String get linkPrimaryTitle;
+
+  /// No description provided for @linkPrimaryExplainer.
+  ///
+  /// In pl, this message translates to:
+  /// **'Na nowym urządzeniu wybierz „Połącz to urządzenie”, a potem wpisz tutaj wyświetlony kod.'**
+  String get linkPrimaryExplainer;
+
+  /// No description provided for @linkPrimaryCodeLabel.
+  ///
+  /// In pl, this message translates to:
+  /// **'Kod z nowego urządzenia'**
+  String get linkPrimaryCodeLabel;
+
+  /// No description provided for @linkPrimaryContinue.
+  ///
+  /// In pl, this message translates to:
+  /// **'Dalej'**
+  String get linkPrimaryContinue;
+
+  /// No description provided for @linkSasHeading.
+  ///
+  /// In pl, this message translates to:
+  /// **'Porównaj kody'**
+  String get linkSasHeading;
+
+  /// No description provided for @linkSasExplainer.
+  ///
+  /// In pl, this message translates to:
+  /// **'Oba urządzenia muszą pokazywać ten sam kod. Zatwierdź tylko wtedy, gdy są identyczne.'**
+  String get linkSasExplainer;
+
+  /// No description provided for @linkApprove.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zatwierdź'**
+  String get linkApprove;
+
+  /// No description provided for @linkCancel.
+  ///
+  /// In pl, this message translates to:
+  /// **'Anuluj'**
+  String get linkCancel;
+
+  /// No description provided for @linkWaitingForDevice.
+  ///
+  /// In pl, this message translates to:
+  /// **'Czekam na nowe urządzenie…'**
+  String get linkWaitingForDevice;
+
+  /// No description provided for @linkPrimaryDone.
+  ///
+  /// In pl, this message translates to:
+  /// **'Urządzenie zostało połączone.'**
+  String get linkPrimaryDone;
+
+  /// No description provided for @linkInvalidCode.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nieprawidłowy kod. Przepisz go dokładnie z nowego urządzenia.'**
+  String get linkInvalidCode;
+
+  /// No description provided for @linkNoDak.
+  ///
+  /// In pl, this message translates to:
+  /// **'Brak klucza autoryzacji na tym urządzeniu. Łączyć można tylko z urządzenia, które włączyło łączenie.'**
+  String get linkNoDak;
+
+  /// No description provided for @linkFailed.
+  ///
+  /// In pl, this message translates to:
+  /// **'Łączenie nie powiodło się'**
+  String get linkFailed;
+
+  /// No description provided for @linkStaleVersionRetry.
+  ///
+  /// In pl, this message translates to:
+  /// **'Lista urządzeń zmieniła się w trakcie — podpisuję ponownie…'**
+  String get linkStaleVersionRetry;
+
+  /// No description provided for @linkNewTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Połącz to urządzenie'**
+  String get linkNewTitle;
+
+  /// No description provided for @linkNewExplainer.
+  ///
+  /// In pl, this message translates to:
+  /// **'Pokaż ten kod na głównym urządzeniu: wybierz tam „Połącz urządzenie” i przepisz kod (albo zeskanuj QR).'**
+  String get linkNewExplainer;
+
+  /// No description provided for @linkNewWaitingHello.
+  ///
+  /// In pl, this message translates to:
+  /// **'Czekam na główne urządzenie…'**
+  String get linkNewWaitingHello;
+
+  /// No description provided for @linkNewCopy.
+  ///
+  /// In pl, this message translates to:
+  /// **'Skopiuj kod'**
+  String get linkNewCopy;
+
+  /// No description provided for @linkNewCopied.
+  ///
+  /// In pl, this message translates to:
+  /// **'Kod skopiowany'**
+  String get linkNewCopied;
+
+  /// No description provided for @linkNewCompleting.
+  ///
+  /// In pl, this message translates to:
+  /// **'Łączenie…'**
+  String get linkNewCompleting;
+
+  /// No description provided for @linkNewRebinding.
+  ///
+  /// In pl, this message translates to:
+  /// **'Przełączam sesję na nowe urządzenie…'**
+  String get linkNewRebinding;
+
+  /// No description provided for @linkNewDone.
+  ///
+  /// In pl, this message translates to:
+  /// **'To urządzenie jest połączone i gotowe.'**
+  String get linkNewDone;
+
+  /// No description provided for @linkNewAborted.
+  ///
+  /// In pl, this message translates to:
+  /// **'Łączenie przerwane'**
+  String get linkNewAborted;
+
+  /// No description provided for @linkNewRetry.
+  ///
+  /// In pl, this message translates to:
+  /// **'Spróbuj ponownie'**
+  String get linkNewRetry;
+
+  /// No description provided for @linkAbortReasonExpired.
+  ///
+  /// In pl, this message translates to:
+  /// **'Kod wygasł.'**
+  String get linkAbortReasonExpired;
+
+  /// No description provided for @linkAbortReasonCancelled.
+  ///
+  /// In pl, this message translates to:
+  /// **'Łączenie anulowano na drugim urządzeniu.'**
+  String get linkAbortReasonCancelled;
+
+  /// No description provided for @linkAbortReasonBadBlob.
+  ///
+  /// In pl, this message translates to:
+  /// **'Weryfikacja danych nie powiodła się. Klucze zostały usunięte z tego urządzenia.'**
+  String get linkAbortReasonBadBlob;
+
   /// No description provided for @settingsAppVersion.
   ///
   /// In pl, this message translates to:
@@ -656,6 +944,18 @@ abstract class AppLocalizations {
   /// **'Ta wiadomość nie jest już przechowywana na tym urządzeniu.'**
   String get messageNoLongerStoredOnThisDevice;
 
+  /// No description provided for @messageSentBeforeDeviceLinked.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wysłana przed połączeniem tego urządzenia.'**
+  String get messageSentBeforeDeviceLinked;
+
+  /// No description provided for @devicesSyncingNote.
+  ///
+  /// In pl, this message translates to:
+  /// **'Synchronizowanie urządzeń…'**
+  String get devicesSyncingNote;
+
   /// No description provided for @encryptionNotInitialized.
   ///
   /// In pl, this message translates to:
@@ -671,7 +971,7 @@ abstract class AppLocalizations {
   /// No description provided for @identityDamagedBody.
   ///
   /// In pl, this message translates to:
-  /// **'Logujesz się na nowym urządzeniu lub w nowej przeglądarce? Twoje konto ma już klucze szyfrowania gdzie indziej, a to urządzenie ich nie ma. Jeśli to Twoje dotychczasowe urządzenie, zapisane klucze zostały utracone. Tak czy inaczej nic nie zostało odtworzone automatycznie — zrobienie tego po cichu zniszczyłoby możliwość odczytania historii.'**
+  /// **'Logujesz się na nowym urządzeniu lub w nowej przeglądarce? Twoje konto ma już klucze szyfrowania na innym urządzeniu — połącz to urządzenie stamtąd i nic nie przepadnie. Tylko jeśli to Twoje dotychczasowe urządzenie, a zapisane klucze zostały utracone, zacznij od nowa: powstaną nowe klucze, a wiadomości, których to urządzenie nigdy nie odszyfrowało, będą nie do odzyskania. Nic nie zostało odtworzone automatycznie — zrobienie tego po cichu zniszczyłoby możliwość odczytania historii.'**
   String get identityDamagedBody;
 
   /// No description provided for @identityDamagedAction.
@@ -679,6 +979,54 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Zacznij od nowa'**
   String get identityDamagedAction;
+
+  /// Re-sends a message whose delivery failed.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ponów'**
+  String get messageRetrySend;
+
+  /// Auth surface status, localized from an AuthStatusCode.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się odczytać zapisanej sesji z tego urządzenia. Twoje logowanie może nadal tam być — uruchom aplikację ponownie.'**
+  String get authStatusSavedSessionUnreadable;
+
+  /// Auth surface status, localized from an AuthStatusCode.
+  ///
+  /// In pl, this message translates to:
+  /// **'Konto utworzone. Zaloguj się, aby kontynuować.'**
+  String get authStatusRegisterSucceeded;
+
+  /// Auth surface status, localized from an AuthStatusCode.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie można połączyć się z serwerem. Sprawdź połączenie i spróbuj ponownie.'**
+  String get authStatusServerUnreachable;
+
+  /// Auth surface status, localized from an AuthStatusCode.
+  ///
+  /// In pl, this message translates to:
+  /// **'Coś poszło nie tak. Spróbuj ponownie.'**
+  String get authStatusUnexpectedError;
+
+  /// Shown when regenerating a damaged Signal identity fails.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się utworzyć nowych kluczy szyfrowania. Spróbuj ponownie.'**
+  String get identityDamagedRecoveryFailed;
+
+  /// Reveals the full explanation on a collapsed identity banner.
+  ///
+  /// In pl, this message translates to:
+  /// **'Szczegóły'**
+  String get identityAlertShowDetails;
+
+  /// Collapses the explanation on an identity banner.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ukryj szczegóły'**
+  String get identityAlertHideDetails;
 
   /// No description provided for @identityDamagedConfirmTitle.
   ///
@@ -733,6 +1081,264 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Brak zapisanego klucza tożsamości dla tego kontaktu.'**
   String get peerIdentityFingerprintNoStoredKey;
+
+  /// No description provided for @peerIdentityFingerprintChangedNotice.
+  ///
+  /// In pl, this message translates to:
+  /// **'Klucze użytkownika {name} uległy zmianie. Porównaj NOWY odcisk poniżej — poprzedni pokazujemy tylko po to, aby było widać, co się zmieniło.'**
+  String peerIdentityFingerprintChangedNotice(String name);
+
+  /// No description provided for @peerIdentityFingerprintServedNotice.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ten klucz pochodzi z serwera i żadna wiadomość od użytkownika {name} go jeszcze nie potwierdziła. Porównanie go innym kanałem to jedyne zabezpieczenie.'**
+  String peerIdentityFingerprintServedNotice(String name);
+
+  /// No description provided for @peerIdentityFingerprintNewLabel.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nowy odcisk tożsamości użytkownika {name}'**
+  String peerIdentityFingerprintNewLabel(String name);
+
+  /// No description provided for @peerIdentityFingerprintPreviousLabel.
+  ///
+  /// In pl, this message translates to:
+  /// **'Poprzednio zaufany odcisk'**
+  String get peerIdentityFingerprintPreviousLabel;
+
+  /// No description provided for @peerIdentityFingerprintOfferChanged.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nic nie zostało potwierdzone: klucz użytkownika {name} zmienił się, gdy to okno było otwarte, więc nie jest to klucz, który właśnie porównałeś. Porównaj odcisk poniżej ponownie przed potwierdzeniem.'**
+  String peerIdentityFingerprintOfferChanged(String name);
+
+  /// No description provided for @peerIdentityFingerprintUnchangedNotice.
+  ///
+  /// In pl, this message translates to:
+  /// **'Klucz użytkownika {name} nie zmienił się od czasu, gdy go zaakceptowałeś. Potwierdź poniżej, aby zamknąć to ostrzeżenie.'**
+  String peerIdentityFingerprintUnchangedNotice(String name);
+
+  /// No description provided for @peerIdentityFingerprintOfferUnavailable.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się wczytać aktualnego klucza użytkownika {name}, więc nie ma jeszcze czego porównywać. Sprawdź połączenie i otwórz to ponownie.'**
+  String peerIdentityFingerprintOfferUnavailable(String name);
+
+  /// No description provided for @peerIdentityChangedTimelineRow.
+  ///
+  /// In pl, this message translates to:
+  /// **'Klucze bezpieczeństwa {name} uległy zmianie — zwykle to logowanie z nowego urządzenia lub przeglądarki. Dotknij, aby zweryfikować.'**
+  String peerIdentityChangedTimelineRow(String name);
+
+  /// No description provided for @ownIdentityReplacedTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nowe klucze szyfrowania na Twoim koncie'**
+  String get ownIdentityReplacedTitle;
+
+  /// No description provided for @ownIdentityReplacedBody.
+  ///
+  /// In pl, this message translates to:
+  /// **'Inne logowanie przesłało nowe klucze szyfrowania dla Twojego konta — zwykle to nowe urządzenie, przeglądarka lub ponowna instalacja. Jeśli to nie Ty, natychmiast zmień hasło.'**
+  String get ownIdentityReplacedBody;
+
+  /// No description provided for @ownIdentityReplacedDismissAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Rozumiem'**
+  String get ownIdentityReplacedDismissAction;
+
+  /// No description provided for @identityResetPendingTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ktoś poprosił o zresetowanie Twoich kluczy szyfrowania'**
+  String get identityResetPendingTitle;
+
+  /// No description provided for @identityResetPendingBody.
+  ///
+  /// In pl, this message translates to:
+  /// **'Jeśli to nie Ty, anuluj teraz — w przeciwnym razie za {remaining} Twoje konto otrzyma nowe klucze szyfrowania, a historia wiadomości stanie się nieczytelna.'**
+  String identityResetPendingBody(String remaining);
+
+  /// No description provided for @identityResetCancelAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Anuluj'**
+  String get identityResetCancelAction;
+
+  /// No description provided for @identityResetHoursLeft.
+  ///
+  /// In pl, this message translates to:
+  /// **'{hours, plural, =1{1 godzinę} few{{hours} godziny} other{{hours} godzin}}'**
+  String identityResetHoursLeft(int hours);
+
+  /// No description provided for @identityResetMinutesLeft.
+  ///
+  /// In pl, this message translates to:
+  /// **'{minutes, plural, =0{niecałą minutę} =1{1 minutę} few{{minutes} minuty} other{{minutes} minut}}'**
+  String identityResetMinutesLeft(int minutes);
+
+  /// No description provided for @identityResetAnyMoment.
+  ///
+  /// In pl, this message translates to:
+  /// **'lada chwila'**
+  String get identityResetAnyMoment;
+
+  /// No description provided for @identityUploadLockedTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Twoje nowe klucze szyfrowania nie zostały opublikowane'**
+  String get identityUploadLockedTitle;
+
+  /// No description provided for @identityUploadLockedBody.
+  ///
+  /// In pl, this message translates to:
+  /// **'To urządzenie utworzyło nowe klucze, ale konto nadal używa poprzednich, więc inne osoby nie mogą się z Tobą bezpiecznie skontaktować. Jeśli poprzednie klucze wciąż masz na innym urządzeniu, połącz to urządzenie stamtąd — nieopublikowane klucze zostaną odrzucone i nic nie przepadnie. Tylko jeśli tych kluczy nie ma już nigdzie, rozpocznij reset, aby opublikować te — trwa 72 godziny, wylogowuje pozostałe urządzenia, a wszystkie zalogowane sesje otrzymają powiadomienie.'**
+  String get identityUploadLockedBody;
+
+  /// No description provided for @identityResetStartAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Rozpocznij reset'**
+  String get identityResetStartAction;
+
+  /// No description provided for @recoveryKeyTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Klucz odzyskiwania'**
+  String get recoveryKeyTitle;
+
+  /// No description provided for @recoveryKeySubtitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Szybszy powrót, jeśli stracisz klucze'**
+  String get recoveryKeySubtitle;
+
+  /// No description provided for @recoveryKeyExplainer.
+  ///
+  /// In pl, this message translates to:
+  /// **'Jeśli kiedykolwiek stracisz dostęp do swoich kluczy szyfrowania, uzyskanie nowych trwa 72 godziny — to celowe opóźnienie, dzięki któremu nikt inny nie przejmie po cichu Twojego konta, zanim zdążysz zareagować. Klucz odzyskiwania skraca to oczekiwanie do 1 godziny. Nigdy go nie pomija, a wszystkie zalogowane sesje i tak otrzymają powiadomienie.\n\nSłowa pokazujemy tylko raz i nie zapisujemy ich na tym urządzeniu — przechowywanie ich tutaj oznaczałoby utratę dokładnie wtedy, gdy są potrzebne. Zapisz je w bezpiecznym miejscu, poza urządzeniem.'**
+  String get recoveryKeyExplainer;
+
+  /// No description provided for @recoveryKeyGenerateAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wygeneruj klucz odzyskiwania'**
+  String get recoveryKeyGenerateAction;
+
+  /// No description provided for @recoveryKeyShownOnceWarning.
+  ///
+  /// In pl, this message translates to:
+  /// **'Te słowa pokazujemy tylko raz. Zapisz je, zanim przejdziesz dalej — wygenerowanie nowego klucza zastąpi ten.'**
+  String get recoveryKeyShownOnceWarning;
+
+  /// No description provided for @recoveryKeyCopyAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Kopiuj słowa'**
+  String get recoveryKeyCopyAction;
+
+  /// No description provided for @recoveryKeyCopied.
+  ///
+  /// In pl, this message translates to:
+  /// **'Skopiowano klucz odzyskiwania'**
+  String get recoveryKeyCopied;
+
+  /// No description provided for @recoveryKeySavedAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zapisałem/am'**
+  String get recoveryKeySavedAction;
+
+  /// No description provided for @recoveryKeySaved.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zapisano klucz odzyskiwania'**
+  String get recoveryKeySaved;
+
+  /// No description provided for @recoveryKeySaveFailed.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się zapisać klucza odzyskiwania — nic nie zostało zapisane, więc te słowa nie zadziałają. Spróbuj ponownie.'**
+  String get recoveryKeySaveFailed;
+
+  /// No description provided for @recoveryPhrasePromptTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Masz klucz odzyskiwania?'**
+  String get recoveryPhrasePromptTitle;
+
+  /// No description provided for @recoveryPhrasePromptBody.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wpisanie 12 słów skraca oczekiwanie z 72 godzin do 1. Tak czy inaczej wszystkie zalogowane sesje otrzymają powiadomienie, a reset nadal można anulować.'**
+  String get recoveryPhrasePromptBody;
+
+  /// No description provided for @recoveryPhrasePromptHint.
+  ///
+  /// In pl, this message translates to:
+  /// **'dwanaście słów oddzielonych spacjami'**
+  String get recoveryPhrasePromptHint;
+
+  /// No description provided for @recoveryPhraseMalformed.
+  ///
+  /// In pl, this message translates to:
+  /// **'To nie wygląda na kompletny 12-słowny klucz odzyskiwania. Sprawdź literówki.'**
+  String get recoveryPhraseMalformed;
+
+  /// No description provided for @recoveryPhraseUseAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Użyj klucza'**
+  String get recoveryPhraseUseAction;
+
+  /// No description provided for @recoveryPhraseNoneAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie mam go'**
+  String get recoveryPhraseNoneAction;
+
+  /// No description provided for @identityResetStarted.
+  ///
+  /// In pl, this message translates to:
+  /// **'Reset rozpoczęty. Wszystkie zalogowane sesje zostały powiadomione, a do końca odliczania można go anulować.'**
+  String get identityResetStarted;
+
+  /// No description provided for @identityResetPhraseTooNew.
+  ///
+  /// In pl, this message translates to:
+  /// **'Reset rozpoczęty. Twój klucz odzyskiwania był poprawny, ale został utworzony mniej niż 3 dni temu, więc tym razem nie może skrócić oczekiwania — obowiązują pełne 72 godziny. Nie musisz wpisywać go ponownie.'**
+  String get identityResetPhraseTooNew;
+
+  /// No description provided for @identityResetAlreadyRunning.
+  ///
+  /// In pl, this message translates to:
+  /// **'Dla tego konta reset już trwa. Odliczanie na górze ekranu pokazuje, ile zostało czasu.'**
+  String get identityResetAlreadyRunning;
+
+  /// No description provided for @identityResetCooldown.
+  ///
+  /// In pl, this message translates to:
+  /// **'Reset został niedawno anulowany, więc nowy nie może ruszyć przez maksymalnie 24 godziny. Jeśli ktoś inny wciąż go anuluje, najpierw zmień hasło, aby go wylogować.'**
+  String get identityResetCooldown;
+
+  /// No description provided for @identityResetPhraseRejected.
+  ///
+  /// In pl, this message translates to:
+  /// **'Te 12 słów nie pasuje do klucza odzyskiwania zapisanego dla tego konta. Możesz spróbować ponownie albo rozpocząć reset bez klucza i poczekać 72 godziny.'**
+  String get identityResetPhraseRejected;
+
+  /// No description provided for @identityResetPhraseLocked.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zbyt wiele prób z kluczem odzyskiwania. Spróbuj ponownie za około godzinę albo rozpocznij reset bez klucza i poczekaj 72 godziny.'**
+  String get identityResetPhraseLocked;
+
+  /// No description provided for @identityResetNoAnswer.
+  ///
+  /// In pl, this message translates to:
+  /// **'Brak odpowiedzi serwera, więc nic nie zostało rozpoczęte. Sprawdź połączenie i spróbuj ponownie.'**
+  String get identityResetNoAnswer;
 
   /// No description provided for @identityFingerprintUnavailable.
   ///
@@ -2383,6 +2989,18 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Nieobsługiwany typ pliku'**
   String get attachmentUnsupportedFileType;
+
+  /// No description provided for @chatScrollToBottomSemantics.
+  ///
+  /// In pl, this message translates to:
+  /// **'Przewiń do najnowszych wiadomości'**
+  String get chatScrollToBottomSemantics;
+
+  /// No description provided for @avatarOpenProfileSemantics.
+  ///
+  /// In pl, this message translates to:
+  /// **'Otwórz profil'**
+  String get avatarOpenProfileSemantics;
 }
 
 class _AppLocalizationsDelegate

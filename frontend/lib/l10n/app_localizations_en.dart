@@ -94,6 +94,175 @@ class AppLocalizationsEn extends AppLocalizations {
   String get devicesLoading => 'Loading…';
 
   @override
+  String get devicesExplainer =>
+      'Devices linked to this account. A new device can only be added from the primary device.';
+
+  @override
+  String get devicesLinkedDeviceNote =>
+      'This device is linked. New devices are added from the primary device.';
+
+  @override
+  String get devicesNotEnrolled =>
+      'Device linking is not enabled for this account yet.';
+
+  @override
+  String get devicesEnableLinking => 'Enable linking';
+
+  @override
+  String get devicesLinkADevice => 'Link a device';
+
+  @override
+  String get devicesLinkThisDevice => 'Link this device';
+
+  @override
+  String get devicesAlreadyEnrolled =>
+      'Another installation of this account already enabled linking. Devices can only be added from that device.';
+
+  @override
+  String get devicesEnrollFailed => 'Could not enable linking. Try again.';
+
+  @override
+  String get devicesChainInvalid =>
+      'The device list could not be verified. Try again later.';
+
+  @override
+  String get devicesRevokedBadge => 'revoked';
+
+  @override
+  String devicesRevokedSection(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Revoked devices ($count)',
+      one: 'Revoked device (1)',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get devicesRevokeAction => 'Remove device';
+
+  @override
+  String get devicesRevokeTitle => 'Remove this device?';
+
+  @override
+  String get devicesRevokeExplainer =>
+      'It will be signed out and will stop receiving new messages. Messages already on that device are not erased.';
+
+  @override
+  String get devicesRevokeFailed => 'Could not remove that device. Try again.';
+
+  @override
+  String get deviceRevokedNotice =>
+      'This device was removed from your account. Your messages on it were kept — to keep chatting here, sign in and link this device again.';
+
+  @override
+  String get deviceMismatchTitle => 'This device was removed from the account';
+
+  @override
+  String get deviceMismatchBody =>
+      'This device\'s encryption keys belong to a device that was removed from your account, so it stopped sending and receiving encrypted messages. To keep chatting here, link this device again from your other device. Nothing changed on your other devices.';
+
+  @override
+  String get deviceMismatchAction => 'Link this device';
+
+  @override
+  String get devicesPrimaryBadge => 'primary';
+
+  @override
+  String get devicesThisDeviceKeyless =>
+      'This device holds no keys yet. Link it to your primary device.';
+
+  @override
+  String get linkPrimaryTitle => 'Link a device';
+
+  @override
+  String get linkPrimaryExplainer =>
+      'On the new device choose “Link this device”, then type the code it shows here.';
+
+  @override
+  String get linkPrimaryCodeLabel => 'Code from the new device';
+
+  @override
+  String get linkPrimaryContinue => 'Continue';
+
+  @override
+  String get linkSasHeading => 'Compare the codes';
+
+  @override
+  String get linkSasExplainer =>
+      'Both devices must show the same code. Approve only if they match exactly.';
+
+  @override
+  String get linkApprove => 'Approve';
+
+  @override
+  String get linkCancel => 'Cancel';
+
+  @override
+  String get linkWaitingForDevice => 'Waiting for the new device…';
+
+  @override
+  String get linkPrimaryDone => 'The device has been linked.';
+
+  @override
+  String get linkInvalidCode =>
+      'Invalid code. Copy it exactly from the new device.';
+
+  @override
+  String get linkNoDak =>
+      'No authorization key on this device. Linking is only possible from the device that enabled linking.';
+
+  @override
+  String get linkFailed => 'Linking failed';
+
+  @override
+  String get linkStaleVersionRetry =>
+      'The device list changed mid-flight — re-signing…';
+
+  @override
+  String get linkNewTitle => 'Link this device';
+
+  @override
+  String get linkNewExplainer =>
+      'Show this code on your primary device: choose “Link a device” there and type the code (or scan the QR).';
+
+  @override
+  String get linkNewWaitingHello => 'Waiting for your primary device…';
+
+  @override
+  String get linkNewCopy => 'Copy code';
+
+  @override
+  String get linkNewCopied => 'Code copied';
+
+  @override
+  String get linkNewCompleting => 'Linking…';
+
+  @override
+  String get linkNewRebinding => 'Switching the session to the new device…';
+
+  @override
+  String get linkNewDone => 'This device is linked and ready.';
+
+  @override
+  String get linkNewAborted => 'Linking aborted';
+
+  @override
+  String get linkNewRetry => 'Try again';
+
+  @override
+  String get linkAbortReasonExpired => 'The code expired.';
+
+  @override
+  String get linkAbortReasonCancelled =>
+      'Linking was cancelled on the other device.';
+
+  @override
+  String get linkAbortReasonBadBlob =>
+      'Verification failed. Every key was removed from this device.';
+
+  @override
   String get settingsAppVersion => 'App version';
 
   @override
@@ -316,6 +485,13 @@ class AppLocalizationsEn extends AppLocalizations {
       'This message is no longer stored on this device.';
 
   @override
+  String get messageSentBeforeDeviceLinked =>
+      'Sent before this device was linked.';
+
+  @override
+  String get devicesSyncingNote => 'Syncing your devices…';
+
+  @override
   String get encryptionNotInitialized => 'Encryption not initialized';
 
   @override
@@ -323,10 +499,39 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get identityDamagedBody =>
-      'Signed in on a new device or browser? Your account already has encryption keys elsewhere, and this device does not have them. If this is your usual device, its stored keys were lost. Either way nothing was regenerated automatically — doing that silently would destroy your ability to read your history.';
+      'Signed in on a new device or browser? Your account already has encryption keys on another device — link this one from there and nothing is lost. Only if this is your usual device and its stored keys are gone should you start fresh: that makes new keys and any message this device never decrypted can never be recovered. Nothing was regenerated automatically — doing that silently would destroy your ability to read your history.';
 
   @override
   String get identityDamagedAction => 'Start fresh';
+
+  @override
+  String get messageRetrySend => 'Retry';
+
+  @override
+  String get authStatusSavedSessionUnreadable =>
+      'Could not read the saved session from this device. Your sign-in may still be there — restart the app to try again.';
+
+  @override
+  String get authStatusRegisterSucceeded =>
+      'Account created. Sign in to continue.';
+
+  @override
+  String get authStatusServerUnreachable =>
+      'Cannot reach the server. Check your connection and try again.';
+
+  @override
+  String get authStatusUnexpectedError =>
+      'Something went wrong. Please try again.';
+
+  @override
+  String get identityDamagedRecoveryFailed =>
+      'Could not create new encryption keys. Try again.';
+
+  @override
+  String get identityAlertShowDetails => 'Details';
+
+  @override
+  String get identityAlertHideDetails => 'Hide details';
 
   @override
   String get identityDamagedConfirmTitle => 'Start with new keys?';
@@ -360,6 +565,185 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get peerIdentityFingerprintNoStoredKey =>
       'No stored identity key is available for this contact.';
+
+  @override
+  String peerIdentityFingerprintChangedNotice(String name) {
+    return '$name\'s keys have changed. Compare the NEW fingerprint below — the previous one is shown only so you can see what changed.';
+  }
+
+  @override
+  String peerIdentityFingerprintServedNotice(String name) {
+    return 'This key came from the server and no message from $name has confirmed it yet. Comparing it out of band is the only check there is.';
+  }
+
+  @override
+  String peerIdentityFingerprintNewLabel(String name) {
+    return '$name\'s new fingerprint';
+  }
+
+  @override
+  String get peerIdentityFingerprintPreviousLabel =>
+      'Previously trusted fingerprint';
+
+  @override
+  String peerIdentityFingerprintOfferChanged(String name) {
+    return 'Nothing was confirmed: $name\'s key changed while this was open, so it is not the one you just compared. Compare the fingerprint below again before confirming.';
+  }
+
+  @override
+  String peerIdentityFingerprintUnchangedNotice(String name) {
+    return '$name\'s key has not changed since you last accepted it. Confirm below to dismiss this warning.';
+  }
+
+  @override
+  String peerIdentityFingerprintOfferUnavailable(String name) {
+    return '$name\'s current key could not be loaded, so there is nothing to compare yet. Check your connection and open this again.';
+  }
+
+  @override
+  String peerIdentityChangedTimelineRow(String name) {
+    return '$name\'s security keys have changed — usually a sign-in from a new device or browser. Tap to verify.';
+  }
+
+  @override
+  String get ownIdentityReplacedTitle => 'New encryption keys on your account';
+
+  @override
+  String get ownIdentityReplacedBody =>
+      'Another sign-in uploaded new encryption keys for your account — usually a new device, browser, or reinstall. If this wasn\'t you, change your password immediately.';
+
+  @override
+  String get ownIdentityReplacedDismissAction => 'Got it';
+
+  @override
+  String get identityResetPendingTitle =>
+      'Someone asked to reset your encryption keys';
+
+  @override
+  String identityResetPendingBody(String remaining) {
+    return 'If this wasn\'t you, cancel now — otherwise your account gets new encryption keys in $remaining and your message history becomes unreadable.';
+  }
+
+  @override
+  String get identityResetCancelAction => 'Cancel it';
+
+  @override
+  String identityResetHoursLeft(int hours) {
+    String _temp0 = intl.Intl.pluralLogic(
+      hours,
+      locale: localeName,
+      other: '$hours hours',
+      one: '1 hour',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String identityResetMinutesLeft(int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes minutes',
+      one: '1 minute',
+      zero: 'under a minute',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get identityResetAnyMoment => 'any moment now';
+
+  @override
+  String get identityUploadLockedTitle =>
+      'Your new encryption keys were not published';
+
+  @override
+  String get identityUploadLockedBody =>
+      'This device made new keys, but the account still uses the previous ones, so other people cannot reach you securely. If you still have the previous keys on another device, link this one from there — the unpublished keys are discarded and nothing is lost. Only if those keys are gone everywhere should you start a reset to publish these — it takes 72 hours, signs out every other device, and everyone signed in is notified.';
+
+  @override
+  String get identityResetStartAction => 'Start reset';
+
+  @override
+  String get recoveryKeyTitle => 'Recovery key';
+
+  @override
+  String get recoveryKeySubtitle => 'Get back in faster if you lose your keys';
+
+  @override
+  String get recoveryKeyExplainer =>
+      'If you ever lose access to your encryption keys, getting new ones takes 72 hours — a deliberate delay, so nobody else can quietly take over your account without you having time to stop it. A recovery key shortens that wait to 1 hour. It never skips the wait, and everyone signed in is still notified.\n\nThe words are shown once and never stored on this device — keeping them here would lose them to the very thing they protect against. Write them down somewhere safe and offline.';
+
+  @override
+  String get recoveryKeyGenerateAction => 'Generate recovery key';
+
+  @override
+  String get recoveryKeyShownOnceWarning =>
+      'These words are shown once. Save them before continuing — generating a new key replaces this one.';
+
+  @override
+  String get recoveryKeyCopyAction => 'Copy words';
+
+  @override
+  String get recoveryKeyCopied => 'Recovery key copied';
+
+  @override
+  String get recoveryKeySavedAction => 'I saved it';
+
+  @override
+  String get recoveryKeySaved => 'Recovery key saved';
+
+  @override
+  String get recoveryKeySaveFailed =>
+      'Could not save the recovery key — nothing was stored, so those words will not work. Please try again.';
+
+  @override
+  String get recoveryPhrasePromptTitle => 'Do you have a recovery key?';
+
+  @override
+  String get recoveryPhrasePromptBody =>
+      'Entering your 12 words shortens the wait from 72 hours to 1. Everyone signed in is notified either way, and the reset can still be cancelled.';
+
+  @override
+  String get recoveryPhrasePromptHint => 'twelve words separated by spaces';
+
+  @override
+  String get recoveryPhraseMalformed =>
+      'That does not look like a complete 12-word recovery key. Check for typos.';
+
+  @override
+  String get recoveryPhraseUseAction => 'Use recovery key';
+
+  @override
+  String get recoveryPhraseNoneAction => 'I don\'t have one';
+
+  @override
+  String get identityResetStarted =>
+      'Reset started. Everyone signed in has been told, and it can be cancelled until the countdown ends.';
+
+  @override
+  String get identityResetPhraseTooNew =>
+      'Reset started. Your recovery key was correct, but it was created less than 3 days ago, so it cannot shorten the wait this time — the full 72 hours apply. There is no need to enter it again.';
+
+  @override
+  String get identityResetAlreadyRunning =>
+      'A reset is already running for this account. The countdown at the top of the screen shows how long is left.';
+
+  @override
+  String get identityResetCooldown =>
+      'A reset was cancelled recently, so a new one cannot start for up to 24 hours. If someone else keeps cancelling it, change your password to sign them out first.';
+
+  @override
+  String get identityResetPhraseRejected =>
+      'Those 12 words did not match the recovery key stored for this account. You can try again, or start the reset without it and wait 72 hours.';
+
+  @override
+  String get identityResetPhraseLocked =>
+      'Too many recovery-key attempts. Try again in about an hour, or start the reset without the key and wait 72 hours.';
+
+  @override
+  String get identityResetNoAnswer =>
+      'No answer from the server, so nothing was started. Check your connection and try again.';
 
   @override
   String get identityFingerprintUnavailable => 'Fingerprint unavailable.';
@@ -1300,4 +1684,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get attachmentUnsupportedFileType => 'Unsupported file type';
+
+  @override
+  String get chatScrollToBottomSemantics => 'Scroll to newest messages';
+
+  @override
+  String get avatarOpenProfileSemantics => 'Open profile';
 }

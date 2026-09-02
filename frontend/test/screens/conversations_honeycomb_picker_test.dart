@@ -34,7 +34,12 @@ class _FakeAuthProvider extends AuthProvider {
 
 class _FakeConnectionProvider extends ConnectionProvider {
   @override
-  Future<void> connect(int userId, String token, String baseUrl) async {}
+  Future<void> connect(
+    int userId,
+    String token,
+    String baseUrl, {
+    bool immediate = false,
+  }) async {}
 }
 
 Widget _host({
@@ -347,7 +352,9 @@ void _pickerNameTests() {
       find.byKey(const Key('chat-picker-invite-new')),
     );
     for (final id in const [2, 3]) {
-      final friend = tester.getTopLeft(find.byKey(Key('chat-picker-friend-$id')));
+      final friend = tester.getTopLeft(
+        find.byKey(Key('chat-picker-friend-$id')),
+      );
       expect(
         socket.dy < friend.dy || socket.dx < friend.dx,
         isTrue,

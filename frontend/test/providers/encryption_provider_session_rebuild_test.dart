@@ -46,27 +46,47 @@ void main() {
           provider.onOwnKeyBundleStatus({'exists': false});
         } else if (event == 'uploadKeyBundle') {
           ourUploadedBundle = (data as Map).cast<String, dynamic>();
+          // The client publishes the identity FIRST and releases its one-time
+          // pre-keys on this ack (2026-08-19): key material is only accepted
+          // under an identity the account actually publishes, so a fake server
+          // that never answers would never see the keys either.
+          scheduleMicrotask(
+            () => provider.onKeyBundleUploaded({'success': true}),
+          );
         } else if (event == 'uploadOneTimePreKeys') {
           ourUploadedOtps = ((data as Map)['keys'] as List)
               .cast<Map<String, dynamic>>();
         } else if (event == 'fetchPreKeyBundle') {
           // Serve the peer's bundle asynchronously, like the server would.
-          scheduleMicrotask(() => provider.onPreKeyBundleResponse({
-                'userId': peerUserId,
-                'bundle': peerBundleToServe,
-              }));
+          scheduleMicrotask(
+            () => provider.onPreKeyBundleResponse({
+              'userId': peerUserId,
+              'bundle': peerBundleToServe,
+            }),
+          );
         }
       });
       await provider.initializeE2E(ourUserId);
-      expect(ourUploadedBundle, isNotNull,
-          reason: 'fresh install must upload a key bundle');
-      expect(ourUploadedOtps, isNotEmpty);
+      expect(
+        ourUploadedBundle,
+        isNotNull,
+        reason: 'fresh install must upload a key bundle',
+      );
+      // Let the ack (and the pre-key release it triggers) land.
+      await Future<void>.delayed(Duration.zero);
+      expect(
+        ourUploadedOtps,
+        isNotEmpty,
+        reason: 'the bundle ack releases the one-time pre-keys',
+      );
 
       // --- Peer side: raw libsignal with in-memory stores. ---
       final peerIdentity = generateIdentityKeyPair();
       final peerRegistrationId = generateRegistrationId(false);
-      final peerStore =
-          InMemorySignalProtocolStore(peerIdentity, peerRegistrationId);
+      final peerStore = InMemorySignalProtocolStore(
+        peerIdentity,
+        peerRegistrationId,
+      );
       final peerSignedPreKey = generateSignedPreKey(peerIdentity, 0);
       await peerStore.storeSignedPreKey(0, peerSignedPreKey);
       final peerOtps = generatePreKeys(0, 2);
@@ -75,15 +95,18 @@ void main() {
       }
       peerBundleToServe = {
         'registrationId': peerRegistrationId,
-        'identityPublicKey':
-            base64Encode(peerIdentity.getPublicKey().serialize()),
+        'identityPublicKey': base64Encode(
+          peerIdentity.getPublicKey().serialize(),
+        ),
         'signedPreKeyId': 0,
-        'signedPreKeyPublic':
-            base64Encode(peerSignedPreKey.getKeyPair().publicKey.serialize()),
+        'signedPreKeyPublic': base64Encode(
+          peerSignedPreKey.getKeyPair().publicKey.serialize(),
+        ),
         'signedPreKeySignature': base64Encode(peerSignedPreKey.signature),
         'oneTimePreKeyId': peerOtps[0].id,
-        'oneTimePreKeyPublic':
-            base64Encode(peerOtps[0].getKeyPair().publicKey.serialize()),
+        'oneTimePreKeyPublic': base64Encode(
+          peerOtps[0].getKeyPair().publicKey.serialize(),
+        ),
       };
 
       // Peer builds a session to US from our uploaded bundle (X3DH initiator).
@@ -95,24 +118,28 @@ void main() {
         Curve.decodePoint(base64Decode(ourOtp['publicKey'] as String), 0),
         ourUploadedBundle!['signedPreKeyId'] as int,
         Curve.decodePoint(
-            base64Decode(ourUploadedBundle!['signedPreKeyPublic'] as String),
-            0),
-        base64Decode(
-            ourUploadedBundle!['signedPreKeySignature'] as String),
+          base64Decode(ourUploadedBundle!['signedPreKeyPublic'] as String),
+          0,
+        ),
+        base64Decode(ourUploadedBundle!['signedPreKeySignature'] as String),
         IdentityKey.fromBytes(
-            base64Decode(ourUploadedBundle!['identityPublicKey'] as String),
-            0),
+          base64Decode(ourUploadedBundle!['identityPublicKey'] as String),
+          0,
+        ),
       );
-      await SessionBuilder.fromSignalStore(peerStore, ourAddress)
-          .processPreKeyBundle(ourBundleForPeer);
+      await SessionBuilder.fromSignalStore(
+        peerStore,
+        ourAddress,
+      ).processPreKeyBundle(ourBundleForPeer);
       final peerCipher = SessionCipher.fromStore(peerStore, ourAddress);
 
       String wire(CiphertextMessage m) =>
           '${m.getType()}:${base64Encode(m.serialize())}';
 
       // 1. Peer -> us (PreKey message). Establishes our (Bob) session.
-      final msgA =
-          await peerCipher.encrypt(Uint8List.fromList(utf8.encode('hello-A')));
+      final msgA = await peerCipher.encrypt(
+        Uint8List.fromList(utf8.encode('hello-A')),
+      );
       expect(msgA.getType(), CiphertextMessage.prekeyType);
       expect(await provider.decrypt(peerUserId, wire(msgA)), 'hello-A');
 
@@ -124,15 +151,20 @@ void main() {
       final replyBody = base64Decode(replyWire.substring(colonIdx + 1));
       final replyPlain = replyType == CiphertextMessage.prekeyType
           ? await peerCipher.decrypt(PreKeySignalMessage(replyBody))
-          : await peerCipher
-              .decryptFromSignal(SignalMessage.fromSerialized(replyBody));
+          : await peerCipher.decryptFromSignal(
+              SignalMessage.fromSerialized(replyBody),
+            );
       expect(utf8.decode(replyPlain), 'reply-R');
 
       // 3. Peer sends msg B — a WHISPER (ctype 2) — and it is "in flight".
-      final msgB = await peerCipher
-          .encrypt(Uint8List.fromList(utf8.encode('in-flight-B')));
-      expect(msgB.getType(), CiphertextMessage.whisperType,
-          reason: 'after our reply the peer session is acknowledged');
+      final msgB = await peerCipher.encrypt(
+        Uint8List.fromList(utf8.encode('in-flight-B')),
+      );
+      expect(
+        msgB.getType(),
+        CiphertextMessage.whisperType,
+        reason: 'after our reply the peer session is acknowledged',
+      );
 
       // 4. WE force a session rebuild before reading B — the exact LOG-B
       //    sequence (SESSION_ENSURE needsRebuild:true on hasSession:true,

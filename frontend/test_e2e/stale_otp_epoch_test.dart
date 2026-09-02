@@ -6,15 +6,21 @@
 //   cd frontend && flutter test test_e2e/stale_otp_epoch_test.dart
 //
 // What it pins that the happy-path harness does NOT: a recipient who REGENERATES
-// their Signal identity mid-life, re-uploading bundle + one-time pre-keys in the
-// UNSAFE production order (OTPs racing the bundle, no client-side serialization),
+// their Signal identity mid-life, re-publishing identity + one-time pre-keys,
 // must never have a stale (old-epoch) OTP served again. Concretely:
 //   * the sender always fetches the CURRENT identity epoch;
 //   * every served OTP belongs to the current epoch and DECRYPTS (a stale one
 //     would Bad-Mac exactly like the field logs — peers 37<->63);
-//   * the current-epoch pool is non-empty after the unsafe re-upload (tagging +
-//     purge kept the new keys and dropped the dead ones);
+//   * the current-epoch pool is non-empty after the re-upload (tagging + purge
+//     kept the new keys and dropped the dead ones);
 //   * both directions work.
+//
+// Upload ORDER changed on 2026-08-19 and this file mirrors the client: the
+// identity is published first and the keys are released by its ack. It used to
+// emit both back to back ("unsafe production order"), which is how key material
+// could be judged against an identity the account had not published yet; the
+// server now refuses pre-keys under an unpublished identity, and
+// `full_stack_e2e_test` pins that refusal.
 //
 // Scope of this test (precise): it pins the end-to-end PURGE + identity-TAGGING
 // path — after regeneration the epoch-2 OTPs reuse keyId slots 0..N (UPSERT
@@ -44,32 +50,57 @@ void main() {
   late E2eClient bob; // sender
   late int conversationId;
   late String epoch1Identity;
+  // The 0b registration lock (§6.1) requires the PREVIOUS identity key to
+  // authorize a replacement, and clearAllKeys() below destroys it. This file's
+  // subject is the OTP epoch invariant, not the lock, so it carries the proof
+  // a legitimate rotation would; registration_lock_test covers the refusal.
+  late String epoch1Pair;
 
   int wireType(String ciphertext) =>
       int.parse(ciphertext.substring(0, ciphertext.indexOf(':')));
 
-  /// Re-upload alice's CURRENT (post-regeneration) keys in the UNSAFE production
-  /// order: emit the one-time pre-keys (identity-tagged, like the real client)
-  /// and the key bundle back-to-back with NO await between them, then wait for
-  /// both server acks. Mirrors EncryptionProvider's two consecutive emits.
-  Future<void> reuploadUnsafeConcurrent(E2eClient c) async {
+  /// Re-upload alice's CURRENT (post-regeneration) keys in the PRODUCTION order
+  /// (changed 2026-08-19): publish the identity, wait for the server's ack, and
+  /// only then send the one-time pre-keys.
+  ///
+  /// It used to emit both back to back with no await — mirroring the client of
+  /// the day — which let key material be judged against an identity the account
+  /// had not published yet. `EncryptionProvider` now stashes the keys and
+  /// releases them on `keyBundleUploaded { success: true }`, and the server
+  /// refuses pre-keys tagged with an unpublished identity, so this helper
+  /// mirrors that. The refusal itself is pinned in `full_stack_e2e_test`.
+  Future<void> reuploadInProductionOrder(
+    E2eClient c, {
+    String? identitySignature,
+    String? nonce,
+  }) async {
     final keys = c.encryption.getKeysForUpload()!;
     final keyBundle = (keys['keyBundle'] as Map).cast<String, dynamic>();
     final otps = (keys['oneTimePreKeys'] as List).cast<Map<String, dynamic>>();
     final identity = keyBundle['identityPublicKey'];
 
-    // OTPs FIRST (the risky order: they can land before the bundle upsert), with
-    // the explicit identity epoch tag the new client sends.
+    c.socketService.socket!.emit('uploadKeyBundle', {
+      ...keyBundle,
+      'identitySignature': ?identitySignature,
+      'nonce': ?nonce,
+    });
+    final ack = await c.events.next(
+      'keyBundleUploaded',
+      reason: '${c.label} epoch-2 bundle ack',
+    );
+    if ((ack as Map)['success'] != true) {
+      throw StateError('${c.label} epoch-2 bundle refused: $ack');
+    }
+
+    // The identity is published now, so its keys may follow.
     c.socketService.socket!.emit('uploadOneTimePreKeys', {
       'keys': otps,
       'identityPublicKey': identity,
     });
-    c.socketService.socket!.emit('uploadKeyBundle', keyBundle);
-
-    await c.events.next('oneTimePreKeysUploaded',
-        reason: '${c.label} epoch-2 OTP ack');
-    await c.events.next('keyBundleUploaded',
-        reason: '${c.label} epoch-2 bundle ack');
+    await c.events.next(
+      'oneTimePreKeysUploaded',
+      reason: '${c.label} epoch-2 OTP ack',
+    );
   }
 
   setUpAll(() async {
@@ -91,19 +122,23 @@ void main() {
     await alice.initializeAndUploadKeys();
     await bob.initializeAndUploadKeys();
     epoch1Identity =
-        (alice.encryption.getKeysForUpload()!['keyBundle'] as Map)['identityPublicKey']
+        (alice.encryption.getKeysForUpload()!['keyBundle']
+                as Map)['identityPublicKey']
             as String;
+    epoch1Pair = await alice.exportIdentityPair();
 
     // Friendship + conversation.
     alice.socketService.sendFriendRequest(bob.userId);
-    final request = await bob.events.next(
-      'newFriendRequest',
-      where: (p) =>
-          p is Map &&
-          p['sender'] is Map &&
-          (p['sender'] as Map)['id'] == alice.userId,
-      reason: 'bob receiving alice friend request',
-    ) as Map;
+    final request =
+        await bob.events.next(
+              'newFriendRequest',
+              where: (p) =>
+                  p is Map &&
+                  p['sender'] is Map &&
+                  (p['sender'] as Map)['id'] == alice.userId,
+              reason: 'bob receiving alice friend request',
+            )
+            as Map;
     bob.events.discard('friendRequestAccepted');
     alice.events.discard('friendRequestAccepted');
     bob.events.discard('openConversation');
@@ -130,8 +165,12 @@ void main() {
     );
     alice.events.discard('openConversation');
     alice.socketService.startConversation(bob.userId);
-    final aliceOpen = await alice.events
-        .next('openConversation', reason: 'alice startConversation') as Map;
+    final aliceOpen =
+        await alice.events.next(
+              'openConversation',
+              reason: 'alice startConversation',
+            )
+            as Map;
     conversationId = bobConversationId;
     expect(aliceOpen['conversationId'], conversationId);
   });
@@ -144,63 +183,102 @@ void main() {
   /// bob builds a fresh session from alice's CURRENT server bundle and sends a
   /// PreKey message; alice must decrypt it to the exact plaintext. Returns the
   /// served bundle so the caller can assert epoch identity/OTP presence.
-  Future<Map<String, dynamic>> bobPreKeyToAlice(String content, String tempId) async {
+  Future<Map<String, dynamic>> bobPreKeyToAlice(
+    String content,
+    String tempId,
+  ) async {
     await bob.encryption.deleteSession(alice.userId); // force a fresh X3DH
     final bundle = await bob.fetchBundleFor(alice.userId);
-    await bob.encryption.buildSession(alice.userId, bundle);
+    await bob.encryption.buildSession(alice.userId, bundle, expectedIdentityBase64: null);
     final ct = await bob.encryptText(alice.userId, content);
-    expect(wireType(ct), 3, reason: 'fresh session opener must be a PreKey (3:)');
+    expect(
+      wireType(ct),
+      3,
+      reason: 'fresh session opener must be a PreKey (3:)',
+    );
     await bob.sendEncrypted(alice.userId, ct, tempId: tempId);
     final recv = await alice.awaitNewMessage(tempId);
     // The load-bearing assertion: a stale OTP would throw Bad Mac here.
-    expect(await alice.decryptText(bob.userId, recv['encryptedContent'] as String),
-        content,
-        reason: 'alice must decrypt bob\'s PreKey message (no stale OTP served)');
+    expect(
+      await alice.decryptText(bob.userId, recv['encryptedContent'] as String),
+      content,
+      reason: 'alice must decrypt bob\'s PreKey message (no stale OTP served)',
+    );
     return bundle;
   }
 
   group('stale-OTP epoch regression', () {
     test(
       'after alice regenerates identity, no stale OTP is ever served and both '
-      'directions decrypt (unsafe production upload order)',
+      'directions decrypt (identity published first, keys after its ack)',
       () async {
         // 1. alice regenerates identity (fresh install / key loss), SAME account.
         //    She now holds only epoch-2 private keys; epoch-1 OTP privates gone.
         await alice.encryption.clearAllKeys();
-        await alice.encryption.initialize(alice.userId, checkServerBundleExists: () async => false);
+        await alice.encryption.initialize(
+          alice.userId,
+          checkServerBundleExists: () async => false,
+        );
         final epoch2Identity =
-            (alice.encryption.getKeysForUpload()!['keyBundle'] as Map)['identityPublicKey']
+            (alice.encryption.getKeysForUpload()!['keyBundle']
+                    as Map)['identityPublicKey']
                 as String;
-        expect(epoch2Identity, isNot(epoch1Identity),
-            reason: 'regeneration must mint a new identity epoch');
+        expect(
+          epoch2Identity,
+          isNot(epoch1Identity),
+          reason: 'regeneration must mint a new identity epoch',
+        );
 
-        // 2. Re-upload in the unsafe production order (OTPs racing the bundle).
-        await reuploadUnsafeConcurrent(alice);
+        // 2. Re-upload in the production order (identity published, ack, then
+        //    keys), carrying the 0b proof so the replacement is authorized.
+        final nonce = await alice.fetchRegistrationLockNonce();
+        final proof = await alice.signIdentityChange(
+          signerPairBase64: epoch1Pair,
+          newIdentityPublicKeyBase64: epoch2Identity,
+          nonceBase64: nonce,
+        );
+        await reuploadInProductionOrder(
+          alice,
+          identitySignature: proof,
+          nonce: nonce,
+        );
 
         // 3. bob -> alice PreKey, repeated to drain several current-epoch OTPs.
         //    Every claim must be epoch-2 and must decrypt.
         for (var i = 0; i < 3; i++) {
-          final bundle =
-              await bobPreKeyToAlice('epoch2-msg-$i-$runTag', 's-b2a-$i-$runTag');
-          expect(bundle['identityPublicKey'], epoch2Identity,
-              reason: 'served bundle must carry the CURRENT identity epoch');
+          final bundle = await bobPreKeyToAlice(
+            'epoch2-msg-$i-$runTag',
+            's-b2a-$i-$runTag',
+          );
+          expect(
+            bundle['identityPublicKey'],
+            epoch2Identity,
+            reason: 'served bundle must carry the CURRENT identity epoch',
+          );
           expect(bundle['identityPublicKey'], isNot(epoch1Identity));
           // Non-empty current-epoch pool proves tagging + purge kept the new keys.
-          expect(bundle['oneTimePreKeyId'], isNotNull,
-              reason: 'current-epoch OTP pool must be non-empty after re-upload');
+          expect(
+            bundle['oneTimePreKeyId'],
+            isNotNull,
+            reason: 'current-epoch OTP pool must be non-empty after re-upload',
+          );
         }
 
         // 4. Reverse direction: alice -> bob (bob never rotated) must also work.
         await bob.encryption.deleteSession(alice.userId);
         final bobBundle = await alice.fetchBundleFor(bob.userId);
-        await alice.encryption.buildSession(bob.userId, bobBundle);
+        await alice.encryption.buildSession(bob.userId, bobBundle, expectedIdentityBase64: null);
         final ct = await alice.encryptText(bob.userId, 'reverse-$runTag');
         expect(wireType(ct), 3);
         await alice.sendEncrypted(bob.userId, ct, tempId: 's-a2b-$runTag');
         final recv = await bob.awaitNewMessage('s-a2b-$runTag');
         expect(
-            await bob.decryptText(alice.userId, recv['encryptedContent'] as String),
-            'reverse-$runTag');
+          await bob.decryptText(
+            alice.userId,
+            recv['encryptedContent'] as String,
+          ),
+          'reverse-$runTag',
+        );
       },
       timeout: const Timeout(Duration(minutes: 2)),
     );

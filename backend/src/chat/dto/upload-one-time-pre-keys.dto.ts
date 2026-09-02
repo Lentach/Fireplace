@@ -1,13 +1,17 @@
 import {
   IsArray,
+  IsInt,
   IsNumber,
   IsOptional,
+  IsPositive,
   IsString,
+  Max,
   MaxLength,
   Min,
   MinLength,
   ValidateNested,
 } from 'class-validator';
+import { MAX_DEVICE_ID } from '../../key-bundles/key-bundles.service';
 import { Type } from 'class-transformer';
 
 export class OneTimePreKeyDto {
@@ -21,6 +25,17 @@ export class OneTimePreKeyDto {
 }
 
 export class UploadOneTimePreKeysDto {
+  /**
+   * Which device of the caller's account this is about (Phase 1, spec §4).
+   * Absent means device 1: a client that has never heard of devices is the
+   * account's original one (§8 rollout — server first, clients later).
+   */
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  @Max(MAX_DEVICE_ID)
+  deviceId?: number;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => OneTimePreKeyDto)
@@ -39,4 +54,19 @@ export class UploadOneTimePreKeysDto {
   // headroom while bounding the per-OTP write surface (defense in depth).
   @MaxLength(255)
   identityPublicKey?: string;
+
+  /**
+   * Optional install proof (amendment (lxiv)): the registrationId minted
+   * together with this client's identity material. When present the server
+   * refuses the batch if the caller's own bundle row carries the same
+   * identity but a DIFFERENT registrationId — a foreign install (e.g. a
+   * revoked linked device whose login resolved onto the primary's id) trying
+   * to deposit OTPs into a pool it does not own. Absent = pre-(lxiv) client,
+   * accepted for compatibility; such clients predate device linking, so the
+   * foreign-install shape cannot exist for them.
+   */
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  registrationId?: number;
 }

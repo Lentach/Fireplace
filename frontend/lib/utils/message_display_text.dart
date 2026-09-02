@@ -2,7 +2,8 @@ import 'package:flutter/widgets.dart';
 
 import '../l10n/app_localizations.dart';
 import '../models/message_model.dart';
-import '../providers/messaging_provider.dart' show kRetiredMessageLabel;
+import '../providers/messaging_provider.dart'
+    show kNotLinkedYetMessageLabel, kRetiredMessageLabel;
 
 /// Human-readable body text for a message bubble: maps the E2E placeholder
 /// sentinels to localized strings, else the decrypted plaintext, else an
@@ -19,6 +20,9 @@ String messageDisplayContent(BuildContext context, MessageModel message) {
   }
   if (message.content == kRetiredMessageLabel) {
     return l10n.messageNoLongerStoredOnThisDevice;
+  }
+  if (message.content == kNotLinkedYetMessageLabel) {
+    return l10n.messageSentBeforeDeviceLinked;
   }
   if (message.content.isNotEmpty) return message.content;
   return l10n.unsupportedMessageType;

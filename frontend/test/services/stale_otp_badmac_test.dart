@@ -84,7 +84,7 @@ void main() {
 
     final bob = EncryptionService();
     await bob.initialize(bobStaleId, checkServerBundleExists: () async => false);
-    await bob.buildSession(aliceId, poisoned);
+    await bob.buildSession(aliceId, poisoned, expectedIdentityBase64: null);
 
     final wire = await bob.encrypt(aliceId, 'this must fail to decrypt');
     expect(wire.startsWith('3:'), isTrue,
@@ -106,7 +106,7 @@ void main() {
 
     final bob = EncryptionService();
     await bob.initialize(bobFreshId, checkServerBundleExists: () async => false);
-    await bob.buildSession(aliceId, clean);
+    await bob.buildSession(aliceId, clean, expectedIdentityBase64: null);
 
     const plaintext = 'current-epoch OTP decrypts cleanly';
     final wire = await bob.encrypt(aliceId, plaintext);

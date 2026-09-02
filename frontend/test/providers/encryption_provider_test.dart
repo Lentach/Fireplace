@@ -159,7 +159,7 @@ void main() {
         provider.onPreKeyBundleResponse({'userId': 99, 'bundle': null});
         provider.onPreKeyBundleResponse({'userId': 99, 'bundle': null});
         await expectLater(future, throwsStateError);
-        expect(provider.pendingPreKeyFetches.containsKey(99), isFalse);
+        expect(provider.pendingPreKeyFetches.containsKey((99, 1)), isFalse);
         final fetchEvents = emitted.where(
           (e) => e['event'] == 'fetchPreKeyBundle',
         );

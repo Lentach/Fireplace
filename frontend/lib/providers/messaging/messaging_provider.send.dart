@@ -17,7 +17,81 @@ Future<MediaPreviewMetadata?> _extractMediaPreviewMetadata(
   }
 }
 
+/// The addresses one ciphertext-bearing message must reach, plus the
+/// device-list stamps that message quotes.
+///
+/// Shared by a SEND (spec §5.2) and an EDIT (§5.7): an edit is a full re-fan
+/// over the same address set, so resolving it twice in two places is how the
+/// two paths would silently drift apart.
+typedef FanOutPlan = ({
+  bool fanOut,
+  List<({int userId, int deviceId})> targets,
+  VerifiedDeviceList? recipientList,
+  VerifiedDeviceList? ownList,
+  SenderListInfo senderListInfo,
+});
+
 extension MessagingSend on MessagingProvider {
+  /// Resolve who a ciphertext-bearing message to [recipientId] must address.
+  ///
+  /// A device list is used only when this client ALREADY holds a verified one —
+  /// seeded by an explicit fetch, a `deviceListChanged`, or a `deviceListStale`
+  /// refusal. It deliberately does NOT fetch: an account with no enrollment is
+  /// single-device by construction, and paying a device-list round trip on
+  /// every send to prove that would slow the overwhelmingly common path for
+  /// nothing. Nothing is dropped by the omission, because the SERVER refuses a
+  /// legacy send whenever either party is enrolled and hands back both signed
+  /// lists — which is what upgrades this client to fan-out (I5 is enforced
+  /// server-side).
+  FanOutPlan _resolveFanOut(int recipientId) {
+    final ownUserId = _currentUserId;
+    final recipientList = _encryptionProvider!.cachedDeviceList(recipientId);
+    final ownList = ownUserId == null
+        ? null
+        : _encryptionProvider!.cachedDeviceList(ownUserId);
+    final ownDeviceId = _encryptionProvider!.ownDeviceId;
+
+    // Fan out ONLY when the RECIPIENT's list is known. Without it a fan-out
+    // would address own devices alone: the server would accept it (every
+    // envelope valid, recipient not enrolled so nothing stale), commit the row
+    // with a NULL legacy column, and the recipient's history read would answer
+    // `none_for_device` forever — the message permanently invisible to the
+    // person it was sent to. Own-device self-sync rides along only once the
+    // recipient is addressable.
+    final fanOut = recipientList != null;
+    final targets = <({int userId, int deviceId})>[
+      if (recipientList != null)
+        for (final deviceId in recipientList.liveDeviceIds)
+          (userId: recipientId, deviceId: deviceId),
+      if (fanOut && ownList != null && ownUserId != null)
+        for (final deviceId in ownList.liveDeviceIds)
+          // NEVER this device: it holds the plaintext already, and the server
+          // refuses that envelope as self_envelope_for_origin_device.
+          if (deviceId != ownDeviceId) (userId: ownUserId, deviceId: deviceId),
+    ];
+
+    // `senderListInfo` states which device-list versions this message was
+    // addressed from, and rides inside the plaintext where the server cannot
+    // see or edit it (spec §12 amendment (xv), extended to edits by (xxxiv)).
+    // It is built from verified cached lists only — a party we hold nothing for
+    // is reported ABSENT rather than as version 0, because "I do not know your
+    // devices" and "you have no devices" are different claims and only one of
+    // them is true. It rides EVERY message (owner ruling 2026-08-21) so a split
+    // view is exposed by the first message rather than a sampled one.
+    return (
+      fanOut: fanOut,
+      targets: targets,
+      recipientList: recipientList,
+      ownList: ownList,
+      senderListInfo: SenderListInfo(
+        ownVersion: ownList?.version,
+        ownListHash: ownList?.listHash,
+        peerVersion: recipientList?.version,
+        peerListHash: recipientList?.listHash,
+      ),
+    );
+  }
+
   void sendMessage(String content, {int? expiresIn, int? replyToMessageId}) {
     final activeConversationId = _conversationsProvider?.activeConversationId;
     if (activeConversationId == null || _currentUserId == null) return;
@@ -727,13 +801,178 @@ extension MessagingSend on MessagingProvider {
     sendTypingIndicator(recipientId, activeConversationId);
   }
 
+  /// A send the server refused because this client's device-list view was
+  /// unusable (spec §5.2 layer 1 + §12 amendments (vi)/(x)).
+  ///
+  /// Repair is one round trip by design: the refusal carries each stale
+  /// party's FULL signed list, which is verified here along the I7 chain
+  /// before anything is trusted — an invalid chain fails the send outright
+  /// rather than adopting the server's word (falsification 4).
+  ///
+  /// A party can be MISSING from `lists` while still blocking the send: a
+  /// legacy send is refused when EITHER side is enrolled, and the non-enrolled
+  /// side contributes no entry. Those are resolved explicitly, or the resend
+  /// would repeat the same legacy shape and burn the retry budget.
+  Future<void> onDeviceListStale(dynamic data) async {
+    if (data is! Map) return;
+    final tempId = data['tempId'] as String?;
+    final lists = data['lists'];
+    final encryption = _encryptionProvider;
+    if (encryption == null) return;
+
+    try {
+      if (lists is List) {
+        for (final entry in lists) {
+          if (entry is! Map) continue;
+          final userId = entry['userId'] as int?;
+          final enrollment = entry['enrollment'];
+          if (userId == null || enrollment is! Map) continue;
+          // Re-shape the refusal entry into the `authorization` map the
+          // verifier consumes, so both delivery routes share one chain check.
+          await encryption.adoptDeliveredDeviceList(userId, {
+            'dakPub': enrollment['dakPub'],
+            'enrollmentSig': enrollment['enrollmentSig'],
+            'enrollmentCreatedAt': enrollment['enrollmentCreatedAt'],
+            'listVersion': entry['version'],
+            'listSignature': entry['listSignature'],
+            'listCanonical': entry['listCanonical'],
+          });
+        }
+      }
+
+      // An EDIT refusal is correlated by messageId, not tempId (spec §5.7 +
+      // §12 amendment (xxxi)). It MUST be driven to a conclusion: the edit was
+      // applied optimistically, so returning here would leave this device
+      // showing the new text forever while the server and the peer keep the old
+      // ciphertext — a silent divergence that survives a reopen.
+      final staleEditId = data['messageId'] as int?;
+      if (staleEditId != null) {
+        await _retryStaleEdit(staleEditId);
+        return;
+      }
+
+      if (tempId == null) return;
+      final index = _messages.indexWhere((m) => m.tempId == tempId);
+      if (index == -1) return;
+      final conversations = _conversationsProvider?.conversations ?? [];
+      final conv = conversations
+          .where((c) => c.id == _messages[index].conversationId)
+          .firstOrNull;
+      if (conv == null) return;
+      final recipientId = conv_helpers.getOtherUserId(conv, _currentUserId);
+
+      // Resolve every party the resend needs. A `getDeviceList` answering
+      // `authorization: null` caches "not enrolled, device 1 only", which is
+      // what flips this send from the legacy shape to a fan-out.
+      for (final userId in {recipientId, ?_currentUserId}) {
+        if (encryption.cachedDeviceList(userId) == null) {
+          await encryption.getVerifiedDeviceList(userId);
+        }
+      }
+
+      // Bounded retry (spec §5.2: cap then a surfaced failure — Sesame §3.3
+      // mandates a finite loop). Never silently drop a device instead.
+      final attempts = (_staleResendAttempts[tempId] ?? 0) + 1;
+      _staleResendAttempts[tempId] = attempts;
+      if (attempts > 3) {
+        _markMessageFailed(
+          tempId,
+          'Could not confirm this chat\'s devices. Please try again.',
+        );
+        return;
+      }
+
+      // Release the exactly-once latch and re-drive the normal send path, which
+      // now sees the verified lists and fans out.
+      _emittedSendTempIds.remove(tempId);
+      _staleResendTempIds.add(tempId);
+      try {
+        await retryFailedMessage(tempId);
+      } finally {
+        _staleResendTempIds.remove(tempId);
+      }
+    } catch (e) {
+      debugPrint('[E2E] deviceListStale repair failed: $e');
+      if (tempId != null) {
+        _markMessageFailed(
+          tempId,
+          'Could not verify this chat\'s devices. Please try again.',
+        );
+      }
+    }
+  }
+
+  /// Re-drive an edit the server refused as `device_list_stale`, now that the
+  /// signed lists from the refusal have been adopted (spec §5.7, same bounded
+  /// bounce as §5.2).
+  ///
+  /// Bounded for the same reason a send is: three attempts, then the optimistic
+  /// edit is REVERTED rather than left diverging from the server. Retrying
+  /// forever against a list this client cannot verify would strand the row in a
+  /// state only this device believes in.
+  Future<void> _retryStaleEdit(int messageId) async {
+    // Every early return below means the edit can no longer be re-driven, so
+    // the optimistic snapshot must not be left behind: `_pendingEdits` would
+    // hold that row forever, and a later revert would restore text from an edit
+    // the user has long forgotten.
+    final index = _messages.indexWhere((m) => m.id == messageId);
+    if (index == -1) {
+      _revertPendingEdit(messageId, 'device_list_stale');
+      return;
+    }
+    final row = _messages[index];
+    final conv = (_conversationsProvider?.conversations ?? [])
+        .where((c) => c.id == row.conversationId)
+        .firstOrNull;
+    if (conv == null) {
+      _revertPendingEdit(messageId, 'device_list_stale');
+      return;
+    }
+    final recipientId = conv_helpers.getOtherUserId(conv, _currentUserId);
+    final encryption = _encryptionProvider;
+    if (encryption == null) {
+      _revertPendingEdit(messageId, 'device_list_stale');
+      return;
+    }
+
+    // Resolve every party the re-fan needs; an `authorization: null` answer
+    // caches "not enrolled, device 1 only", which is what decides the shape.
+    for (final userId in {recipientId, ?_currentUserId}) {
+      if (encryption.cachedDeviceList(userId) == null) {
+        await encryption.getVerifiedDeviceList(userId);
+      }
+    }
+
+    final key = 'edit:$messageId';
+    final attempts = (_staleResendAttempts[key] ?? 0) + 1;
+    _staleResendAttempts[key] = attempts;
+    if (attempts > 3) {
+      _staleResendAttempts.remove(key);
+      _revertPendingEdit(messageId, 'device_list_stale');
+      return;
+    }
+
+    await _encryptAndEmitEdit(
+      messageId: messageId,
+      recipientId: recipientId,
+      // The optimistically applied text — the edit the user actually asked for.
+      content: row.content,
+    );
+  }
+
   /// Retry sending a failed message (any type).
   Future<void> retryFailedMessage(String tempId) async {
     _cancelDelayedRetry(tempId);
     final index = _messages.indexWhere((m) => m.tempId == tempId);
     if (index == -1) return;
     final message = _messages[index];
-    if (message.deliveryStatus != MessageDeliveryStatus.failed) return;
+    // A stale-list resend re-drives this path while the row is still SENDING —
+    // the send was refused before delivery, so flashing a failure at the user
+    // and back would be a lie (spec §12 (vi)/(x)).
+    if (message.deliveryStatus != MessageDeliveryStatus.failed &&
+        !_staleResendTempIds.contains(tempId)) {
+      return;
+    }
 
     final conversations = _conversationsProvider?.conversations ?? [];
     final conv = conversations
@@ -1044,6 +1283,25 @@ extension MessagingSend on MessagingProvider {
     }
   }
 
+  /// The `sendToken` for [tempId], minted once and reused by every retry of
+  /// that same optimistic message (spec §5.4).
+  ///
+  /// Reuse is the point: the server enforces per-sender uniqueness, so a retry
+  /// carrying the same token re-acks the row it already committed rather than
+  /// creating a second message the sender cannot tell apart. Uniqueness comes
+  /// from the tempId (`temp_<millis>_<userId>`) plus a random suffix, keeping
+  /// it inside the DTO's 8..64 character bound.
+  String _sendTokenFor(String tempId) => _sendTokenByTempId.putIfAbsent(
+    tempId,
+    () {
+      final suffix = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
+      final raw = '$tempId-$suffix'.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '-');
+      // DTO bound is 8..64; a tempId is `temp_<millis>_<userId>`, always
+      // well over 8, so only the upper bound can bite.
+      return raw.length <= 64 ? raw : raw.substring(raw.length - 64);
+    },
+  );
+
   Future<bool> _encryptAndSend({
     required int recipientId,
     required String content,
@@ -1143,7 +1401,24 @@ extension MessagingSend on MessagingProvider {
         }
       }
 
-      // 3. Build encrypted envelope (content + type + media + optional linkPreview)
+      // 3. Resolve the addresses this send must reach (spec §5.2 + §12
+      // amendment (x)).
+      //
+      // A device list is used only when this client ALREADY holds a verified
+      // one — seeded by an explicit fetch, a `deviceListChanged`, or a
+      // `deviceListStale` refusal. It deliberately does NOT fetch here: an
+      // account with no enrollment is single-device by construction, and
+      // paying a device-list round trip on every send to prove that would slow
+      // the overwhelmingly common path for nothing. Nothing is dropped by the
+      // omission, because the SERVER refuses a legacy send whenever either
+      // party is enrolled and hands back both signed lists — which is what
+      // upgrades this client to fan-out (I5 is enforced server-side).
+      final resolved = _resolveFanOut(recipientId);
+      final recipientList = resolved.recipientList;
+      final ownList = resolved.ownList;
+      final fanOut = resolved.fanOut;
+      final targets = resolved.targets;
+      final senderListInfo = resolved.senderListInfo;
       final envelopeJson = jsonEncode(
         E2eEnvelope.build(
           content,
@@ -1156,64 +1431,92 @@ extension MessagingSend on MessagingProvider {
           mediaHeight: mediaHeight,
           mediaThumbHash: mediaThumbHash,
           linkPreview: linkPreview,
+          senderListInfo: senderListInfo.toJson(),
         ),
       );
 
-      // 4. Ensure session exists with recipient
-      await _encryptionProvider!.ensureSession(recipientId);
-
-      // 5. Encrypt
-      final ciphertext = await _encryptionProvider!.encrypt(
-        recipientId,
-        envelopeJson,
-      );
+      // 5. Encrypt. With the recipient's list known that is ONE ciphertext per
+      // address — reusing one across devices is not an option, because Signal
+      // decryption consumes the message key and every device but the first
+      // would fail terminally. Otherwise it is the legacy single-ciphertext
+      // shape for device 1, which the server normalizes into a device-1
+      // envelope at ingest (§8, amendment (v)).
+      final envelopes = <Map<String, dynamic>>[];
+      String? legacyCiphertext;
+      for (final target
+          in fanOut ? targets : [(userId: recipientId, deviceId: 1)]) {
+        await _encryptionProvider!.ensureSession(
+          target.userId,
+          deviceId: target.deviceId,
+        );
+        final ciphertext = await _encryptionProvider!.encrypt(
+          target.userId,
+          envelopeJson,
+          deviceId: target.deviceId,
+        );
+        // Authoritative size guard mirroring the DTO's @MaxLength(65536);
+        // applies PER ciphertext, since each is validated separately.
+        if (ciphertext.length > 65536) {
+          _markMessageFailed(tempId, 'Message is too long to send.');
+          return false;
+        }
+        if (fanOut) {
+          envelopes.add({
+            'userId': target.userId,
+            'deviceId': target.deviceId,
+            'ciphertext': ciphertext,
+          });
+        } else {
+          legacyCiphertext = ciphertext;
+        }
+      }
       _e2eFlowLog('SEND_ENCRYPT_DONE', {
         'recipientId': recipientId,
-        'ciphertextLength': ciphertext.length,
-        // 3 = PreKey (session (re)built), 2 = whisper. A 3 mid-conversation
-        // means a spurious rebuild — a prime suspect for peer decrypt failure.
-        'ctype': ciphertext.contains(':')
-            ? ciphertext.substring(0, ciphertext.indexOf(':'))
-            : '?',
+        'fanOut': fanOut,
+        'envelopes': envelopes.length,
+        'targets': targets.map((t) => '${t.userId}:${t.deviceId}').join(','),
       });
 
-      // Authoritative size guard mirroring SendMessageDto.encryptedContent
-      // @MaxLength(65536): the composer's envelope estimate is only an early UX
-      // guard, so enforce the exact ciphertext length here too — retry and any
-      // programmatic send path can't slip an over-limit payload past server
-      // validation and bounce back as a mystery 'failed'.
-      if (ciphertext.length > 65536) {
-        _markMessageFailed(tempId, 'Message is too long to send.');
-        return false;
-      }
-
-      // 5b. Durable lost-ack insurance: snapshot the plaintext payload keyed
-      // by the EXACT emitted ciphertext. If the `messageSent` ack is lost to a
-      // socket drop (tempId→realId mapping never happens), the history merge
-      // reconciles the '[encrypted]' server row back to this snapshot by
-      // ciphertext equality — a sender cannot decrypt its own ciphertext.
-      // Fire-and-forget: the send is never delayed or failed by this.
+      // 5b. Durable lost-ack insurance. Keyed by the send TOKEN once this is a
+      // fan-out (spec §12 amendment (ix)): such a row carries NO ciphertext for
+      // its own origin device — the server serves it `envelopeStatus:
+      // own_origin` — so the exact-ciphertext match would never fire again and
+      // the ONLY plaintext copy would be stranded. A legacy send keeps the
+      // ciphertext key, which is what its own row echoes back. The token is
+      // minted per tempId and REUSED by a retry of the same send, so a retry
+      // reconciles to the same row either way. Fire-and-forget: the send is
+      // never delayed or failed by this.
+      final sendToken = _sendTokenFor(tempId);
       final pendingSnapshot = _pendingSendContent[tempId];
       if (pendingSnapshot != null) {
         _encryptionProvider!
             .savePendingSendRecord(
-              ciphertext,
+              fanOut ? sendToken : legacyCiphertext!,
               Map<String, dynamic>.from(pendingSnapshot),
             )
             .ignore();
       }
 
-      // 6. Send encrypted payload; include type/media metadata so the server
-      // can reference self-hosted blobs (orphan media cleanup, expiry deletes).
+      // 6. Send. Version stamps are quoted only for an ENROLLED party: a
+      // non-enrolled account is single-device by construction and carries no
+      // stamp (amendment (v)), and quoting one would be refused as stale.
       _e2eFlowLog('SEND_EMIT', {'recipientId': recipientId, 'tempId': tempId});
       final emitPayload = <String, dynamic>{
         'recipientId': recipientId,
         'content': '[encrypted]',
-        'encryptedContent': ciphertext,
+        if (fanOut) 'envelopes': envelopes,
+        if (!fanOut) 'encryptedContent': legacyCiphertext,
+        'sendToken': sendToken,
         'expiresIn': effectiveExpiresIn,
         'tempId': tempId,
         'replyToMessageId': effectiveReplyToId,
       };
+      if (fanOut && recipientList?.version != null) {
+        emitPayload['recipientListVersion'] = recipientList!.version;
+      }
+      if (fanOut && ownList?.version != null) {
+        emitPayload['senderListVersion'] = ownList!.version;
+      }
       if (messageType != 'TEXT') {
         emitPayload['messageType'] = messageType;
       }
@@ -1403,6 +1706,17 @@ extension MessagingSend on MessagingProvider {
           .firstOrNull;
       final who = otherName ?? 'Recipient';
       return 'Cannot send: $who does not have encryption keys yet. Ask them to open the app.';
+    }
+    // (lv) This is a SECURITY refusal, not a missing-keys problem, and it has a
+    // specific remedy: the banner the refusal just raised opens the
+    // out-of-band fingerprint comparison. The catch-all below told the user to
+    // ask the recipient to open an app they already have open, which is why
+    // this state read as an unexplained permanent outage.
+    if (e is AccountIdentityMismatch ||
+        s.contains('AccountIdentityMismatch')) {
+      return 'Cannot send: this contact\'s security keys changed and could not '
+          'be verified. Open the security warning for this chat and compare '
+          'their safety number before sending.';
     }
     if (e is TimeoutException ||
         s.contains('timed out') ||

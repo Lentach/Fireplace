@@ -25,17 +25,21 @@ class _WorkingEncryption extends EncryptionProvider {
   bool get hadIdentityReset => false;
 
   @override
-  Future<void> ensureSession(int recipientId) async {}
+  Future<void> ensureSession(int recipientId, {int deviceId = 1}) async {}
 
   @override
-  Future<String> encrypt(int recipientId, String plaintext) async =>
-      'ciphertext';
+  Future<String> encrypt(
+    int recipientId,
+    String plaintext, {
+    int deviceId = 1,
+  }) async => 'ciphertext';
 
   @override
   Future<String> decrypt(
     int senderId,
     String ciphertext, {
     int? messageId,
+    int deviceId = 1,
   }) async => jsonEncode(E2eEnvelope.build('decrypted'));
 
   @override
@@ -92,7 +96,8 @@ class _StuckEncryption extends _WorkingEncryption {
   final _never = Completer<void>();
 
   @override
-  Future<void> ensureSession(int recipientId) => _never.future;
+  Future<void> ensureSession(int recipientId, {int deviceId = 1}) =>
+      _never.future;
 }
 
 Map<String, dynamic> _convJson() => {
@@ -291,13 +296,12 @@ void main() {
         'messages': [_plainIncomingJson(90)],
       });
 
-      provider.onMessageDeleted({
-        'messageId': 90,
-        'conversationId': 10,
-      });
+      provider.onMessageDeleted({'messageId': 90, 'conversationId': 10});
 
       expect(provider.messages, isEmpty);
-      expect(encryption.localPurges, [{90}]);
+      expect(encryption.localPurges, [
+        {90},
+      ]);
     });
 
     test('unfriend removes rows and requests a conversation purge', () {
@@ -311,7 +315,9 @@ void main() {
       provider.onConversationsRemovedForUser([10]);
 
       expect(provider.messages, isEmpty);
-      expect(encryption.conversationPurges, [{10}]);
+      expect(encryption.conversationPurges, [
+        {10},
+      ]);
     });
   });
 

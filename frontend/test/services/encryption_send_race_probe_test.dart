@@ -43,7 +43,7 @@ void main() {
 
   test('10 CONCURRENT encrypts to one recipient all decrypt (send-race probe)',
       () async {
-    await alice.buildSession(bobId, flatBundleFrom(bob));
+    await alice.buildSession(bobId, flatBundleFrom(bob), expectedIdentityBase64: null);
 
     // Settle the handshake so all burst messages ride the established ratchet.
     expect(await bob.decrypt(aliceId, await alice.encrypt(bobId, 'opener')),
@@ -80,7 +80,7 @@ void main() {
   });
 
   test('control: 10 SEQUENTIAL encrypts all decrypt', () async {
-    await alice.buildSession(bobId, flatBundleFrom(bob));
+    await alice.buildSession(bobId, flatBundleFrom(bob), expectedIdentityBase64: null);
     expect(await bob.decrypt(aliceId, await alice.encrypt(bobId, 'opener')),
         'opener');
     expect(await alice.decrypt(bobId, await bob.encrypt(aliceId, 'ack')),

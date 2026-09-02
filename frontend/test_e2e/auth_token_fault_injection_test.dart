@@ -122,7 +122,11 @@ void main() {
     await _waitRestored(blindBoot);
     expect(blindBoot.currentUser, isNull);
     expect(blindBoot.isError, isTrue);
-    expect(blindBoot.statusMessage, contains('Could not read the saved session'));
+    // A CODE, not prose: the provider holds no locale, so the widget layer
+    // maps this to an ARB string (the login screen used to render an English
+    // literal built here, on every locale).
+    expect(blindBoot.statusCode, AuthStatusCode.savedSessionUnreadable);
+    expect(blindBoot.statusMessage, isNull);
     expect(blindBoot.lastSessionEndReason, isNull,
         reason: 'no session ended — nothing may claim one did');
     expect(kv.data['refresh_token'], persistedRefresh,

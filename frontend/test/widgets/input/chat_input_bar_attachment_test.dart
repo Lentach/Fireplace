@@ -60,10 +60,10 @@ class _SendReadyEncryption extends EncryptionProvider {
   bool get hadIdentityReset => false;
 
   @override
-  Future<void> ensureSession(int recipientId) async {}
+  Future<void> ensureSession(int recipientId, {int deviceId = 1}) async {}
 
   @override
-  Future<String> encrypt(int recipientId, String plaintext) async => '1:abc';
+  Future<String> encrypt(int recipientId, String plaintext, {int deviceId = 1}) async => '1:abc';
 
   @override
   Future<Map<String, dynamic>?> getDecryptedContent(int messageId) async =>

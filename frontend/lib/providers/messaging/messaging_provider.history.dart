@@ -314,13 +314,20 @@ extension MessagingHistory on MessagingProvider {
     }
 
     if (droppedForConversationMismatch(effectiveActive)) return;
-    final newMessages = list
-        .map(
-          (m) => _enrichReplyPreview(
-            MessageModel.fromJson(m as Map<String, dynamic>),
-          ),
-        )
-        .toList();
+    final newMessages = list.map((m) {
+      final row = _enrichReplyPreview(
+        MessageModel.fromJson(m as Map<String, dynamic>),
+      );
+      // The server says this device has no ciphertext for this row by
+      // design — it predates this device's link (spec §12 amendment
+      // (viii)). Stamp the honest placeholder HERE, at ingestion: such a
+      // row carries no ciphertext, so it never enters the decrypt pass
+      // where the other placeholder states are resolved, and it would
+      // otherwise sit on '[encrypted]' forever.
+      return row.envelopeStatus == 'none_for_device'
+          ? row.copyWith(content: kNotLinkedYetMessageLabel)
+          : row;
+    }).toList();
 
     // Fill in plaintext we already hold BEFORE this snapshot reaches _messages.
     // Every E2E row arrives as content "[encrypted]" (the server never sees
@@ -526,7 +533,16 @@ extension MessagingHistory on MessagingProvider {
 
     // If this is our own message (messageSent), replace temp optimistic message
     // and keep plaintext for display (server stores "[encrypted]" as content).
-    if (msg.senderId == _currentUserId && msg.tempId != null) {
+    //
+    // Origin-scoped twice over (amendment (xi)): a `tempId` exists only on the
+    // device that minted it, so a self-sync copy from another of our devices
+    // could never match one — and `!_isSelfSyncRow` states that intent instead
+    // of leaving it to luck, because everything in this branch (consuming
+    // `_pendingSendContent`, removing the optimistic row, consuming the
+    // pending-send record below) belongs to a genuinely in-flight LOCAL send.
+    if (msg.senderId == _currentUserId &&
+        msg.tempId != null &&
+        !_isSelfSyncRow(msg)) {
       final savedData = _pendingSendContent.remove(msg.tempId);
       final savedContent = savedData?['content'];
       final tempIndex = _messages.indexWhere((m) => m.tempId == msg.tempId);
@@ -578,10 +594,14 @@ extension MessagingHistory on MessagingProvider {
         _encryptionProvider?.saveDecryptedContent(msg.id, persistData).ignore();
       }
       // Ack arrived — the pending-send record served its purpose; consume it
-      // so normal sends keep the reconcile store self-cleaning.
-      final ackCiphertext = msg.encryptedContent;
-      if (ackCiphertext != null) {
-        _encryptionProvider?.takePendingSendRecord(ackCiphertext).ignore();
+      // so normal sends keep the reconcile store self-cleaning. Same
+      // precedence as the lost-ack reconcile, and for the same reason: the
+      // record was saved under the ciphertext for a legacy send and under the
+      // send token for a fan-out (whose origin copy has a NULL ciphertext), so
+      // consuming by the wrong one would leave it on disk forever.
+      final ackRecordKey = msg.encryptedContent ?? msg.sendToken;
+      if (ackRecordKey != null) {
+        _encryptionProvider?.takePendingSendRecord(ackRecordKey).ignore();
       }
     }
 

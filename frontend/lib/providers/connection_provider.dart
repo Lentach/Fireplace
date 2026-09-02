@@ -7,9 +7,14 @@ import '../config/app_config.dart';
 import '../constants/app_constants.dart';
 import '../services/api_service.dart';
 import '../services/push_service.dart';
+import '../services/device_link/dak_store.dart';
+import '../services/device_link/link_ceremony_controller.dart'
+    show EncryptionServiceLinkGateway, ProvisioningEventSink, linkPlatformLabel;
+import '../services/device_list/device_authority_engine.dart';
 import '../services/server_clock.dart';
 import '../services/socket_service.dart';
 import '../utils/e2e_diag_log.dart';
+import '../utils/e2e_persistent_diag.dart';
 import 'chat_reconnect_manager.dart';
 import 'conversations_provider.dart';
 import 'encryption_provider.dart';
@@ -27,8 +32,8 @@ class ConnectionProvider extends ChangeNotifier {
   ConnectionProvider({
     SocketService? socketService,
     int? coldStartConversationId,
-  })  : _socketService = socketService ?? SocketService(),
-        _coldStartConversationId = coldStartConversationId;
+  }) : _socketService = socketService ?? SocketService(),
+       _coldStartConversationId = coldStartConversationId;
   final ChatReconnectManager _reconnectManager = ChatReconnectManager();
   late final ApiService _api = ApiService(baseUrl: AppConfig.baseUrl);
   late final PushService _pushService = PushService(_api);
@@ -86,6 +91,21 @@ class ConnectionProvider extends ChangeNotifier {
   ConversationsProvider? _conversationsProvider;
   MessagingProvider? _messagingProvider;
 
+  ProvisioningEventSink? _provisioningSink;
+
+  /// Invoked when the server reports that THIS device was revoked (spec §5.5).
+  /// Set by the widget that owns both this provider and the auth session — the
+  /// notice text needs a locale, and only the auth layer may end a session.
+  void Function()? onDeviceRevoked;
+
+  /// Invoked when a §6.2 reset teardown re-homes this account onto a NEWLY
+  /// allocated device and hands back the session bound to it. Set by the
+  /// widget that owns both this provider and the auth session — only the auth
+  /// layer may write a session, exactly as for [onDeviceRevoked].
+  ///
+  /// MUST complete before the recovering device publishes any key material:
+  /// see `_adoptReboundSession`.
+  Future<void> Function(Map<String, dynamic> tokens)? onSessionRebound;
   // ---------- Public Getters ----------
 
   int? get currentUserId => _currentUserId;
@@ -108,6 +128,22 @@ class ConnectionProvider extends ChangeNotifier {
     _messagingProvider = messaging;
   }
 
+  /// Registers the screen-scoped §5.1 ceremony controller as the receiver of
+  /// provisioning + device-list events. ONE sink at a time by design — the
+  /// ceremony surface is a single navigation stack, and routing through this
+  /// provider keeps [_registerEventListeners] the only event-routing seam.
+  void registerProvisioningSink(ProvisioningEventSink sink) {
+    _provisioningSink = sink;
+  }
+
+  /// Unregisters [sink] if it is still the active one (a later screen may
+  /// have replaced it before this dispose ran).
+  void unregisterProvisioningSink(ProvisioningEventSink sink) {
+    if (identical(_provisioningSink, sink)) {
+      _provisioningSink = null;
+    }
+  }
+
   // ---------- Emit ----------
 
   /// Emit a socket event. Used by sub-providers via their emit callbacks.
@@ -117,9 +153,19 @@ class ConnectionProvider extends ChangeNotifier {
 
   // ---------- Connect ----------
 
-  Future<void> connect(int userId, String token, String baseUrl) async {
+  /// [immediate] skips the reconnect debounce. Only the §6.2 recovery rebind
+  /// uses it, and it must: the debounce defers the work to a timer and returns
+  /// straight away, so an awaited call would resolve BEFORE the socket carries
+  /// the new device — which is precisely the window the rebind exists to close.
+  /// It is rate-limited by the ceremony itself, not by this cooldown.
+  Future<void> connect(
+    int userId,
+    String token,
+    String baseUrl, {
+    bool immediate = false,
+  }) async {
     final now = DateTime.now();
-    if (_lastConnectStartedAt != null) {
+    if (!immediate && _lastConnectStartedAt != null) {
       final since = now.difference(_lastConnectStartedAt!);
       if (since < AppConstants.reconnectConnectCooldown) {
         final wait = AppConstants.reconnectConnectCooldown - since;
@@ -166,8 +212,8 @@ class ConnectionProvider extends ChangeNotifier {
     _friendsProvider?.setEmitCallback((event, data) => emit(event, data));
     _conversationsProvider?.setEmitCallback((event, data) => emit(event, data));
     _messagingProvider?.setEmitCallback((event, data) => emit(event, data));
-    _encryptionProvider?.onE2EReady =
-        () => _messagingProvider?.retryDecryptActiveConversation();
+    _encryptionProvider?.onE2EReady = () =>
+        _messagingProvider?.retryDecryptActiveConversation();
 
     // 6. Wire cross-provider callbacks (friends -> conversations)
     _friendsProvider?.onRemoveConversationsForUser = (uid) {
@@ -203,26 +249,38 @@ class ConnectionProvider extends ChangeNotifier {
       // ready work so anything downstream that gates on it — above all the
       // expiry purge, which destroys the only copy of a message — runs against
       // a current observation rather than a stale one or none at all.
-      ServerClock.instance.observeIso(
-        data is Map ? data['serverTime'] : null,
-      );
+      ServerClock.instance.observeIso(data is Map ? data['serverTime'] : null);
+      // Which device this session is (spec §5.3). The client cannot derive it
+      // — the id lives in the JWT the server validated — and a fan-out send
+      // needs it to address every OTHER own device for self-sync while never
+      // addressing its own origin device.
+      //
+      // A server predating the field sends nothing, and we deliberately do NOT
+      // treat that as "device 1 confirmed" (amendment (xii)): a real device 2
+      // against such a server would then believe it is device 1 and hand its
+      // own ciphertext to the ratchet. Unconfirmed already behaves as device 1
+      // for every send, and it keeps own rows out of the decrypt pass, so the
+      // silence costs nothing and the wrong claim could cost a message.
+      final readyDeviceId = data is Map ? data['deviceId'] : null;
+      if (readyDeviceId is int) {
+        _encryptionProvider?.setOwnDeviceId(readyDeviceId);
+      }
       _onSocketReady();
     });
 
     // 10. On 'disconnect': handle reconnect
     _socketService.onDisconnect((_) {
-      E2eDiagLog.add('SOCKET_DISCONNECT', {'intentional': _intentionalDisconnect});
+      E2eDiagLog.add('SOCKET_DISCONNECT', {
+        'intentional': _intentionalDisconnect,
+      });
       _isConnected = false;
       notifyListeners();
 
       if (!_intentionalDisconnect) {
-        _reconnectManager.onDisconnect(
-          _scheduleReconnect,
-          (msg) {
-            _errorMessage = msg;
-            notifyListeners();
-          },
-        );
+        _reconnectManager.onDisconnect(_scheduleReconnect, (msg) {
+          _errorMessage = msg;
+          notifyListeners();
+        });
       }
       _socketReadyWatchdog?.cancel();
       _socketReadyWatchdog = null;
@@ -318,6 +376,16 @@ class ConnectionProvider extends ChangeNotifier {
     _socketService.getFriends();
     _socketService.getBlockedList();
 
+    // Phase 0b: the ceremony countdown and its cancel button are in-memory
+    // only, so every connect re-asks who is trying to replace this account's
+    // keys. A session that was closed when the request landed opens straight
+    // into the banner instead of a silent, un-cancellable delay.
+    _encryptionProvider?.refreshOwnAccountStatus();
+    // (lxviii) clause 1: a devices screen that is open across a reconnect —
+    // above all its own ceremony's rebind — re-reads the list on the socket
+    // that can actually answer.
+    _provisioningSink?.onSessionReady();
+
     if (activeConvId != null) {
       _conversationsProvider?.reemitPushClientState();
       E2eDiagLog.add('ACTIVE_REASSERT', {
@@ -325,8 +393,10 @@ class ConnectionProvider extends ChangeNotifier {
         'activeConvId': activeConvId,
         'socketConnected': _socketService.isConnected,
       });
-      _socketService.getMessages(activeConvId,
-          limit: AppConstants.messagePageSize);
+      _socketService.getMessages(
+        activeConvId,
+        limit: AppConstants.messagePageSize,
+      );
     }
 
     Future.delayed(AppConstants.conversationsRefreshDelay, () {
@@ -437,9 +507,7 @@ class ConnectionProvider extends ChangeNotifier {
   void _sweepPlaintextNow(EncryptionProvider encryption) {
     // Fire-and-forget from a timer/socket handler; a failure means the residue
     // survives to the next tick, which is the safe direction.
-    unawaited(
-      encryption.sweepDestroyablePlaintext().catchError((Object _) {}),
-    );
+    unawaited(encryption.sweepDestroyablePlaintext().catchError((Object _) {}));
   }
 
   /// One `getServedMessageIds` round trip.
@@ -567,8 +635,11 @@ class ConnectionProvider extends ChangeNotifier {
       return;
     }
     if (!claimsConnected) {
-      connect(_currentUserId!, _reconnectManager.tokenForReconnect!,
-          AppConfig.baseUrl);
+      connect(
+        _currentUserId!,
+        _reconnectManager.tokenForReconnect!,
+        AppConfig.baseUrl,
+      );
       return;
     }
     // Socket CLAIMS connected, but iOS suspends the transport in background
@@ -588,8 +659,10 @@ class ConnectionProvider extends ChangeNotifier {
     _socketService.getConversations();
     if (activeConvId != null) {
       _conversationsProvider?.reemitPushClientState();
-      _socketService.getMessages(activeConvId,
-          limit: AppConstants.messagePageSize);
+      _socketService.getMessages(
+        activeConvId,
+        limit: AppConstants.messagePageSize,
+      );
     }
     E2eDiagLog.add('RESUME_RESYNC', {
       'activeConvId': activeConvId ?? -1,
@@ -609,10 +682,297 @@ class ConnectionProvider extends ChangeNotifier {
 
   // ---------- Event Routing ----------
 
+  /// The deviceId-bound session a §6.2 recovery ack carries, or null when this
+  /// is an ordinary key-bundle ack.
+  ///
+  /// The server includes the triple ONLY when a reset teardown re-homed the
+  /// account, so `access_token` is the discriminator. A partial payload is
+  /// treated as absent rather than half-adopted: persisting an access token
+  /// with no refresh token would leave a session that cannot be renewed.
+  Map<String, dynamic>? _reboundSessionFrom(dynamic data) {
+    if (data is! Map) return null;
+    if (data['success'] == false) return null;
+    final access = data['access_token'];
+    final refresh = data['refresh_token'];
+    if (access is! String || access.isEmpty) return null;
+    if (refresh is! String || refresh.isEmpty) return null;
+    return {'access_token': access, 'refresh_token': refresh};
+  }
+
+  /// True while a recovery rebind is running.
+  ///
+  /// Re-entrancy is guarded rather than assumed: the server consumes the reset
+  /// row so it cannot legitimately answer twice, but that invariant lives three
+  /// layers away, and a second pass here would reconnect underneath an
+  /// in-flight one. Cleared when the rebind settles — a later ceremony in the
+  /// same session is a legitimate second rebind, not a duplicate.
+  bool _reboundInFlight = false;
+
+  /// When the last recovery rebind started.
+  ///
+  /// The latch above only stops CONCURRENT rebinds. This ack is entirely
+  /// server-driven and its rebind bypasses the reconnect cooldown, so without a
+  /// floor a flapping or hostile server could drive unbounded socket churn and
+  /// token rewrites just by repeating the answer. It grants no new authority —
+  /// that server issues the tokens anyway — but the churn is worth denying.
+  DateTime? _lastReboundAt;
+
+  /// In-flight §6.2 re-enrollment ack ((xlv) clause 1).
+  ///
+  /// The recovery runs at login, when no DevicesScreen is mounted and
+  /// `_provisioningSink` is therefore null — so the recovery must consume its
+  /// own `deviceAuthorityEnrolled` answer rather than route it to a sink that
+  /// does not exist. That null sink is exactly why this re-enrollment could
+  /// not simply live on the ceremony controller.
+  Completer<Map<String, dynamic>>? _resetEnrollAck;
+
+  /// Plausibility ceiling for a server-named replacement list version
+  /// ((xlv) clause 1). A list version advances once per device mutation, so
+  /// no real account comes near this; the bound exists only to deny a hostile
+  /// server the "freeze the list at the integer ceiling" move.
+  static const int _maxPlausibleListVersion = 1000000;
+
+  /// Adopts the recovery session, reconnects under it, and only THEN delivers
+  /// the ack — so the pre-key upload it triggers rides the new device id.
+  ///
+  /// The ack is delivered even when the rebind fails. Dropping it would strand
+  /// the stashed pre-keys forever, which is strictly worse than publishing them
+  /// to a namespace a later successful rebind can re-publish over; the failure
+  /// is recorded so it is visible rather than inferred.
+  Future<void> _adoptReboundSession(
+    Map<String, dynamic> tokens,
+    dynamic data,
+  ) async {
+    // clock.now() (package:clock), not DateTime.now(): fake_async patches the
+    // former, so the rebind floor is deterministic under test.
+    final now = clock.now();
+    final since = _lastReboundAt == null
+        ? null
+        : now.difference(_lastReboundAt!);
+    if (_reboundInFlight ||
+        (since != null && since < AppConstants.reconnectConnectCooldown)) {
+      _encryptionProvider?.onKeyBundleUploaded(data);
+      return;
+    }
+    _reboundInFlight = true;
+    _lastReboundAt = now;
+    final userId = _currentUserId;
+    var rebound = false;
+    try {
+      if (onSessionRebound == null) {
+        // Only the auth layer may write the session, so an unwired app cannot
+        // complete a recovery. Loud, because the symptom otherwise looks like
+        // "recovered account has no pre-keys" three subsystems away.
+        E2ePersistentDiag.record('RESET_REBIND_UNWIRED', {});
+      } else {
+        // (lxiv): the teardown re-homes this install's material onto the
+        // freshly allocated device id — drop the old stamp BEFORE the
+        // reconnect below, so the new session's confirm re-stamps instead of
+        // tripping the material-device gate on the recovering device.
+        await _encryptionProvider?.encryptionService.clearMaterialDeviceStamp();
+        await onSessionRebound!(tokens);
+        if (userId != null) {
+          await connect(
+            userId,
+            tokens['access_token'] as String,
+            AppConfig.baseUrl,
+            immediate: true,
+          );
+          rebound = true;
+        } else {
+          // Adopted but NOT reconnected: the replenish this ack triggers would
+          // ride whatever socket exists, which is a weaker form of the very
+          // defect this path closes. Unreachable in a real recovery (the
+          // ceremony completes on a connected session), so it is recorded
+          // rather than handled — invisible is what would make it dangerous.
+          E2ePersistentDiag.record('RESET_REBIND_NO_SESSION', {});
+        }
+      }
+    } catch (error) {
+      E2ePersistentDiag.record('RESET_REBIND_FAILED', {
+        'error': error.runtimeType.toString(),
+      });
+    } finally {
+      _reboundInFlight = false;
+    }
+    _encryptionProvider?.onKeyBundleUploaded(data);
+    // Amendment (xlv) clause 1, and it runs on the REBOUND socket — the
+    // enrollment must be attributed to the freshly allocated device id, and
+    // the pre-reset socket is authenticated as a device this teardown just
+    // revoked. Strictly after the ack for the same reason the ack is delivered
+    // late: the one-time pre-key upload it triggers is the more urgent of the
+    // two, and a re-enrollment that fails must not strand it.
+    if (rebound && userId != null) {
+      final deviceId = data is Map ? data['deviceId'] : null;
+      final version = data is Map ? data['nextListVersion'] : null;
+      if (deviceId is int && version is int) {
+        await _reenrollAfterReset(
+          userId: userId,
+          deviceId: deviceId,
+          version: version,
+        );
+      } else {
+        // An older server that reissues a session without naming the version.
+        // Recorded rather than guessed: minting at the wrong version is
+        // refused as `stale_version`, and guessing 1 against a surviving row
+        // would look like a rollback attempt.
+        E2ePersistentDiag.record('RESET_REENROLL_NO_VERSION', {
+          'deviceId': '$deviceId',
+        });
+      }
+    }
+  }
+
+  /// Re-enrolls the device authority after a §6.2 recovery (amendment (xlv)
+  /// clause 1).
+  ///
+  /// The teardown revoked every device the surviving list names and allocated
+  /// an id it does NOT name, so peers hold a list that cannot address this
+  /// account — and for an account that never enrolled they synthesize a
+  /// device 1 that no longer exists. Neither is repairable with
+  /// `updateDeviceList`: that needs the old DAK, whose private half died with
+  /// the lost devices. Only a REPLACEMENT enrollment under a fresh DAK, signed
+  /// by the new identity, restores addressability.
+  ///
+  /// Rider order is T3's, unchanged: mint → persist the DAK armed → ONLY THEN
+  /// emit. A DAK that signed a list the server accepted but that this device
+  /// failed to persist would be unrecoverable authority.
+  Future<void> _reenrollAfterReset({
+    required int userId,
+    required int deviceId,
+    required int version,
+  }) async {
+    final encryption = _encryptionProvider;
+    if (encryption == null) {
+      E2ePersistentDiag.record('RESET_REENROLL_UNWIRED', {});
+      return;
+    }
+    // The server names this version, and an honest one names `stored + 1`.
+    // Signing it unbounded would let a hostile one name a number near the
+    // integer ceiling: every later DAK-signed mutation must strictly exceed
+    // the stored version, so the account's device list would be frozen for
+    // good — a state that survives the server becoming honest again. The
+    // client cannot authenticate the number (the row it would check against is
+    // the orphaned one), so the only honest defence is a plausibility ceiling:
+    // list versions advance once per device mutation, so a real account never
+    // approaches this.
+    if (version < 1 || version > _maxPlausibleListVersion) {
+      E2ePersistentDiag.record('RESET_REENROLL_IMPLAUSIBLE_VERSION', {
+        'version': '$version',
+      });
+      return;
+    }
+    try {
+      final identity = await EncryptionServiceLinkGateway(
+        encryption.encryptionService,
+      ).ownIdentityKeyPair();
+      if (identity == null) {
+        E2ePersistentDiag.record('RESET_REENROLL_NO_IDENTITY', {});
+        return;
+      }
+      final engine = DeviceAuthorityEngine();
+      final payload = engine.mintEnrollment(
+        userId: userId,
+        identity: identity,
+        createdAtMs: clock.now().millisecondsSinceEpoch,
+        platform: linkPlatformLabel(),
+        deviceId: deviceId,
+        version: version,
+      );
+      final exported = engine.exportDakForPersistence();
+      // Amendment (liii). The candidate goes to a PENDING slot, never over the
+      // live record. This offer cannot be authenticated by us — the enrollment
+      // row we would check it against is the orphaned one, which is why the
+      // server-named `version` above gets a plausibility ceiling rather than a
+      // signature check — so a spurious offer must cost us nothing. Overwriting
+      // in place meant one crafted event destroyed the account's real DAK
+      // private half, and every later revoke/provision died on
+      // `invalid_list_signature` with a 72 h reset as the only exit.
+      //
+      // Still ARMED before the emit, so an enrollment the server accepts can
+      // never be one we failed to persist.
+      final store = DakStore();
+      await store.persistPendingArmed(
+        DakRecord(
+          userId: userId,
+          dakPub: exported['dakPub']!,
+          dakPriv: exported['dakPriv']!,
+          createdAtMs: payload['createdAt'] as int,
+        ),
+      );
+      final ack = Completer<Map<String, dynamic>>();
+      _resetEnrollAck = ack;
+      _socketService.enrollDeviceAuthority(payload);
+      final answer = await ack.future.timeout(
+        const Duration(seconds: 20),
+        onTimeout: () => const {'success': false, 'error': 'timeout'},
+      );
+      if (answer['success'] == true) {
+        await store.promotePending(userId: userId);
+        E2ePersistentDiag.record('RESET_REENROLL_PROMOTED', {
+          'deviceId': '$deviceId',
+          'version': '$version',
+        });
+      } else {
+        // Left visible rather than retried here: the account is still
+        // reachable-by-nobody, and (xlv) clause 2 keeps peers failing CLOSED
+        // meanwhile instead of silently addressing a device that cannot
+        // receive.
+        E2ePersistentDiag.record('RESET_REENROLL_REFUSED', {
+          'error': '${answer['error']}',
+          'deviceId': '$deviceId',
+          'version': '$version',
+        });
+        // An EXPLICIT refusal means this candidate authorizes nothing, so drop
+        // it. A timeout is ambiguous and deliberately leaves it: the live
+        // record is intact either way, and the offer rides every later upload.
+        if (answer['error'] != 'timeout') {
+          await store.clearPending(userId: userId);
+        }
+      }
+    } catch (error) {
+      E2ePersistentDiag.record('RESET_REENROLL_FAILED', {
+        'error': error.runtimeType.toString(),
+      });
+    } finally {
+      _resetEnrollAck = null;
+    }
+  }
+
   void _registerEventListeners() {
     // --- Encryption events ---
+    // A §6.2 recovery ack carries the device id the material now lives under
+    // plus a session bound to it, and the client MUST adopt them BEFORE any
+    // one-time pre-key upload (`chat-key-exchange.service.ts` says so at the
+    // emit site). Delivering the ack first is what strands the pool: the
+    // handler replenishes on `identityChanged`, and this socket is still
+    // authenticated as the device the teardown just REVOKED — so the keys land
+    // in the abandoned namespace, peers are served a bundle with no one-time
+    // pre-key, and the next reconnect is refused by the §5.5 gate.
     _socketService.on('keyBundleUploaded', (data) {
+      final rebind = _reboundSessionFrom(data);
+      if (rebind != null) {
+        unawaited(_adoptReboundSession(rebind, data));
+        return;
+      }
       _encryptionProvider?.onKeyBundleUploaded(data);
+      // No rebind, but the server can still be telling us we owe it a
+      // replacement enrollment ((xlv) clause 1): the recovery's own attempt
+      // died with a dropped socket or a killed app, and the roster block that
+      // started it runs only once, on the upload that consumed the ceremony.
+      // The offer rides every authenticated upload until it is taken.
+      final owedDeviceId = data is Map ? data['deviceId'] : null;
+      final owedVersion = data is Map ? data['nextListVersion'] : null;
+      final userId = _currentUserId;
+      if (owedDeviceId is int && owedVersion is int && userId != null) {
+        unawaited(
+          _reenrollAfterReset(
+            userId: userId,
+            deviceId: owedDeviceId,
+            version: owedVersion,
+          ),
+        );
+      }
     });
     _socketService.on('oneTimePreKeysUploaded', (data) {
       _encryptionProvider?.onOneTimePreKeysUploaded(data);
@@ -629,7 +989,94 @@ class ConnectionProvider extends ChangeNotifier {
     _socketService.on('sessionRebuildNeeded', (data) {
       _encryptionProvider?.onSessionRebuildNeeded(data);
     });
+    // Phase 0a takeover alarm (multi-device spec §6.0): another sign-in
+    // replaced this account's key bundle / a peer's bundle was replaced.
+    _socketService.on('ownIdentityReplaced', (data) {
+      _encryptionProvider?.onOwnIdentityReplaced(data);
+    });
+    _socketService.on('peerIdentityChanged', (data) {
+      _encryptionProvider?.onPeerIdentityChanged(data);
+    });
+    // Phase 0b reset ceremony (spec §6.2): every session of the account is
+    // told, so any of them can cancel during the delay.
+    _socketService.on('identityResetPending', (data) {
+      _encryptionProvider?.onIdentityResetPending(data);
+    });
+    _socketService.on('identityResetCancelled', (data) {
+      _encryptionProvider?.onIdentityResetCancelled(data);
+    });
+    _socketService.on('identityResetStatus', (data) {
+      _encryptionProvider?.onIdentityResetStatus(data);
+    });
+    _socketService.on('identityResetCancelResult', (data) {
+      _encryptionProvider?.onIdentityResetCancelResult(data);
+    });
+    _socketService.on('recoveryKeySet', (data) {
+      _encryptionProvider?.onRecoveryKeySet(data);
+    });
 
+    // --- Device list + §5.1 provisioning ceremony (Phase 2 T3) ---
+    // Forwarded to the screen-scoped ceremony controller (registered by
+    // DevicesScreen for its lifetime). No controller = no listener work.
+    _socketService.on('provisioningOpened', (data) {
+      _provisioningSink?.onProvisioningOpened(data);
+    });
+    _socketService.on('provisioningHelloAck', (data) {
+      _provisioningSink?.onProvisioningHelloAck(data);
+    });
+    _socketService.on('provisioningHello', (data) {
+      _provisioningSink?.onProvisioningHelloRelay(data);
+    });
+    _socketService.on('provisionDeviceAck', (data) {
+      _provisioningSink?.onProvisionDeviceAck(data);
+    });
+    _socketService.on('provisioningBlob', (data) {
+      _provisioningSink?.onProvisioningBlob(data);
+    });
+    _socketService.on('provisioningCompleted', (data) {
+      _provisioningSink?.onProvisioningCompleted(data);
+    });
+    _socketService.on('provisioningCancelled', (data) {
+      _provisioningSink?.onProvisioningCancelled(data);
+    });
+    _socketService.on('deviceAuthorityEnrolled', (data) {
+      // A recovery re-enrollment ((xlv) clause 1) owns its own answer: it runs
+      // with no screen mounted, so there is no sink to route to. The two
+      // cannot overlap — one needs DevicesScreen open, the other runs at
+      // login — and the waiter is cleared as soon as it settles.
+      final waiter = _resetEnrollAck;
+      if (waiter != null && !waiter.isCompleted) {
+        _resetEnrollAck = null;
+        waiter.complete(
+          data is Map
+              ? data.cast<String, dynamic>()
+              : const <String, dynamic>{'success': false, 'error': 'malformed'},
+        );
+        return;
+      }
+      _provisioningSink?.onDeviceAuthorityEnrolled(data);
+    });
+    _socketService.on('deviceList', (data) {
+      _provisioningSink?.onDeviceList(data);
+      // T4 C2: the send path's verified-list cache consumes the same answer;
+      // each consumer keys on its own pending state, so double routing is
+      // harmless.
+      _encryptionProvider?.onDeviceList(data);
+    });
+    _socketService.on('deviceListChanged', (data) {
+      _provisioningSink?.onDeviceListChanged(data);
+      _encryptionProvider?.onDeviceListChanged(data);
+    });
+    _socketService.on('deviceRevocationCompleted', (data) {
+      _provisioningSink?.onDeviceRevocationCompleted(data);
+    });
+    // THIS device was revoked (spec §5.5 + amendment (xxvi)). The server tells
+    // us, then drops the socket; a later reconnect attempt is refused with the
+    // same event before the socket closes, so this is the only place the app
+    // ever learns WHY instead of showing the generic connection-lost banner.
+    _socketService.on('deviceRevoked', (data) {
+      _onOwnDeviceRevoked(data);
+    });
     // --- Friend events ---
     _socketService.on('friendRequestsList', (data) {
       _friendsProvider?.onFriendRequestsList(data);
@@ -691,6 +1138,12 @@ class ConnectionProvider extends ChangeNotifier {
     _socketService.on('disappearingTimerUpdated', (data) {
       _conversationsProvider?.onDisappearingTimerUpdated(data);
     });
+    // The throttle refusal for the same request (spec §12 (xxxvii) class):
+    // without this the refused device keeps showing a timer the server never
+    // accepted.
+    _socketService.on('disappearingTimerFailed', (data) {
+      _conversationsProvider?.onDisappearingTimerFailed(data);
+    });
     _socketService.on('conversationMuteUpdated', (data) {
       _conversationsProvider?.onConversationMuteUpdated(data);
     });
@@ -705,6 +1158,13 @@ class ConnectionProvider extends ChangeNotifier {
     _socketService.on('messageUnpinned', (data) {
       _conversationsProvider?.onMessageUnpinned(data);
     });
+    // A refused pin (today: rate limited). The optimistic pin overwrote this
+    // device's pin state and nothing else will correct it until the next
+    // conversations snapshot, so the provider restores what it overwrote
+    // (spec §12 (xxxvii)).
+    _socketService.on('messagePinFailed', (data) {
+      _conversationsProvider?.onPinMessageFailed(data);
+    });
     _socketService.on('chatHistoryCleared', (data) {
       _messagingProvider?.onChatHistoryCleared(data);
     });
@@ -715,6 +1175,13 @@ class ConnectionProvider extends ChangeNotifier {
     });
     _socketService.on('messageSent', (data) {
       _messagingProvider?.onMessageSent(data);
+    });
+    // A refused send: the device list this client used is stale, or it sent the
+    // legacy shape to a party that now has devices (spec §12 (vi)/(x)). The
+    // provider verifies the delivered lists itself — the server's word is never
+    // enough — and resends.
+    _socketService.on('deviceListStale', (data) {
+      _messagingProvider?.onDeviceListStale(data);
     });
     _socketService.on('messageHistory', (data) {
       _serverResponseCounter++;
@@ -756,6 +1223,25 @@ class ConnectionProvider extends ChangeNotifier {
       _messagingProvider?.markSendingMessagesFailed(msg);
       notifyListeners();
     });
+  }
+
+  /// THIS device was revoked (spec §5.5 + amendment (xxvi)).
+  ///
+  /// Stops the reconnect loop FIRST: the server is about to drop the socket,
+  /// and without this the backoff would keep retrying a session the connect
+  /// gate now refuses, ending on a generic "Connection lost" banner instead of
+  /// the real reason. The actual logout is delegated, because only the auth
+  /// layer owns session state — and only the widget layer holds the locale for
+  /// the notice.
+  void _onOwnDeviceRevoked(Object? data) {
+    final deviceId = data is Map ? data['deviceId'] : null;
+    E2eDiagLog.add('DEVICE_REVOKED', {'deviceId': deviceId});
+    _intentionalDisconnect = true;
+    _reconnectManager.resetAttempts();
+    _socketService.disconnect();
+    _isConnected = false;
+    notifyListeners();
+    onDeviceRevoked?.call();
   }
 
   // ---------- Dispose ----------

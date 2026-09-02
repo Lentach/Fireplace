@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
 import '../models/message_model.dart';
 import '../services/audio_cache_store.dart';
 import '../services/encryption_service.dart';
+import '../services/device_list/device_list_cache.dart';
+import '../services/device_list/device_list_canonical.dart';
 import '../services/server_clock.dart';
 import '../utils/e2e_diag_log.dart';
 import '../utils/e2e_persistent_diag.dart';
@@ -24,12 +27,29 @@ class EncryptionProvider extends ChangeNotifier {
 
   // ---------- E2E Encryption State ----------
   final EncryptionService _encryptionService;
+
+  /// The one EncryptionService instance, for the §5.1 link ceremony's
+  /// identity gateway (services/device_link). Screens must not use this to
+  /// bypass provider state.
+  EncryptionService get encryptionService => _encryptionService;
   bool _e2eInitialized = false;
-  final Map<int, Completer<Map<String, dynamic>>> _pendingPreKeyFetches = {};
+  final Map<(int, int), Completer<Map<String, dynamic>>> _pendingPreKeyFetches =
+      {};
+
+  /// In-flight identity PROBES (amendment (xlvii) clause 3) — a raw bundle read
+  /// that builds no session.
+  ///
+  /// Deliberately NOT [_pendingPreKeyFetches]. `ensureSession` joins an
+  /// in-flight fetch and returns early because the fetch's owner builds the
+  /// session; a probe owner builds nothing, so sharing the map would leave the
+  /// joiner with no session AND with its force-rebuild flag already consumed.
+  final Map<(int, int), Completer<Map<String, dynamic>>>
+  _pendingIdentityProbes = {};
   bool _generatingMoreKeys = false;
 
-  /// User IDs whose sessions should be force-rebuilt on the next ensureSession call.
-  final Set<int> _forceSessionRebuild = {};
+  /// (userId, deviceId) addresses whose sessions should be force-rebuilt on
+  /// the next ensureSession call for that address.
+  final Set<(int, int)> _forceSessionRebuild = {};
 
   /// Cache of decrypted messages by id. Used when history decrypt hits
   /// DuplicateMessageException (session already advanced by live messages).
@@ -82,8 +102,13 @@ class EncryptionProvider extends ChangeNotifier {
   Set<int> get peersWithChangedIdentity =>
       _encryptionService.peersWithChangedIdentity;
 
-  /// The pending pre-key fetch completers, keyed by recipient user ID.
-  Map<int, Completer<Map<String, dynamic>>> get pendingPreKeyFetches =>
+  /// ISO-8601 instant of the last server-reported replacement of this
+  /// account's key bundle by ANOTHER session (Phase 0a takeover alarm), or
+  /// null. Drives the account-level notice; persisted until dismissed.
+  String? get ownIdentityReplacedAt => _encryptionService.ownIdentityReplacedAt;
+
+  /// The pending pre-key fetch completers, keyed by (userId, deviceId).
+  Map<(int, int), Completer<Map<String, dynamic>>> get pendingPreKeyFetches =>
       _pendingPreKeyFetches;
 
   // ---------- Emit Callback ----------
@@ -96,11 +121,19 @@ class EncryptionProvider extends ChangeNotifier {
 
   // ---------- Public Interface ----------
 
-  /// Encrypt plaintext for the given recipient.
+  /// Encrypt plaintext for the given recipient [deviceId] (default 1).
   /// Delegates to [EncryptionService.encrypt].
-  Future<String> encrypt(int recipientId, String plaintext) async {
+  Future<String> encrypt(
+    int recipientId,
+    String plaintext, {
+    int deviceId = 1,
+  }) async {
     try {
-      return await _encryptionService.encrypt(recipientId, plaintext);
+      return await _encryptionService.encrypt(
+        recipientId,
+        plaintext,
+        deviceId: deviceId,
+      );
     } catch (e) {
       _error = 'Encryption failed: $e';
       notifyListeners();
@@ -108,19 +141,26 @@ class EncryptionProvider extends ChangeNotifier {
     }
   }
 
-  /// Decrypt ciphertext from the given sender. [messageId] binds the
-  /// one-shot Signal decrypt to its durable raw replay record.
-  /// Delegates to [EncryptionService.decrypt].
+  /// Decrypt ciphertext from the given sender's [deviceId]. [messageId] binds
+  /// the one-shot Signal decrypt to its durable raw replay record.
+  ///
+  /// [deviceId] is the SENDING device (the row's `originDeviceId`), because the
+  /// pairwise session is keyed by the address that produced the ciphertext.
+  /// Defaulting it to 1 would decrypt a linked device's envelope against the
+  /// wrong ratchet — a Bad MAC, or a PreKey message clobbering the device-1
+  /// session. Delegates to [EncryptionService.decrypt].
   Future<String> decrypt(
     int senderId,
     String ciphertext, {
     int? messageId,
+    int deviceId = 1,
   }) async {
     try {
       return await _encryptionService.decrypt(
         senderId,
         ciphertext,
         messageId: messageId,
+        deviceId: deviceId,
       );
     } catch (e) {
       _error = 'Decryption failed: $e';
@@ -129,17 +169,23 @@ class EncryptionProvider extends ChangeNotifier {
     }
   }
 
-  /// Ensure a Signal session exists with [recipientId]. If not, fetches their
-  /// pre-key bundle from the server (via emit callback) and builds a session.
-  /// Uses a Completer with 10s timeout.
-  Future<void> ensureSession(int recipientId) async {
+  /// Ensure a Signal session exists with [recipientId]'s [deviceId]
+  /// (default 1 — the pre-multi-device address). If not, fetches that
+  /// device's pre-key bundle from the server (via emit callback) and builds a
+  /// session. Uses a Completer with 10s timeout.
+  Future<void> ensureSession(int recipientId, {int deviceId = 1}) async {
     if (!_e2eInitialized || _currentUserId == null) {
       throw StateError('E2E not initialized or user not authenticated');
     }
-    final needsRebuild = _forceSessionRebuild.remove(recipientId);
-    final hasSession = await _encryptionService.hasSession(recipientId);
+    final addressKey = (recipientId, deviceId);
+    final needsRebuild = _forceSessionRebuild.remove(addressKey);
+    final hasSession = await _encryptionService.hasSession(
+      recipientId,
+      deviceId: deviceId,
+    );
     _e2eFlowLog('SESSION_ENSURE', {
       'recipientId': recipientId,
+      'deviceId': deviceId,
       'hasSession': hasSession,
       'needsRebuild': needsRebuild,
     });
@@ -157,54 +203,390 @@ class EncryptionProvider extends ChangeNotifier {
       _e2eFlowLog('SESSION_ARCHIVED_FOR_REBUILD', {'recipientId': recipientId});
     }
 
-    // Check if we already have a pending fetch for this user
-    if (_pendingPreKeyFetches.containsKey(recipientId)) {
-      await _pendingPreKeyFetches[recipientId]!.future;
+    // Check if we already have a pending fetch for this address
+    if (_pendingPreKeyFetches.containsKey(addressKey)) {
+      await _pendingPreKeyFetches[addressKey]!.future;
       return;
     }
 
-    final completer = Completer<Map<String, dynamic>>();
-    _pendingPreKeyFetches[recipientId] = completer;
+    // (lix) The in-memory intent is consumed at the top of this method for
+    // dedup, but that consumption is scoped to THIS ATTEMPT. A throw past this
+    // point used to leave `needsRebuild` false for every later call in the
+    // process, so `hasSession` short-circuited at the early return above and
+    // handed back the very session the rebuild existed to replace. A malicious
+    // server reaches that deterministically by never answering
+    // `fetchPreKeyBundle`, and the (lvi) refusal now throws here by design.
+    // The DURABLE intent below is untouched: it was already correct, and it is
+    // what makes the next PROCESS safe.
+    try {
+      final completer = Completer<Map<String, dynamic>>();
+      _pendingPreKeyFetches[addressKey] = completer;
 
-    _e2eFlowLog('SESSION_FETCH_EMIT', {'recipientId': recipientId});
-    _emit?.call('fetchPreKeyBundle', {'userId': recipientId});
+      _e2eFlowLog('SESSION_FETCH_EMIT', {
+        'recipientId': recipientId,
+        'deviceId': deviceId,
+      });
+      // deviceId is omitted for 1 (the server default), so an older server that
+      // predates the field keeps answering — rollout order is server first.
+      _emit?.call('fetchPreKeyBundle', {
+        'userId': recipientId,
+        if (deviceId != 1) 'deviceId': deviceId,
+      });
 
-    // Wait for the server response with a timeout
-    final bundle = await completer.future.timeout(
-      const Duration(seconds: 10),
-      onTimeout: () {
-        _pendingPreKeyFetches.remove(recipientId);
-        throw TimeoutException(
-          'Pre-key bundle fetch timed out for user $recipientId',
+      // Wait for the server response with a timeout
+      final bundle = await completer.future.timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          _pendingPreKeyFetches.remove(addressKey);
+          throw TimeoutException(
+            'Pre-key bundle fetch timed out for user $recipientId '
+            'device $deviceId',
+          );
+        },
+      );
+
+      await _encryptionService.buildSession(
+        recipientId,
+        bundle,
+        deviceId: deviceId,
+        expectedIdentityBase64: await _accountIdentityAnchor(
+          recipientId,
+          skipDeviceId: deviceId,
+        ),
+      );
+    } catch (_) {
+      if (needsRebuild) _forceSessionRebuild.add(addressKey);
+      rethrow;
+    }
+    debugPrint(
+      '[E2E] Session established with userId=$recipientId deviceId=$deviceId',
+    );
+    _e2eFlowLog('SESSION_BUILT', {
+      'recipientId': recipientId,
+      'deviceId': deviceId,
+    });
+    // Only NOW is the durable intent satisfied (amendment (xlviii) clause 1).
+    // The in-memory flag is consumed at the top of this method so concurrent
+    // callers do not each rebuild, but the persisted one must survive until a
+    // session actually exists — a throw or a kill between those two points has
+    // to leave the intent standing, or the poisoned session is reused silently
+    // on the next launch.
+    await _encryptionService.clearSessionRebuild(recipientId, deviceId);
+  }
+
+  /// The identity key already trusted for [recipientId] — from any of its
+  /// devices other than [skipDeviceId], else from the ACCOUNT anchor — or null
+  /// only when this device has never trusted this account at all.
+  ///
+  /// This is the anchor [EncryptionService.buildSession] checks the served
+  /// bundle against (spec §12 amendments (xxxix) and (lvi)). §3 guarantees every
+  /// device of an account shares one identity key, so ANY key we have already
+  /// trusted for the account answers for all of them.
+  ///
+  /// Sourced from the VERIFIED device list, never from a fixed device slot:
+  /// ids are never reused and a post-§6.2 account has no device 1, so anchoring
+  /// on device 1 would find nothing exactly for the accounts that just survived
+  /// a takeover — handing the attacker back the silent-trust path this check
+  /// exists to close. Falls back to the cached list only; deliberately does NOT
+  /// fetch, because this runs inside session setup and a network round trip
+  /// here would deadlock against the fetch that triggered it.
+  ///
+  /// [skipDeviceId] is excluded FROM THE PER-DEVICE SCAN because that is the
+  /// very address being built: on a REBUILD it already holds the old key, and
+  /// comparing the bundle to itself would make the check vacuous while also
+  /// blocking the legitimate account-wide key rotation that the same-address
+  /// alarm exists to report. It does NOT apply to the account anchor, which is
+  /// account-scoped by (xlvi) and so has no device to skip.
+  ///
+  /// A null return means genuine first contact with the ACCOUNT, which is
+  /// irreducibly TOFU. A failed READ is not an absence and throws ((lxii)).
+  Future<String?> _accountIdentityAnchor(
+    int recipientId, {
+    required int skipDeviceId,
+  }) async {
+    // (lxi) THE ACCOUNT ANCHOR WINS. (lvi) had this backwards — it scanned
+    // per-device rows first and used the anchor only as a fallback — and the
+    // reason for that order is OBSOLETE, not merely arguable: (xxxix) preferred
+    // the scan because this helper was then a hardcoded `(peer, device 1)` slot,
+    // and (xlvi) has since made it account-scoped.
+    //
+    // The two sources have opposite trust properties. The account anchor moves
+    // ONLY on human acknowledgement. A per-device row is overwritten
+    // unconditionally by `saveIdentity` from inside `isTrustedIdentity`, which
+    // is TOFU and accepts any key an admitted inbound ciphertext presents. So
+    // scanning first let a server-delivered ciphertext CHOOSE the expectation
+    // this gate then compares the served bundle against — poison `(P, 2)`,
+    // trigger a rebuild of `(P, 1)`, and the gate compares the attacker's key
+    // to the attacker's key and BUILDS, with only a dismissible banner. That is
+    // the disposition (xxxix) and (lvi) both reject in writing, and it
+    // contradicts `isTrustedIdentity`'s own rule that a forged key "can never
+    // quietly become the thing the I7 chain trusts".
+    final anchor = await _encryptionService.peerAccountAnchorForGate(
+      recipientId,
+    );
+    if (anchor != null) return anchor;
+
+    // No account anchor: fall back to a per-device row. Reached for a peer this
+    // device knew before (xlvi) made the anchor account-scoped, and for one
+    // whose anchor never landed. Weaker, but strictly better than no
+    // expectation at all — which is what made the gate vacuous for almost
+    // every send before (lvi).
+    final verified = cachedDeviceList(recipientId);
+    final candidates = <int>[
+      for (final device in verified?.devices ?? const [])
+        if (device.deviceId != skipDeviceId) device.deviceId,
+    ];
+    for (final candidateId in candidates) {
+      final identity = await _encryptionService.peerIdentityAt(
+        recipientId,
+        candidateId,
+      );
+      if (identity != null) return identity;
+    }
+    return null;
+  }
+
+  /// Whether the session for [recipientId]'s [deviceId] should be force-rebuilt.
+  bool needsSessionRebuild(int recipientId, {int deviceId = 1}) {
+    return _forceSessionRebuild.contains((recipientId, deviceId));
+  }
+
+  /// Remove [recipientId]'s [deviceId] from the force-rebuild set.
+  void clearSessionRebuild(int recipientId, {int deviceId = 1}) {
+    _forceSessionRebuild.remove((recipientId, deviceId));
+  }
+
+  /// Mark [recipientId]'s [deviceId] for session force-rebuild on next
+  /// ensureSession.
+  void markSessionRebuild(int recipientId, {int deviceId = 1}) {
+    _forceSessionRebuild.add((recipientId, deviceId));
+  }
+
+  // ---------- Verified device lists (T4 C2, spec §5.2) ----------
+
+  /// Per-account verified device lists (I7-chain-checked, rollback-pinned).
+  final DeviceListCache _deviceListCache = DeviceListCache();
+
+  /// Pending `getDeviceList` answers, keyed by userId. The completer carries
+  /// the raw `authorization` map (null = non-enrolled) — verification happens
+  /// in [DeviceListCache.adopt], never on the server's bare word.
+  final Map<int, Completer<Map<String, dynamic>?>> _pendingDeviceListFetches =
+      {};
+
+  /// Which device THIS session is, as the server reported it on `socketReady`
+  /// (spec §5.3). Defaults to 1 — a token predating the claim, and every
+  /// single-device account, is device 1 (§8).
+  int _ownDeviceId = 1;
+
+  int get ownDeviceId => _ownDeviceId;
+
+  /// Whether [ownDeviceId] is the SERVER's answer rather than the §8 default.
+  ///
+  /// Load-bearing for self-sync (spec §12 amendment (xii)): between connect and
+  /// `socketReady` a real device 2 still reads [ownDeviceId] as 1, so any
+  /// device-scoped decision taken in that window mis-scopes. A row whose origin
+  /// cannot yet be compared must be left alone — deferring a render is safe,
+  /// guessing is not, because treating this device's OWN send as a foreign-origin
+  /// row would attempt to decrypt a ciphertext this device produced and burn the
+  /// only plaintext copy on `[Decryption failed]`.
+  bool _ownDeviceIdConfirmed = false;
+
+  bool get ownDeviceIdConfirmed => _ownDeviceIdConfirmed;
+
+  /// Records the server's answer. The client cannot derive this itself, and a
+  /// fan-out send needs it: it addresses every OTHER device of the account for
+  /// self-sync and must NEVER address its own origin device (the server
+  /// refuses that as `self_envelope_for_origin_device`).
+  void setOwnDeviceId(int deviceId) {
+    // Set BEFORE the no-op guard: device 1 being told it is device 1 is still
+    // the server confirming the value.
+    _ownDeviceIdConfirmed = true;
+    if (deviceId != _ownDeviceId) _ownDeviceId = deviceId;
+    // (lxiv) clause 2: the confirmed id must agree with the id this install's
+    // material was provisioned for — checked on EVERY confirm because the
+    // reconnect path skips _initializeE2EInner and its gate.
+    unawaited(_verifyMaterialDeviceStamp(deviceId));
+  }
+
+  /// True when the server-confirmed device id contradicts the (lxiv)
+  /// material-device stamp: this install's Signal material was provisioned
+  /// for a DIFFERENT device id (the revoked-device-signs-back-in shape).
+  /// E2E duty is refused while set; the way out is the §5.1 link ceremony.
+  bool get deviceMaterialMismatch => _deviceMaterialMismatch;
+  bool _deviceMaterialMismatch = false;
+
+  Future<void> _verifyMaterialDeviceStamp(int deviceId) async {
+    if (!_e2eInitialized) return; // the init path runs its own gate
+    final ok = await _encryptionService.confirmMaterialDeviceId(deviceId);
+    if (ok) return;
+    _deviceMaterialMismatch = true;
+    _e2eInitialized = false;
+    E2ePersistentDiag.record('E2E_DEVICE_MISMATCH', {
+      'sessionDeviceId': deviceId,
+    });
+    _e2eFlowLog('E2E_DEVICE_MISMATCH', {'sessionDeviceId': deviceId});
+    notifyListeners();
+  }
+
+  /// The cached verified list for [userId], or null when none is held.
+  VerifiedDeviceList? cachedDeviceList(int userId) =>
+      _deviceListCache.cached(userId);
+
+  /// Drop the cached list so the next send refetches (e.g. on
+  /// `deviceListChanged` for the own account). The rollback pin survives.
+  void invalidateDeviceList(int userId) => _deviceListCache.invalidate(userId);
+
+  /// The verified device list for [userId] — cached, else fetched via
+  /// `getDeviceList`, I7-verified BEFORE anything is trusted, and cached.
+  ///
+  /// Fail-closed (falsification 9): a timeout, a missing TOFU identity, or a
+  /// failed chain THROWS. The caller must fail the send — an enrolled peer
+  /// must never silently degrade to device 1. The only single-device answer
+  /// is the server's explicit `authorization: null` (non-enrolled account).
+  Future<VerifiedDeviceList> getVerifiedDeviceList(
+    int userId, {
+    bool forceRefresh = false,
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    if (!_e2eInitialized || _currentUserId == null) {
+      throw StateError('E2E not initialized or user not authenticated');
+    }
+    if (!forceRefresh) {
+      final held = _deviceListCache.cached(userId);
+      if (held != null) return held;
+    }
+    final answer = await _fetchDeviceListAnswer(userId, timeout);
+    return _adoptDeviceListAnswer(userId, answer);
+  }
+
+  /// Verifies and adopts a list delivered OUT of the fetch round trip — the
+  /// `deviceListStale` refusal payload (spec §12 (vi)). Same chain, same
+  /// fail-closed contract: an invalid chain throws and caches nothing
+  /// (falsification 4 — never the server's bare word).
+  Future<VerifiedDeviceList> adoptDeliveredDeviceList(
+    int userId,
+    Map<String, dynamic>? authorization,
+  ) => _adoptDeviceListAnswer(userId, authorization);
+
+  Future<VerifiedDeviceList> _adoptDeviceListAnswer(
+    int userId,
+    Map<String, dynamic>? authorization,
+  ) async {
+    // The chain anchors on the identity THIS device holds: own identity for
+    // the own account's list, the TOFU-pinned peer key otherwise.
+    final tofu = userId == _currentUserId
+        ? await _encryptionService.currentIdentityPublicKeyBase64()
+        : await _encryptionService.peerTofuIdentityBase64(userId);
+    try {
+      final verified = _deviceListCache.adopt(
+        userId: userId,
+        authorization: authorization,
+        tofuIdentityKeyBase64: tofu,
+      );
+      _e2eFlowLog('DEVICE_LIST_VERIFIED', {
+        'userId': userId,
+        'enrolled': verified.enrolled,
+        'version': verified.version,
+        'liveDevices': verified.liveDeviceIds,
+      });
+      return verified;
+    } on DeviceListVerificationException catch (e) {
+      E2ePersistentDiag.record('DEVICE_LIST_REJECTED', {
+        'userId': userId,
+        'reason': e.reason,
+      });
+      // Amendment (lii). I7 says an invalid chain or a rollback IS a loud
+      // identity-changed surface, and nothing implemented that: this failure
+      // used to be a diagnostic and a rethrow, which is why a peer who was
+      // OFFLINE during a §6.2 recovery ended up permanently and silently
+      // locked out. Their list cannot verify against the anchor they still
+      // hold, the accept gate withholds the recovering device's ciphertext
+      // before Signal can stage a candidate, and the live `peerIdentityChanged`
+      // never reached them — so the warning set that gates BOTH recovery doors
+      // stayed empty.
+      //
+      // ALLOW-LIST of exactly two, never a deny-list: raising on every reason
+      // would let a server flag every contact as identity-changed by answering
+      // junk, which trades a silent lockout for a server-driven false alarm on
+      // the same surface. `malformed_answer`, `invalid_canonical`,
+      // `user_mismatch` and `version_mismatch` all mean "the server sent
+      // garbage", which is none of I7's conditions and is not evidence about
+      // anyone's key. `invalid_list_signature` is excluded too: the enrollment
+      // DID verify under our pinned anchor, so the identity is right and only
+      // the inner DAK signature failed. `no_tofu_identity` is definitionally
+      // not a change — we hold no anchor, so there is nothing to have changed.
+      //
+      // Our OWN list is excluded: it says nothing about a peer's identity.
+      const raisesI7Surface = {
+        'invalid_enrollment_signature',
+        'version_rollback',
+      };
+      if (userId != _currentUserId && raisesI7Surface.contains(e.reason)) {
+        // The recorder carries the (xlviii) clause-2 anchor gate, dedupes, and
+        // persists. Fire-and-forget: the send below still fails closed, and the
+        // alarm must not be blocked on a storage write.
+        unawaited(
+          _encryptionService.recordPeerIdentityChangedFromServer(
+            userId,
+            source: 'device_list_${e.reason}',
+          ),
         );
+      }
+      rethrow;
+    }
+  }
+
+  /// One in-flight `getDeviceList` per userId; concurrent callers share it.
+  Future<Map<String, dynamic>?> _fetchDeviceListAnswer(
+    int userId,
+    Duration timeout,
+  ) {
+    final existing = _pendingDeviceListFetches[userId];
+    if (existing != null) return existing.future;
+    final completer = Completer<Map<String, dynamic>?>();
+    _pendingDeviceListFetches[userId] = completer;
+    _e2eFlowLog('DEVICE_LIST_FETCH_EMIT', {'userId': userId});
+    _emit?.call('getDeviceList', {'userId': userId});
+    return completer.future.timeout(
+      timeout,
+      onTimeout: () {
+        // Fail closed: an unanswered fetch means "cannot verify", never
+        // "no devices" (I5). The caller surfaces a send failure.
+        if (identical(_pendingDeviceListFetches[userId], completer)) {
+          _pendingDeviceListFetches.remove(userId);
+        }
+        throw TimeoutException('Device list fetch timed out for user $userId');
       },
     );
-
-    await _encryptionService.buildSession(recipientId, bundle);
-    debugPrint('[E2E] Session established with userId=$recipientId');
-    _e2eFlowLog('SESSION_BUILT', {'recipientId': recipientId});
   }
 
-  /// Whether the session for [recipientId] should be force-rebuilt.
-  bool needsSessionRebuild(int recipientId) {
-    return _forceSessionRebuild.contains(recipientId);
+  /// Handler for the `deviceList` server event (answer to `getDeviceList`).
+  /// Runs alongside the provisioning sink's copy of the same event; each
+  /// consumer keys on its own pending state, so double routing is harmless.
+  void onDeviceList(dynamic data) {
+    if (data is! Map) return;
+    final userId = data['userId'];
+    if (userId is! int) return;
+    final completer = _pendingDeviceListFetches.remove(userId);
+    if (completer == null || completer.isCompleted) return;
+    final authorization = data['authorization'];
+    completer.complete(
+      authorization is Map ? authorization.cast<String, dynamic>() : null,
+    );
   }
 
-  /// Remove [recipientId] from the force-rebuild set.
-  void clearSessionRebuild(int recipientId) {
-    _forceSessionRebuild.remove(recipientId);
-  }
-
-  /// Mark [recipientId] for session force-rebuild on next ensureSession.
-  void markSessionRebuild(int recipientId) {
-    _forceSessionRebuild.add(recipientId);
+  /// Handler for `deviceListChanged` (own-account broadcast): drop the
+  /// cached own list so the next send re-fetches and re-verifies.
+  void onDeviceListChanged(dynamic data) {
+    if (data is! Map || data['userId'] is! int) return;
+    _deviceListCache.invalidate(data['userId'] as int);
   }
 
   /// Whether a Signal session exists with [peerUserId]. Diagnostic + policy
   /// input; false when E2E is not initialized.
-  Future<bool> hasSessionWith(int peerUserId) async {
+  Future<bool> hasSessionWith(int peerUserId, {int deviceId = 1}) async {
     if (!_e2eInitialized) return false;
-    return _encryptionService.hasSession(peerUserId);
+    return _encryptionService.hasSession(peerUserId, deviceId: deviceId);
   }
 
   /// Delete the local Signal session with [peerUserId] (sender or recipient).
@@ -567,12 +949,12 @@ class EncryptionProvider extends ChangeNotifier {
   Future<bool?> recordExists(int messageId) =>
       _encryptionService.recordExists(messageId);
 
-
   /// True when the raw replay cache can still serve [messageId] without any
   /// ratchet work. Delegates to [EncryptionService.rawReplayExists]. A missing
   /// `_decrypted_` record is NOT proof of loss while this answers true.
   Future<bool?> rawReplayExists(int messageId) =>
       _encryptionService.rawReplayExists(messageId);
+
   /// Batched persisted-plaintext lookup for a bounded id set (one cross-engine
   /// reload for the whole set). Delegates to
   /// [EncryptionService.getDecryptedContentMany] — see the safety note there
@@ -750,10 +1132,16 @@ class EncryptionProvider extends ChangeNotifier {
     return result;
   }
 
-  /// Clear a pending pre-key fetch for [recipientId] (e.g. on send failure
-  /// so retry gets a fresh fetch).
-  void clearPendingPreKeyFetch(int recipientId) {
-    _pendingPreKeyFetches.remove(recipientId);
+  /// Clear pending pre-key fetches for [recipientId] (e.g. on send failure
+  /// so retry gets a fresh fetch). [deviceId] narrows to one address; absent,
+  /// every device's pending fetch for that user is dropped — the send-failure
+  /// caller cannot know which device's fetch died.
+  void clearPendingPreKeyFetch(int recipientId, {int? deviceId}) {
+    if (deviceId != null) {
+      _pendingPreKeyFetches.remove((recipientId, deviceId));
+      return;
+    }
+    _pendingPreKeyFetches.removeWhere((key, _) => key.$1 == recipientId);
   }
 
   // ---------- TEMP storage-durability probes (remove after root cause) ----------
@@ -898,6 +1286,8 @@ class EncryptionProvider extends ChangeNotifier {
         // Rebuild the UI when a peer's identity key changes so the warning can
         // appear without waiting for the next message.
         _encryptionService.onPeerIdentityChanged = (_) => notifyListeners();
+        // Same for the account-level own-identity-replaced alarm.
+        _encryptionService.onOwnIdentityReplaced = notifyListeners;
         // Fresh session: load keys from storage (or generate on first install).
         await _encryptionService.initialize(
           userId,
@@ -915,11 +1305,34 @@ class EncryptionProvider extends ChangeNotifier {
         // Same reason, one step further: without the ledger loaded, the first
         // history pass cannot tell a lost record from one never decrypted.
         await loadDecryptedLedger();
+        // Rebuild intents recorded by a PREVIOUS process (amendment (xlviii)
+        // clause 1). Seeded before the flag flips, for the same reason as the
+        // two loads above: a send that wins the race would otherwise reuse a
+        // session the last run already knew was poisoned. Seeding the
+        // in-memory set keeps the hot path in ensureSession untouched — one
+        // membership test, no storage read per send.
+        _forceSessionRebuild.addAll(_encryptionService.pendingSessionRebuilds);
+        // Rollback floors from previous launches, and the write-through that
+        // keeps them durable (amendment (xlviii) clause 3). Seeded BEFORE the
+        // flag flips: the (xix) refusal inside DeviceListCache.adopt reads this
+        // floor, so a list adopted against an empty one would accept a
+        // rollback this device had already ruled out.
+        _deviceListCache.seedPins(_encryptionService.deviceListPins);
+        _deviceListCache.onPinAdvanced = (peerId, version) {
+          _encryptionService.recordDeviceListPin(peerId, version);
+        };
         _e2eInitialized = true;
         debugPrint('[E2E] Encryption service initialized');
         _e2eFlowLog('E2E_INIT_DONE', {
           'needsKeyUpload': _encryptionService.needsKeyUpload,
         });
+        // (lxviii) clause 1: this pass may have just turned a keyless install
+        // into a linked one — `identityIncomplete` flipped at the load above
+        // and `isE2EReady` flips here — and NOTHING below this line notifies
+        // on the success path. Observed live: the "no keys" banner and the
+        // devices screen's keyless CTA stayed painted for ~20 s after the
+        // ceremony reported done, until an unrelated notify repainted them.
+        notifyListeners();
       } else {
         // Reconnect: stores are already valid — skip re-initialization to avoid
         // the window where _identityStore._identityKeyPair is null and to prevent
@@ -933,6 +1346,25 @@ class EncryptionProvider extends ChangeNotifier {
       // SESSION_* probes.
       await _logSessionInventory();
 
+      // (lxiv) clause 2 gate: refuse E2E duty when the session's device id
+      // contradicts the id this install's material was provisioned for —
+      // placed before ANY publish so a mismatched install never uploads.
+      if (_ownDeviceIdConfirmed &&
+          !await _encryptionService.confirmMaterialDeviceId(_ownDeviceId)) {
+        _deviceMaterialMismatch = true;
+        _e2eInitialized = false;
+        E2ePersistentDiag.record('E2E_DEVICE_MISMATCH', {
+          'sessionDeviceId': _ownDeviceId,
+        });
+        _e2eFlowLog('E2E_DEVICE_MISMATCH', {'sessionDeviceId': _ownDeviceId});
+        notifyListeners();
+        return;
+      }
+      if (_deviceMaterialMismatch) {
+        // A healthy confirm (e.g. after re-linking) clears the standing flag.
+        _deviceMaterialMismatch = false;
+        notifyListeners();
+      }
       if (_encryptionService.needsKeyUpload) {
         final keys = _encryptionService.getKeysForUpload();
         if (keys != null) {
@@ -945,13 +1377,19 @@ class EncryptionProvider extends ChangeNotifier {
             _e2eFlowLog('E2E_KEYS_UPLOAD_DEFERRED', {'reason': reason});
             return;
           }
+          // Publish the identity FIRST and let its ack release the keys: a
+          // one-time pre-key is material FOR an identity, so the server (which
+          // refuses keys tagged with an identity it does not publish) must
+          // never have to judge them before this device's own bundle landed.
+          // Emitting both back to back raced them — the keys frequently
+          // arrived first.
+          _stashOneTimePreKeyUpload(
+            (keys['oneTimePreKeys'] as List).cast<Map<String, dynamic>>(),
+            identity,
+            registrationId: keyBundle['registrationId'] as int?,
+          );
           _emit?.call('uploadKeyBundle', keyBundle);
-          _emit?.call('uploadOneTimePreKeys', {
-            'keys': (keys['oneTimePreKeys'] as List)
-                .cast<Map<String, dynamic>>(),
-            'identityPublicKey': identity,
-          });
-          debugPrint('[E2E] Uploaded key bundle + one-time pre-keys');
+          debugPrint('[E2E] Key bundle emitted; pre-keys wait for its ack');
           _e2eFlowLog('E2E_KEYS_UPLOADED', {});
         }
       } else {
@@ -1042,11 +1480,21 @@ class EncryptionProvider extends ChangeNotifier {
       final keyBundle = keys['keyBundle'] as Map<String, dynamic>;
       final identity = keyBundle['identityPublicKey'];
       if (identity is String && identity.isNotEmpty) {
+        // Whether this replacement ends up watermarked is decided by the
+        // server's answer (`identityChanged`), not by a flag set here: under
+        // the registration lock this very upload is usually REFUSED, and the
+        // one that finally lands is a later reconnect re-upload.
+        // Keys follow the ack, never race it — and on this path the bundle is
+        // usually REFUSED by the lock, in which case the pre-keys must not
+        // land at all: they belong to an identity the account does not
+        // publish, and depositing them would overwrite the pool the still-live
+        // identity is serving from.
+        _stashOneTimePreKeyUpload(
+          (keys['oneTimePreKeys'] as List).cast<Map<String, dynamic>>(),
+          identity,
+          registrationId: keyBundle['registrationId'] as int?,
+        );
         _emit?.call('uploadKeyBundle', keyBundle);
-        _emit?.call('uploadOneTimePreKeys', {
-          'keys': (keys['oneTimePreKeys'] as List).cast<Map<String, dynamic>>(),
-          'identityPublicKey': identity,
-        });
       }
     }
     _e2eFlowLog('E2E_IDENTITY_RECOVERY_DONE', {'userId': userId});
@@ -1056,8 +1504,396 @@ class EncryptionProvider extends ChangeNotifier {
   // ---------- Key Exchange Event Handlers ----------
 
   /// Handler for `keyBundleUploaded` server event.
+  ///
+  /// Phase 0b: a `success:false` answer with `identity_locked` means the
+  /// registration lock refused to replace this account's stored identity key.
+  /// That is terminal for this attempt — retrying mints nothing and would just
+  /// loop. The user's route forward is the reset ceremony, so surface it.
+  ///
+  /// A `success:true` answer carrying `identityChanged:true` means THIS
+  /// upload is what replaced the stored identity, so the audit row the server
+  /// just wrote is this device's own doing. Watermarking it here — rather than
+  /// from a flag set before the emit — is what keeps the 0a alarm quiet on the
+  /// designed recovery path, where the upload that finally lands is a routine
+  /// reconnect re-upload spending a completed ceremony, not the refused
+  /// self-publish that started it.
   void onKeyBundleUploaded(dynamic data) {
+    if (data is Map && data['success'] == false) {
+      final error = data['error'];
+      if (error == 'identity_locked') {
+        // This is the dangerous case for a user who just re-minted keys after
+        // losing theirs: the local device now believes it is healthy, but the
+        // server still publishes the PREVIOUS identity, so peers keep
+        // encrypting to keys this device cannot read. Recording it drives the
+        // banner that routes them to the reset ceremony — the only thing that
+        // can make these keys land — instead of leaving them silently
+        // unreachable behind a "recovered" UI.
+        _e2eFlowLog('KEY_BUNDLE_IDENTITY_LOCKED', {});
+        E2ePersistentDiag.record('KEY_BUNDLE_IDENTITY_LOCKED', {});
+        _identityUploadLocked = true;
+        // The pre-keys of an identity the account does not publish are dropped,
+        // never uploaded: peers can only be served material for the PUBLISHED
+        // identity, and depositing these would overwrite the pool the live
+        // identity is still serving from. They come back with the upload that
+        // finally lands (a completed ceremony), or via `preKeysLow`.
+        _dropStashedOneTimePreKeyUpload('identity_locked');
+        notifyListeners();
+        return;
+      }
+      debugPrint('[E2E] Key bundle upload refused: $error');
+      _dropStashedOneTimePreKeyUpload(error is String ? error : 'refused');
+      return;
+    }
+    _identityUploadLocked = false;
+    // Only an upload that actually CHANGED the stored identity produces an
+    // audit row, so only that one may stamp the watermark. Stamping on every
+    // routine same-identity re-upload would keep a fresh watermark alive at
+    // all times and mute a genuine replacement by someone else.
+    if (data is Map && data['identityChanged'] == true) {
+      unawaited(_encryptionService.markOwnIdentityPublished());
+    }
     debugPrint('[E2E] Key bundle uploaded to server');
+    // The identity is published now, so its one-time pre-keys may follow.
+    final released = _flushStashedOneTimePreKeyUpload();
+    // A REPLACED identity starts with an empty pool: the upsert purges every
+    // row of the superseded epoch, and the reconnect re-upload that spends a
+    // completed ceremony carries no keys of its own. Left alone, the first peer
+    // to fetch this account gets a bundle with no one-time pre-key (weaker
+    // initial-message properties) and only THEN triggers `preKeysLow`. The
+    // device that just recovered is exactly the one that must not look
+    // half-published, so mint the new epoch's pool right here.
+    if (!released && data is Map && data['identityChanged'] == true) {
+      _replenishOneTimePreKeys(reason: 'identity_published');
+    }
+  }
+
+  /// One-time pre-keys waiting for their identity to be published, plus the
+  /// identity that owns them. Replaced by a newer stash, consumed by the next
+  /// `keyBundleUploaded`, dropped when that answer is a refusal.
+  ///
+  /// A LOST ack loses nothing permanently: the next connect re-uploads the
+  /// bundle and the fresh ack releases whatever is stashed then, and a depleted
+  /// pool is refilled by `preKeysLow` on the first peer fetch.
+  Map<String, dynamic>? _pendingOneTimePreKeyUpload;
+
+  void _stashOneTimePreKeyUpload(
+    List<Map<String, dynamic>> keys,
+    String identityPublicKey, {
+    int? registrationId,
+  }) {
+    _pendingOneTimePreKeyUpload = {
+      'keys': keys,
+      'identityPublicKey': identityPublicKey,
+      // (lxiv) install proof: lets the server refuse a foreign install's
+      // deposit even when the identity tag matches.
+      'registrationId': ?registrationId,
+    };
+  }
+
+  /// Emits the stashed batch, if any. Returns whether something was released,
+  /// so the caller can tell "keys already on their way" from "this epoch has no
+  /// pool yet".
+  bool _flushStashedOneTimePreKeyUpload() {
+    final pending = _pendingOneTimePreKeyUpload;
+    if (pending == null) return false;
+    if (_deviceMaterialMismatch) {
+      // (lxiv): a mismatched install must not deposit OTPs it minted for a
+      // different device id into the session device's pool.
+      _dropStashedOneTimePreKeyUpload('device_material_mismatch');
+      return false;
+    }
+    _pendingOneTimePreKeyUpload = null;
+    _emit?.call('uploadOneTimePreKeys', pending);
+    final count = (pending['keys'] as List).length;
+    debugPrint('[E2E] Uploaded $count one-time pre-keys after the bundle ack');
+    _e2eFlowLog('OTP_UPLOAD_AFTER_ACK', {'count': count});
+    return true;
+  }
+
+  void _dropStashedOneTimePreKeyUpload(String reason) {
+    if (_pendingOneTimePreKeyUpload == null) return;
+    _pendingOneTimePreKeyUpload = null;
+    E2ePersistentDiag.record('OTP_UPLOAD_DROPPED', {'reason': reason});
+    _e2eFlowLog('OTP_UPLOAD_DROPPED', {'reason': reason});
+  }
+
+  /// Test-only: seeds the stash the way `initializeE2E` and the recovery path
+  /// do, so the ORDERING contract (keys wait for the bundle's ack, and a
+  /// refusal drops them) can be pinned without standing up a live socket and a
+  /// full Signal store.
+  @visibleForTesting
+  void stashOneTimePreKeysForTest(
+    List<Map<String, dynamic>> keys,
+    String identityPublicKey,
+  ) => _stashOneTimePreKeyUpload(keys, identityPublicKey);
+
+  /// True once the server refused an identity replacement for this account.
+  /// Cleared by a successful upload (which a completed ceremony enables).
+  bool _identityUploadLocked = false;
+  bool get identityUploadLocked => _identityUploadLocked;
+
+  /// (lxvii) clause 2: the two shapes of EXISTING identity the §5.1 ceremony
+  /// may dispose before adopting — material stamped for a revoked device id
+  /// ((lxiv) mismatch) and an identity the registration lock refused. Both are
+  /// server-stated facts that this identity will never serve this session.
+  /// Owned here so the devices screen's CTA gate and the ceremony's disposal
+  /// authorization cannot drift apart.
+  bool get linkDisposesStaleMaterial =>
+      deviceMaterialMismatch || identityUploadLocked;
+
+  /// True while this install cannot do E2E duty under its session's device id
+  /// and the §5.1 device-side flow is its way out: no identity at all, or
+  /// stale material per [linkDisposesStaleMaterial].
+  bool get needsDeviceLink => identityIncomplete || linkDisposesStaleMaterial;
+
+  // ---------- Identity reset ceremony (Phase 0b, spec §6.2) ----------
+
+  DateTime? _identityResetDeadline;
+  bool _identityResetShortened = false;
+  String? _identityResetRequestStatus;
+
+  /// Deadline of the pending ceremony, or null when none is running. Server
+  /// authoritative: re-hydrated from `ownKeyBundleStatus` on every connect, so
+  /// it never needs local persistence.
+  DateTime? get identityResetDeadline => _identityResetDeadline;
+
+  /// Whether the pending ceremony used a recovery key (1 h instead of 72 h).
+  bool get identityResetShortened => _identityResetShortened;
+
+  /// Last answer to a reset request: 'pending', 'existing', 'cooldown',
+  /// 'invalid_phrase', 'locked', or one of the two synthetic values
+  /// ([identityResetNoAnswerStatus], [identityResetPhraseTooNewStatus]).
+  /// Null once consumed by the UI.
+  String? get identityResetRequestStatus => _identityResetRequestStatus;
+
+  /// A completed ceremony is waiting to be spent by a key upload.
+  bool _identityResetCompleted = false;
+  bool get identityResetCompleted => _identityResetCompleted;
+
+  void clearIdentityResetRequestStatus() {
+    if (_identityResetRequestStatus == null) return;
+    _identityResetRequestStatus = null;
+    notifyListeners();
+  }
+
+  /// Answer the server owes us for a reset request we just sent.
+  ///
+  /// Silence is itself an answer the user needs: without this the request
+  /// button looks broken (or worse, looks successful) when the socket is down.
+  Timer? _identityResetAnswerTimeout;
+  static const Duration _identityResetAnswerWindow = Duration(seconds: 6);
+
+  /// Re-reads the ceremony state while one is displayed.
+  ///
+  /// The deadline is server-authoritative but was fetched ONLY at `socketReady`
+  /// (`refreshOwnAccountStatus`), and no server event announces a ceremony
+  /// LEAVING 'pending' by completing — `completeDueResets` deliberately fans
+  /// out no notification, and `identityResetCancelled` covers only cancels. So
+  /// a session that stays connected across the transition kept rendering a
+  /// countdown for a ceremony that is already over, until a reload. Observed on
+  /// a real device.
+  ///
+  /// This re-asks instead of guessing locally: whatever ended the ceremony
+  /// (completed, cancelled elsewhere, row gone), the next answer is the truth,
+  /// and the existing `_hydrateIdentityResetState` already handles every case.
+  /// It runs ONLY while a deadline is held, so a normal session pays nothing,
+  /// and the period matches the backend's own EVERY_MINUTE sweep — the client
+  /// converges within about one tick of the state actually changing.
+  Timer? _identityResetRefreshTimer;
+  static const Duration _identityResetRefreshPeriod = Duration(minutes: 1);
+
+  /// Starts the re-read while a ceremony is held, stops it when none is.
+  /// Idempotent: safe to call from every path that touches the deadline.
+  void _syncIdentityResetRefresh() {
+    if (_identityResetDeadline == null && !_identityResetCompleted) {
+      _identityResetRefreshTimer?.cancel();
+      _identityResetRefreshTimer = null;
+      return;
+    }
+    _identityResetRefreshTimer ??= Timer.periodic(
+      _identityResetRefreshPeriod,
+      (_) => refreshOwnAccountStatus(),
+    );
+  }
+
+  /// The synthetic status used when the server never answered. Not a server
+  /// value — the UI maps it like any refusal, because nothing was started.
+  static const String identityResetNoAnswerStatus = 'no_answer';
+
+  /// The synthetic status for a ceremony that DID start, on a phrase that was
+  /// correct but too young to shorten it (amendment (xlii)).
+  ///
+  /// Synthetic for the same reason as [identityResetNoAnswerStatus]: the wire
+  /// keeps `status: 'pending'` — a ceremony really is running and the deadline
+  /// must still be applied — while the UI needs to say something different from
+  /// a plain start. Never a refusal.
+  static const String identityResetPhraseTooNewStatus = 'phrase_too_new';
+
+  /// Starts the ceremony. A recovery phrase shortens the wait but never
+  /// silences the notifications, and never grants an instant replacement.
+  void requestIdentityReset({String? recoveryPhrase}) {
+    _e2eFlowLog('IDENTITY_RESET_REQUEST', {
+      'withPhrase': recoveryPhrase != null,
+    });
+    _identityResetRequestStatus = null;
+    _identityResetAnswerTimeout?.cancel();
+    _identityResetAnswerTimeout = Timer(_identityResetAnswerWindow, () {
+      _identityResetAnswerTimeout = null;
+      if (_identityResetRequestStatus != null) return;
+      _identityResetRequestStatus = identityResetNoAnswerStatus;
+      _e2eFlowLog('IDENTITY_RESET_NO_ANSWER', {});
+      notifyListeners();
+    });
+    _emit?.call('resetIdentityRequest', <String, dynamic>{
+      if (recoveryPhrase != null && recoveryPhrase.isNotEmpty)
+        'recoveryPhrase': recoveryPhrase,
+    });
+  }
+
+  /// Re-asks the server for this account's protection state.
+  ///
+  /// Called on every `socketReady`, NOT only when this device is missing its
+  /// identity. The ceremony deadline lives in memory only, so without this a
+  /// session that restarts (or was closed when the request was made) shows no
+  /// countdown and no cancel button — while the push it received says to open
+  /// the app and cancel. The cancel affordance is the entire point of the
+  /// delay, so it has to survive a restart. Costs one small event per connect,
+  /// alongside the four list fetches already made there.
+  void refreshOwnAccountStatus() {
+    _emit?.call('checkOwnKeyBundle', <String, dynamic>{});
+  }
+
+  /// Stops a pending ceremony. Any signed-in session may do this, with no key
+  /// required — that is the whole point of the delay.
+  void cancelIdentityReset() {
+    _e2eFlowLog('IDENTITY_RESET_CANCEL', {});
+    _emit?.call('resetIdentityCancel', <String, dynamic>{});
+  }
+
+  /// Enrolls or replaces the recovery phrase. The phrase is generated on this
+  /// device, shown once, and never stored locally.
+  void setRecoveryKey(String phrase) {
+    _emit?.call('setRecoveryKey', <String, dynamic>{'phrase': phrase});
+  }
+
+  /// Handler for `identityResetStatus` — the answer to our own request.
+  void onIdentityResetStatus(dynamic data) {
+    if (data is! Map) return;
+    final status = data['status'];
+    if (status is! String) return;
+    _identityResetAnswerTimeout?.cancel();
+    _identityResetAnswerTimeout = null;
+    // Deadline first: the ceremony is real regardless of the phrase verdict.
+    if (status == 'pending' || status == 'existing') {
+      _applyResetDeadline(data['deadlineAt'], data['shortened'] == true);
+    }
+    // A too-young phrase still answers `pending`; only the message differs, so
+    // the substitution happens here and nothing above it is affected. An older
+    // server omits the flag and behaves exactly as before.
+    _identityResetRequestStatus =
+        status == 'pending' && data['phraseTooNew'] == true
+        ? identityResetPhraseTooNewStatus
+        : status;
+    _e2eFlowLog('IDENTITY_RESET_STATUS', {
+      'status': _identityResetRequestStatus,
+    });
+    notifyListeners();
+  }
+
+  /// Handler for `identityResetPending` — broadcast to EVERY session of the
+  /// account, including sessions that did not ask for it. That is the alarm.
+  void onIdentityResetPending(dynamic data) {
+    if (data is! Map) return;
+    _applyResetDeadline(data['deadlineAt'], data['shortened'] == true);
+    _e2eFlowLog('IDENTITY_RESET_PENDING', {
+      'shortened': _identityResetShortened,
+    });
+    notifyListeners();
+  }
+
+  /// Handler for `identityResetCancelled` — room-wide, so every surface clears
+  /// together no matter which session tapped cancel.
+  void onIdentityResetCancelled(dynamic data) {
+    _identityResetDeadline = null;
+    _identityResetShortened = false;
+    _identityResetCompleted = false;
+    _syncIdentityResetRefresh();
+    _e2eFlowLog('IDENTITY_RESET_CANCELLED', {});
+    notifyListeners();
+  }
+
+  /// Handler for `identityResetCancelResult` — this session's own answer.
+  void onIdentityResetCancelResult(dynamic data) {
+    final cancelled = data is Map && data['cancelled'] == true;
+    if (!cancelled) {
+      // Nothing pending: the ceremony already reached a terminal state.
+      _e2eFlowLog('IDENTITY_RESET_CANCEL_NOOP', {});
+    }
+  }
+
+  /// Handler for `recoveryKeySet`.
+  bool? _recoveryKeySetResult;
+  bool? get recoveryKeySetResult => _recoveryKeySetResult;
+
+  void onRecoveryKeySet(dynamic data) {
+    _recoveryKeySetResult = data is Map && data['success'] == true;
+    notifyListeners();
+  }
+
+  void clearRecoveryKeySetResult() {
+    if (_recoveryKeySetResult == null) return;
+    _recoveryKeySetResult = null;
+    notifyListeners();
+  }
+
+  void _applyResetDeadline(dynamic deadlineAt, bool shortened) {
+    if (deadlineAt is! String) return;
+    final parsed = DateTime.tryParse(deadlineAt);
+    if (parsed == null) return;
+    _identityResetDeadline = parsed.toLocal();
+    _identityResetShortened = shortened;
+    _identityResetCompleted = false;
+    _syncIdentityResetRefresh();
+  }
+
+  /// Handler for the `ownIdentityReplaced` server event (Phase 0a): ANOTHER
+  /// sign-in replaced this account's key bundle. Usually a legitimate new
+  /// device/browser sign-in or reinstall — the UI copy must say so — but it is
+  /// also exactly what a password-only takeover looks like, so it is durable
+  /// and survives restarts until dismissed.
+  void onOwnIdentityReplaced(dynamic data) {
+    // Amendment (li) clause 1. The value the server hands us here ends up as
+    // the persisted DISMISSAL WATERMARK the moment the user taps dismiss, and
+    // everything older than that watermark is suppressed forever — so an
+    // unvalidated `9999-…` would turn the most natural button on this alarm
+    // into a permanent off switch for the §6.0 offline-learn path.
+    //
+    // On THIS path an untrustworthy value must still raise the alarm: the
+    // event is the alarm and the timestamp is only metadata. So fall back to
+    // our own clock, exactly as an absent field already did.
+    final raw = data is Map && data['occurredAt'] is String
+        ? data['occurredAt'] as String
+        : null;
+    final occurredAt =
+        EncryptionService.normalizeServerInstant(raw) ??
+        DateTime.now().toUtc().toIso8601String();
+    _e2eFlowLog('OWN_IDENTITY_REPLACED_EVENT', {
+      'occurredAt': occurredAt,
+      'rejectedRaw': raw != null && raw != occurredAt,
+    });
+    _encryptionService.recordOwnIdentityReplaced(occurredAt);
+    notifyListeners();
+  }
+
+  /// Handler for the `peerIdentityChanged` server event (Phase 0a): a peer's
+  /// key bundle was replaced server-side. Feeds the same warning state as the
+  /// local libsignal detection (in-conversation timeline row + verify door).
+  void onPeerIdentityChanged(dynamic data) {
+    final peerId = data is Map ? data['userId'] : null;
+    if (peerId is! int) return;
+    _e2eFlowLog('PEER_IDENTITY_CHANGED_EVENT', {'peerId': peerId});
+    _encryptionService.recordPeerIdentityChangedFromServer(peerId);
+    notifyListeners();
   }
 
   /// Handler for `oneTimePreKeysUploaded` server event.
@@ -1066,20 +1902,51 @@ class EncryptionProvider extends ChangeNotifier {
   }
 
   /// Handler for `preKeyBundleResponse` server event.
-  /// Completes the pending pre-key fetch for the given user.
+  /// Completes the pending pre-key fetch for the given (user, device). A
+  /// server that predates per-device bundles echoes no `deviceId` — that
+  /// means device 1, so the legacy pairing keeps working.
   void onPreKeyBundleResponse(dynamic data) {
     final map = data as Map<String, dynamic>;
     final userId = map['userId'] as int;
+    final deviceId = map['deviceId'] is int ? map['deviceId'] as int : 1;
     final bundle = map['bundle'];
     _e2eFlowLog('PREKEY_RESP', {
       'userId': userId,
+      'deviceId': deviceId,
       'hasBundle': bundle != null && bundle is Map<String, dynamic>,
     });
-    final completer = _pendingPreKeyFetches.remove(userId);
+    // TWO independent waiter sets, deliberately. The session fetch and the
+    // identity probe of (xlvii) clause 3 must never share a completer: a
+    // probe registered in the session map would make a concurrent
+    // `ensureSession` join it, return early believing the joined owner builds
+    // the session — which the probe never does — and silently drop the
+    // force-rebuild flag it removed on its first line.
+    _settleBundleWaiter(
+      _pendingPreKeyFetches.remove((userId, deviceId)),
+      userId,
+      deviceId,
+      bundle,
+    );
+    _settleBundleWaiter(
+      _pendingIdentityProbes.remove((userId, deviceId)),
+      userId,
+      deviceId,
+      bundle,
+    );
+  }
+
+  void _settleBundleWaiter(
+    Completer<Map<String, dynamic>>? completer,
+    int userId,
+    int deviceId,
+    dynamic bundle,
+  ) {
     if (completer == null || completer.isCompleted) return;
     if (bundle == null || bundle is! Map<String, dynamic>) {
       completer.completeError(
-        StateError('Recipient has no key bundle (userId=$userId)'),
+        StateError(
+          'Recipient has no key bundle (userId=$userId deviceId=$deviceId)',
+        ),
       );
       return;
     }
@@ -1090,14 +1957,71 @@ class EncryptionProvider extends ChangeNotifier {
   /// `checkOwnKeyBundle`. A malformed payload completes as null (UNKNOWN),
   /// never as false: only an explicit server "no bundle" may authorize key
   /// generation.
+  ///
+  /// Phase 0b also carries the account-protection state, which is how a
+  /// session that was offline at the time still learns about a pending reset
+  /// ceremony or a replacement of its identity key.
   void onOwnKeyBundleStatus(dynamic data) {
     final exists = data is Map && data['exists'] is bool
         ? data['exists'] as bool
         : null;
     _e2eFlowLog('OWN_BUNDLE_STATUS', {'exists': exists});
+    if (data is Map) {
+      _hydrateIdentityResetState(data);
+      final replacedAt = data['identityReplacedAt'];
+      if (replacedAt is String && replacedAt.isNotEmpty) {
+        // Respects the user's dismissal watermark inside the service.
+        unawaited(
+          _encryptionService
+              .recordOwnIdentityReplacedFromServer(replacedAt)
+              .then((_) => notifyListeners()),
+        );
+      }
+    }
     final completer = _pendingOwnBundleCheck;
     if (completer == null || completer.isCompleted) return;
     completer.complete(exists);
+  }
+
+  /// Applies the server's view of the ceremony. Absent field (older server)
+  /// leaves local state untouched; explicit null means "nothing running".
+  ///
+  /// Dart returns null for both, so absence is asked of the MAP, not the
+  /// lookup: a payload that simply omits the field must never wipe a live
+  /// countdown banner.
+  void _hydrateIdentityResetState(Map<dynamic, dynamic> data) {
+    if (!data.containsKey('identityReset')) return;
+    final identityReset = data['identityReset'];
+    if (identityReset == null) {
+      if (_identityResetDeadline == null && !_identityResetCompleted) return;
+      _identityResetDeadline = null;
+      _identityResetShortened = false;
+      _identityResetCompleted = false;
+      _syncIdentityResetRefresh();
+      notifyListeners();
+      return;
+    }
+    if (identityReset is! Map) return;
+    final status = identityReset['status'];
+    if (status == 'pending') {
+      // `shortened` comes back too: a session that reconnects INTO a 1 h
+      // recovery-key ceremony must not describe it as the 72 h one. Absent on
+      // an older server, which reads as the un-shortened default.
+      _applyResetDeadline(
+        identityReset['deadlineAt'],
+        identityReset['shortened'] == true,
+      );
+      notifyListeners();
+      return;
+    }
+    if (status == 'completed') {
+      _identityResetDeadline = null;
+      _identityResetCompleted = true;
+      // Still re-reading: a completed ceremony is waiting to be SPENT by an
+      // upload, and that transition has no event either.
+      _syncIdentityResetRefresh();
+      notifyListeners();
+    }
   }
 
   Completer<bool?>? _pendingOwnBundleCheck;
@@ -1135,28 +2059,51 @@ class EncryptionProvider extends ChangeNotifier {
     }
   }
 
-  void onPreKeysLow(dynamic data) {
+  void onPreKeysLow(dynamic data) =>
+      _replenishOneTimePreKeys(reason: 'server_low');
+
+  /// Mints a fresh batch under the CURRENT identity and uploads it.
+  ///
+  /// Two callers, one invariant — the account must always have servable
+  /// one-time pre-keys for the identity it publishes: the server's `preKeysLow`
+  /// signal, and the moment a REPLACED identity gets published (whose pool the
+  /// upsert's epoch purge just emptied). Safe to call spuriously: the identity
+  /// is read fresh, `_generatingMoreKeys` collapses concurrent calls, and the
+  /// server refuses a batch tagged with an identity it does not publish.
+  void _replenishOneTimePreKeys({required String reason}) {
     if (_generatingMoreKeys) return;
+    // (lxiv): a mismatched install must not deposit OTPs into a pool it does
+    // not own; the server would refuse them anyway.
+    if (_deviceMaterialMismatch) return;
     _generatingMoreKeys = true;
-    debugPrint('[E2E] Server reports pre-keys low, generating more...');
+    debugPrint('[E2E] Replenishing one-time pre-keys (reason=$reason)');
     Future<void>(() async {
           final identity = await _encryptionService
               .currentIdentityPublicKeyBase64();
           if (identity == null || identity.isEmpty) {
-            const reason = 'identity_epoch_required';
-            debugPrint('[E2E] OTP replenishment deferred: $reason');
+            const deferred = 'identity_epoch_required';
+            debugPrint('[E2E] OTP replenishment deferred: $deferred');
             E2ePersistentDiag.record('OTP_REPLENISH_DEFERRED', {
-              'reason': reason,
+              'reason': deferred,
             });
-            _e2eFlowLog('OTP_REPLENISH_DEFERRED', {'reason': reason});
+            _e2eFlowLog('OTP_REPLENISH_DEFERRED', {'reason': deferred});
             return;
           }
           final keys = await _encryptionService.generateMorePreKeys();
+          final registrationId = await _encryptionService
+              .currentRegistrationId();
           _emit?.call('uploadOneTimePreKeys', {
             'keys': keys,
             'identityPublicKey': identity,
+            'registrationId': ?registrationId,
           });
-          debugPrint('[E2E] Uploaded ${keys.length} new one-time pre-keys');
+          debugPrint(
+            '[E2E] Uploaded ${keys.length} new one-time pre-keys ($reason)',
+          );
+          _e2eFlowLog('OTP_REPLENISHED', {
+            'count': keys.length,
+            'reason': reason,
+          });
         })
         .catchError((e) {
           debugPrint('[E2E] Failed to replenish pre-keys: $e');
@@ -1174,7 +2121,8 @@ class EncryptionProvider extends ChangeNotifier {
     // Mark session for rebuild — actual delete happens atomically in ensureSession
     // before the next send, avoiding the race where a hot-path deleteSession
     // wipes a session that encrypt() is about to use.
-    _forceSessionRebuild.add(fromUserId);
+    // Legacy event — it predates devices, so it names the device-1 session.
+    _forceSessionRebuild.add((fromUserId, 1));
     _e2eFlowLog('SESSION_REBUILD_RECEIVED', {'fromUserId': fromUserId});
   }
 
@@ -1188,6 +2136,16 @@ class EncryptionProvider extends ChangeNotifier {
   /// (CLAUDE.md gotcha: `_initializeE2E()` skips when `_e2eInitialized = true`).
   void onConnect(bool isReconnect) {
     _error = null;
+    // (lxiv) final-review P1: the confirmed own-device id is a PER-SOCKET
+    // fact — the new socket's id is unknown until ITS socketReady, and after a
+    // §6.2 rebind or §5.1 link reconnect it is guaranteed DIFFERENT. Carrying
+    // the old confirmation into the transport-connect init gate TOFU-stamped
+    // the just-cleared material slot with the STALE id, and the fresh id then
+    // tripped the mismatch gate — stranding the exact device the ceremony had
+    // just recovered. Unconfirmed is the documented-safe state between connect
+    // and ready (amendment (xii)): sends behave as device 1 and own-row
+    // scoping defers, costing nothing for the ~1 RTT until socketReady.
+    _ownDeviceIdConfirmed = false;
     if (!isReconnect) {
       _e2eInitialized = false;
       _decryptedContentCache.clear();
@@ -1195,7 +2153,15 @@ class EncryptionProvider extends ChangeNotifier {
       _decryptedLedger.clear();
       _forceSessionRebuild.clear();
       _generatingMoreKeys = false;
+      _deviceMaterialMismatch = false;
+      // (lxvii) clause 2 made this flag authorize disposing an existing
+      // identity, so a lock left standing by the previous account must never
+      // reach the next one's ceremony.
+      _identityUploadLocked = false;
       _currentUserId = null;
+      // Fresh connect may be a different account: forget verified lists AND
+      // their rollback pins (they are per-account TOFU state).
+      _deviceListCache.clear();
       _cancelPendingFetches();
     }
     // On reconnect: preserve _e2eInitialized and caches
@@ -1225,6 +2191,38 @@ class EncryptionProvider extends ChangeNotifier {
     _retiredIds.clear();
     _decryptedLedger.clear();
     _forceSessionRebuild.clear();
+    // Which device we are belongs to the SESSION, not the install (spec §12
+    // amendment (xii)). This provider is a process singleton reused across
+    // logins, so a device id confirmed for the previous account must not
+    // survive into the next one: a stale "confirmed" N would make an own row
+    // of a device-1 account look foreign-origin, and the self-sync branch
+    // would hand this device's OWN ciphertext to the ratchet — burning the
+    // only plaintext copy on `[Decryption failed]`. Back to unconfirmed.
+    _ownDeviceId = 1;
+    _ownDeviceIdConfirmed = false;
+    _deviceMaterialMismatch = false;
+    // Same reason as onConnect: a session-scoped refusal, and since (lxvii)
+    // a disposal authorization. It must not outlive the account it was
+    // answered for.
+    _identityUploadLocked = false;
+    _deviceListCache.clear();
+    // The §6.2 ceremony belongs to the ACCOUNT, and this provider is a process
+    // singleton reused across logins. Left standing, user A's countdown renders
+    // over user B's session — with a live cancel button that emits
+    // `resetIdentityCancel` on B's socket — until B's first `ownKeyBundleStatus`
+    // happens to correct it. A false security countdown attributed to the wrong
+    // account is exactly the alarm that teaches users to dismiss alarms.
+    //
+    // The refresh timer must die with that state or it keeps asking the server
+    // about a ceremony on a session that is logged out: `_syncIdentityResetRefresh`
+    // stops only when the state below is already cleared, so it is called AFTER.
+    _identityResetDeadline = null;
+    _identityResetShortened = false;
+    _identityResetCompleted = false;
+    _identityResetRequestStatus = null;
+    _identityResetAnswerTimeout?.cancel();
+    _identityResetAnswerTimeout = null;
+    _syncIdentityResetRefresh();
     _cancelPendingFetches();
     notifyListeners();
   }
@@ -1233,15 +2231,200 @@ class EncryptionProvider extends ChangeNotifier {
   Future<String?> getIdentityFingerprint() =>
       _encryptionService.getIdentityFingerprint();
 
-  /// Stored trusted identity fingerprint for out-of-band peer verification.
+  /// Pinned account-identity fingerprint for out-of-band peer verification.
   Future<String?> getPeerIdentityFingerprint(int peerId) =>
       _encryptionService.getPeerIdentityFingerprint(peerId);
 
+  /// Everything the verify-security-keys dialog must show for [peerId]: the
+  /// pinned fingerprint and, when there is a change to confirm, the fingerprint
+  /// of the key adoption would pin.
+  ///
+  /// When a warning is standing but NO local candidate exists, this fetches the
+  /// peer's currently served account identity so the ceremony has something to
+  /// compare (amendment (xlvii) clause 3). That is the post-§6.2 shape: the
+  /// accept gate withholds the peer's row before Signal can record a candidate,
+  /// so without the fetch there is literally nothing to acknowledge and the
+  /// peer stays unreachable in both directions for good.
+  ///
+  /// The fetch is deliberately narrow — standing warning AND no candidate — so
+  /// merely opening the dialog to read a fingerprint never touches the network
+  /// and never spends a one-time pre-key.
+  Future<PeerIdentityVerification> loadPeerIdentityVerification(
+    int peerId, {
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    final local = await _encryptionService.peerIdentityVerification(peerId);
+    if (local.hasOffer) return local;
+    if (!peersWithChangedIdentity.contains(peerId)) return local;
+    final served = await _fetchServedAccountIdentity(peerId, timeout);
+    if (served == null) return local;
+    return _encryptionService.peerIdentityVerification(
+      peerId,
+      servedIdentityBase64: served,
+    );
+  }
+
   /// The user compared fingerprints out of band and accepted [peerId]'s current
-  /// key. Clears the standing identity-change warning — the ONLY thing that
-  /// does, so an unacknowledged warning survives restarts.
-  Future<void> acknowledgePeerIdentity(int peerId) async {
-    await _encryptionService.acknowledgePeerIdentity(peerId);
+  /// key. Returns whether the anchor actually advanced.
+  ///
+  /// [adoptIdentityBase64] MUST be the key the dialog displayed, so the pinned
+  /// key is the compared key (amendment (xlvii) clause 2).
+  ///
+  /// On success the state the stale anchor poisoned is dropped: the cached
+  /// device list, and the sessions for every device we currently believe the
+  /// peer has. Without that the anchor advances while the send path keeps
+  /// failing against a list it already refused and a ratchet keyed to the old
+  /// identity — the anchor is necessary for recovery but not sufficient.
+  Future<bool> acknowledgePeerIdentity(
+    int peerId, {
+    String? adoptIdentityBase64,
+  }) async {
+    // Capture the addresses BEFORE anything else: the cached list is the only
+    // record of which devices we ever addressed, and device 1 covers the legacy
+    // single-device address that predates any list.
+    final known = _deviceListCache.cached(peerId);
+    final addresses = <int>{1, ...?known?.liveDeviceIds};
+    // Record the rebuild intent DURABLY BEFORE the anchor advances (amendment
+    // (xlviii) clause 1). The advance and the warning clear are both persisted,
+    // so if this write came second a kill in between would leave a peer marked
+    // "resolved" with no warning and a session still keyed to the replaced
+    // identity. Recording first can only over-record: if the acknowledgement is
+    // refused we clear it below, and a crash before that costs one pre-key
+    // fetch instead of a message.
+    await _encryptionService.recordSessionRebuilds(peerId, addresses);
+    final advanced = await _encryptionService.acknowledgePeerIdentity(
+      peerId,
+      adoptIdentityBase64: adoptIdentityBase64,
+    );
+    if (advanced) {
+      _deviceListCache.invalidate(peerId);
+      for (final deviceId in addresses) {
+        markSessionRebuild(peerId, deviceId: deviceId);
+      }
+      _e2eFlowLog('PEER_IDENTITY_ADOPTED', {
+        'peerId': peerId,
+        'rebuiltAddresses': addresses.toList(),
+      });
+    } else {
+      // Explicitly refused: nothing advanced, so nothing is poisoned and the
+      // speculative intent above names no real damage. Only an EXPLICIT refusal
+      // clears it — an exception leaves it standing, which is the safe side.
+      await _encryptionService.clearSessionRebuildsFor(peerId);
+    }
+    notifyListeners();
+    return advanced;
+  }
+
+  /// The account identity key the server currently serves for [peerId], or null
+  /// when no live device answers with one.
+  ///
+  /// UNTRUSTED by construction: the only thing done with it is showing its
+  /// fingerprint to a human for out-of-band comparison. §3 gives one identity
+  /// key per account, so the first live device that answers speaks for all of
+  /// them; the loop exists only to survive a device whose bundle is missing.
+  Future<String?> _fetchServedAccountIdentity(
+    int peerId,
+    Duration timeout,
+  ) async {
+    final List<int> candidates;
+    try {
+      candidates = await _servedDeviceIdHints(peerId, timeout);
+    } catch (e) {
+      _e2eFlowLog('PEER_IDENTITY_HINTS_FAILED', {
+        'peerId': peerId,
+        'error': '$e',
+      });
+      return null;
+    }
+    for (final deviceId in candidates) {
+      try {
+        final bundle = await _fetchBundleAnswer(peerId, deviceId, timeout);
+        final identity = bundle['identityPublicKey'];
+        if (identity is String && identity.isNotEmpty) {
+          _e2eFlowLog('PEER_IDENTITY_SERVED', {
+            'peerId': peerId,
+            'deviceId': deviceId,
+          });
+          return identity;
+        }
+      } catch (e) {
+        _e2eFlowLog('PEER_IDENTITY_SERVE_FAILED', {
+          'peerId': peerId,
+          'deviceId': deviceId,
+          'error': '$e',
+        });
+      }
+    }
+    return null;
+  }
+
+  /// Live device ids the server CLAIMS [peerId] has, lowest first.
+  ///
+  /// Read from the served `listCanonical` WITHOUT verifying its signature, and
+  /// that is sound only because of what it is used for: picking which device to
+  /// ask for a bundle. A lying server can only make us fetch a key a human then
+  /// refuses. Nothing here is cached, adopted, or allowed near the send path —
+  /// [getVerifiedDeviceList] remains the only source of addresses that may be
+  /// trusted, and it still fails closed.
+  ///
+  /// Falls back to device 1, which is the right guess for the two shapes that
+  /// produce no list: a non-enrolled account, and an install predating (xlv).
+  Future<List<int>> _servedDeviceIdHints(int peerId, Duration timeout) async {
+    final answer = await _fetchDeviceListAnswer(peerId, timeout);
+    final canonical = answer?['listCanonical'];
+    if (canonical is! String || canonical.isEmpty) return const [1];
+    try {
+      final list = parseCanonicalDeviceList(base64Decode(canonical));
+      final live = [
+        for (final device in list.devices)
+          if (device.revokedAtMs == null) device.deviceId,
+      ]..sort();
+      return live.isEmpty ? const [1] : live;
+    } on FormatException {
+      return const [1];
+    }
+  }
+
+  /// One raw `fetchPreKeyBundle` round trip, JOINING any fetch already in
+  /// flight for the same address.
+  ///
+  /// Separate from [ensureSession]'s own fetch on purpose: that one returns
+  /// early when it joins an in-flight fetch, because the joined caller builds
+  /// the session. This one needs the bundle itself. Joining rather than
+  /// replacing matters — the completer map is keyed by address, so registering a
+  /// second completer would strand the first until its timeout.
+  Future<Map<String, dynamic>> _fetchBundleAnswer(
+    int userId,
+    int deviceId,
+    Duration timeout,
+  ) {
+    final addressKey = (userId, deviceId);
+    final existing = _pendingIdentityProbes[addressKey];
+    if (existing != null) return existing.future;
+    final completer = Completer<Map<String, dynamic>>();
+    _pendingIdentityProbes[addressKey] = completer;
+    // deviceId is omitted for 1 (the server default), matching ensureSession so
+    // an older server that predates the field keeps answering.
+    _emit?.call('fetchPreKeyBundle', {
+      'userId': userId,
+      if (deviceId != 1) 'deviceId': deviceId,
+    });
+    return completer.future.timeout(
+      timeout,
+      onTimeout: () {
+        if (identical(_pendingIdentityProbes[addressKey], completer)) {
+          _pendingIdentityProbes.remove(addressKey);
+        }
+        throw TimeoutException(
+          'Pre-key bundle fetch timed out for user $userId device $deviceId',
+        );
+      },
+    );
+  }
+
+  /// User dismissed the own-identity-replaced notice.
+  Future<void> dismissOwnIdentityReplaced() async {
+    await _encryptionService.dismissOwnIdentityReplaced();
     notifyListeners();
   }
 
@@ -1251,11 +2434,16 @@ class EncryptionProvider extends ChangeNotifier {
     await _encryptionService.clearAllKeys();
     _e2eInitialized = false;
     _pendingPreKeyFetches.clear();
+    _pendingIdentityProbes.clear();
   }
 
   @override
   void dispose() {
     _cancelPendingFetches();
+    _identityResetAnswerTimeout?.cancel();
+    _identityResetAnswerTimeout = null;
+    _identityResetRefreshTimer?.cancel();
+    _identityResetRefreshTimer = null;
     super.dispose();
   }
 
@@ -1268,5 +2456,17 @@ class EncryptionProvider extends ChangeNotifier {
       }
     }
     _pendingPreKeyFetches.clear();
+    for (final completer in _pendingIdentityProbes.values) {
+      if (!completer.isCompleted) {
+        completer.completeError('Disconnected');
+      }
+    }
+    _pendingIdentityProbes.clear();
+    for (final completer in _pendingDeviceListFetches.values) {
+      if (!completer.isCompleted) {
+        completer.completeError('Disconnected');
+      }
+    }
+    _pendingDeviceListFetches.clear();
   }
 }

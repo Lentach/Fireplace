@@ -4,6 +4,7 @@ import 'package:fireplace/providers/conversations_provider.dart';
 import 'package:fireplace/providers/encryption_provider.dart';
 import 'package:fireplace/providers/friends_provider.dart';
 import 'package:fireplace/providers/messaging_provider.dart';
+import 'package:fireplace/services/device_link/link_ceremony_controller.dart';
 import 'package:fireplace/services/socket_service.dart';
 import 'package:fireplace/services/server_clock.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -172,6 +173,27 @@ Map<String, dynamic> _convJson(int id) => {
       'unreadCount': 0,
     };
 
+class _NoIdentity implements LinkIdentityGateway {
+  @override
+  Future<String?> ownIdentityPublicKeyBase64() async => null;
+
+  @override
+  Future<dynamic> ownIdentityKeyPair() async =>
+      throw StateError('not used here');
+
+  @override
+  Future<void> adoptProvisionedIdentity({
+    required int userId,
+    required String ikPubBase64,
+    required String ikPrivBase64,
+    required String dakPubBase64,
+    bool disposeStaleMaterial = false,
+  }) async {}
+
+  @override
+  Future<void> discardProvisionedIdentity(int userId) async {}
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -222,6 +244,30 @@ void main() {
       expect(fakeSocket.getFriendRequestsCalls, 1);
       expect(fakeSocket.getFriendsCalls, 1);
       expect(fakeSocket.getBlockedListCalls, 1);
+    });
+
+    test('socketReady tells the provisioning sink the session is ready', () async {
+      // (lxviii) clause 1: a devices screen open across a reconnect — above
+      // all its own ceremony's rebind — must re-read the list on the socket
+      // that can answer, and socketReady is the only moment that is true.
+      final sinkEmits = <String>[];
+      final sink = LinkCeremonyController(
+        userId: 1,
+        emit: (event, _) => sinkEmits.add(event),
+        identity: _NoIdentity(),
+        adoptSession: (_) async {},
+        reconnect: (_) async {},
+      );
+      addTearDown(sink.dispose);
+      connection.registerProvisioningSink(sink);
+      await connection.connect(1, 'test-token', 'http://localhost:3000');
+      fakeSocket.simulateTransportConnect();
+      expect(sinkEmits, isNot(contains('getDeviceList')),
+          reason: 'transport connect is not authenticated yet');
+
+      fakeSocket.simulateSocketReady();
+
+      expect(sinkEmits.where((e) => e == 'getDeviceList'), hasLength(1));
     });
 
     test('socketReady reasserts open chat state and refetches active messages',

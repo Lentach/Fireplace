@@ -18,6 +18,7 @@ import 'message_context_menu_overlay.dart';
 import 'message_context_menu_bubble_highlight.dart';
 import 'context_menu_bubble_anchor.dart';
 import 'reaction_chips_row.dart';
+import 'reply_quote_card.dart';
 
 /// Full voice-message bubble: outer bubble shell + PlaybackController + WaveformDisplay.
 ///
@@ -117,52 +118,19 @@ class VoiceMessageContent extends StatelessWidget {
 
   // ── reply quote ───────────────────────────────────────────────────────────
 
-  Widget _buildReplyQuote(
-    BuildContext context,
-    ReplyToPreview replyTo,
-    bool isDark,
-    Color borderColor,
-  ) {
+  /// Resolves the quoted text from THIS bubble's conversation context; the card
+  /// itself is shared (see [ReplyQuoteCard]).
+  String _replyQuoteContent(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final mutedColor = isDark ? RpgTheme.timeColorDark : RpgTheme.textSecondaryLight;
     final encryption = context.read<EncryptionProvider>();
     final messaging = context.read<MessagingProvider>();
-    final content = replyDisplayContentForQuote(
+    return replyDisplayContentForQuote(
       l10n,
-      replyTo,
+      message.replyTo!,
       encryption: encryption,
       conversationId: message.conversationId,
       createdAt: message.createdAt,
       messagesForLookup: messaging.messages,
-    );
-    return Container(
-      padding: const EdgeInsets.only(left: 10, top: 6, bottom: 6, right: 8),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
-        border: Border(left: BorderSide(color: borderColor, width: 3)),
-        color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.06),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            replyTo.senderUsername.isNotEmpty ? replyTo.senderUsername : l10n.unknown,
-            style: RpgTheme.bodyFont(
-              fontSize: 12,
-              color: borderColor,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            content,
-            style: RpgTheme.bodyFont(fontSize: 12, color: mutedColor),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
     );
   }
 
@@ -171,7 +139,11 @@ class VoiceMessageContent extends StatelessWidget {
   Widget _buildDeliveryIcon(BuildContext context) {
     if (!isMine) return const SizedBox.shrink();
     if (message.deliveryStatus == MessageDeliveryStatus.failed) {
-      return const Icon(Icons.error, size: 12, color: Colors.red);
+      return Icon(
+        Icons.error,
+        size: 12,
+        color: Theme.of(context).colorScheme.error,
+      );
     }
     IconData icon;
     switch (message.deliveryStatus) {
@@ -215,8 +187,8 @@ class VoiceMessageContent extends StatelessWidget {
     final waveformColor = isMine && !isDark && themePreference == 'light'
         ? RpgTheme.textSecondaryLight
         : (isMine && themePreference == 'teal'
-            ? Colors.white.withValues(alpha: 0.82)
-            : borderColor);
+              ? Colors.white.withValues(alpha: 0.82)
+              : borderColor);
     final metaColor = RpgTheme.messageBubbleMetaColor(
       context,
       isMine: isMine,
@@ -232,157 +204,197 @@ class VoiceMessageContent extends StatelessWidget {
       child: Align(
         alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
         child: Padding(
-          padding: EdgeInsets.only(top: message.reactions.isNotEmpty ? 14.0 : 0.0),
+          padding: EdgeInsets.only(
+            top: message.reactions.isNotEmpty ? 14.0 : 0.0,
+          ),
           child: Stack(
             clipBehavior: Clip.none,
             children: [
               ContextMenuBubbleAnchor(
                 child: Container(
-                constraints: BoxConstraints(
-                  maxWidth: MediaQuery.of(context).size.width * 0.6,
-                ),
-                margin: EdgeInsets.only(
-                  left: isMine ? 48 : 0,
-                  right: isMine ? 0 : 48,
-                  bottom: kContextMenuAnchorBottomMargin,
-                ),
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: bubbleColor,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: PlaybackController(
-                  message: message,
-                  builder: (
-                    context,
-                    isPlaying,
-                    isLoading,
-                    position,
-                    duration,
-                    speed,
-                    togglePlayPause,
-                    seekFromWaveform,
-                    toggleSpeed,
-                  ) {
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (message.replyTo != null) ...[
-                          _buildReplyQuote(context, message.replyTo!, isDark, borderColor),
-                          const SizedBox(height: 8),
-                        ],
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.of(context).size.width * 0.6,
+                  ),
+                  margin: EdgeInsets.only(
+                    left: isMine ? 48 : 0,
+                    right: isMine ? 0 : 48,
+                    bottom: kContextMenuAnchorBottomMargin,
+                  ),
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: bubbleColor,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: PlaybackController(
+                    message: message,
+                    builder:
+                        (
+                          context,
+                          isPlaying,
+                          isLoading,
+                          position,
+                          duration,
+                          speed,
+                          togglePlayPause,
+                          seekFromWaveform,
+                          toggleSpeed,
+                        ) {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (message.replyTo != null) ...[
+                                ReplyQuoteCard(
+                                  replyTo: message.replyTo!,
+                                  isDark: isDark,
+                                  borderColor: borderColor,
+                                  content: _replyQuoteContent(context),
+                                ),
+                                const SizedBox(height: 8),
+                              ],
 
-                        // Playback controls row
-                        Row(
-                          children: [
-                            // Play/Pause (or loading spinner with tap-to-cancel)
-                            isLoading
-                                ? GestureDetector(
-                                    onTap: togglePlayPause,
-                                    child: SizedBox(
-                                      width: 32,
-                                      height: 32,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: isMine && !isDark && themePreference == 'light'
-                                            ? RpgTheme.textSecondaryLight
-                                            : (isMine && themePreference == 'teal'
-                                                ? Colors.white.withValues(alpha: 0.85)
-                                                : null),
-                                      ),
+                              // Playback controls row
+                              Row(
+                                children: [
+                                  // Play/Pause (or loading spinner with tap-to-cancel)
+                                  isLoading
+                                      ? GestureDetector(
+                                          onTap: togglePlayPause,
+                                          child: SizedBox(
+                                            width: 32,
+                                            height: 32,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color:
+                                                  isMine &&
+                                                      !isDark &&
+                                                      themePreference == 'light'
+                                                  ? RpgTheme.textSecondaryLight
+                                                  : (isMine &&
+                                                            themePreference ==
+                                                                'teal'
+                                                        ? Colors.white
+                                                              .withValues(
+                                                                alpha: 0.85,
+                                                              )
+                                                        : null),
+                                            ),
+                                          ),
+                                        )
+                                      : IconButton(
+                                          icon: Icon(
+                                            isPlaying
+                                                ? Icons.pause
+                                                : Icons.play_arrow,
+                                          ),
+                                          onPressed: _isExpired()
+                                              ? null
+                                              : togglePlayPause,
+                                          iconSize: 32,
+                                          color: _isExpired()
+                                              ? Colors.grey
+                                              : (isMine &&
+                                                        !isDark &&
+                                                        themePreference ==
+                                                            'light'
+                                                    ? RpgTheme.textColorLight
+                                                    : (isMine &&
+                                                              themePreference ==
+                                                                  'teal'
+                                                          ? Colors.white
+                                                          : null)),
+                                        ),
+
+                                  const SizedBox(width: 8),
+
+                                  // Waveform: scrubbable (tap/drag to seek)
+                                  Expanded(
+                                    child: WaveformDisplay(
+                                      messageId: message.id,
+                                      position: position,
+                                      duration: duration,
+                                      color: waveformColor,
+                                      onSeek: seekFromWaveform,
                                     ),
-                                  )
-                                : IconButton(
-                                    icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow),
-                                    onPressed: _isExpired() ? null : togglePlayPause,
-                                    iconSize: 32,
-                                    color: _isExpired()
-                                        ? Colors.grey
-                                        : (isMine && !isDark && themePreference == 'light'
-                                            ? RpgTheme.textColorLight
-                                            : (isMine && themePreference == 'teal'
-                                                ? Colors.white
-                                                : null)),
                                   ),
 
-                            const SizedBox(width: 8),
+                                  const SizedBox(width: 4),
 
-                            // Waveform: scrubbable (tap/drag to seek)
-                            Expanded(
-                              child: WaveformDisplay(
-                                messageId: message.id,
-                                position: position,
-                                duration: duration,
-                                color: waveformColor,
-                                onSeek: seekFromWaveform,
+                                  // Position / total duration
+                                  Text(
+                                    '${_formatDuration(position)}/${_formatDuration(duration)}',
+                                    style: RpgTheme.bodyFont(
+                                      fontSize: 10,
+                                      color: metaColor,
+                                    ),
+                                  ),
+
+                                  const SizedBox(width: 6),
+
+                                  // Speed toggle: 1x → 1.5x → 2x → 1x
+                                  InkWell(
+                                    onTap: toggleSpeed,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        border: Border.all(
+                                          color: waveformColor,
+                                        ),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Text(
+                                        '${speed}x',
+                                        style: RpgTheme.bodyFont(
+                                          fontSize: 11,
+                                          color: metaColor,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
 
-                            const SizedBox(width: 4),
-
-                            // Position / total duration
-                            Text(
-                              '${_formatDuration(position)}/${_formatDuration(duration)}',
-                              style: RpgTheme.bodyFont(fontSize: 10, color: metaColor),
-                            ),
-
-                            const SizedBox(width: 6),
-
-                            // Speed toggle: 1x → 1.5x → 2x → 1x
-                            InkWell(
-                              onTap: toggleSpeed,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  border: Border.all(color: waveformColor),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Text(
-                                  '${speed}x',
-                                  style: RpgTheme.bodyFont(fontSize: 11, color: metaColor),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        const SizedBox(height: 4),
-                        Align(
-                          alignment: Alignment.bottomRight,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                RpgTheme.formatMessageClock(message.createdAt),
-                                style: RpgTheme.bodyFont(
-                                  fontSize: 10,
-                                  color: metaColor,
+                              const SizedBox(height: 4),
+                              Align(
+                                alignment: Alignment.bottomRight,
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      RpgTheme.formatMessageClock(
+                                        message.createdAt,
+                                      ),
+                                      style: RpgTheme.bodyFont(
+                                        fontSize: 10,
+                                        color: metaColor,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    _buildDeliveryIcon(context),
+                                    // Subscribe to the 1 Hz countdown tick only for
+                                    // a genuinely ephemeral message; otherwise every
+                                    // visible voice bubble rebuilt once per second
+                                    // for a SizedBox.shrink.
+                                    if (HearthFadeArcIndicator.showsEphemeralState(
+                                      message,
+                                    ))
+                                      ValueListenableBuilder<int>(
+                                        valueListenable: context
+                                            .read<MessagingProvider>()
+                                            .countdownTickNotifier,
+                                        builder: (context, tick, child) =>
+                                            _buildEphemeralMeta(metaColor),
+                                      ),
+                                  ],
                                 ),
                               ),
-                              const SizedBox(width: 4),
-                              _buildDeliveryIcon(context),
-                              // Subscribe to the 1 Hz countdown tick only for
-                              // a genuinely ephemeral message; otherwise every
-                              // visible voice bubble rebuilt once per second
-                              // for a SizedBox.shrink.
-                              if (HearthFadeArcIndicator.showsEphemeralState(
-                                message,
-                              ))
-                                ValueListenableBuilder<int>(
-                                  valueListenable: context
-                                      .read<MessagingProvider>()
-                                      .countdownTickNotifier,
-                                  builder: (context, tick, child) =>
-                                      _buildEphemeralMeta(metaColor),
-                                ),
                             ],
-                          ),
-                        ),
-                      ],
-                    );
-                  },
+                          );
+                        },
+                  ),
                 ),
-              ),
               ),
               if (message.reactions.isNotEmpty)
                 Positioned(

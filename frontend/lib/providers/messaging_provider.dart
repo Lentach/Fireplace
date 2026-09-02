@@ -11,6 +11,8 @@ import '../utils/file_utils_stub.dart'
 import '../config/app_config.dart';
 import '../models/message_model.dart';
 import '../services/api_service.dart';
+import '../services/device_list/device_list_cache.dart';
+import '../services/device_list/sender_list_info.dart';
 import '../services/media_crypto_service.dart';
 import '../services/encrypted_media_upload_service.dart';
 import '../services/encryption_service.dart';
@@ -62,6 +64,12 @@ const int _pageSize = 50;
 const String _kDecryptionFailedLabel = '[Decryption failed]';
 const String _kEncryptedPlaceholderLabel = '[encrypted]';
 const String kRetiredMessageLabel = '[Message no longer stored on this device]';
+
+/// A row the server marked `none_for_device` (spec §5.3 + §12 amendment
+/// (viii)): it predates this device's link, so no envelope exists for it and
+/// nothing can be decrypted. Distinct from `[Decryption failed]` on purpose —
+/// nothing failed here.
+const String kNotLinkedYetMessageLabel = '[Sent before this device was linked]';
 
 /// MessagingProvider — owns all message state, send/receive handlers,
 /// encryption orchestration, typing/recording indicators, and reactions.
@@ -134,11 +142,54 @@ class MessagingProvider extends ChangeNotifier {
   /// SESSION_RESET{historyRetry} loop), forcing rebuild churn on every send.
   final Set<int> _rebuildRequestedPeers = {};
 
+  /// True when a peer's in-band `senderListInfo` showed that OUR OWN devices
+  /// disagree about our own device list (spec §12 amendment (xvii)). Benign by
+  /// definition — our devices have not converged — so the UI shows a calm
+  /// "syncing devices" note and NEVER the identity-changed surface. Cleared as
+  /// soon as a claim agrees with what we hold.
+  bool _devicesSyncing = false;
+
+  bool get devicesSyncing => _devicesSyncing;
+
+  /// One device-list re-fetch in flight per account, and one per cooldown —
+  /// the rate limit amendment (xvi) requires, so a bogus claim attached to
+  /// every inbound message cannot become a fetch storm.
+  final SenderListInfoRefreshLimiter _listRefreshLimiter =
+      SenderListInfoRefreshLimiter();
+
+  /// Message ids the accept-side revocation gate WITHHELD (spec §12 amendments
+  /// (e)/(xxvii)): either the sender's verified list shows the origin device
+  /// revoked/absent, or we hold no verified list for that sender yet.
+  ///
+  /// Load-bearing: without it the post-retry sweep would stamp
+  /// `[Decryption failed]` over a row nothing has failed on, and the recovery
+  /// pass would ask the peer to re-key a session that is perfectly healthy.
+  final Set<int> _acceptGateWithheldIds = {};
+
   /// tempIds whose `sendMessage` emit already happened — a second emit for the
   /// same optimistic message would advance the ratchet again and hand the
   /// recipient an undecryptable duplicate. Released on send failure (so user
   /// retry works); cleared on connect/logout with [_pendingSendContent].
   final Set<String> _emittedSendTempIds = {};
+
+  /// The `sendToken` minted per tempId (spec §5.4 + §12 amendment (ix)).
+  ///
+  /// One token per SEND, deliberately REUSED by a retry of the same optimistic
+  /// message: the server enforces per-sender uniqueness, so a retry that
+  /// reuses it re-acks the row already committed instead of duplicating the
+  /// message. It is also the lost-ack reconcile key, because a new-model row
+  /// carries no ciphertext for its own origin device. Cleared with
+  /// [_pendingSendContent].
+  final Map<String, String> _sendTokenByTempId = {};
+
+  /// Stale-list resend attempts per tempId (spec §5.2 cap of 3, then a
+  /// surfaced failure). Cleared with [_pendingSendContent].
+  final Map<String, int> _staleResendAttempts = {};
+
+  /// tempIds currently being resent after a `deviceListStale` refusal. The row
+  /// is still SENDING (never flashed as failed), so [retryFailedMessage] needs
+  /// this to know the resend is legitimate.
+  final Set<String> _staleResendTempIds = {};
 
   /// Incremented on each new messageHistory to cancel stale in-flight decrypt loops.
   /// Each loop captures its generation at start and exits when the counter changes.
@@ -508,6 +559,9 @@ class MessagingProvider extends ChangeNotifier {
       _pendingEdits.clear();
       _pendingSendContent.clear();
       _emittedSendTempIds.clear();
+      _sendTokenByTempId.clear();
+      _staleResendAttempts.clear();
+      _staleResendTempIds.clear();
       _incomingMessageQueue.clear();
       _identityResetRebuildNotified.clear();
       _rebuildRequestedPeers.clear();
@@ -532,6 +586,9 @@ class MessagingProvider extends ChangeNotifier {
       _pendingSendContent
           .clear(); // retry was cancelled; orphaned entries serve no purpose
       _emittedSendTempIds.clear();
+      _sendTokenByTempId.clear();
+      _staleResendAttempts.clear();
+      _staleResendTempIds.clear();
       _cancelDelayedRetryIfAny();
     }
 
@@ -577,6 +634,9 @@ class MessagingProvider extends ChangeNotifier {
     _rebuildRequestedPeers.clear();
     _pingEffectFiredIds.clear();
     _emittedSendTempIds.clear();
+    _sendTokenByTempId.clear();
+    _staleResendAttempts.clear();
+    _staleResendTempIds.clear();
     _cancelDelayedRetryIfAny();
     _currentUserId = null;
     _tokenForReconnect = null;

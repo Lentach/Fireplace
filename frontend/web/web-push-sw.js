@@ -171,6 +171,85 @@ self.addEventListener('push', function (event) {
   var payload = {};
   try { payload = event.data ? event.data.json() : {}; } catch (_) {}
 
+  // Phase 0a takeover alarm: content-free security notice — the account's
+  // key bundle was replaced by another sign-in. No conversation, no unread
+  // math, no sweep/badge writes; the app shows the durable banner itself on
+  // next open. Wording is the consented-recovery framing: this fires on every
+  // legitimate reinstall/new-browser sign-in too, so it must not say "hacked".
+  if (payload.type === 'identity_changed') {
+    event.waitUntil(
+      closeNotificationsForTag('identity-changed').then(function () {
+        return self.registration.showNotification('Fireplace', {
+          body: 'New encryption keys on your account — usually a new device or browser sign-in. Open the app to review.',
+          icon: '/icons/notification-icon-512.png',
+          badge: '/icons/notification-badge-96.png',
+          tag: 'identity-changed',
+          data: payload,
+          renotify: true,
+        });
+      })
+    );
+    return;
+  }
+
+  // Phase 0b reset ceremony: content-free notice that a countdown toward new
+  // account keys has started. Push is the ONLY channel that reaches a closed
+  // app, and the delay exists precisely so this can arrive in time — so it is
+  // required interaction and does not auto-dismiss.
+  if (payload.type === 'identity_reset_pending') {
+    event.waitUntil(
+      closeNotificationsForTag('identity-reset').then(function () {
+        return self.registration.showNotification('Fireplace', {
+          body: 'Someone asked to reset your account encryption keys. If this was not you, open the app and cancel it.',
+          icon: '/icons/notification-icon-512.png',
+          badge: '/icons/notification-badge-96.png',
+          tag: 'identity-reset',
+          data: payload,
+          renotify: true,
+          requireInteraction: true,
+        });
+      })
+    );
+    return;
+  }
+
+  // The ceremony was cancelled: replace the standing warning rather than
+  // leaving a stale "act now" notification on the lock screen.
+  if (payload.type === 'identity_reset_cancelled') {
+    event.waitUntil(
+      closeNotificationsForTag('identity-reset').then(function () {
+        return self.registration.showNotification('Fireplace', {
+          body: 'The encryption key reset was cancelled.',
+          icon: '/icons/notification-icon-512.png',
+          badge: '/icons/notification-badge-96.png',
+          tag: 'identity-reset',
+          data: payload,
+        });
+      })
+    );
+    return;
+  }
+
+  // The account's recovery phrase was set or replaced (spec §12 amendment
+  // (xlii)). A recovery phrase is what shortens the reset delay, so arming one
+  // is a security-relevant act in its own right and must not happen silently:
+  // a thief holding a stolen session would otherwise pre-arm a phrase with the
+  // owner none the wiser. Its OWN tag, never the 'identity-reset' one — this
+  // must not replace, or be replaced by, a live countdown warning.
+  if (payload.type === 'recovery_key_enrolled') {
+    event.waitUntil(
+      self.registration.showNotification('Fireplace', {
+        body: 'A recovery phrase was set for your account. If this was not you, change your password now.',
+        icon: '/icons/notification-icon-512.png',
+        badge: '/icons/notification-badge-96.png',
+        tag: 'recovery-key-enrolled',
+        data: payload,
+        requireInteraction: true,
+      })
+    );
+    return;
+  }
+
   var convId = payload.conversationId != null ? Number(payload.conversationId) : null;
   // Per-conversation unread — card text only.
   var unreadCount = typeof payload.unreadCount === 'number'

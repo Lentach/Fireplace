@@ -23,8 +23,8 @@ class _DupEncryption extends EncryptionProvider {
     this.replayable = false,
     Map<int, Map<String, dynamic>>? persisted,
     this.noteReturn,
-  })  : _existsScript = List.of(existsScript),
-        persisted = persisted ?? {};
+  }) : _existsScript = List.of(existsScript),
+       persisted = persisted ?? {};
 
   final Set<int> ledger;
 
@@ -52,7 +52,7 @@ class _DupEncryption extends EncryptionProvider {
   bool get hadIdentityReset => false;
 
   @override
-  Future<void> ensureSession(int recipientId) async {}
+  Future<void> ensureSession(int recipientId, {int deviceId = 1}) async {}
 
   @override
   bool wasDecryptedBefore(int messageId) => ledger.contains(messageId);
@@ -104,6 +104,7 @@ class _DupEncryption extends EncryptionProvider {
     int senderId,
     String ciphertext, {
     int? messageId,
+    int deviceId = 1,
   }) async {
     decryptCalls++;
     throw Exception('DuplicateMessageException — ratchet key already consumed');
@@ -199,7 +200,10 @@ void main() {
 
     final row = _encryptedInboundJson(dupId);
     if (serverEditedAt != null) row['editedAt'] = serverEditedAt;
-    provider.onMessageHistory({'conversationId': 10, 'messages': [row]});
+    provider.onMessageHistory({
+      'conversationId': 10,
+      'messages': [row],
+    });
 
     // Settle on the decrypt attempt, then drain the microtask chain the
     // post-failure evaluation runs on.
@@ -219,29 +223,44 @@ void main() {
     final r = await run(existsScript: [true], noteReturn: 99);
 
     expect(r.encryption.decryptCalls, greaterThan(0));
-    expect(r.encryption.noteCalls, isEmpty,
-        reason: 'an existing record must never accumulate observations');
-    expect(r.encryption.clearCalls, contains(dupId),
-        reason: 'a DEFINITE readable source resets the clock');
+    expect(
+      r.encryption.noteCalls,
+      isEmpty,
+      reason: 'an existing record must never accumulate observations',
+    );
+    expect(
+      r.encryption.clearCalls,
+      contains(dupId),
+      reason: 'a DEFINITE readable source resets the clock',
+    );
     expect(r.encryption.retired, isEmpty);
   });
 
-  test('§5.2 guard (c): a raw-replay-covered row resets and never retires',
-      () async {
-    final r = await run(existsScript: [false], replayable: true, noteReturn: 99);
+  test(
+    '§5.2 guard (c): a raw-replay-covered row resets and never retires',
+    () async {
+      final r = await run(
+        existsScript: [false],
+        replayable: true,
+        noteReturn: 99,
+      );
 
-    expect(r.encryption.noteCalls, isEmpty);
-    expect(r.encryption.clearCalls, contains(dupId));
-    expect(r.encryption.retired, isEmpty);
-  });
+      expect(r.encryption.noteCalls, isEmpty);
+      expect(r.encryption.clearCalls, contains(dupId));
+      expect(r.encryption.retired, isEmpty);
+    },
+  );
 
   test('§5.3 tri-state: an undetermined answer changes NOTHING — no count, '
       'no reset, no retire', () async {
     final r = await run(existsScript: [null], noteReturn: 99);
 
     expect(r.encryption.noteCalls, isEmpty);
-    expect(r.encryption.clearCalls, isEmpty,
-        reason: 'null must not erase evidence either');
+    expect(
+      r.encryption.clearCalls,
+      isEmpty,
+      reason: 'null must not erase evidence either',
+    );
     expect(r.encryption.retired, isEmpty);
   });
 
@@ -265,13 +284,21 @@ void main() {
     final r = await run(existsScript: [false], noteReturn: 3);
 
     expect(r.encryption.retired, contains(dupId));
-    expect(r.encryption.clearCalls, contains(dupId),
-        reason: 'the counter is dropped on retire (§3.1) so a '
-            'retired-set-load-failure boot cannot re-retire and burn a '
-            'second durable for the same id');
-    expect(rowOf(r.provider)?.content, kRetiredMessageLabel,
-        reason: 'an honest "no longer stored" beats a scary '
-            '[Decryption failed] for a row a resend can fix');
+    expect(
+      r.encryption.clearCalls,
+      contains(dupId),
+      reason:
+          'the counter is dropped on retire (§3.1) so a '
+          'retired-set-load-failure boot cannot re-retire and burn a '
+          'second durable for the same id',
+    );
+    expect(
+      rowOf(r.provider)?.content,
+      kRetiredMessageLabel,
+      reason:
+          'an honest "no longer stored" beats a scary '
+          '[Decryption failed] for a row a resend can fix',
+    );
     expect(
       E2ePersistentDiag.entries.where(
         (e) => e.contains('DUP_TERMINAL_RETIRED') && e.contains('$dupId'),
@@ -301,34 +328,47 @@ void main() {
       noteReturn: 99,
     );
 
-    expect(r.encryption.invalidated, contains(dupId),
-        reason: 'the edit-stale fall-through must have run for this test '
-            'to exercise the R2 shape');
+    expect(
+      r.encryption.invalidated,
+      contains(dupId),
+      reason:
+          'the edit-stale fall-through must have run for this test '
+          'to exercise the R2 shape',
+    );
     expect(r.encryption.decryptCalls, greaterThan(0));
     expect(r.encryption.noteCalls, isEmpty);
     expect(r.encryption.retired, isEmpty);
   });
 
-  test('§5.6b partition: an edit-stale row whose record and replay are '
-      'verifiably ABSENT accumulates observations like any other row',
-      () async {
-    final r = await run(
-      ledger: {dupId},
-      // Gate sees the stale record; the post-failure evaluation sees it gone.
-      existsScript: [true, false],
-      persisted: {
-        dupId: {'content': 'old text', 'editedAt': '2026-01-01T00:00:00.000Z'},
-      },
-      serverEditedAt: '2026-02-01T00:00:00.000Z',
-      noteReturn: 1,
-    );
+  test(
+    '§5.6b partition: an edit-stale row whose record and replay are '
+    'verifiably ABSENT accumulates observations like any other row',
+    () async {
+      final r = await run(
+        ledger: {dupId},
+        // Gate sees the stale record; the post-failure evaluation sees it gone.
+        existsScript: [true, false],
+        persisted: {
+          dupId: {
+            'content': 'old text',
+            'editedAt': '2026-01-01T00:00:00.000Z',
+          },
+        },
+        serverEditedAt: '2026-02-01T00:00:00.000Z',
+        noteReturn: 1,
+      );
 
-    expect(r.encryption.invalidated, contains(dupId));
-    expect(r.encryption.noteCalls, contains(dupId),
-        reason: 'pins the intended honest-retire semantics for a row whose '
-            'edit was consumed elsewhere and never persisted anywhere');
-    expect(r.encryption.retired, isEmpty, reason: 'count 1 < threshold');
-  });
+      expect(r.encryption.invalidated, contains(dupId));
+      expect(
+        r.encryption.noteCalls,
+        contains(dupId),
+        reason:
+            'pins the intended honest-retire semantics for a row whose '
+            'edit was consumed elsewhere and never persisted anywhere',
+      );
+      expect(r.encryption.retired, isEmpty, reason: 'count 1 < threshold');
+    },
+  );
 
   test('the emitted DECRYPT_DECISION line matches the dedupe substrings — '
       'pins the call-site payload format', () async {
@@ -338,9 +378,13 @@ void main() {
         .where((e) => e.contains(' DECRYPT_DECISION | '))
         .toList();
     expect(decisions, hasLength(1));
-    expect(decisions.single, contains('{msgId: $dupId,'),
-        reason: 'recordDeduped matches on this exact prefix; a payload '
-            'reorder would silently disable the dedupe');
+    expect(
+      decisions.single,
+      contains('{msgId: $dupId,'),
+      reason:
+          'recordDeduped matches on this exact prefix; a payload '
+          'reorder would silently disable the dedupe',
+    );
     expect(decisions.single, contains(' kind: duplicate,'));
   });
 }

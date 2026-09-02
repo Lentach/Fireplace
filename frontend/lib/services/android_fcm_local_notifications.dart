@@ -111,6 +111,87 @@ Future<void> showFireplaceMessageNotificationWithPlugin({
   required FlutterLocalNotificationsPlugin plugin,
   required Map<String, dynamic> data,
 }) async {
+  // Phase 0a takeover alarm: content-free security notice (see
+  // push-notifications.service.ts notifyIdentityChanged). Same wording rule
+  // as the PWA service worker: this fires on legitimate reinstalls/new
+  // sign-ins too, so it must not scream "hacked".
+  if (data['type'] == 'identity_changed') {
+    const androidDetails = AndroidNotificationDetails(
+      _androidChannelId,
+      'Fireplace',
+      channelDescription: _androidChannelDescription,
+      importance: Importance.high,
+      priority: Priority.high,
+      icon: '@drawable/ic_stat_fireplace',
+      tag: 'identity-changed',
+    );
+    await plugin.show(
+      // Fixed id well outside the conversation-id space so it replaces
+      // itself and never collides with a message notification.
+      id: 0x40000000,
+      title: 'Fireplace',
+      body:
+          'New encryption keys on your account — usually a new device or '
+          'browser sign-in. Open the app to review.',
+      notificationDetails: const NotificationDetails(android: androidDetails),
+    );
+    return;
+  }
+  // Phase 0b reset ceremony: a countdown toward new account keys started, or
+  // was cancelled. Push is the only channel that reaches a closed app, which
+  // is what makes the delay meaningful. Both share one tag/id so the cancel
+  // notice REPLACES the warning instead of leaving a stale "act now" card.
+  final resetType = data['type'];
+  if (resetType == 'identity_reset_pending' ||
+      resetType == 'identity_reset_cancelled') {
+    final pending = resetType == 'identity_reset_pending';
+    final androidDetails = AndroidNotificationDetails(
+      _androidChannelId,
+      'Fireplace',
+      channelDescription: _androidChannelDescription,
+      importance: Importance.high,
+      priority: Priority.high,
+      icon: '@drawable/ic_stat_fireplace',
+      tag: 'identity-reset',
+      ongoing: pending,
+    );
+    await plugin.show(
+      // Fixed id, distinct from the replacement alarm's, well outside the
+      // conversation-id space.
+      id: 0x40000001,
+      title: 'Fireplace',
+      body: pending
+          ? 'Someone asked to reset your account encryption keys. If this '
+                'was not you, open the app and cancel it.'
+          : 'The encryption key reset was cancelled.',
+      notificationDetails: NotificationDetails(android: androidDetails),
+    );
+    return;
+  }
+  // The account's recovery phrase was set or replaced (spec §12 amendment
+  // (xlii)). Arming a phrase is what buys a SHORTENED reset delay, so it is a
+  // security-relevant act and must not be silent — a thief on a stolen session
+  // would otherwise pre-arm one unobserved. Its own tag and id: this must
+  // neither replace nor be replaced by a live reset countdown.
+  if (data['type'] == 'recovery_key_enrolled') {
+    const androidDetails = AndroidNotificationDetails(
+      _androidChannelId,
+      'Fireplace',
+      channelDescription: _androidChannelDescription,
+      importance: Importance.high,
+      priority: Priority.high,
+      icon: '@drawable/ic_stat_fireplace',
+      tag: 'recovery-key-enrolled',
+    );
+    await plugin.show(
+      id: 0x40000002,
+      title: 'Fireplace',
+      body: 'A recovery phrase was set for your account. If this was not '
+          'you, change your password now.',
+      notificationDetails: const NotificationDetails(android: androidDetails),
+    );
+    return;
+  }
   if (data['type'] != 'new_message') return;
 
   final convRaw = data['conversationId'];

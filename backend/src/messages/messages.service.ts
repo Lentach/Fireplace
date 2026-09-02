@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Not, Repository } from 'typeorm';
+import { EntityManager, In, Not, Repository } from 'typeorm';
+import type { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 import { Message, MessageDeliveryStatus, MessageType } from './message.entity';
+import { MessageEnvelope } from './message-envelope.entity';
 import { User } from '../users/user.entity';
 import { Conversation } from '../conversations/conversation.entity';
 import {
@@ -57,6 +59,21 @@ export class MessagesService {
       mediaDuration?: number | null;
       replyToMessageId?: number | null;
       encryptedContent?: string | null;
+      /** Which of the sender's devices produced this (Phase 1, spec §5.4). */
+      originDeviceId?: number | null;
+      /** Client token making a retry idempotent (Phase 1, spec §5.4). */
+      sendToken?: string | null;
+      /**
+       * Per-device ciphertexts written in the SAME transaction as the row
+       * (spec §5.2 + §12 amendment (v)). When present this is a NEW-MODEL
+       * send: `encryptedContent` stays NULL and every device reads its own
+       * envelope through the §5.3 device-gated history join.
+       */
+      envelopes?: Array<{
+        userId: number;
+        deviceId: number;
+        ciphertext: string;
+      }>;
     },
   ): Promise<Message> {
     let replyTo: Message | null = null;
@@ -86,21 +103,76 @@ export class MessagesService {
       mediaUrl: options?.mediaUrl || null,
       mediaDuration: options?.mediaDuration || null,
       encryptedContent: options?.encryptedContent || null,
+      originDeviceId: options?.originDeviceId ?? null,
+      sendToken: options?.sendToken ?? null,
       replyTo,
     });
+    // One message row + N envelope rows in ONE transaction (spec §5.2): a
+    // half-written fan-out would leave some devices permanently unable to read
+    // a message the sender believes was sent. The envelope-less path keeps its
+    // original single save so legacy and metadata sends are untouched.
+    const envelopes = options?.envelopes;
+    if (envelopes?.length) {
+      return this.msgRepo.manager.transaction(async (manager) => {
+        const saved = await manager.getRepository(Message).save(msg);
+        await manager.getRepository(MessageEnvelope).insert(
+          envelopes.map((envelope) => ({
+            messageId: saved.id,
+            recipientUserId: envelope.userId,
+            recipientDeviceId: envelope.deviceId,
+            ciphertext: envelope.ciphertext,
+            deliveredAt: null,
+            readAt: null,
+          })),
+        );
+        if (replyTo) saved.replyTo = replyTo;
+        return saved;
+      });
+    }
+
     const saved = await this.msgRepo.save(msg);
     if (replyTo) saved.replyTo = replyTo;
     return saved;
   }
 
   /**
-   * Replace an existing message in place with new (E2E) content and stamp `editedAt`.
-   * Sender-only: returns null when the message is missing or the caller is not the sender.
+   * The message a sender already committed under [sendToken], if any.
+   *
+   * A lost ack makes the client retry with the same token; answering with the
+   * committed row keeps the send idempotent (Phase 1, spec §5.4) instead of
+   * duplicating the message the sender cannot yet see.
    */
-  async editMessage(
+  async findBySendToken(
+    senderId: number,
+    sendToken: string,
+  ): Promise<Message | null> {
+    return this.msgRepo.findOne({
+      where: { sender: { id: senderId }, sendToken },
+      relations: { sender: true, conversation: true },
+    });
+  }
+
+  /**
+   * Apply an EDIT in one transaction: stamp `editedAt`, re-point the row at the
+   * device that produced the new ciphertext, and rewrite every target device's
+   * envelope (spec §5.7 + §12 amendments (xxx)/(xxxii)).
+   *
+   * Sender-only: returns null when the message is missing or the caller is not
+   * the sender, exactly as before.
+   *
+   * A half-written re-fan would leave some devices reading the OLD text and
+   * others the new one, with no way for either to tell which it holds — so the
+   * row update and all envelope writes share one transaction.
+   */
+  async applyEdit(
     messageId: number,
     userId: number,
-    fields: { encryptedContent?: string | null; content?: string },
+    fields: {
+      encryptedContent?: string | null;
+      content?: string;
+      originDeviceId?: number | null;
+      envelopes?: { userId: number; deviceId: number; ciphertext: string }[];
+    },
   ): Promise<Message | null> {
     const msg = await this.msgRepo.findOne({
       where: { id: messageId },
@@ -109,11 +181,80 @@ export class MessagesService {
       },
     });
     if (!msg || msg.sender?.id !== userId) return null;
+
+    const editedAt = new Date();
+    const patch: QueryDeepPartialEntity<Message> = { editedAt };
     if (fields.encryptedContent !== undefined)
-      msg.encryptedContent = fields.encryptedContent;
-    if (fields.content !== undefined) msg.content = fields.content;
-    msg.editedAt = new Date();
-    return this.msgRepo.save(msg);
+      patch.encryptedContent = fields.encryptedContent;
+    if (fields.content !== undefined) patch.content = fields.content;
+    if (fields.originDeviceId !== undefined)
+      patch.originDeviceId = fields.originDeviceId;
+
+    const envelopes = fields.envelopes;
+    await this.msgRepo.manager.transaction(async (manager) => {
+      // A COLUMN-SCOPED update, never a full-entity save: the row carries
+      // `deliveryStatus` and the disappearing-message stamps, and an edit must
+      // not write back whatever those held when this method loaded the row.
+      await manager
+        .getRepository(Message)
+        .update({ id: messageId }, patch);
+      if (envelopes?.length) {
+        await this.upsertEnvelopeCiphertexts(messageId, envelopes, manager);
+      }
+    });
+
+    Object.assign(msg, patch);
+    return msg;
+  }
+
+  /**
+   * Rewrite each named device's envelope ciphertext, INSERTing one for a device
+   * that has none yet (spec §5.7).
+   *
+   * CONTENT-ONLY on conflict, and that is the whole point (durability finding
+   * F8, falsification 24): `deliveredAt`/`readAt` SURVIVE the rewrite, because
+   * an edit is not an un-delivery — the §4 delivery projection reads those
+   * stamps and must never regress from `read` back to `sent` just because the
+   * author fixed a typo. A `save()` or a delete-then-insert would silently zero
+   * them, so the conflict clause names `ciphertext` and nothing else.
+   *
+   * A device that had no row is exactly the §5.7 case of one linked AFTER the
+   * original send: its `none_for_device` placeholder upgrades to real
+   * ciphertext. The reverse never happens here — this method only ever writes a
+   * ciphertext, so a real envelope cannot regress to a placeholder.
+   */
+  async upsertEnvelopeCiphertexts(
+    messageId: number,
+    envelopes: { userId: number; deviceId: number; ciphertext: string }[],
+    manager?: EntityManager,
+  ): Promise<void> {
+    if (envelopes.length === 0) return;
+    const repo = (manager ?? this.msgRepo.manager).getRepository(
+      MessageEnvelope,
+    );
+    await repo
+      .createQueryBuilder()
+      .insert()
+      .into(MessageEnvelope)
+      .values(
+        envelopes.map((envelope) => ({
+          messageId,
+          recipientUserId: envelope.userId,
+          recipientDeviceId: envelope.deviceId,
+          ciphertext: envelope.ciphertext,
+          deliveredAt: null,
+          readAt: null,
+        })),
+      )
+      // Conflict target = the entity's UNIQUE (messageId, recipientUserId,
+      // recipientDeviceId). `orUpdate` lists ONLY `ciphertext`, so every other
+      // column of an existing row — both stamps and `createdAt` — is untouched.
+      .orUpdate(['ciphertext'], [
+        'messageId',
+        'recipientUserId',
+        'recipientDeviceId',
+      ])
+      .execute();
   }
 
   /** Parse hiddenByUserIds string "1,2,3" to number[] */
@@ -293,6 +434,16 @@ export class MessagesService {
     [MessageDeliveryStatus.READ]: 3,
   };
 
+  /**
+   * Project the recipient's delivery state onto the row's single
+   * `deliveryStatus` (spec §4).
+   *
+   * COLUMN-SCOPED by law: a full-entity `save()` here rewrites every column
+   * from a possibly stale in-memory copy, so a concurrent write (a reaction, an
+   * edit, an expiry stamp) can be silently reverted. The monotonic guard lives
+   * in the WHERE clause so two racing reports cannot regress the status.
+   * Mirrors `markConversationAsReadFromSender` below (falsification 19).
+   */
   async updateDeliveryStatus(
     messageId: number,
     status: MessageDeliveryStatus,
@@ -316,8 +467,76 @@ export class MessagesService {
       return message;
     }
 
+    const lowerStatuses = Object.entries(MessagesService.DELIVERY_STATUS_ORDER)
+      .filter(([, order]) => order < newOrder)
+      .map(([name]) => name);
+    await this.msgRepo
+      .createQueryBuilder()
+      .update(Message)
+      .set({ deliveryStatus: status })
+      .where('id = :messageId AND "deliveryStatus" IN (:...lowerStatuses)', {
+        messageId,
+        lowerStatuses,
+      })
+      .execute();
+
     message.deliveryStatus = status;
-    return this.msgRepo.save(message);
+    return message;
+  }
+
+  /**
+   * The ciphertext each of [messageIds] holds for ONE device, keyed by message
+   * id (spec §5.3 per-device history read).
+   *
+   * Reached through the message repository's manager rather than an injected
+   * envelope repository: the fan-out write in [create] does the same, so every
+   * envelope access goes through one seam.
+   */
+  async findEnvelopeCiphertexts(
+    messageIds: number[],
+    recipientUserId: number,
+    recipientDeviceId: number,
+  ): Promise<Map<number, string>> {
+    if (messageIds.length === 0) return new Map();
+    const envelopes = await this.msgRepo.manager
+      .getRepository(MessageEnvelope)
+      .find({
+        where: {
+          messageId: In(messageIds),
+          recipientUserId,
+          recipientDeviceId,
+        },
+      });
+    return new Map(
+      envelopes.map((envelope) => [envelope.messageId, envelope.ciphertext]),
+    );
+  }
+
+  /**
+   * Stamp ONE device's envelope as delivered or read (spec §5.3).
+   *
+   * These stamps are per-device delivery bookkeeping ONLY. They must never
+   * feed message expiry or the read-based disappearing TTL: that countdown
+   * starts solely from the recipient user's `markConversationAsReadFromSender`
+   * over the peer's rows (invariant I9, spec §5.6, durability rider F9).
+   */
+  async stampEnvelope(
+    messageId: number,
+    recipientUserId: number,
+    recipientDeviceId: number,
+    field: 'deliveredAt' | 'readAt',
+  ): Promise<void> {
+    await this.msgRepo.manager
+      .getRepository(MessageEnvelope)
+      .createQueryBuilder()
+      .update(MessageEnvelope)
+      .set({ [field]: () => 'now()' })
+      .where(
+        `"messageId" = :messageId AND "recipientUserId" = :recipientUserId
+           AND "recipientDeviceId" = :recipientDeviceId AND "${field}" IS NULL`,
+        { messageId, recipientUserId, recipientDeviceId },
+      )
+      .execute();
   }
 
   /**

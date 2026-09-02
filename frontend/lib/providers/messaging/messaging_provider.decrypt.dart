@@ -57,6 +57,203 @@ extension MessagingDecrypt on MessagingProvider {
     }
   }
 
+  /// Which device this session is, but ONLY once the server has confirmed it on
+  /// `socketReady` (spec §12 amendment (xii)). Null while unconfirmed, which
+  /// makes every device-scoped own-row decision fall back to "treat it as our
+  /// own send" — the safe direction, since the alternative would decrypt a
+  /// ciphertext this device produced and burn the only plaintext copy.
+  int? get _confirmedOwnDeviceId {
+    final enc = _encryptionProvider;
+    if (enc == null || !enc.ownDeviceIdConfirmed) return null;
+    return enc.ownDeviceId;
+  }
+
+  /// The master decrypt gate, device-scoped. Single source of truth for every
+  /// decrypt entry point in this provider.
+  bool _needsDecryption(MessageModel m) =>
+      m.needsDecryption(_currentUserId, ownDeviceId: _confirmedOwnDeviceId);
+
+  /// Our own row produced by ANOTHER of our devices (spec §12 amendment (xi)):
+  /// decrypt it as ordinary inbound, and NEVER let it touch the pending-send
+  /// record — that record belongs to a genuinely in-flight local send.
+  bool _isSelfSyncRow(MessageModel m) =>
+      m.isSelfSyncRow(_currentUserId, _confirmedOwnDeviceId);
+
+  /// Is the device that PRODUCED this ciphertext still live in the sender's
+  /// verified device list (spec §12 amendments (e)/(xxvii))?
+  ///
+  /// Fail-closed, but only on VERIFIED data, and never with a terminal verdict:
+  /// whichever way this answers false, the row is recorded in
+  /// [_acceptGateWithheldIds] so the post-retry sweep does not stamp
+  /// `[Decryption failed]` over it and the recovery pass does not ask the peer
+  /// to re-key a session that is perfectly healthy. Nothing failed here — we
+  /// either refused a revoked sender or do not yet know.
+  ///
+  /// Own rows never reach here — the (xi) own-row branches run first — so this
+  /// gates genuine inbound envelopes only.
+  Future<bool> _originDeviceIsLive(MessageModel m) async {
+    final enc = _encryptionProvider;
+    if (enc == null) return false;
+    final originDeviceId = m.originDeviceId ?? 1;
+    final cached = enc.cachedDeviceList(m.senderId);
+    if (cached != null) {
+      if (cached.isLiveDevice(originDeviceId)) {
+        _acceptGateWithheldIds.remove(m.id);
+        return true;
+      }
+      _acceptGateWithheldIds.add(m.id);
+      _e2eFlowLog('DECRYPT_REFUSED_REVOKED_ORIGIN', {
+        'msgId': m.id,
+        'senderId': m.senderId,
+        'originDeviceId': originDeviceId,
+        'listVersion': cached.version,
+      });
+      return false;
+    }
+    // No verified list held for this sender yet — the normal state after any
+    // reload, since the cache is memory-only. AWAIT one round trip rather than
+    // deferring the row: deferring would leave the first inbound message of
+    // every session sitting at `[encrypted]` until something else happened to
+    // re-trigger a decrypt pass.
+    try {
+      final fetched = await enc.getVerifiedDeviceList(m.senderId);
+      if (fetched.isLiveDevice(originDeviceId)) {
+        _acceptGateWithheldIds.remove(m.id);
+        return true;
+      }
+      _acceptGateWithheldIds.add(m.id);
+      _e2eFlowLog('DECRYPT_REFUSED_REVOKED_ORIGIN', {
+        'msgId': m.id,
+        'senderId': m.senderId,
+        'originDeviceId': originDeviceId,
+        'listVersion': fetched.version,
+      });
+      return false;
+    } catch (e) {
+      // The fetch itself failed (timeout, no TOFU identity, bad chain — the
+      // fail-closed contract of `getVerifiedDeviceList`). What that means here
+      // depends on WHICH device claims to have sent the message:
+      //
+      //  * `originDeviceId >= 2` exists only under multi-device, so a row we
+      //    cannot verify is withheld — that is the whole point of (e).
+      //  * device 1 keeps its pre-T6 behaviour and decrypts. Refusing it would
+      //    let one broken (or withheld) `getDeviceList` answer silence EVERY
+      //    conversation of a single-device account, and it buys almost nothing:
+      //    §5.5 refuses to revoke a primary at all, and the only path that
+      //    revokes device 1 is the §6.2 reset — which also replaces the
+      //    account identity, so that device's ciphertext no longer decrypts
+      //    for anyone regardless of this check.
+      if (originDeviceId == 1) {
+        _acceptGateWithheldIds.remove(m.id);
+        _e2eFlowLog('ACCEPT_GATE_LIST_UNAVAILABLE_DEVICE1', {
+          'msgId': m.id,
+          'senderId': m.senderId,
+          'error': e.toString(),
+        });
+        return true;
+      }
+      _acceptGateWithheldIds.add(m.id);
+      _e2eFlowLog('DECRYPT_WITHHELD_NO_LIST', {
+        'msgId': m.id,
+        'senderId': m.senderId,
+        'originDeviceId': originDeviceId,
+        'error': e.toString(),
+      });
+      return false;
+    }
+  }
+
+  /// Reacts to a peer's in-band device-list claim (spec §12 (xv)/(xvi)).
+  ///
+  /// Everything here is deliberately modest: at most ONE rate-limited re-fetch,
+  /// a calm "syncing" flag for our own skew, and a durable diagnostic when our
+  /// OWN verified data confirms a peer is frozen. A claim by itself never
+  /// changes trust, never blocks a send, and never raises the identity surface
+  /// (I7) — an injected claim would otherwise be a remote off switch for this
+  /// client's warnings, or a way to make us cry wolf until the user stops
+  /// listening.
+  void _evaluateSenderListInfo(int senderId, Object? rawClaim) {
+    final enc = _encryptionProvider;
+    final me = _currentUserId;
+    if (enc == null || me == null || senderId == me) return;
+    final claim = SenderListInfo.fromJson(rawClaim);
+    if (claim == null) return;
+
+    final ourPeerView = enc.cachedDeviceList(senderId);
+    final ourOwnView = enc.cachedDeviceList(me);
+    final outcome = SenderListInfoChecker.evaluate(
+      claim: claim,
+      ourVersionOfPeer: ourPeerView?.version,
+      ourHashOfPeer: ourPeerView?.listHash,
+      ourOwnVersion: ourOwnView?.version,
+      ourOwnHash: ourOwnView?.listHash,
+    );
+
+    switch (outcome) {
+      case SenderListInfoOutcome.consistent:
+        _setDevicesSyncing(false);
+      case SenderListInfoOutcome.ownDevicesSyncing:
+        // Benign: our own devices have not converged yet. The calm state is
+        // raised only while we are actually DOING something about it — the peer
+        // controls the claimed version, so raising it on every message would let
+        // it pin "syncing devices…" on forever as a nuisance. Bounded by the
+        // same limiter as the fetch: one window per cooldown, cleared as soon as
+        // our own list comes back.
+        if (_listRefreshLimiter.tryBegin(me)) {
+          _setDevicesSyncing(true);
+          enc.invalidateDeviceList(me);
+          enc
+              .getVerifiedDeviceList(me)
+              .onError((_, _) => const VerifiedDeviceList.notEnrolled())
+              .whenComplete(() {
+                _setDevicesSyncing(false);
+                _listRefreshLimiter.end(me);
+              });
+        }
+      case SenderListInfoOutcome.refreshPeerList:
+        // The peer claims a newer list than we hold — the common, legitimate
+        // case (it linked a device). ONE re-fetch, then the claim is discarded;
+        // a parallel re-fetch would let a stale answer overwrite a fresh one.
+        if (_listRefreshLimiter.tryBegin(senderId)) {
+          enc.invalidateDeviceList(senderId);
+          enc
+              .getVerifiedDeviceList(senderId)
+              .onError((_, _) => const VerifiedDeviceList.notEnrolled())
+              .whenComplete(() => _listRefreshLimiter.end(senderId));
+        }
+      case SenderListInfoOutcome.peerListFrozen:
+        // Our OWN verified data disagrees with what the sender claims about its
+        // own list. That is a real inconsistency between two signed views — but
+        // the claimed version and hash are peer-controlled and NOT DAK-signed,
+        // so the durable record is DEDUPED per sender. The ring holds 80 entries
+        // and evicts oldest-first, so recording one row per message would let a
+        // peer forging a mismatch on every message evict every other piece of
+        // forensic evidence (`CONTENT_KEY_LOST`, `OWN_IDENTITY_REPLACED`, …).
+        // One surviving row per peer is all an operator needs; the flow log
+        // (ring-only, not durable) keeps the per-message detail.
+        E2ePersistentDiag.recordDeduped(
+          'SENDER_LIST_INFO_FROZEN',
+          {
+            'senderId': senderId,
+            'claimedVersion': claim.ownVersion,
+            'ourVersion': ourPeerView?.version,
+          },
+          matchAll: ['senderId: $senderId,'],
+        );
+        _e2eFlowLog('SENDER_LIST_INFO_FROZEN', {
+          'senderId': senderId,
+          'claimedVersion': claim.ownVersion,
+          'ourVersion': ourPeerView?.version,
+        });
+    }
+  }
+
+  void _setDevicesSyncing(bool value) {
+    if (_devicesSyncing == value) return;
+    _devicesSyncing = value;
+    notifyListeners();
+  }
+
   /// True for a row that still NEEDS a decrypt pass: shows the "[encrypted]"
   /// placeholder AND has no usable decrypted content. The second check is
   /// load-bearing: restored keyed-media rows (voice/image) legitimately keep
@@ -67,7 +264,11 @@ extension MessagingDecrypt on MessagingProvider {
   /// SESSION_RESET{historyRetry} loop).
   bool _isUnresolvedEncryptedInbound(MessageModel m) =>
       !_isRetiredMessage(m) &&
-      m.needsDecryption(_currentUserId) &&
+      // A row the accept gate withheld is not "unresolved" in the sense this
+      // predicate means: asking the peer to re-key would not change the answer,
+      // because the refusal is about WHICH DEVICE sent it (amendment (e)).
+      !_acceptGateWithheldIds.contains(m.id) &&
+      _needsDecryption(m) &&
       m.displayAsEncryptedPlaceholder &&
       !_hasUsableDecryptedContent(m);
 
@@ -89,8 +290,25 @@ extension MessagingDecrypt on MessagingProvider {
 
   MessageModel _retiredMessagePlaceholder(MessageModel msg) =>
       msg.content == kRetiredMessageLabel
-          ? msg
-          : msg.copyWith(content: kRetiredMessageLabel);
+      ? msg
+      : msg.copyWith(content: kRetiredMessageLabel);
+
+  /// Stamp the honest "sent before this device was linked" placeholder on a row
+  /// the server marked `none_for_device` (spec §12 amendment (viii)).
+  ///
+  /// Deliberately NOT `[Decryption failed]`: nothing failed. The row simply
+  /// predates this device, and Matrix's `UtdCause::SentBeforeWeJoined` draws
+  /// the same distinction for the same reason.
+  bool _markMessageNotLinkedYet(MessageModel msg) {
+    final idx = _messages.indexWhere((m) => m.id == msg.id);
+    if (idx == -1 || _messages[idx].content == kNotLinkedYetMessageLabel) {
+      return false;
+    }
+    _messages[idx] = _messages[idx].copyWith(
+      content: kNotLinkedYetMessageLabel,
+    );
+    return true;
+  }
 
   bool _conversationHasUndecryptedInbound(int conversationId) {
     return _messages.any(
@@ -186,9 +404,15 @@ extension MessagingDecrypt on MessagingProvider {
   }
 
   /// True when [msg] has displayable plaintext (or decrypted media), not an E2E placeholder.
+  ///
+  /// The `none_for_device` sentinel is a placeholder too (amendment (lxvi)
+  /// clause 2): counting it as usable let the snapshot hydration skip the
+  /// persisted copy, so a re-linked install showed "sent before this device
+  /// was linked" over rows it had already decrypted under its previous id.
   bool _hasUsableDecryptedContent(MessageModel msg) {
     if (_isRetiredMessage(msg) ||
         msg.content == _kDecryptionFailedLabel ||
+        msg.content == kNotLinkedYetMessageLabel ||
         msg.content == '[Encryption not initialized]') {
       return false;
     }
@@ -208,7 +432,7 @@ extension MessagingDecrypt on MessagingProvider {
         msg.messageType != MessageType.text) {
       return true;
     }
-    if (!msg.needsDecryption(_currentUserId)) {
+    if (!_needsDecryption(msg)) {
       if (msg.content == _kEncryptedPlaceholderLabel ||
           msg.displayAsEncryptedPlaceholder) {
         return false;
@@ -396,7 +620,7 @@ extension MessagingDecrypt on MessagingProvider {
         continue;
       }
       if (_hasUsableDecryptedContent(row)) continue;
-      if (row.needsDecryption(_currentUserId)) {
+      if (_needsDecryption(row)) {
         final cached = provider.getCachedDecryption(row.id);
         if (cached != null &&
             _hasUsableDecryptedContent(cached) &&
@@ -491,9 +715,7 @@ extension MessagingDecrypt on MessagingProvider {
       return;
     }
     final toDecrypt = _messages
-        .where(
-          (m) => m.needsDecryption(_currentUserId) && !_isRetiredMessage(m),
-        )
+        .where((m) => _needsDecryption(m) && !_isRetiredMessage(m))
         .length;
     if (toDecrypt > 0) {
       _e2eFlowLog('HISTORY_DECRYPT_START', {'count': toDecrypt});
@@ -533,7 +755,7 @@ extension MessagingDecrypt on MessagingProvider {
         if (_markMessageAsRetired(msg)) changed = true;
         continue;
       }
-      if (msg.needsDecryption(_currentUserId)) {
+      if (_needsDecryption(msg)) {
         // Cache-first: only skip live decrypt when cache holds real plaintext.
         final cached = _encryptionProvider?.getCachedDecryption(msg.id);
         if (cached != null) {
@@ -624,6 +846,15 @@ extension MessagingDecrypt on MessagingProvider {
           if (_markMessageAsRetired(rowForDecrypt)) changed = true;
           continue;
         }
+        // The server said this device has no ciphertext for this row by design
+        // (spec §12 amendment (viii)): it predates this device's link. There is
+        // nothing to decrypt, so it must never enter the pass and degrade into
+        // `[Decryption failed]` — it renders an honest placeholder instead. Not
+        // a destruction trigger either (I8, falsification 13).
+        if (rowForDecrypt.envelopeStatus == 'none_for_device') {
+          if (_markMessageNotLinkedYet(rowForDecrypt)) changed = true;
+          continue;
+        }
         if (_hasUsableDecryptedContent(rowForDecrypt)) {
           _encryptionProvider?.cacheDecryption(msg.id, rowForDecrypt);
           continue;
@@ -640,6 +871,10 @@ extension MessagingDecrypt on MessagingProvider {
           changed = true;
         }
       } else if (msg.senderId == _currentUserId &&
+          // Origin-scoped (amendment (xi)): only the device that SENT the row
+          // holds its plaintext locally, so only that device restores from the
+          // local store. A self-sync copy took the decrypt branch above.
+          !_isSelfSyncRow(msg) &&
           (msg.content == _kEncryptedPlaceholderLabel ||
               _missingEncryptedMediaKeys(msg))) {
         // Own-message branch, same batched snapshot + fall-through.
@@ -684,17 +919,62 @@ extension MessagingDecrypt on MessagingProvider {
         } else {
           // Lost-ack reconcile: the `messageSent` ack died with a socket drop,
           // so this own row arrived as '[encrypted]' with nothing persisted
-          // under its real id. Match the durable pending-send record by EXACT
-          // ciphertext equality (unique by ratchet construction — a miss means
-          // stay '[encrypted]', never a heuristic guess; see the 07-08 field
-          // case msg 14667 and docs/runbooks/e2e-decryption-failed.md).
-          final ciphertext = msg.encryptedContent;
+          // under its real id.
+          //
+          // The key MUST mirror what the send path saved the record under
+          // (`messaging_provider.send.dart`): a legacy send stores it under the
+          // exact ciphertext, a fan-out under the send token. So try the
+          // ciphertext FIRST — a legacy row always has one, and it also carries
+          // an echoed `sendToken` (the server persists the token for its own
+          // idempotency and returns it to the origin device), so preferring the
+          // token here would look up a key the record was never saved under and
+          // strand the plaintext. That plaintext is the ONLY copy: a Signal
+          // sender cannot decrypt its own ciphertext (`frontend/CLAUDE.md` §5).
+          //
+          // A NEW-MODEL row has a NULL ciphertext for its origin device
+          // (`envelopeStatus: own_origin`), so it falls through to the token —
+          // which is exactly the case amendment (ix) added the token for.
+          //
+          // A miss means stay '[encrypted]', never a heuristic guess (the 07-08
+          // field case msg 14667, docs/runbooks/e2e-decryption-failed.md).
+          //
+          // ORIGIN-SCOPED, asserted not assumed (spec §12 amendment (xiv)): only
+          // the device that SENT the row may consume its pending record. A
+          // self-sync copy from another of our devices reaches here with a real
+          // ciphertext that is meaningless as a record key, and a lookup under it
+          // could only ever collide with a genuinely in-flight local send. Today
+          // the server withholds the `sendToken` from every non-origin device,
+          // which makes such a collision unreachable — this check is what keeps
+          // it unreachable if that ever changes.
+          //
+          // The same rule has to hold in the window BEFORE `socketReady`
+          // confirms which device we are (amendment (xii)), where
+          // `_isSelfSyncRow` cannot answer yet. Three cases, and only one of
+          // them defers:
+          //  * `own_origin` — the SERVER already compared the origin to this
+          //    session's device and says we sent it (branch 1 of (xi)); no
+          //    local device id is needed, and this is the row whose only key
+          //    IS the token, so it must reconcile immediately;
+          //  * NULL `originDeviceId` — pre-migration or legacy-client, device 1
+          //    by definition. Every production send is this shape until
+          //    enrollment ships, so deferring it would strand real plaintext
+          //    against a server that never echoes a deviceId;
+          //  * an origin CLAIM we cannot yet compare — no record key, because
+          //    consuming on an unevaluated origin is exactly what (xiv) forbids.
+          final serverSaysThisDeviceSentIt = msg.envelopeStatus == 'own_origin';
+          final originUnknowable =
+              !serverSaysThisDeviceSentIt &&
+              msg.originDeviceId != null &&
+              _confirmedOwnDeviceId == null;
+          final recordKey = (_isSelfSyncRow(msg) || originUnknowable)
+              ? null
+              : msg.encryptedContent ?? msg.sendToken;
           // Peek (never consume-first): the pending record is the ONLY
           // surviving plaintext copy, and saveDecryptedContent swallows
           // failures — so persist, VERIFY by read-back, and only then take.
           // A failed persist leaves the record for the next history pass.
-          final pending = ciphertext != null
-              ? await _encryptionProvider!.peekPendingSendRecord(ciphertext)
+          final pending = recordKey != null
+              ? await _encryptionProvider!.peekPendingSendRecord(recordKey)
               : null;
           if (pending != null) {
             final restoredType = _parseMessageTypeString(
@@ -746,7 +1026,7 @@ extension MessagingDecrypt on MessagingProvider {
                 (pendingContent.isNotEmpty ||
                     persisted?['messageType'] != null);
             if (verified) {
-              await _encryptionProvider!.takePendingSendRecord(ciphertext!);
+              await _encryptionProvider!.takePendingSendRecord(recordKey!);
             }
             final idx = _messages.indexWhere((m) => m.id == msg.id);
             if (idx != -1) {
@@ -838,7 +1118,12 @@ extension MessagingDecrypt on MessagingProvider {
         if (_markMessageAsRetired(m)) changed = true;
         continue;
       }
-      if (!m.needsDecryption(_currentUserId)) continue;
+      if (!_needsDecryption(m)) continue;
+      // Withheld by the accept-side revocation gate (amendment (e)/(xxvii)):
+      // nothing failed, so it must not be labelled as a failure. A revoked
+      // origin stays a silent placeholder; an undecided one is retried once a
+      // verified list arrives.
+      if (_acceptGateWithheldIds.contains(m.id)) continue;
       if (!_hasUsableDecryptedContent(m) &&
           m.content != _kDecryptionFailedLabel &&
           (m.displayAsEncryptedPlaceholder ||
@@ -870,7 +1155,7 @@ extension MessagingDecrypt on MessagingProvider {
     final retryablePeerIds = <int>{
       for (final m in _messages)
         if (peerIds.contains(m.senderId) &&
-            m.needsDecryption(_currentUserId) &&
+            _needsDecryption(m) &&
             !_isRetiredMessage(m))
           m.senderId,
     };
@@ -887,7 +1172,7 @@ extension MessagingDecrypt on MessagingProvider {
             .where(
               (m) =>
                   retryablePeerIds.contains(m.senderId) &&
-                  m.needsDecryption(_currentUserId) &&
+                  _needsDecryption(m) &&
                   !_isRetiredMessage(m),
             )
             .toList()
@@ -959,20 +1244,23 @@ extension MessagingDecrypt on MessagingProvider {
     if (_isRetiredMessage(msg)) {
       return Future.value(_retiredMessagePlaceholder(msg));
     }
-    if (msg.senderId == _currentUserId) {
+    // Our OWN send: skip the ratchet (a Signal sender cannot decrypt its own
+    // output). A self-sync copy from another of our devices is NOT our own
+    // send in this sense — it is ordinary inbound and must decrypt (xi).
+    if (msg.senderId == _currentUserId && !_isSelfSyncRow(msg)) {
       return Future.value(msg);
     }
     return _runDecryptSerialized(msg.senderId, () => _decryptMessageAsync(msg));
   }
-
 
   Future<MessageModel> _decryptMessageAsync(MessageModel msg) async {
     // Defense in depth for any future caller that bypasses the serialized entry
     // point: retired ciphertext must never reach Signal decryption.
     if (_isRetiredMessage(msg)) return _retiredMessagePlaceholder(msg);
     // Own messages: server stored "[encrypted]" as content but we already
-    // showed plaintext optimistically, so skip decryption for our own messages.
-    if (msg.senderId == _currentUserId) return msg;
+    // showed plaintext optimistically, so skip decryption for our own sends.
+    // Origin-scoped: a self-sync row has no local plaintext to show (xi).
+    if (msg.senderId == _currentUserId && !_isSelfSyncRow(msg)) return msg;
 
     // Already decrypted (e.g. live path) — never re-run ratchet decrypt on the
     // same ciphertext; that advances the session and causes Bad Mac on retry.
@@ -1053,16 +1341,29 @@ extension MessagingDecrypt on MessagingProvider {
       return msg.copyWith(content: '[Encryption not initialized]');
     }
 
+    // Accept-side revocation (spec §12 amendments (e)/(xxvii)). Revocation is
+    // bidirectional: a revoked device's ciphertext must not be accepted just
+    // because a session for it exists. Checked HERE, after the own-row law's
+    // branches, so it only ever gates a genuine inbound envelope.
+    if (!await _originDeviceIsLive(msg)) {
+      // Left RETRYABLE on purpose — no ledger consumption, no terminal
+      // failure. A refusal here is silent (I7: this is a decrypt refusal, not
+      // an alarm surface).
+      return msg;
+    }
+
     // hasSession + ciphertext type make every failure self-explaining in the
     // field: a type-1 (Signal) message with hasSession:false is state loss on
     // our side; type 3 (PreKey) failing means OTP/identity trouble. Ids,
     // types and booleans only — never plaintext or key material.
     final hadSessionAtDecrypt = await _encryptionProvider!.hasSessionWith(
       msg.senderId,
+      deviceId: msg.originDeviceId ?? 1,
     );
     _e2eFlowLog('DECRYPT_START', {
       'msgId': msg.id,
       'senderId': msg.senderId,
+      'originDeviceId': msg.originDeviceId ?? 1,
       'ctype': _ciphertextType(msg.encryptedContent),
       'hasSession': hadSessionAtDecrypt,
     });
@@ -1071,6 +1372,10 @@ extension MessagingDecrypt on MessagingProvider {
         msg.senderId,
         msg.encryptedContent!,
         messageId: msg.id,
+        // The pairwise session is keyed by the device that PRODUCED this
+        // ciphertext (spec §5.4). A NULL originDeviceId is a pre-migration or
+        // legacy-client row, i.e. device 1.
+        deviceId: msg.originDeviceId ?? 1,
       );
       // Decrypt from this peer works again — allow a future failure to issue
       // a fresh rebuild request.
@@ -1081,6 +1386,11 @@ extension MessagingDecrypt on MessagingProvider {
           'msgId': msg.id,
           'contentLength': parsed.content.length,
         });
+        // §5.2 layer 2 (amendment (xv)/(xvi)): the sender told us which
+        // device-list versions it addressed this message from. Evaluate it
+        // against DAK-verified data we already hold. A bare claim NEVER alarms
+        // and NEVER changes trust (I7) — it can only make us re-check.
+        _evaluateSenderListInfo(msg.senderId, parsed.senderListInfo);
         // SSRF: validate imageUrl before storing
         final safeImageUrl =
             parsed.linkPreviewImageUrl != null &&
@@ -1198,19 +1508,23 @@ extension MessagingDecrypt on MessagingProvider {
       // (design terminal-duplicate-retirement.md §4). Trailing delimiters in
       // the match substrings stop an id from prefix-matching a longer one;
       // the payload's key order is pinned by a line-format test.
-      E2ePersistentDiag.recordDeduped('DECRYPT_DECISION', {
-        'msgId': msg.id,
-        'senderId': msg.senderId,
-        'kind': kind.name,
-        'rule': decision.rule.name,
-        'isHistory': _decryptingHistory,
-        'idReset': _encryptionProvider?.hadIdentityReset == true,
-        'hadSession': hadSessionAtDecrypt,
-        'persist': decision.persistTerminalFailure,
-        'markFailed': decision.markContentFailed,
-        'retry': decision.retryAction.name,
-        'notifyPeer': decision.notifyPeerRebuild,
-      }, matchAll: ['{msgId: ${msg.id},', ' kind: ${kind.name},']);
+      E2ePersistentDiag.recordDeduped(
+        'DECRYPT_DECISION',
+        {
+          'msgId': msg.id,
+          'senderId': msg.senderId,
+          'kind': kind.name,
+          'rule': decision.rule.name,
+          'isHistory': _decryptingHistory,
+          'idReset': _encryptionProvider?.hadIdentityReset == true,
+          'hadSession': hadSessionAtDecrypt,
+          'persist': decision.persistTerminalFailure,
+          'markFailed': decision.markContentFailed,
+          'retry': decision.retryAction.name,
+          'notifyPeer': decision.notifyPeerRebuild,
+        },
+        matchAll: ['{msgId: ${msg.id},', ' kind: ${kind.name},'],
+      );
       // Terminal-duplicate retirement (design terminal-duplicate-retirement.md
       // §3): a HISTORY row failing `duplicate` with no ledger entry is the
       // retry-forever class the ledger gate cannot reach. Guard (a) — the
@@ -1285,9 +1599,15 @@ extension MessagingDecrypt on MessagingProvider {
     final enc = _encryptionProvider;
     if (enc == null) return null;
     // Belt and braces on guard (d): retired rows short-circuit at the entry
-    // points and own messages return before decrypt, but this rule must hold
-    // even if a future caller bypasses them.
-    if (enc.isRetired(msg.id) || msg.senderId == _currentUserId) return null;
+    // points and our own sends return before decrypt, but this rule must hold
+    // even if a future caller bypasses them. Origin-scoped (amendment (xi)): a
+    // self-sync copy IS a served envelope, so it is eligible for this rule like
+    // any other inbound row — only THIS device's own sends are exempt, because
+    // they never had an envelope to be a duplicate of.
+    if (enc.isRetired(msg.id) ||
+        (msg.senderId == _currentUserId && !_isSelfSyncRow(msg))) {
+      return null;
+    }
     final exists = await enc.recordExists(msg.id);
     final replayable = await enc.rawReplayExists(msg.id);
     if (exists == true || replayable == true) {

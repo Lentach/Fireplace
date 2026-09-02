@@ -23,7 +23,9 @@ import '../widgets/top_snackbar.dart';
 import '../l10n/app_localizations.dart';
 import 'appearance_screen.dart';
 import 'blocked_users_screen.dart';
+import 'devices_screen.dart';
 import 'privacy_safety_screen.dart';
+import 'recovery_key_screen.dart';
 import '../utils/instant_opaque_route.dart';
 import 'user_card_screen.dart';
 
@@ -527,6 +529,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     },
                   ),
                   SettingsConsoleRow(
+                    glyph: ConsoleGlyph.keys,
+                    title: l10n.recoveryKeyTitle,
+                    subtitle: l10n.recoveryKeySubtitle,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const RecoveryKeyScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  SettingsConsoleRow(
                     glyph: ConsoleGlyph.blocked,
                     title: l10n.blocked,
                     onTap: () {
@@ -537,12 +551,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       );
                     },
                   ),
-                  // No onTap today - this row reports the device, it does not
-                  // navigate. Kept non-interactive rather than faking a target.
                   SettingsConsoleRow(
                     glyph: ConsoleGlyph.devices,
                     title: l10n.devices,
                     subtitle: _deviceName ?? l10n.devicesLoading,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const DevicesScreen(),
+                        ),
+                      );
+                    },
                   ),
                   if (kIsWeb)
                     SettingsConsoleRow(

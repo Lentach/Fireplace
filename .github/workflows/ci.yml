@@ -237,11 +237,134 @@ jobs:
         working-directory: frontend
         run: flutter pub get
 
+      # The opt-in §6.2 reset probe drives Postgres out of band through
+      # `e2eSql`, whose container default is a developer's local compose
+      # project name and is therefore WRONG on a runner. Resolve it from
+      # compose itself so the coupling is explicit and correct the day that
+      # probe is enabled here (it is skipped by default, so this is inert now).
+      - name: Resolve the db container for the opt-in SQL channel
+        run: echo "E2E_DB_CONTAINER=$(docker compose ps -q db)" >> "$GITHUB_ENV"
+
       # test_e2e is a sibling of test/, so the fast lane never picks it up.
       # Fresh accounts every run is BY DESIGN - see frontend/CLAUDE.md 1.
       - name: Run the wire harness
         working-directory: frontend
         run: flutter test test_e2e
+
+      - name: Backend logs on failure
+        if: failure()
+        run: docker compose logs --tail 200 backend
+
+      - name: Tear down
+        if: always()
+        run: docker compose down   # no -v: CLAUDE.md 4 bans that flag; do not normalise it
+
+  # U7 + (liv). The isolated probes: wire tests that need a FRESH `/auth/register`
+  # bucket and so cannot live in the shared `test_e2e` run.
+  #
+  #  * The §6.2 reset probe is the ONLY proof that a completed ceremony re-keys
+  #    strictly within `(identity, deviceId)` (falsification 12) and that the
+  #    roster teardown runs. Until U7 nothing ran it, so that proof existed only
+  #    on a developer's machine.
+  #  * The (liv) enrolled-identity-lock probe is the only BEHAVIOURAL proof of
+  #    finding F1 — the most severe finding on this branch. Its other coverage
+  #    mocks `authorizationRepo.findOne`, which proves the branch but not the
+  #    QUERY: it would stay green if the gate were wired to the wrong table, if
+  #    the partial `select` misbehaved against real TypeORM, or if the entity were
+  #    missing from the DataSource — the last of which actually shipped in Phase
+  #    0a and only the live harness caught it.
+  #
+  # THEY MUST BE OFF `e2e-wire`. `/auth/register` is 10 per HOUR per IP, the
+  # limiter is in-memory in the backend process, and every account in `test_e2e/`
+  # shares that one bucket — the default run already spends it to the edge
+  # (measured 2026-08-22: a third account pushed `takeover_alarm_test.dart` into
+  # ThrottlerException). A fresh backend is what resets it. Never raise the
+  # production cap to fit a test.
+  #
+  # Budget on THIS stack: reset probe 2 registers + lock probe 2 = 4 of 10.
+  # Both probes are also destructive or state-heavy (the ceremony replaces the
+  # account identity, revokes every device and burns a device id forward), so
+  # they need accounts nothing else depends on. A dedicated stack gives them that.
+  e2e-isolated-probes:
+    name: E2E isolated probes
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Start backend + Postgres
+        run: docker compose up -d --wait --wait-timeout 300 || docker compose up -d
+
+      - name: Wait for /health
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/health > /dev/null 2>&1; then
+              echo "backend healthy after ${i}0s"; exit 0
+            fi
+            sleep 10
+          done
+          echo "backend never became healthy"; docker compose logs --tail 100 backend; exit 1
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install Flutter dependencies
+        working-directory: frontend
+        run: flutter pub get
+
+      # REQUIRED here, unlike in e2e-wire where it is inert: this probe ages
+      # `identity_reset_requests."deadlineAt"` through `e2eSql`, whose container
+      # default is a developer's local compose project name and is wrong on a
+      # runner. The probe then lets the REAL per-minute completeDueResets sweep
+      # authorize the replacement, which is why the delay is aged and not waited.
+      - name: Resolve the db container for the SQL channel
+        run: echo "E2E_DB_CONTAINER=$(docker compose ps -q db)" >> "$GITHUB_ENV"
+
+      # The ENTIRE group is `skip:`-gated on bool.fromEnvironment('RESET_PROBE')
+      # (identity_reset_teardown_test.dart:48). Drop or typo that define and
+      # `flutter test` skips everything and EXITS 0 — the job would report green
+      # while proving nothing, and this probe is the only automated proof that a
+      # completed §6.2 reset re-keys strictly within (identity, deviceId)
+      # (falsification 12). So assert a test actually PASSED.
+      #
+      # BOTH reporter shapes must be accepted, because they differ by
+      # environment and the first version of this guard matched only the local
+      # one and failed a genuinely green CI run:
+      #   CI:    `🎉 2 tests passed.`
+      #   local: `00:58 +2: All tests passed!`
+      # A fully skipped run reports a ZERO count in either shape, which the
+      # leading [1-9] rejects.
+      - name: Run the reset teardown probe
+        working-directory: frontend
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter test test_e2e/identity_reset_teardown_test.dart \
+            --dart-define=RESET_PROBE=true | tee probe.log
+          if ! grep -Eq '(^|[^0-9])[1-9][0-9]* tests? passed|\+[1-9][0-9]*[ :].*All tests passed' probe.log; then
+            echo "::error::the reset probe reported no PASSING test — the RESET_PROBE define is not taking effect, so this job proves nothing"
+            exit 1
+          fi
+
+      # Same skip-gate and therefore the same silent-green hazard as above: the
+      # (liv) group is gated on bool.fromEnvironment('ENROLLED_LOCK_PROBE'), so
+      # the guard is what stops a dropped define reporting success.
+      - name: Run the enrolled identity-lock probe ((liv), finding F1)
+        working-directory: frontend
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter test test_e2e/enrolled_identity_lock_test.dart \
+            --dart-define=ENROLLED_LOCK_PROBE=true | tee lock-probe.log
+          if ! grep -Eq '(^|[^0-9])[1-9][0-9]* tests? passed|\+[1-9][0-9]*[ :].*All tests passed' lock-probe.log; then
+            echo "::error::the enrolled-lock probe reported no PASSING test — the ENROLLED_LOCK_PROBE define is not taking effect, so F1 is unproven"
+            exit 1
+          fi
 
       - name: Backend logs on failure
         if: failure()

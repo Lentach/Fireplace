@@ -21,6 +21,7 @@ import '../models/message_model.dart';
 import '../models/user_model.dart';
 import '../widgets/hex_avatar.dart';
 import '../widgets/chat_background_pattern.dart';
+import '../widgets/devices_syncing_note.dart';
 import '../widgets/ping_effect_overlay.dart';
 import '../widgets/top_snackbar.dart';
 import '../widgets/message/pinned_message_banner.dart';
@@ -33,6 +34,7 @@ import '../utils/chat_resume_reassert.dart';
 import '../utils/ping_sound.dart';
 import '../utils/web_keyboard_inset.dart';
 import '../providers/encryption_provider.dart';
+import '../widgets/peer_identity_changed_row.dart';
 import '../services/notification_cleaner_stub.dart'
     if (dart.library.html) '../services/notification_cleaner_web.dart'
     if (dart.library.io) '../services/notification_cleaner_io.dart';
@@ -550,44 +552,55 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     return Positioned(
       bottom: 140,
       right: 16,
-      child: Material(
-        elevation: 2,
-        borderRadius: BorderRadius.circular(24),
-        color: Theme.of(context).colorScheme.surface,
-        child: InkWell(
-          onTap: _onScrollToBottomButtonTap,
+      child: Semantics(
+        button: true,
+        label: AppLocalizations.of(context).chatScrollToBottomSemantics,
+        child: Material(
+          elevation: 2,
           borderRadius: BorderRadius.circular(24),
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                const Icon(Icons.keyboard_arrow_down, size: 28),
-                if (_newMessagesCount > 0)
-                  Positioned(
-                    top: -4,
-                    right: -4,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: const BoxDecoration(
-                        color: Colors.blue,
-                        borderRadius: BorderRadius.all(Radius.circular(10)),
-                      ),
-                      constraints: const BoxConstraints(minWidth: 18),
-                      child: Text(
-                        _newMessagesCount > 99 ? '99+' : '$_newMessagesCount',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
+          color: Theme.of(context).colorScheme.surface,
+          child: InkWell(
+            onTap: _onScrollToBottomButtonTap,
+            borderRadius: BorderRadius.circular(24),
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  const Icon(Icons.keyboard_arrow_down, size: 28),
+                  if (_newMessagesCount > 0)
+                    Positioned(
+                      top: -4,
+                      right: -4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        // Theme tokens, not Colors.blue/Colors.white: the raw
+                        // pair is off-brand on the ember/teal/cosmic themes, and
+                        // white on #2196F3 is ~3.3:1 — under the 4.5:1 gate for
+                        // 11px text. primary/onPrimary is the pairing every other
+                        // count badge in the app already uses.
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primary,
+                          borderRadius: const BorderRadius.all(
+                            Radius.circular(10),
+                          ),
+                        ),
+                        constraints: const BoxConstraints(minWidth: 18),
+                        child: Text(
+                          _newMessagesCount > 99 ? '99+' : '$_newMessagesCount',
+                          style: RpgTheme.bodyFont(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Theme.of(context).colorScheme.onPrimary,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -672,6 +685,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     required List<MessageModel> messages,
     required Color mutedColor,
     required Color messagesAreaBg,
+    required UserModel? peer,
+    required bool peerIdentityChanged,
     required int currentUserId,
   }) {
     // Wallpaper runs full-bleed behind the floating top chrome
@@ -681,14 +696,50 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
         ? 8.0
         : MediaQuery.paddingOf(context).top + 8.0;
     final settings = context.watch<SettingsProvider>();
+    // Phase 0a: unacknowledged peer identity change renders a system row at
+    // the newest end of the timeline (reverse list => index 0). Clears the
+    // moment the user confirms fingerprints in the verify dialog. The flag is
+    // computed (and subscribed) in build() — this helper also runs inside
+    // ChatComposerViewport's build, where context.select is illegal.
+    final identityRowOffset = peerIdentityChanged ? 1 : 0;
     return ChatBackgroundPattern(
       backgroundColor: messagesAreaBg,
       layer: settings.resolvedChatBackground,
       child: messages.isEmpty
-          ? Center(
-              child: Text(
-                AppLocalizations.of(context).noMessagesYet,
-                style: RpgTheme.bodyFont(fontSize: 14, color: mutedColor),
+          // The alarm must survive an EMPTY conversation. This row used to be
+          // rendered ONLY inside the ListView below, so a peer whose identity
+          // changed was announced NOWHERE in exactly the chats most likely to
+          // be empty: cleared history, fully expired history, or a peer who
+          // reset before the first message — and the server
+          // `peerIdentityChanged` event raises the warning with no local
+          // message required, so an empty chat is not a corner case.
+          ? Padding(
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 20,
+                top: topClearance,
+                bottom: 8 + listBottomPadding,
+              ),
+              child: Column(
+                children: [
+                  if (peerIdentityChanged)
+                    PeerIdentityChangedRow(
+                      // Only ever true when the peer is known; see build().
+                      peerId: peer!.id,
+                      peerName: _getContactName(),
+                    ),
+                  Expanded(
+                    child: Center(
+                      child: Text(
+                        AppLocalizations.of(context).noMessagesYet,
+                        style: RpgTheme.bodyFont(
+                          fontSize: 14,
+                          color: mutedColor,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             )
           : Listener(
@@ -715,7 +766,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                           (m) => m.id == key.value,
                         );
                         if (idx == -1) return null;
-                        return messages.length - 1 - idx;
+                        return messages.length - 1 - idx + identityRowOffset;
                       }
                       return null;
                     },
@@ -725,15 +776,27 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                       top: topClearance,
                       bottom: 8 + listBottomPadding,
                     ),
-                    itemCount: messages.length + (_isLoadingMoreLocal ? 1 : 0),
+                    itemCount:
+                        messages.length +
+                        (_isLoadingMoreLocal ? 1 : 0) +
+                        identityRowOffset,
                     itemBuilder: (context, index) {
-                      if (_isLoadingMoreLocal && index == messages.length) {
+                      if (peerIdentityChanged && index == 0) {
+                        return PeerIdentityChangedRow(
+                          // peerIdentityChanged is only computed true in
+                          // build() when otherUser (this `peer`) is non-null.
+                          peerId: peer!.id,
+                          peerName: _getContactName(),
+                        );
+                      }
+                      final effIndex = index - identityRowOffset;
+                      if (_isLoadingMoreLocal && effIndex == messages.length) {
                         return const Padding(
                           padding: EdgeInsets.symmetric(vertical: 8),
                           child: Center(child: CircularProgressIndicator()),
                         );
                       }
-                      final msgIndex = messages.length - 1 - index;
+                      final msgIndex = messages.length - 1 - effIndex;
                       final msg = messages[msgIndex];
                       final showDate =
                           msgIndex == 0 ||
@@ -742,7 +805,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                             msg.createdAt,
                           );
                       return _buildMessageListItem(
-                        listIndex: index,
+                        listIndex: effIndex,
                         msg: msg,
                         showDate: showDate,
                         isMine: msg.senderId == currentUserId,
@@ -844,6 +907,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
         ? RpgTheme.mutedDark
         : RpgTheme.textSecondaryLight;
     final otherUser = _getOtherUser();
+    // Rebuilds when the peer's identity-change warning appears or clears
+    // (Phase 0a timeline row).
+    final peerIdentityChanged =
+        otherUser != null &&
+        context.select<EncryptionProvider, bool>(
+          (e) => e.peersWithChangedIdentity.contains(otherUser.id),
+        );
     final activeConv = convs.getConversationById(widget.conversationId);
     final statusText = _getHeaderStatusText(context, messaging);
     // Long-press the title toggles the iOS keyboard-diagnostics overlay (dev
@@ -912,6 +982,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
       // Embedded header/banner are in-flow — no floating chrome to clear.
       body = Column(
         children: [
+          if (messaging.devicesSyncing) const DevicesSyncingNote(),
           Expanded(
             child: _buildMessagesArea(
               listBottomPadding: 0,
@@ -920,6 +991,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
               mutedColor: mutedColor,
               messagesAreaBg: messagesAreaBg,
               currentUserId: currentUserId,
+              peer: otherUser,
+              peerIdentityChanged: peerIdentityChanged,
             ),
           ),
           composerFooter,
@@ -934,6 +1007,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
         children: [
           if (pinnedBanner != null)
             SafeArea(bottom: false, child: pinnedBanner),
+          if (messaging.devicesSyncing)
+            SafeArea(
+              bottom: false,
+              top: pinnedBanner == null,
+              child: const DevicesSyncingNote(),
+            ),
           Expanded(
             child: ChatComposerViewport(
               messageListBuilder: (listBottomPadding) => _buildMessagesArea(
@@ -943,6 +1022,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                 mutedColor: mutedColor,
                 messagesAreaBg: messagesAreaBg,
                 currentUserId: currentUserId,
+                peer: otherUser,
+                peerIdentityChanged: peerIdentityChanged,
               ),
               composer: composerFooter,
             ),
@@ -963,21 +1044,27 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
             ),
             child: Row(
               children: [
-                GestureDetector(
-                  onTap: _onAvatarTap,
-                  child: HexAvatar(
-                    size: 36,
-                    displayName: contactName,
-                    imageUrl: otherUser?.profilePictureUrl,
-                    surface: FireplaceColors.of(context).convItemBg,
-                    // mutedText, not convItemBorder: the blue border token is
-                    // 1.92:1 on this fill and the ring paints at 0.6 alpha —
-                    // the hex outline vanishes (design review 2026-08-03).
-                    borderColor: FireplaceColors.of(context).mutedText,
-                    initialsStyle: RpgTheme.bodyFont(
-                      fontSize: 36 * 0.34,
-                      fontWeight: FontWeight.w800,
-                      color: colorScheme.onSurface,
+                Semantics(
+                  button: true,
+                  label: AppLocalizations.of(
+                    context,
+                  ).avatarOpenProfileSemantics,
+                  child: GestureDetector(
+                    onTap: _onAvatarTap,
+                    child: HexAvatar(
+                      size: 36,
+                      displayName: contactName,
+                      imageUrl: otherUser?.profilePictureUrl,
+                      surface: FireplaceColors.of(context).convItemBg,
+                      // mutedText, not convItemBorder: the blue border token is
+                      // 1.92:1 on this fill and the ring paints at 0.6 alpha —
+                      // the hex outline vanishes (design review 2026-08-03).
+                      borderColor: FireplaceColors.of(context).mutedText,
+                      initialsStyle: RpgTheme.bodyFont(
+                        fontSize: 36 * 0.34,
+                        fontWeight: FontWeight.w800,
+                        color: colorScheme.onSurface,
+                      ),
                     ),
                   ),
                 ),
@@ -1007,20 +1094,24 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
         // Hex avatar slot (owner ruling 2026-08-03: the chat header speaks the
         // same hex language as the Chats list and the Contacts board; the old
         // bare 52px circle was the round-4 Telegram reference).
-        avatar: GestureDetector(
-          onTap: _onAvatarTap,
-          child: HexAvatar(
-            size: GlassTopBar.capsuleHeight,
-            displayName: contactName,
-            imageUrl: otherUser?.profilePictureUrl,
-            surface: FireplaceColors.of(context).convItemBg,
-            // mutedText for the same 3:1 boundary reason as the embedded
-            // header's hex above.
-            borderColor: FireplaceColors.of(context).mutedText,
-            initialsStyle: RpgTheme.bodyFont(
-              fontSize: GlassTopBar.capsuleHeight * 0.34,
-              fontWeight: FontWeight.w800,
-              color: colorScheme.onSurface,
+        avatar: Semantics(
+          button: true,
+          label: AppLocalizations.of(context).avatarOpenProfileSemantics,
+          child: GestureDetector(
+            onTap: _onAvatarTap,
+            child: HexAvatar(
+              size: GlassTopBar.capsuleHeight,
+              displayName: contactName,
+              imageUrl: otherUser?.profilePictureUrl,
+              surface: FireplaceColors.of(context).convItemBg,
+              // mutedText for the same 3:1 boundary reason as the embedded
+              // header's hex above.
+              borderColor: FireplaceColors.of(context).mutedText,
+              initialsStyle: RpgTheme.bodyFont(
+                fontSize: GlassTopBar.capsuleHeight * 0.34,
+                fontWeight: FontWeight.w800,
+                color: colorScheme.onSurface,
+              ),
             ),
           ),
         ),

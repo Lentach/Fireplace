@@ -19,6 +19,12 @@ class E2eEnvelope {
   static const String _keyTitle = 'title';
   static const String _keyImageUrl = 'imageUrl';
 
+  /// The §5.2 layer-2 device-list cross-check (spec §12 amendment (xv)). Lives
+  /// INSIDE the E2E plaintext: the server never sees it. Unknown keys are
+  /// ignored by [parse], so an older peer simply omits it (the `linkPreview`
+  /// precedent, root `CLAUDE.md` §7).
+  static const String _keySenderListInfo = 'senderListInfo';
+
   static Map<String, dynamic> build(
     String content, {
     String messageType = 'TEXT',
@@ -30,6 +36,7 @@ class E2eEnvelope {
     int? mediaHeight,
     String? mediaThumbHash,
     Map<String, String?>? linkPreview,
+    Map<String, dynamic>? senderListInfo,
   }) {
     final envelope = <String, dynamic>{_keyContent: content};
     if (messageType != 'TEXT') envelope[_keyMessageType] = messageType;
@@ -45,6 +52,9 @@ class E2eEnvelope {
       envelope[_keyMediaThumbHash] = mediaThumbHash;
     }
     if (linkPreview != null) envelope[_keyLinkPreview] = linkPreview;
+    if (senderListInfo != null && senderListInfo.isNotEmpty) {
+      envelope[_keySenderListInfo] = senderListInfo;
+    }
     return envelope;
   }
 
@@ -61,6 +71,7 @@ class E2eEnvelope {
     String? linkPreviewUrl,
     String? linkPreviewTitle,
     String? linkPreviewImageUrl,
+    Object? senderListInfo,
   })
   parse(String jsonStr) {
     final envelope = jsonDecode(jsonStr) as Map<String, dynamic>;
@@ -91,6 +102,7 @@ class E2eEnvelope {
       linkPreviewUrl: lp?[_keyUrl] as String?,
       linkPreviewTitle: lp?[_keyTitle] as String?,
       linkPreviewImageUrl: lp?[_keyImageUrl] as String?,
+      senderListInfo: envelope[_keySenderListInfo],
     );
   }
 

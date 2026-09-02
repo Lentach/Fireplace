@@ -18,8 +18,11 @@ class _PlainEncryption extends EncryptionProvider {
   @override
   bool get hadIdentityReset => false;
 
+  // `deviceId` arrived with the multi-device work (spec §5.2): a send addresses
+  // every live device of the account, not a fixed device 1. This fake predates
+  // that and must track the signature or it stops overriding anything.
   @override
-  Future<void> ensureSession(int recipientId) async {}
+  Future<void> ensureSession(int recipientId, {int deviceId = 1}) async {}
 
   @override
   Future<Map<String, dynamic>?> getDecryptedContent(int messageId) async =>

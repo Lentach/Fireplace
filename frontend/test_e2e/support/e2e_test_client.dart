@@ -18,6 +18,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
+
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
 
 import 'package:fireplace/services/api_service.dart';
 import 'package:fireplace/services/encryption_service.dart';
@@ -37,6 +41,63 @@ String e2eBaseUrl() =>
 /// timers can fire outside the test body's zone.
 void enableRealNetwork() {
   HttpOverrides.global = null;
+}
+
+/// Runs one statement against the harness's own Postgres, out of band.
+///
+/// **This is the only sanctioned out-of-band write in the harness** (spec §12
+/// (xxxvi)), and it exists for exactly one reason: §6.2's reset delay is 72 h,
+/// or 1 h with a valid recovery phrase, and a test may not wait either out. It
+/// AGES the deadline and then lets the real per-minute sweep complete the
+/// ceremony — the production path — rather than forcing the end state.
+///
+/// Deliberately narrow. It is not a general fixture-loading back door: every
+/// other precondition in this suite is built over the wire, because a
+/// precondition built by SQL proves nothing about the code that normally
+/// builds it.
+///
+/// Container and credentials match the harness's own docker-compose stack;
+/// override with `E2E_DB_CONTAINER` when the stack is named differently. If
+/// `docker` is unreachable the caller gets a clear StateError rather than a
+/// mystery timeout — a test that depends on this channel must SKIP or FAIL
+/// loudly, never quietly pass.
+Future<List<List<String>>> e2eSql(String statement) async {
+  final container =
+      Platform.environment['E2E_DB_CONTAINER'] ?? 'fireplace-0a-db-1';
+  final ProcessResult result;
+  try {
+    result = await Process.run('docker', [
+      'exec',
+      container,
+      'psql',
+      '-U',
+      'postgres',
+      '-d',
+      'chatdb',
+      '-At',
+      '-F',
+      '|',
+      '-c',
+      statement,
+    ]);
+  } on ProcessException catch (error) {
+    throw StateError(
+      'e2eSql: could not run docker ($error). The wire harness needs the '
+      'compose stack it is testing against to be locally reachable.',
+    );
+  }
+  if (result.exitCode != 0) {
+    throw StateError(
+      'e2eSql failed (exit ${result.exitCode}) for: $statement\n'
+      '${result.stderr}',
+    );
+  }
+  final out = (result.stdout as String).trim();
+  if (out.isEmpty) return const [];
+  return out
+      .split(RegExp(r'\r?\n'))
+      .map((line) => line.split('|'))
+      .toList(growable: false);
 }
 
 /// Fails fast (clear message instead of a timeout soup) when the backend is
@@ -106,6 +167,23 @@ class EventLog {
   /// triggering the action, or it proves nothing.
   void discard(String event) => _buffer.remove(event);
 
+  /// Awaits an `error` payload whose text contains [marker] and takes it OFF
+  /// [errors].
+  ///
+  /// A refusal the test ASKED for is not an unexpected server error, but
+  /// `record` cannot tell the difference — so without this the end-of-run
+  /// "no unexpected socket errors" assertion would fail on every deliberate
+  /// refusal, and tests would be pushed into not asserting refusals at all.
+  Future<dynamic> takeError(String marker, {String? reason}) async {
+    final payload = await next(
+      'error',
+      where: (p) => p.toString().contains(marker),
+      reason: reason ?? 'error containing "$marker"',
+    );
+    errors.remove(payload);
+    return payload;
+  }
+
   /// Waits for the next [event] payload (optionally matching [where]).
   /// Buffered payloads are consumed first, in arrival order.
   Future<dynamic> next(
@@ -143,17 +221,21 @@ class EventLog {
       },
     );
   }
+
   /// Fails if [event] is already buffered or arrives within [within].
   ///
   /// This delegates matching and waiter cleanup to [next], so it observes the
   /// same whole buffer and future socket events as a positive assertion.
+  /// [where] narrows it to one payload shape, so "no SECOND delivery of this
+  /// message" does not trip over unrelated traffic on the same event.
   Future<void> none(
     String event, {
     required Duration within,
+    bool Function(dynamic payload)? where,
     String? reason,
   }) async {
     try {
-      final payload = await next(event, timeout: within);
+      final payload = await next(event, where: where, timeout: within);
       throw StateError(
         'Unexpected "$event" event'
         '${reason != null ? ' ($reason)' : ''}: $payload',
@@ -162,7 +244,6 @@ class EventLog {
       // No matching event arrived during the requested window.
     }
   }
-
 }
 
 /// One headless account running the real client service stack.
@@ -194,6 +275,33 @@ class E2eClient {
     'preKeyBundleResponse',
     'preKeysLow',
     'sessionRebuildNeeded',
+    'ownIdentityReplaced',
+    'peerIdentityChanged',
+    // Phase 0b: registration lock + reset ceremony.
+    'registrationLockNonce',
+    'identityResetStatus',
+    'identityResetPending',
+    'identityResetCancelled',
+    'identityResetCancelResult',
+    'recoveryKeySet',
+    'ownKeyBundleStatus',
+    // Phase 2 T2: DAK enrollment + signed device list.
+    'deviceAuthorityEnrolled',
+    'deviceListUpdated',
+    'deviceList',
+    'deviceListChanged',
+    // Phase 2 T3: §5.1 provisioning ceremony.
+    'provisioningOpened',
+    'provisioningHelloAck',
+    'provisioningHello',
+    'provisionDeviceAck',
+    'provisioningBlob',
+    'provisioningCompleted',
+    'provisioningCancelled',
+    // Phase 2 T6: §5.5 revocation. Unlisted events are recorded NOWHERE, so
+    // without these two every revocation assert would pass vacuously.
+    'deviceRevocationCompleted',
+    'deviceRevoked',
     'newFriendRequest',
     'friendRequestSent',
     'friendRequestFailed',
@@ -209,9 +317,17 @@ class E2eClient {
     'messageHistory',
     'messageEdited',
     'editMessageFailed',
+    // T7 (§5.7): the delivery/read projection an edit must never regress.
+    // Both statuses ride this ONE event. Unlisted events are recorded NOWHERE,
+    // so without it the F8 stamp-preservation assert would pass vacuously.
+    'messageDelivered',
     'reactionUpdated',
     'messageDeleted',
     'servedMessageIds',
+    // T4 (§5.2 layer 1 + §12 (vi)/(x)): the refused-send answer. EventLog
+    // records nothing that is not listed here, so a missing entry would make
+    // every refusal assert pass vacuously.
+    'deviceListStale',
   ];
 
   /// Registers a brand-new account. Fresh every run BY DESIGN: reusing
@@ -242,7 +358,10 @@ class E2eClient {
   /// Generates or loads this instance's Signal state and returns the exact
   /// public upload payload without touching the server.
   Future<Map<String, dynamic>> initializeKeys() async {
-    await encryption.initialize(userId, checkServerBundleExists: () async => false);
+    await encryption.initialize(
+      userId,
+      checkServerBundleExists: () async => false,
+    );
     final keys = encryption.getKeysForUpload();
     if (keys == null) {
       throw StateError(
@@ -258,6 +377,279 @@ class E2eClient {
       (keys['keyBundle'] as Map).cast<String, dynamic>(),
     );
     await events.next('keyBundleUploaded', reason: '$label key bundle');
+  }
+
+  /// Uploads a bundle WITHOUT any registration-lock proof and returns the
+  /// server's answer payload (success or refusal) instead of asserting.
+  Future<Map<String, dynamic>> uploadKeyBundleRaw(
+    Map<String, dynamic> keys, {
+    String? identitySignature,
+    String? nonce,
+  }) async {
+    final bundle = (keys['keyBundle'] as Map).cast<String, dynamic>();
+    events.discard('keyBundleUploaded');
+    socketService.socket!.emit('uploadKeyBundle', {
+      ...bundle,
+      'identitySignature': ?identitySignature,
+      'nonce': ?nonce,
+    });
+    final answer = await events.next(
+      'keyBundleUploaded',
+      reason: '$label key bundle answer',
+    );
+    return (answer as Map).cast<String, dynamic>();
+  }
+
+  /// Asks the server for a registration-lock nonce (§6.1).
+  Future<String> fetchRegistrationLockNonce() async {
+    events.discard('registrationLockNonce');
+    socketService.socket!.emit('getRegistrationLockNonce', <String, dynamic>{});
+    final payload = await events.next(
+      'registrationLockNonce',
+      reason: '$label registration lock nonce',
+    );
+    return (payload as Map)['nonce'] as String;
+  }
+
+  /// Signs `newIdentityPublicKey ‖ userId ‖ nonce` with the identity key this
+  /// instance currently holds — i.e. produces the proof a legitimate key
+  /// rotation would carry (§6.1).
+  ///
+  /// Reads the key pair out of storage rather than widening the production
+  /// API: nothing in the app has a reason to hand out a private key.
+  ///
+  /// Sound here specifically because this harness only ever runs on the VM:
+  /// `DualStorage` branches on `kIsWeb || _debugForceSealedWeb`, and on the
+  /// non-web side it reads and writes exactly `FlutterSecureStorage`
+  /// (signal_stores.dart:151-157), whose test mock is a static map shared by
+  /// every instance. On web this would read the wrong backend.
+  /// Serialized identity key pair currently in this instance's storage.
+  ///
+  /// Capture this BEFORE any test wipes the shared mock stores to build a
+  /// second installation — the wipe destroys the record, and signing with
+  /// whatever replaced it produces a proof the server correctly refuses.
+  Future<String> exportIdentityPair() async {
+    const storage = FlutterSecureStorage();
+    final raw = await storage.read(key: 'e2e_${userId}_identity_record_v1');
+    if (raw == null) {
+      throw StateError('$label: no identity record to export');
+    }
+    return (jsonDecode(raw) as Map)['pair'] as String;
+  }
+
+  Future<String> signIdentityChange({
+    required String signerPairBase64,
+    required String newIdentityPublicKeyBase64,
+    required String nonceBase64,
+  }) async {
+    final pair = IdentityKeyPair.fromSerialized(base64Decode(signerPairBase64));
+    final message = Uint8List.fromList([
+      ...base64Decode(newIdentityPublicKeyBase64),
+      ...utf8.encode(userId.toString()),
+      ...base64Decode(nonceBase64),
+    ]);
+    // Curve.calculateSignature MUTATES its input — hand it a copy.
+    final signature = Curve.calculateSignature(
+      pair.getPrivateKey(),
+      Uint8List.fromList(message),
+    );
+    return base64Encode(signature);
+  }
+
+  /// Starts a reset ceremony (§6.2) and returns the server's status answer.
+  Future<Map<String, dynamic>> requestIdentityReset({
+    String? recoveryPhrase,
+  }) async {
+    events.discard('identityResetStatus');
+    socketService.socket!.emit('resetIdentityRequest', <String, dynamic>{
+      'recoveryPhrase': ?recoveryPhrase,
+    });
+    final payload = await events.next(
+      'identityResetStatus',
+      reason: '$label reset request answer',
+    );
+    return (payload as Map).cast<String, dynamic>();
+  }
+
+  /// Cancels the pending ceremony and returns whether anything was cancelled.
+  Future<bool> cancelIdentityReset() async {
+    events.discard('identityResetCancelResult');
+    socketService.socket!.emit('resetIdentityCancel', <String, dynamic>{});
+    final payload = await events.next(
+      'identityResetCancelResult',
+      reason: '$label reset cancel answer',
+    );
+    return (payload as Map)['cancelled'] == true;
+  }
+
+  /// Enrolls a recovery phrase (§6.2.1).
+  Future<bool> setRecoveryKey(String phrase) async {
+    events.discard('recoveryKeySet');
+    socketService.socket!.emit('setRecoveryKey', {'phrase': phrase});
+    final payload = await events.next(
+      'recoveryKeySet',
+      reason: '$label recovery key answer',
+    );
+    return (payload as Map)['success'] == true;
+  }
+
+  /// Reads the server's view of this account's key/protection state.
+  Future<Map<String, dynamic>> checkOwnKeyBundle() async {
+    events.discard('ownKeyBundleStatus');
+    socketService.socket!.emit('checkOwnKeyBundle', <String, dynamic>{});
+    final payload = await events.next(
+      'ownKeyBundleStatus',
+      reason: '$label own bundle status',
+    );
+    return (payload as Map).cast<String, dynamic>();
+  }
+
+  /// Emits `enrollDeviceAuthority` (Phase 2 T2, spec §3) and returns the
+  /// server's `deviceAuthorityEnrolled` answer — success or refusal.
+  Future<Map<String, dynamic>> enrollDeviceAuthority(
+    Map<String, dynamic> payload,
+  ) async {
+    events.discard('deviceAuthorityEnrolled');
+    socketService.socket!.emit('enrollDeviceAuthority', payload);
+    final answer = await events.next(
+      'deviceAuthorityEnrolled',
+      reason: '$label enrollment answer',
+    );
+    return (answer as Map).cast<String, dynamic>();
+  }
+
+  /// Emits `updateDeviceList` (a DAK-signed list mutation, spec §3/§5.2) and
+  /// returns the server's `deviceListUpdated` answer.
+  Future<Map<String, dynamic>> updateDeviceList(
+    Map<String, dynamic> payload,
+  ) async {
+    events.discard('deviceListUpdated');
+    socketService.socket!.emit('updateDeviceList', payload);
+    final answer = await events.next(
+      'deviceListUpdated',
+      reason: '$label list update answer',
+    );
+    return (answer as Map).cast<String, dynamic>();
+  }
+
+  /// Emits `getDeviceList` for [targetUserId] and returns the `deviceList`
+  /// answer: `{userId, authorization: {...} | null}`.
+  Future<Map<String, dynamic>> fetchDeviceList(int targetUserId) async {
+    events.discard('deviceList');
+    socketService.socket!.emit('getDeviceList', {'userId': targetUserId});
+    final answer = await events.next(
+      'deviceList',
+      where: (p) => p is Map && p['userId'] == targetUserId,
+      reason: '$label device list for user $targetUserId',
+    );
+    return (answer as Map).cast<String, dynamic>();
+  }
+
+  /// Emits `revokeDevice` (§5.5) and returns the `deviceRevocationCompleted`
+  /// answer. The payload carries the DAK-signed list that ALREADY shows the
+  /// device revoked — the server refuses the pair if they disagree.
+  Future<Map<String, dynamic>> revokeDevice(
+    Map<String, dynamic> payload,
+  ) async {
+    events.discard('deviceRevocationCompleted');
+    socketService.socket!.emit('revokeDevice', payload);
+    final answer = await events.next(
+      'deviceRevocationCompleted',
+      reason: '$label revokeDevice answer',
+    );
+    return (answer as Map).cast<String, dynamic>();
+  }
+
+  /// Emits `openProvisioning` (§5.1 — N opens a ceremony) and returns the
+  /// `provisioningOpened` answer. The answer deliberately carries NO
+  /// deviceId (spec §12 amendment (a)).
+  Future<Map<String, dynamic>> openProvisioning() async {
+    events.discard('provisioningOpened');
+    socketService.socket!.emit('openProvisioning', <String, dynamic>{});
+    final answer = await events.next(
+      'provisioningOpened',
+      reason: '$label openProvisioning answer',
+    );
+    return (answer as Map).cast<String, dynamic>();
+  }
+
+  /// Emits `provisioningHello` (the primary presents its ephemeral) and
+  /// returns the `provisioningHelloAck` answer — the ack is how the primary
+  /// learns the assigned deviceId (amendment (a)).
+  Future<Map<String, dynamic>> provisioningHello({
+    required String provisioningId,
+    required String ephPubP,
+  }) async {
+    events.discard('provisioningHelloAck');
+    socketService.socket!.emit('provisioningHello', {
+      'provisioningId': provisioningId,
+      'ephPubP': ephPubP,
+    });
+    final answer = await events.next(
+      'provisioningHelloAck',
+      reason: '$label provisioningHello answer',
+    );
+    return (answer as Map).cast<String, dynamic>();
+  }
+
+  /// Emits `provisionDevice` (blob + signed v+1 mutation, staged not
+  /// committed) and returns the `provisionDeviceAck` answer.
+  Future<Map<String, dynamic>> provisionDevice(
+    Map<String, dynamic> payload,
+  ) async {
+    events.discard('provisionDeviceAck');
+    socketService.socket!.emit('provisionDevice', payload);
+    final answer = await events.next(
+      'provisionDeviceAck',
+      reason: '$label provisionDevice answer',
+    );
+    return (answer as Map).cast<String, dynamic>();
+  }
+
+  /// Emits `fetchProvisioningBlob` and returns the `provisioningBlob`
+  /// answer — a blob re-fetch (falsification 18) or a refusal.
+  Future<Map<String, dynamic>> fetchProvisioningBlobAnswer(
+    String provisioningId,
+  ) async {
+    events.discard('provisioningBlob');
+    socketService.socket!.emit('fetchProvisioningBlob', {
+      'provisioningId': provisioningId,
+    });
+    final answer = await events.next(
+      'provisioningBlob',
+      reason: '$label fetchProvisioningBlob answer',
+    );
+    return (answer as Map).cast<String, dynamic>();
+  }
+
+  /// Emits `provisioningComplete` (two-phase commit, phase two) and returns
+  /// the `provisioningCompleted` answer — on success it carries the
+  /// deviceId-bound token pair (spec §12 amendment (iii)).
+  Future<Map<String, dynamic>> provisioningComplete(
+    String provisioningId,
+  ) async {
+    events.discard('provisioningCompleted');
+    socketService.socket!.emit('provisioningComplete', {
+      'provisioningId': provisioningId,
+    });
+    final answer = await events.next(
+      'provisioningCompleted',
+      reason: '$label provisioningComplete answer',
+    );
+    return (answer as Map).cast<String, dynamic>();
+  }
+
+  /// Emits `cancelProvisioning` and returns the caller's ack.
+  Future<Map<String, dynamic>> cancelProvisioning(String provisioningId) async {
+    events.discard('provisioningCancelled');
+    socketService.socket!.emit('cancelProvisioning', {
+      'provisioningId': provisioningId,
+    });
+    final answer = await events.next(
+      'provisioningCancelled',
+      reason: '$label cancelProvisioning answer',
+    );
+    return (answer as Map).cast<String, dynamic>();
   }
 
   /// Uploads staged OTPs. [tagIdentityEpoch] selects the current client wire
@@ -306,7 +698,9 @@ class E2eClient {
     dynamic socketReadyPayload;
     try {
       final firstError = await Future.any<dynamic>([
-        events.next('socketReady', reason: '$label socket auth').then((payload) {
+        events.next('socketReady', reason: '$label socket auth').then((
+          payload,
+        ) {
           socketReadyPayload = payload;
           return null;
         }),
@@ -321,11 +715,40 @@ class E2eClient {
     }
   }
 
+  /// Connects expecting the §5.5 connect gate to REFUSE this session, and
+  /// returns the `deviceRevoked` notice the server sends before closing it.
+  ///
+  /// Separate from [connectSocket] because that one waits for `socketReady`,
+  /// which by contract never arrives here (amendment (xxii)): a revoked
+  /// device's access JWT stays cryptographically valid, so refusing the
+  /// session is the only thing standing between it and a live socket.
+  Future<Map<String, dynamic>> connectExpectingRevoked() async {
+    events.discard('socketReady');
+    events.discard('deviceRevoked');
+    socketService.connect(baseUrl: baseUrl, token: accessToken);
+    for (final event in _trackedEvents) {
+      socketService.on(event, (payload) => events.record(event, payload));
+    }
+    final notice = await events.next(
+      'deviceRevoked',
+      reason: '$label refused reconnect must say WHY',
+    );
+    await events.none(
+      'socketReady',
+      within: const Duration(seconds: 2),
+      reason: 'a revoked device must never reach an authenticated session',
+    );
+    return (notice as Map).cast<String, dynamic>();
+  }
+
   /// Initializes Signal keys (fresh mock storage → always generates) and
   /// uploads bundle + one-time pre-keys over WS, exactly like
   /// EncryptionProvider does on first run.
   Future<void> initializeAndUploadKeys() async {
-    await encryption.initialize(userId, checkServerBundleExists: () async => false);
+    await encryption.initialize(
+      userId,
+      checkServerBundleExists: () async => false,
+    );
     final keys = encryption.getKeysForUpload();
     if (keys == null) {
       throw StateError(
@@ -351,7 +774,30 @@ class E2eClient {
 
   /// Fetches the peer's pre-key bundle over WS. The response bundle is
   /// already flat — directly consumable by EncryptionService.buildSession.
-  Future<Map<String, dynamic>> fetchBundleFor(int peerUserId) async {
+  ///
+  /// [deviceId] omitted reproduces a client that has never heard of devices;
+  /// the server must answer for the account's default device (§8 rollout).
+  Future<Map<String, dynamic>> fetchBundleFor(
+    int peerUserId, {
+    int? deviceId,
+  }) async {
+    final payload = await fetchBundleRawFor(peerUserId, deviceId: deviceId);
+    final bundle = payload['bundle'];
+    if (bundle is! Map) {
+      throw StateError(
+        '$label: no key bundle on server for user $peerUserId'
+        '${deviceId == null ? '' : ' device $deviceId'}: $payload',
+      );
+    }
+    return bundle.cast<String, dynamic>();
+  }
+
+  /// Same fetch, returning the whole `preKeyBundleResponse` payload so a test
+  /// can assert on a MISSING bundle instead of throwing on it.
+  Future<Map<String, dynamic>> fetchBundleRawFor(
+    int peerUserId, {
+    int? deviceId,
+  }) async {
     final last = _lastBundleFetch[peerUserId];
     if (last != null) {
       final wait = _bundleFetchGap - DateTime.now().difference(last);
@@ -360,7 +806,11 @@ class E2eClient {
       }
     }
     _lastBundleFetch[peerUserId] = DateTime.now();
-    socketService.fetchPreKeyBundle(peerUserId);
+    events.discard('preKeyBundleResponse');
+    socketService.socket!.emit('fetchPreKeyBundle', <String, dynamic>{
+      'userId': peerUserId,
+      'deviceId': ?deviceId,
+    });
     final payload =
         await events.next(
               'preKeyBundleResponse',
@@ -368,13 +818,70 @@ class E2eClient {
               reason: '$label fetching bundle for user $peerUserId',
             )
             as Map;
-    final bundle = payload['bundle'];
-    if (bundle is! Map) {
-      throw StateError(
-        '$label: no key bundle on server for user $peerUserId: $payload',
+    return payload.cast<String, dynamic>();
+  }
+
+  /// Uploads a key bundle FOR a named device of this account, without going
+  /// through the local Signal store: a second device's registration id and
+  /// signed pre-key are just opaque strings to the server, and minting a real
+  /// second installation would need Phase 2 provisioning.
+  Future<Map<String, dynamic>> uploadDeviceKeyBundle({
+    required int deviceId,
+    required String identityPublicKey,
+    required int registrationId,
+  }) async {
+    events.discard('keyBundleUploaded');
+    socketService.socket!.emit('uploadKeyBundle', <String, dynamic>{
+      'deviceId': deviceId,
+      'registrationId': registrationId,
+      'identityPublicKey': identityPublicKey,
+      'signedPreKeyId': 0,
+      'signedPreKeyPublic': 'dev$deviceId-spk-public',
+      'signedPreKeySignature': 'dev$deviceId-spk-signature',
+    });
+    final answer = await events.next(
+      'keyBundleUploaded',
+      reason: '$label device $deviceId key bundle',
+    );
+    return (answer as Map).cast<String, dynamic>();
+  }
+
+  /// Uploads one-time pre-keys FOR a named device, reusing whatever keyIds the
+  /// caller asks for — the point of falsification 1 is that two devices may
+  /// both hold keyId 0.
+  Future<void> uploadDeviceOneTimePreKeys({
+    required int deviceId,
+    required String identityPublicKey,
+    required List<int> keyIds,
+    required String publicKeyPrefix,
+    String? expectRefusal,
+  }) async {
+    events.discard('oneTimePreKeysUploaded');
+    socketService.socket!.emit('uploadOneTimePreKeys', <String, dynamic>{
+      'deviceId': deviceId,
+      'identityPublicKey': identityPublicKey,
+      'keys': [
+        for (final keyId in keyIds)
+          {'keyId': keyId, 'publicKey': '$publicKeyPrefix$keyId'},
+      ],
+    });
+    if (expectRefusal != null) {
+      await events.takeError(
+        expectRefusal,
+        reason: '$label device $deviceId OTP refusal',
       );
+      // A refusal must not also ack: the keys were not stored.
+      await events.none(
+        'oneTimePreKeysUploaded',
+        within: const Duration(milliseconds: 750),
+        reason: '$label device $deviceId OTPs were refused',
+      );
+      return;
     }
-    return bundle.cast<String, dynamic>();
+    await events.next(
+      'oneTimePreKeysUploaded',
+      reason: '$label device $deviceId OTPs',
+    );
   }
 
   /// Encrypts [content] in the app's real E2E envelope wire format.
@@ -412,6 +919,72 @@ class E2eClient {
     return payload.cast<String, dynamic>();
   }
 
+  /// Emits `sendMessage` carrying a `sendToken` (Phase 1, spec §5.4) and
+  /// returns the server's `messageSent` confirmation for [tempId].
+  ///
+  /// Raw emit rather than `SocketService.sendMessage`: the token is a wire
+  /// field the app does not send yet, and the point is to exercise the
+  /// SERVER's idempotency, not the client's send path.
+  Future<Map<String, dynamic>> sendWithToken(
+    int recipientId,
+    String ciphertext, {
+    required String tempId,
+    required String sendToken,
+  }) async {
+    socketService.socket!.emit('sendMessage', <String, dynamic>{
+      'recipientId': recipientId,
+      'content': '[encrypted]',
+      'encryptedContent': ciphertext,
+      'tempId': tempId,
+      'sendToken': sendToken,
+    });
+    final payload =
+        await events.next(
+              'messageSent',
+              where: (p) => p is Map && p['tempId'] == tempId,
+              reason: '$label sendMessage tempId=$tempId token=$sendToken',
+            )
+            as Map;
+    return payload.cast<String, dynamic>();
+  }
+
+  /// Emits an ENVELOPE-shaped `sendMessage` (spec §5.2 + §12 amendment (v)):
+  /// one ciphertext per (recipient user, device), with the device-list stamps
+  /// the server cross-checks.
+  ///
+  /// Raw emit for the same reason as [sendWithToken]: this exercises the
+  /// SERVER's fan-out ingest, independent of the app's send path.
+  void emitEnvelopeSend(
+    int recipientId, {
+    required String tempId,
+    required List<Map<String, dynamic>> envelopes,
+    String? sendToken,
+    int? recipientListVersion,
+    int? senderListVersion,
+  }) {
+    socketService.socket!.emit('sendMessage', <String, dynamic>{
+      'recipientId': recipientId,
+      'content': '[encrypted]',
+      'envelopes': envelopes,
+      'tempId': tempId,
+      'sendToken': ?sendToken,
+      'recipientListVersion': ?recipientListVersion,
+      'senderListVersion': ?senderListVersion,
+    });
+  }
+
+  /// The `deviceListStale` refusal for [tempId] (spec §12 (vi)/(x)).
+  Future<Map<String, dynamic>> awaitDeviceListStale(String tempId) async {
+    final payload =
+        await events.next(
+              'deviceListStale',
+              where: (p) => p is Map && p['tempId'] == tempId,
+              reason: '$label deviceListStale tempId=$tempId',
+            )
+            as Map;
+    return payload.cast<String, dynamic>();
+  }
+
   /// Waits for an inbound `newMessage` matching [tempId] (the mapper echoes
   /// the sender's tempId to both sides).
   Future<Map<String, dynamic>> awaitNewMessage(String tempId) async {
@@ -436,6 +1009,36 @@ class E2eClient {
     });
   }
 
+  /// Emits an ENVELOPE-shaped `editMessage` (spec §5.7 + §12 amendment (xxxi)):
+  /// one edited ciphertext per (user, device), with the device-list stamps the
+  /// server cross-checks. Raw emit for the same reason as [emitEditMessage].
+  void emitEnvelopeEdit(
+    int messageId, {
+    required List<Map<String, dynamic>> envelopes,
+    int? recipientListVersion,
+    int? senderListVersion,
+  }) {
+    socketService.socket!.emit('editMessage', <String, dynamic>{
+      'messageId': messageId,
+      'content': '[encrypted]',
+      'envelopes': envelopes,
+      'recipientListVersion': ?recipientListVersion,
+      'senderListVersion': ?senderListVersion,
+    });
+  }
+
+  /// Waits for a `messageEdited` for [messageId] on THIS device's socket.
+  Future<Map<String, dynamic>> awaitMessageEdited(int messageId) async {
+    final payload =
+        await events.next(
+              'messageEdited',
+              where: (p) => p is Map && p['messageId'] == messageId,
+              reason: '$label messageEdited messageId=$messageId',
+            )
+            as Map;
+    return payload.cast<String, dynamic>();
+  }
+
   /// Emits `deleteMessage`. Like `editMessage`, the app sends this through
   /// ConnectionProvider's raw socket path, which this mirrors.
   ///
@@ -455,11 +1058,13 @@ class E2eClient {
     final requestId = 'e2e-${_randomHex(6)}';
     events.discard('servedMessageIds');
     socketService.getServedMessageIds(requestId, messageIds);
-    final payload = await events.next(
-      'servedMessageIds',
-      where: (p) => p is Map && p['requestId'] == requestId,
-      reason: '$label servedMessageIds',
-    ) as Map;
+    final payload =
+        await events.next(
+              'servedMessageIds',
+              where: (p) => p is Map && p['requestId'] == requestId,
+              reason: '$label servedMessageIds',
+            )
+            as Map;
     return {
       for (final id in payload['messageIds'] as List) (id as num).toInt(),
     };

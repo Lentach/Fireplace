@@ -61,6 +61,31 @@ class MessageModel {
   final String? linkPreviewImageUrl;
   final String? encryptedContent;
 
+  /// Which of the SENDER's devices produced this row (spec §5.4). Null on
+  /// pre-migration rows and legacy-client sends, which means device 1.
+  ///
+  /// Load-bearing on receive: the pairwise session is keyed by the address that
+  /// produced the ciphertext, so decrypting an envelope from a peer's device 2
+  /// against device 1's session is a Bad MAC.
+  final int? originDeviceId;
+
+  /// Why the server served no ciphertext for THIS device (spec §5.3 + §12
+  /// amendment (viii)). `none_for_device` = the row predates this device's
+  /// link, so render the honest placeholder, never a decrypt failure.
+  /// `own_origin` = this device sent it, so no envelope exists for it by
+  /// design and the plaintext lives in the local store. Null whenever a
+  /// ciphertext WAS served.
+  final String? envelopeStatus;
+
+  /// The row's own send token, echoed only to the device that ORIGINATED it
+  /// (spec §12 amendment (ix)) — the lost-ack reconcile key, since such a row
+  /// carries no ciphertext this device could match on.
+  final String? sendToken;
+
+  /// True when the server explicitly said this device has no ciphertext for
+  /// this row. Such a row must never enter the decrypt pass.
+  bool get hasNoEnvelopeForThisDevice => envelopeStatus != null;
+
   /// AES-256-GCM key (base64), from E2E envelope — client-only, not from REST.
   final String? mediaKey;
 
@@ -70,12 +95,42 @@ class MessageModel {
   /// Server-stamped time of the last edit; null = never edited. From REST/WS payload.
   final DateTime? editedAt;
 
-  /// True if this message has E2E encrypted content and was sent by another
-  /// user (needs decryption before display).
-  bool needsDecryption(int? currentUserId) =>
+  /// True when this row is a SELF-SYNC copy: our own account sent it, but a
+  /// DIFFERENT one of our devices produced it (spec §5.4 + §12 amendment (xi)).
+  ///
+  /// Such a row is an ordinary inbound message — a pairwise session between two
+  /// of our own devices, which libsignal supports as a normal address pair —
+  /// and it MUST decrypt. The two cases that are NOT self-sync, and must never
+  /// be handed to the ratchet, are:
+  ///  * `envelopeStatus == 'own_origin'` — the server says THIS device sent it,
+  ///    so no envelope exists for us by design and the plaintext is local;
+  ///  * `(originDeviceId ?? 1) == ownDeviceId` — the same case in legacy shape,
+  ///    where an own row is served its own ciphertext with no marker.
+  /// A Signal sender cannot decrypt its own output, so attempting either would
+  /// render `[Decryption failed]` over the only plaintext copy we will ever have.
+  ///
+  /// [ownDeviceId] must be null unless the server has CONFIRMED which device
+  /// this is (amendment (xii)); an unconfirmed value defaults to 1 and would
+  /// mis-scope a real device 2. Null therefore answers false — the row keeps
+  /// today's behaviour and is retried once `socketReady` lands.
+  bool isSelfSyncRow(int? currentUserId, int? ownDeviceId) =>
+      currentUserId != null &&
+      ownDeviceId != null &&
+      senderId == currentUserId &&
+      envelopeStatus == null &&
+      (originDeviceId ?? 1) != ownDeviceId;
+
+  /// True if this message has E2E encrypted content that this device must
+  /// decrypt: either another user sent it, or it is a self-sync copy of our own
+  /// send produced by another of our devices ([isSelfSyncRow]).
+  ///
+  /// THE master gate: it feeds every decrypt entry point, live and historical,
+  /// so a row it rejects is never decrypted anywhere. Pass [ownDeviceId] only
+  /// when the server has confirmed it.
+  bool needsDecryption(int? currentUserId, {int? ownDeviceId}) =>
       encryptedContent != null &&
       encryptedContent!.isNotEmpty &&
-      senderId != currentUserId;
+      (senderId != currentUserId || isSelfSyncRow(currentUserId, ownDeviceId));
 
   /// True if this message should show "Encrypted message" placeholder in list.
   bool get displayAsEncryptedPlaceholder =>
@@ -93,7 +148,8 @@ class MessageModel {
       content != '[encrypted]' &&
       content != '[Decryption failed]' &&
       content != '[Encryption not initialized]' &&
-      content != '[Message no longer stored on this device]';
+      content != '[Message no longer stored on this device]' &&
+      content != '[Sent before this device was linked]';
 
   MessageModel({
     required this.id,
@@ -119,6 +175,9 @@ class MessageModel {
     this.linkPreviewTitle,
     this.linkPreviewImageUrl,
     this.encryptedContent,
+    this.envelopeStatus,
+    this.originDeviceId,
+    this.sendToken,
     this.mediaKey,
     this.mediaIv,
     this.editedAt,
@@ -156,6 +215,11 @@ class MessageModel {
       linkPreviewTitle: json['linkPreviewTitle'] as String?,
       linkPreviewImageUrl: json['linkPreviewImageUrl'] as String?,
       encryptedContent: json['encryptedContent'] as String?,
+      // Additive per-device fields (spec §12 (viii)/(ix)); absent on an older
+      // server, and `fromJson` simply reads null.
+      envelopeStatus: json['envelopeStatus'] as String?,
+      originDeviceId: json['originDeviceId'] as int?,
+      sendToken: json['sendToken'] as String?,
       editedAt: json['editedAt'] != null
           ? DateTime.parse(json['editedAt'] as String)
           : null,
@@ -225,6 +289,9 @@ class MessageModel {
     String? linkPreviewTitle,
     String? linkPreviewImageUrl,
     String? encryptedContent,
+    String? envelopeStatus,
+    int? originDeviceId,
+    String? sendToken,
     String? mediaKey,
     String? mediaIv,
     DateTime? editedAt,
@@ -254,6 +321,12 @@ class MessageModel {
       linkPreviewTitle: linkPreviewTitle ?? this.linkPreviewTitle,
       linkPreviewImageUrl: linkPreviewImageUrl ?? this.linkPreviewImageUrl,
       encryptedContent: encryptedContent ?? this.encryptedContent,
+      // Per-device facts of the row, preserved across every merge: dropping
+      // them would resurrect a decrypt attempt on a row that has no ciphertext
+      // for this device, or lose the origin device's reconcile key.
+      envelopeStatus: envelopeStatus ?? this.envelopeStatus,
+      originDeviceId: originDeviceId ?? this.originDeviceId,
+      sendToken: sendToken ?? this.sendToken,
       mediaKey: mediaKey ?? this.mediaKey,
       mediaIv: mediaIv ?? this.mediaIv,
       editedAt: editedAt ?? this.editedAt,

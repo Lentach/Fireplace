@@ -6,6 +6,7 @@ import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { RefreshTokensService } from './refresh-tokens.service';
 import { User } from '../users/user.entity';
+import { DevicesService } from '../key-bundles/devices.service';
 
 jest.mock('bcrypt', () => ({
   compare: jest.fn(),
@@ -22,6 +23,7 @@ describe('AuthService', () => {
       'createToken' | 'consumeAndSlide' | 'revokeByPlain'
     >
   >;
+  let devicesService: jest.Mocked<Pick<DevicesService, 'resolveLoginDeviceId'>>;
 
   const mockUser: Partial<User> = {
     id: 1,
@@ -57,6 +59,15 @@ describe('AuthService', () => {
             revokeByPlain: jest.fn(() => Promise.resolve()),
           },
         },
+        {
+          // A login resolves the account's LIVE PRIMARY (amendment (xxviii)) —
+          // device 1 for every single-device account, which is what the login
+          // laws below assume.
+          provide: DevicesService,
+          useValue: {
+            resolveLoginDeviceId: jest.fn(() => Promise.resolve(1)),
+          },
+        },
       ],
     }).compile();
 
@@ -64,6 +75,7 @@ describe('AuthService', () => {
     usersService = module.get(UsersService);
     jwtService = module.get(JwtService);
     refreshTokensService = module.get(RefreshTokensService);
+    devicesService = module.get(DevicesService);
     jest.clearAllMocks();
   });
 
@@ -95,6 +107,7 @@ describe('AuthService', () => {
         sub: 1,
         username: 'testuser',
         tag: '0427',
+        deviceId: 1,
       });
     });
 
@@ -113,16 +126,37 @@ describe('AuthService', () => {
         'ValidPass1',
         'hashed_password',
       );
-      expect(refreshTokensService.createToken).toHaveBeenCalledWith(1);
+      // Session and token agree on the device from the first login (§4).
+      expect(refreshTokensService.createToken).toHaveBeenCalledWith(1, 1);
       expect(jwtService.sign).toHaveBeenCalledWith({
         sub: 1,
         username: 'testuser',
         tag: '0427',
+        deviceId: 1,
       });
       expect(result).toEqual({
         access_token: 'mock_jwt_token',
         refresh_token: 'mock_refresh_plain',
       });
+    });
+
+    it('logs in as the account LIVE PRIMARY, not a hardcoded device 1', async () => {
+      // The lockout this prevents: a §6.2 reset revokes the pre-reset roster
+      // and moves the account onto a freshly allocated id (amendment
+      // (xxviii)). A login that kept claiming device 1 would mint a token for
+      // a REVOKED device, which both §5.5 session gates then refuse — the
+      // owner locked out with the correct password and no way back in.
+      usersService.findByUsernameAndTag.mockResolvedValue(mockUser as User);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      devicesService.resolveLoginDeviceId.mockResolvedValue(4);
+
+      await service.login('testuser#0427', 'ValidPass1');
+
+      expect(devicesService.resolveLoginDeviceId).toHaveBeenCalledWith(1);
+      expect(refreshTokensService.createToken).toHaveBeenCalledWith(1, 4);
+      expect(jwtService.sign).toHaveBeenCalledWith(
+        expect.objectContaining({ deviceId: 4 }),
+      );
     });
 
     it('returns the generic failure and still runs a bcrypt compare for ambiguous bare usernames (no enumeration)', async () => {
@@ -186,7 +220,10 @@ describe('AuthService', () => {
 
   describe('refreshWithToken', () => {
     it('returns new access_token and slid refresh_token when refresh valid', async () => {
-      refreshTokensService.consumeAndSlide.mockResolvedValue(1);
+      refreshTokensService.consumeAndSlide.mockResolvedValue({
+        userId: 1,
+        deviceId: 2,
+      });
       usersService.findById.mockResolvedValue(mockUser as User);
 
       const result = await service.refreshWithToken('incoming_refresh');
@@ -199,15 +236,39 @@ describe('AuthService', () => {
         access_token: 'mock_jwt_token',
         refresh_token: 'incoming_refresh',
       });
+      // The reissued token keeps naming the SAME device: silently becoming
+      // device 1 would hand this session another device's key namespace.
       expect(jwtService.sign).toHaveBeenCalledWith({
         sub: 1,
         username: 'testuser',
         tag: '0427',
+        deviceId: 2,
       });
     });
 
+    it('treats a session predating the device column as device 1', async () => {
+      refreshTokensService.consumeAndSlide.mockResolvedValue({
+        userId: 1,
+        deviceId: null,
+      });
+      usersService.findById.mockResolvedValue(mockUser as User);
+
+      await service.refreshWithToken('legacy_refresh');
+
+      // Read the recorded call rather than referencing the mocked method
+      // again: an unbound method reference is the lint debt this file already
+      // carries, and new code should not add to it.
+      const signed = jwtService.sign.mock.calls.at(-1)?.[0] as {
+        deviceId?: number;
+      };
+      expect(signed.deviceId).toBe(1);
+    });
+
     it('throws when user row missing after sliding refresh', async () => {
-      refreshTokensService.consumeAndSlide.mockResolvedValue(99);
+      refreshTokensService.consumeAndSlide.mockResolvedValue({
+        userId: 99,
+        deviceId: 1,
+      });
       usersService.findById.mockResolvedValue(null);
 
       await expect(service.refreshWithToken('r')).rejects.toThrow(

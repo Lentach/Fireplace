@@ -23,7 +23,7 @@ class _FakeEncryptionProvider extends EncryptionProvider {
   Future<void> deleteSessionWithPeer(int peerUserId) async {}
 
   @override
-  Future<void> ensureSession(int recipientId) async {
+  Future<void> ensureSession(int recipientId, {int deviceId = 1}) async {
     ensureSessionCalls++;
     if (failEnsureSession) {
       failEnsureSession = false;
@@ -32,7 +32,11 @@ class _FakeEncryptionProvider extends EncryptionProvider {
   }
 
   @override
-  Future<String> encrypt(int recipientId, String plaintext) async {
+  Future<String> encrypt(
+    int recipientId,
+    String plaintext, {
+    int deviceId = 1,
+  }) async {
     return 'ciphertext';
   }
 
@@ -41,6 +45,7 @@ class _FakeEncryptionProvider extends EncryptionProvider {
     int senderId,
     String ciphertext, {
     int? messageId,
+    int deviceId = 1,
   }) async {
     return jsonEncode(E2eEnvelope.build('decrypted'));
   }
@@ -59,6 +64,7 @@ class _DecryptCountingEncryption extends _FakeEncryptionProvider {
     int senderId,
     String ciphertext, {
     int? messageId,
+    int deviceId = 1,
   }) async {
     decryptCalls++;
     return jsonEncode(E2eEnvelope.build('plain-$decryptCalls'));
@@ -74,6 +80,7 @@ class _AlwaysFailDecryptEncryption extends _FakeEncryptionProvider {
     int senderId,
     String ciphertext, {
     int? messageId,
+    int deviceId = 1,
   }) async {
     throw Exception('Generic crypto failure');
   }
@@ -95,6 +102,7 @@ class _AlwaysFailWithSessionCountEncryption extends _FakeEncryptionProvider {
     int senderId,
     String ciphertext, {
     int? messageId,
+    int deviceId = 1,
   }) async {
     throw Exception('Generic crypto failure');
   }
@@ -118,6 +126,7 @@ class _PersistedGifWithoutKeysEncryption extends _FakeEncryptionProvider {
     int senderId,
     String ciphertext, {
     int? messageId,
+    int deviceId = 1,
   }) async {
     decryptCalls++;
     return jsonEncode(
@@ -147,6 +156,7 @@ class _AlwaysDuplicateDecryptEncryption extends _FakeEncryptionProvider {
     int senderId,
     String ciphertext, {
     int? messageId,
+    int deviceId = 1,
   }) async {
     throw Exception(
       'DuplicateMessageException - Received message with old counter',
@@ -169,6 +179,7 @@ class _AlwaysBadMacDecryptEncryption extends _FakeEncryptionProvider {
     int senderId,
     String ciphertext, {
     int? messageId,
+    int deviceId = 1,
   }) async {
     throw Exception('InvalidMessageException: Bad Mac');
   }
@@ -192,6 +203,7 @@ class _IdentityResetEncryption extends _FakeEncryptionProvider {
     int senderId,
     String ciphertext, {
     int? messageId,
+    int deviceId = 1,
   }) async {
     throw Exception('NoSessionException - no session for this peer');
   }
@@ -221,6 +233,7 @@ class _AlwaysNoSessionEncryption extends _FakeEncryptionProvider {
     int senderId,
     String ciphertext, {
     int? messageId,
+    int deviceId = 1,
   }) async {
     decryptCalls++;
     throw Exception('NoSessionException - No session for: $senderId:1');
@@ -236,6 +249,7 @@ class _DuplicateDecryptEncryption extends _FakeEncryptionProvider {
     int senderId,
     String ciphertext, {
     int? messageId,
+    int deviceId = 1,
   }) async {
     decryptCalls++;
     if (decryptCalls > 1) {
@@ -254,14 +268,17 @@ class _PersistedPingEncryption extends _FakeEncryptionProvider {
   int decryptCalls = 0;
 
   @override
-  Future<Map<String, dynamic>?> getDecryptedContent(int messageId) async =>
-      {'content': '', 'messageType': 'PING'};
+  Future<Map<String, dynamic>?> getDecryptedContent(int messageId) async => {
+    'content': '',
+    'messageType': 'PING',
+  };
 
   @override
   Future<String> decrypt(
     int senderId,
     String ciphertext, {
     int? messageId,
+    int deviceId = 1,
   }) async {
     decryptCalls++;
     return jsonEncode(E2eEnvelope.build('', messageType: 'PING'));
@@ -293,6 +310,7 @@ class _HistoryDecryptRetryEncryption extends _FakeEncryptionProvider {
     int senderId,
     String ciphertext, {
     int? messageId,
+    int deviceId = 1,
   }) async {
     decryptAttempts++;
     if (decryptAttempts <= 1) {
@@ -721,34 +739,31 @@ void main() {
       },
     );
 
-    test(
-      'first live decrypt of a partner PING flips showPingEffect',
-      () async {
-        final enc = _DuplicateDecryptEncryption();
-        provider.setEncryptionProvider(enc);
-        provider.setActiveConversationIdForTest(10);
+    test('first live decrypt of a partner PING flips showPingEffect', () async {
+      final enc = _DuplicateDecryptEncryption();
+      provider.setEncryptionProvider(enc);
+      provider.setActiveConversationIdForTest(10);
 
-        provider.onNewMessage(
-          incomingJson(
-            id: 9,
-            createdAt: '2026-01-01T00:00:09.000Z',
-            messageType: 'PING',
-            includeTtl: false,
-          ),
-        );
-        for (var i = 0; i < 30; i++) {
-          await Future<void>.delayed(Duration.zero);
-          if (provider.showPingEffect) break;
-        }
+      provider.onNewMessage(
+        incomingJson(
+          id: 9,
+          createdAt: '2026-01-01T00:00:09.000Z',
+          messageType: 'PING',
+          includeTtl: false,
+        ),
+      );
+      for (var i = 0; i < 30; i++) {
+        await Future<void>.delayed(Duration.zero);
+        if (provider.showPingEffect) break;
+      }
 
-        expect(enc.decryptCalls, 1);
-        expect(
-          provider.showPingEffect,
-          isTrue,
-          reason: 'a partner ping fires the effect exactly once on live decrypt',
-        );
-      },
-    );
+      expect(enc.decryptCalls, 1);
+      expect(
+        provider.showPingEffect,
+        isTrue,
+        reason: 'a partner ping fires the effect exactly once on live decrypt',
+      );
+    });
 
     test(
       'live re-decrypt of an already-READ PING stays silent (lost persist)',
@@ -778,11 +793,16 @@ void main() {
           await Future<void>.delayed(Duration.zero);
         }
 
-        expect(enc.decryptCalls, 1, reason: 'no persisted record: must decrypt');
+        expect(
+          enc.decryptCalls,
+          1,
+          reason: 'no persisted record: must decrypt',
+        );
         expect(
           provider.showPingEffect,
           isFalse,
-          reason: 'a READ ping re-decrypted after a lost persist must be silent',
+          reason:
+              'a READ ping re-decrypted after a lost persist must be silent',
         );
       },
     );

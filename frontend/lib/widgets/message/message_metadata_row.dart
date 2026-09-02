@@ -33,7 +33,7 @@ class MessageMetadataRow extends StatelessWidget {
     if (!isMine) return const SizedBox.shrink();
 
     if (message.deliveryStatus == MessageDeliveryStatus.failed) {
-      return const Icon(Icons.error, size: 12, color: Colors.red);
+      return Icon(Icons.error, size: 12, color: Theme.of(context).colorScheme.error);
     }
 
     IconData icon;

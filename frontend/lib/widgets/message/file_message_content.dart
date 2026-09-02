@@ -59,7 +59,7 @@ class _FileMessageContentState extends State<FileMessageContent> {
         showTopSnackBar(
           context,
           l10n.documentDownloadFailed,
-          backgroundColor: Colors.red,
+          backgroundColor: Theme.of(context).colorScheme.error,
         );
       }
     }

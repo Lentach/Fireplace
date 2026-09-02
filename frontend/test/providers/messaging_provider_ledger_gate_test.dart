@@ -50,7 +50,7 @@ class _LedgerEncryption extends EncryptionProvider {
   bool get hadIdentityReset => false;
 
   @override
-  Future<void> ensureSession(int recipientId) async {}
+  Future<void> ensureSession(int recipientId, {int deviceId = 1}) async {}
 
   @override
   bool wasDecryptedBefore(int messageId) => ledger.contains(messageId);
@@ -85,6 +85,7 @@ class _LedgerEncryption extends EncryptionProvider {
     int senderId,
     String ciphertext, {
     int? messageId,
+    int deviceId = 1,
   }) async {
     decryptCalls++;
     // A real spent-key retry throws exactly this. If the gate lets anything
@@ -178,7 +179,10 @@ void main() {
 
     final row = _encryptedInboundJson(lostId);
     if (serverEditedAt != null) row['editedAt'] = serverEditedAt;
-    provider.onMessageHistory({'conversationId': 10, 'messages': [row]});
+    provider.onMessageHistory({
+      'conversationId': 10,
+      'messages': [row],
+    });
 
     // The history pass runs async. Settle on the decrypt attempt rather than on
     // the label, because two of these cases deliberately leave the row alone.
@@ -202,7 +206,8 @@ void main() {
     expect(
       r.encryption.decryptCalls,
       0,
-      reason: 'the ratchet must never be touched for a spent key — that is '
+      reason:
+          'the ratchet must never be touched for a spent key — that is '
           'what turns a lost row into a permanent [Decryption failed]',
     );
     expect(r.encryption.retired, contains(lostId));
@@ -254,7 +259,10 @@ void main() {
 
     final row = _encryptedInboundJson(lostId);
     row['expiresAt'] = expiresAt.toIso8601String();
-    provider.onMessageHistory({'conversationId': 10, 'messages': [row]});
+    provider.onMessageHistory({
+      'conversationId': 10,
+      'messages': [row],
+    });
 
     for (var i = 0; i < 200; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 10));
@@ -262,23 +270,29 @@ void main() {
     }
 
     expect(encryption.decryptCalls, 0);
-    expect(encryption.stamped, isNotEmpty,
-        reason: 'a served row carrying a deadline must repair its record');
+    expect(
+      encryption.stamped,
+      isNotEmpty,
+      reason: 'a served row carrying a deadline must repair its record',
+    );
     expect(encryption.stamped.first.$1, lostId);
     expect(encryption.stamped.first.$2.toUtc(), expiresAt);
   });
 
-  test('an undetermined probe retires NOTHING and leaves the row alone', () async {
-    // `recordExists` returns null for an unbound user or any caught exception.
-    // Treating that as loss would let a transient storage error permanently
-    // retire a message whose bytes are still on disk. The row must stay
-    // untouched so a later pass can ask again.
-    final r = await run(ledger: {lostId}, exists: null);
+  test(
+    'an undetermined probe retires NOTHING and leaves the row alone',
+    () async {
+      // `recordExists` returns null for an unbound user or any caught exception.
+      // Treating that as loss would let a transient storage error permanently
+      // retire a message whose bytes are still on disk. The row must stay
+      // untouched so a later pass can ask again.
+      final r = await run(ledger: {lostId}, exists: null);
 
-    expect(r.encryption.decryptCalls, 0);
-    expect(r.encryption.retired, isEmpty);
-    expect(rowOf(r.provider)?.content, isNot(kRetiredMessageLabel));
-  });
+      expect(r.encryption.decryptCalls, 0);
+      expect(r.encryption.retired, isEmpty);
+      expect(rowOf(r.provider)?.content, isNot(kRetiredMessageLabel));
+    },
+  );
 
   test('a record that is merely unhydrated is served, not retired', () async {
     final r = await run(
@@ -294,26 +308,29 @@ void main() {
     expect(rowOf(r.provider)?.content, 'still here');
   });
 
-  test('a raw-replay hit is NEVER retired, even with no plaintext record', () async {
-    // CRITICAL regression. `decrypt` consults the raw replay cache BEFORE the
-    // ratchet and returns its plaintext with zero ratchet work, so a row that
-    // cache covers is fully readable even when the `_decrypted_` record is
-    // gone. Retiring it destroys readable data — the exact inversion the
-    // governing rule forbids. The first version of this gate did precisely
-    // that: it asked recordExists, got false, and retired permanently.
-    final r = await run(ledger: {lostId}, exists: false, replayable: true);
+  test(
+    'a raw-replay hit is NEVER retired, even with no plaintext record',
+    () async {
+      // CRITICAL regression. `decrypt` consults the raw replay cache BEFORE the
+      // ratchet and returns its plaintext with zero ratchet work, so a row that
+      // cache covers is fully readable even when the `_decrypted_` record is
+      // gone. Retiring it destroys readable data — the exact inversion the
+      // governing rule forbids. The first version of this gate did precisely
+      // that: it asked recordExists, got false, and retired permanently.
+      final r = await run(ledger: {lostId}, exists: false, replayable: true);
 
-    expect(
-      r.encryption.retired,
-      isEmpty,
-      reason: 'the raw replay cache can still serve this message',
-    );
-    expect(
-      r.encryption.decryptCalls,
-      greaterThan(0),
-      reason: 'decrypt must be allowed to run so the replay path resolves it',
-    );
-  });
+      expect(
+        r.encryption.retired,
+        isEmpty,
+        reason: 'the raw replay cache can still serve this message',
+      );
+      expect(
+        r.encryption.decryptCalls,
+        greaterThan(0),
+        reason: 'decrypt must be allowed to run so the replay path resolves it',
+      );
+    },
+  );
 
   test('an edit-stale record is not served, and is not retired', () async {
     // CRITICAL regression. An edit puts NEW ciphertext under the SAME id, and
@@ -336,13 +353,15 @@ void main() {
     expect(
       r.encryption.retired,
       isEmpty,
-      reason: 'the edited ciphertext has an UNSPENT key — retiring it would '
+      reason:
+          'the edited ciphertext has an UNSPENT key — retiring it would '
           'destroy a message that decrypts cleanly',
     );
     expect(
       r.encryption.invalidated,
       contains(lostId),
-      reason: 'the gate must drop the stale ledger entry rather than serve the '
+      reason:
+          'the gate must drop the stale ledger entry rather than serve the '
           'pre-edit record, so the new ciphertext can be decrypted',
     );
     // NB: what the row finally renders is owned by the decrypt-failure

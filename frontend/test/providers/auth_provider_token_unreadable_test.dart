@@ -84,9 +84,16 @@ void main() {
     expect(auth.currentUser, isNull);
     expect(auth.isError, isTrue);
     expect(
-      auth.statusMessage,
-      contains('Could not read the saved session'),
+      auth.statusCode,
+      AuthStatusCode.savedSessionUnreadable,
       reason: 'the user is told the truth, not shown a silent login screen',
+    );
+    expect(
+      auth.statusMessage,
+      isNull,
+      reason:
+          'the provider has no locale, so it must never build the prose — the '
+          'widget layer maps the code to an ARB string',
     );
     expect(
       kv.data['refresh_token'],

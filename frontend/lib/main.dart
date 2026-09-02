@@ -195,10 +195,32 @@ class _AuthGateState extends State<AuthGate> {
     final auth = context.watch<AuthProvider>();
     final conn = context.read<ConnectionProvider>();
 
-    // Detect logout transition (true → false) - ensure clean disconnect
+    // The server can end this device's session (multi-device spec §5.5): the
+    // primary revoked it. Wired here because this is the one place that holds
+    // the connection, the auth session and the locale at once. Logout
+    // semantics — the local history and Signal keys stay (spec §1 non-goal).
+    final l10n = AppLocalizations.of(context);
+    conn.onDeviceRevoked = () =>
+        auth.logoutBecauseDeviceRevoked(l10n.deviceRevokedNotice);
+
+    // The mirror case (spec §6.2): a reset teardown re-homed this account onto
+    // a NEWLY allocated device and handed back the session bound to it. Same
+    // storage path as login and as the §5.1 provisioning rebind — a second
+    // token path would drift. Without this the recovering device publishes its
+    // pre-keys under the device the teardown just revoked.
+    conn.onSessionRebound = auth.adoptProvisionedSession;
+
+    // Detect logout transition (true → false) - ensure clean disconnect, and
+    // pop every route pushed above this gate. Amendment (lxvi) clause 1: a
+    // SERVER-initiated end (§5.5 `deviceRevoked`) lands while the user may be
+    // inside a pushed chat or the devices screen; swapping this subtree to
+    // AuthScreen leaves that route on top, rendering a blank surface over the
+    // very notice that tells the user what to do next.
     if (!auth.isLoggedIn && _previousLoggedInState) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         conn.disconnect(isLogout: true);
+        if (!mounted) return;
+        Navigator.of(context).popUntil((route) => route.isFirst);
       });
     }
 

@@ -51,13 +51,14 @@ class _RecordingEncryption extends EncryptionProvider {
   Future<void> deleteSessionWithPeer(int peerUserId) async {}
 
   @override
-  Future<void> ensureSession(int recipientId) async {}
+  Future<void> ensureSession(int recipientId, {int deviceId = 1}) async {}
 
   @override
   Future<String> decrypt(
     int senderId,
     String ciphertext, {
     int? messageId,
+    int deviceId = 1,
   }) async {
     decryptCalls++;
     return jsonEncode(E2eEnvelope.build('live-decrypt-$messageId'));
@@ -93,8 +94,11 @@ Map<String, dynamic> inboundJson(int id) => {
   'conversationId': 10,
   'deliveryStatus': 'DELIVERED',
   'messageType': 'TEXT',
-  'createdAt': DateTime.utc(2026, 1, 1).add(Duration(seconds: id))
-      .toIso8601String(),
+  'createdAt': DateTime.utc(
+    2026,
+    1,
+    1,
+  ).add(Duration(seconds: id)).toIso8601String(),
 };
 
 Future<void> pump() async {
@@ -287,7 +291,9 @@ void main() {
     /// hydration is an accelerator, never a gate.
     test('rows with no cached plaintext still live-decrypt', () async {
       final encryption = _RecordingEncryption(
-        persisted: {1: <String, dynamic>{'content': 'plain-1'}},
+        persisted: {
+          1: <String, dynamic>{'content': 'plain-1'},
+        },
       );
       provider.setEncryptionProvider(encryption);
 

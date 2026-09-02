@@ -3,7 +3,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../constants/app_constants.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
-import '../../providers/messaging_provider.dart' show kRetiredMessageLabel;
+import '../../providers/messaging_provider.dart'
+    show kNotLinkedYetMessageLabel, kRetiredMessageLabel;
 import '../../services/link_preview_service.dart';
 import '../../utils/linkify.dart';
 import '../../theme/rpg_theme.dart';
@@ -66,6 +67,13 @@ class _TextMessageContentState extends State<TextMessageContent> {
   String _displayBody(BuildContext context) {
     if (widget.message.content == kRetiredMessageLabel) {
       return AppLocalizations.of(context).messageNoLongerStoredOnThisDevice;
+    }
+    // §5.3 none_for_device marker — found rendering the RAW sentinel during
+    // the 2026-08-31 live QA (English brackets in a Polish UI). Mirror of the
+    // retired branch above; messageDisplayContent maps it for the context
+    // menu, but the body renders through here.
+    if (widget.message.content == kNotLinkedYetMessageLabel) {
+      return AppLocalizations.of(context).messageSentBeforeDeviceLinked;
     }
     if (!widget.decryptInProgress) return widget.message.content;
     // displayAsEncryptedPlaceholder is the model's own predicate: ciphertext

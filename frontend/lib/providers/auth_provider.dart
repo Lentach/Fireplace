@@ -12,17 +12,42 @@ import '../services/session_refresh_exception.dart';
 import '../config/app_config.dart';
 import '../utils/e2e_persistent_diag.dart';
 
+/// What the auth surface should TELL the user, without deciding the words.
+///
+/// The provider has no locale, so it must never build user-facing prose. It
+/// used to, and the login screen rendered the result verbatim: Polish users saw
+/// English on the app's front door, one branch told them to run
+/// `docker-compose up`, and the fallback returned the raw exception string.
+/// The widget layer maps these to ARB strings — the same split already used for
+/// [AuthProvider.logoutBecauseDeviceRevoked] and for backend reason codes on
+/// the invitations surface.
+enum AuthStatusCode {
+  /// Token storage errored on every read attempt. The store was left intact, so
+  /// the session may still be there on the next launch.
+  savedSessionUnreadable,
+
+  /// Registration succeeded; the user still has to sign in.
+  registerSucceeded,
+
+  /// The backend could not be reached at all.
+  serverUnreachable,
+
+  /// Anything else. Deliberately generic: the previous behaviour leaked the
+  /// exception text, which was untranslated and told the user nothing they
+  /// could act on.
+  unexpectedError,
+}
+
 class AuthProvider extends ChangeNotifier {
   AuthProvider({
     ApiService? api,
     AuthTokenStore? tokenStore,
     List<Duration>? tokenReadRetryDelays,
-  })
-    : _api = api ?? ApiService(baseUrl: AppConfig.baseUrl),
-      _tokenReadRetryDelays =
-          tokenReadRetryDelays ??
-          const [Duration(seconds: 2), Duration(seconds: 5)],
-      _tokens = tokenStore ?? AuthTokenStore() {
+  }) : _api = api ?? ApiService(baseUrl: AppConfig.baseUrl),
+       _tokenReadRetryDelays =
+           tokenReadRetryDelays ??
+           const [Duration(seconds: 2), Duration(seconds: 5)],
+       _tokens = tokenStore ?? AuthTokenStore() {
     _pushService = PushService(_api);
     _loadSavedToken();
   }
@@ -39,6 +64,7 @@ class AuthProvider extends ChangeNotifier {
   String? _refreshToken;
   UserModel? _currentUser;
   String? _statusMessage;
+  AuthStatusCode? _statusCode;
   bool _isError = false;
   Timer? _sessionRefreshTimer;
   Future<void>? _sessionRefreshInFlight;
@@ -54,6 +80,10 @@ class AuthProvider extends ChangeNotifier {
   String? get token => _token;
   UserModel? get currentUser => _currentUser;
   String? get statusMessage => _statusMessage;
+
+  /// The status to display, when it is one the provider raised itself.
+  /// Localized by the widget layer; takes precedence over [statusMessage].
+  AuthStatusCode? get statusCode => _statusCode;
   bool get isError => _isError;
   bool get isRestoringSession => _isRestoringSession;
   bool get isLoggedIn => _token != null && _currentUser != null;
@@ -98,11 +128,7 @@ class AuthProvider extends ChangeNotifier {
         // hydrated profile (profilePhotos, about, profilePictureUrl, ...) and
         // only refresh the identity fields the JWT actually carries. Rebuilding
         // from claims alone would collapse profilePhotos to [] and drop about.
-        _currentUser = existing.copyWith(
-          id: id,
-          username: username,
-          tag: tag,
-        );
+        _currentUser = existing.copyWith(id: id, username: username, tag: tag);
       } else {
         // Cold start or account switch: no fully-hydrated prior profile to
         // trust, so rebuild from claims (preserving prior behavior exactly).
@@ -129,6 +155,12 @@ class AuthProvider extends ChangeNotifier {
     onAccessTokenChanged?.call(access);
     notifyListeners();
   }
+
+  /// Installs the deviceId-bound session a §5.1 provisioning ceremony
+  /// returned in `provisioningCompleted` (spec §12 item (iii)). Same storage
+  /// path as login/refresh — a second token path would drift.
+  Future<void> adoptProvisionedSession(Map<String, dynamic> tokens) =>
+      _persistTokens(tokens);
 
   Future<void> _silentRefresh() async {
     final r = _refreshToken;
@@ -251,11 +283,34 @@ class AuthProvider extends ChangeNotifier {
     _refreshToken = null;
     _currentUser = null;
     _statusMessage = null;
+    _statusCode = null;
     _isError = false;
     if (wipeStoredTokens) {
       await _tokens.clear();
     }
     await clearPwaAppBadgeOnLogout();
+    notifyListeners();
+  }
+
+  /// The server revoked THIS device (multi-device spec §5.5 + amendment
+  /// (xxvi)): end the session and say why.
+  ///
+  /// Logout semantics, deliberately not a wipe: the local plaintext store and
+  /// the Signal key material are untouched, exactly as on every other logout
+  /// path — remote wipe of a revoked device's data is an explicit non-goal
+  /// (spec §1). Stored tokens DO go, because the server already deleted that
+  /// device's refresh sessions; keeping them would only produce a doomed
+  /// refresh on the next cold boot.
+  ///
+  /// [notice] is the localized explanation, passed in because only the widget
+  /// layer holds the locale.
+  Future<void> logoutBecauseDeviceRevoked(String notice) async {
+    if (_token == null && _currentUser == null) return;
+    await _clearLocalAuthState('device_revoked', source: 'deviceRevoked');
+    // After the clear, which resets the status surface.
+    _statusMessage = notice;
+    _statusCode = null;
+    _isError = true;
     notifyListeners();
   }
 
@@ -312,7 +367,11 @@ class AuthProvider extends ChangeNotifier {
       // the tokens may be sitting intact behind a transient plugin fault
       // (handoff §5.4). The store already retried fast; these are the slow
       // second chances before we concede the boot.
-      for (var i = 0; saved.readFailed && i < _tokenReadRetryDelays.length; i++) {
+      for (
+        var i = 0;
+        saved.readFailed && i < _tokenReadRetryDelays.length;
+        i++
+      ) {
         await Future<void>.delayed(_tokenReadRetryDelays[i]);
         saved = await _tokens.read();
       }
@@ -321,9 +380,7 @@ class AuthProvider extends ChangeNotifier {
         // the login screen but LEAVE THE STORE UNTOUCHED — the next launch
         // re-reads it — and say what happened instead of feigning a logout.
         // Durable AUTH_TOKENS_UNREADABLE was recorded by the store.
-        _statusMessage =
-            'Could not read the saved session from device storage. '
-            'Your login may still be there — restart the app to retry.';
+        _statusCode = AuthStatusCode.savedSessionUnreadable;
         _isError = true;
         return;
       }
@@ -458,12 +515,12 @@ class AuthProvider extends ChangeNotifier {
   Future<bool> register(String username, String password) async {
     try {
       await _api.register(username, password);
-      _statusMessage = 'Hero created! Now login.';
+      _statusCode = AuthStatusCode.registerSucceeded;
       _isError = false;
       notifyListeners();
       return true;
     } catch (e) {
-      _statusMessage = _userFriendlyNetworkError(e);
+      _statusCode = _networkErrorCode(e);
       _isError = true;
       notifyListeners();
       return false;
@@ -483,23 +540,26 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      _statusMessage = _userFriendlyNetworkError(e);
+      _statusCode = _networkErrorCode(e);
       _isError = true;
       notifyListeners();
       return false;
     }
   }
 
-  static String _userFriendlyNetworkError(Object e) {
-    final msg = e.toString().replaceFirst('Exception: ', '');
+  /// Classifies a failure WITHOUT quoting it. The exception text is developer
+  /// diagnostics: untranslated, often a stack-adjacent string, and never
+  /// something a user can act on.
+  static AuthStatusCode _networkErrorCode(Object e) {
+    final msg = e.toString();
     if (msg.contains('Failed to fetch') ||
         msg.contains('Connection refused') ||
         msg.contains('Connection reset') ||
         msg.contains('SocketException') ||
         msg.contains('NetworkException')) {
-      return 'Cannot reach server. Is the backend running? (e.g. docker-compose up)';
+      return AuthStatusCode.serverUnreachable;
     }
-    return msg;
+    return AuthStatusCode.unexpectedError;
   }
 
   Future<void> logout() async {
@@ -519,6 +579,7 @@ class AuthProvider extends ChangeNotifier {
 
   void clearStatus() {
     _statusMessage = null;
+    _statusCode = null;
     _isError = false;
     notifyListeners();
   }

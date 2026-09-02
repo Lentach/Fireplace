@@ -1,6 +1,7 @@
 import { JwtService } from '@nestjs/jwt';
 import { ChatGateway } from './chat.gateway';
 import { UsersService } from '../users/users.service';
+import { DevicesService } from '../key-bundles/devices.service';
 import { Socket } from 'socket.io';
 
 interface GatewayWithKeyExchange {
@@ -15,6 +16,16 @@ function createGateway(): ChatGateway {
     deliverPendingSessionRebuilds: jest.fn(),
     handleCheckOwnKeyBundle: jest.fn(),
   } as any;
+  // The device row is touched on every connect (Phase 1, spec §4); it must
+  // never be able to break the connection, so it is stubbed and ignored here.
+  // `isRevoked` is the §5.5 connect gate: the default answer is "not revoked",
+  // and the revocation suite drives the true case.
+  const devices: Pick<DevicesService, 'touch' | 'isRevoked'> = {
+    touch: jest.fn(),
+    isRevoked: jest.fn<Promise<boolean>, [number, number]>(() =>
+      Promise.resolve(false),
+    ),
+  };
   return new ChatGateway(
     { verify: jest.fn() } as unknown as JwtService,
     { findById: jest.fn() } as unknown as UsersService,
@@ -25,6 +36,10 @@ function createGateway(): ChatGateway {
     noop,
     noop,
     noop,
+    noop,
+    noop,
+    noop,
+    devices as DevicesService,
     noop,
   );
 }
@@ -104,6 +119,9 @@ describe('ChatGateway handleConnection', () => {
     ).toHaveBeenCalledWith(client);
     expect(client.emit).toHaveBeenCalledWith('socketReady', {
       serverTime: expect.any(String) as unknown,
+      // The client cannot derive which device it is, and a fan-out send must
+      // know: it addresses every OTHER own device and never its own (spec §5.3).
+      deviceId: 1,
     });
     // The client parses this and refuses to destroy expired plaintext when it
     // cannot. An unparseable stamp would silently disable that path forever.
@@ -114,6 +132,10 @@ describe('ChatGateway handleConnection', () => {
       id: 42,
       username: 'alice',
       tag: '0001',
+      // A token issued before the claim existed is device 1 (§8) — key
+      // material has to land in the account's original namespace, never in
+      // an "unknown" one.
+      deviceId: 1,
     });
   });
 
@@ -128,6 +150,91 @@ describe('ChatGateway handleConnection', () => {
     );
     expect(client.disconnect).toHaveBeenCalled();
     expect(jwtService.verify).not.toHaveBeenCalled();
+  });
+
+  describe('the revoked-device connect gate (§5.5, amendment (xxii))', () => {
+    const devicesOf = (g: ChatGateway) =>
+      (g as unknown as { devicesService: { isRevoked: jest.Mock } })
+        .devicesService;
+
+    it('refuses a revoked device holding a still-valid JWT, and says why', async () => {
+      const client = createMockClient({ token: 'valid-jwt' });
+      jwtService.verify.mockReturnValue({ sub: 42, deviceId: 2 });
+      usersService.findById.mockResolvedValue({
+        id: 42,
+        username: 'alice',
+        tag: '0001',
+      });
+      devicesOf(gateway).isRevoked.mockResolvedValue(true);
+
+      await gateway.handleConnection(client as unknown as Socket);
+
+      // Told, then dropped (amendment (xxvi)) — otherwise a kicked device
+      // shows only the generic connection-lost banner and keeps retrying.
+      expect(client.emit).toHaveBeenCalledWith('deviceRevoked', {
+        userId: 42,
+        deviceId: 2,
+      });
+      expect(client.disconnect).toHaveBeenCalled();
+      expect(client.emit).not.toHaveBeenCalledWith(
+        'socketReady',
+        expect.anything(),
+      );
+      // The session was refused BEFORE any room join or row touch.
+      expect(client.join).not.toHaveBeenCalled();
+      expect(client.data.user).toBeUndefined();
+    });
+
+    it('admits a device whose row does not exist yet (legacy §8 accounts)', async () => {
+      const client = createMockClient({ token: 'valid-jwt' });
+      jwtService.verify.mockReturnValue({ sub: 42 });
+      usersService.findById.mockResolvedValue({
+        id: 42,
+        username: 'alice',
+        tag: '0001',
+      });
+      // A missing row answers false, never true — the whole point of the
+      // predicate's polarity.
+      devicesOf(gateway).isRevoked.mockResolvedValue(false);
+
+      await gateway.handleConnection(client as unknown as Socket);
+
+      expect(client.emit).toHaveBeenCalledWith(
+        'socketReady',
+        expect.objectContaining({ deviceId: 1 }),
+      );
+      expect(client.disconnect).not.toHaveBeenCalled();
+    });
+
+    it('checks the gate for the device named in the claim', async () => {
+      const client = createMockClient({ token: 'valid-jwt' });
+      jwtService.verify.mockReturnValue({ sub: 42, deviceId: 3 });
+      usersService.findById.mockResolvedValue({
+        id: 42,
+        username: 'alice',
+        tag: '0001',
+      });
+
+      await gateway.handleConnection(client as unknown as Socket);
+
+      expect(devicesOf(gateway).isRevoked).toHaveBeenCalledWith(42, 3);
+    });
+  });
+
+  it('takes the device from the token claim when the session names one', async () => {
+    const client = createMockClient({ token: 'valid-jwt' });
+    jwtService.verify.mockReturnValue({ sub: 42, deviceId: 3 });
+    usersService.findById.mockResolvedValue({
+      id: 42,
+      username: 'alice',
+      tag: '0001',
+    });
+
+    await gateway.handleConnection(client as any);
+
+    // Defaulting to 1 here would hand this session another device's key
+    // namespace: its bundle, its one-time pre-keys, its epoch.
+    expect((client.data.user as { deviceId?: number }).deviceId).toBe(3);
   });
 
   it('does not emit socketReady when user is not found', async () => {
@@ -227,6 +334,18 @@ describe('ChatGateway presence is room-based (BE-007)', () => {
     expect(newSocket.join).toHaveBeenCalledWith('user:37');
   });
 
+  // Ciphertext is addressed per device (spec §5.3), so the socket must be in a
+  // device room too — otherwise a fan-out send reaches nobody.
+  it('every authenticated socket also joins its per-DEVICE room', async () => {
+    const client = createMockClient({ token: 'jwt' });
+
+    await gateway.handleConnection(asSocket(client));
+
+    expect(client.join).toHaveBeenCalledWith('user:37');
+    // A token predating the deviceId claim is device 1 (§8), never "unknown".
+    expect(client.join).toHaveBeenCalledWith('device:37:1');
+  });
+
   it('a stale old-socket disconnect does not evict anything (no presence bookkeeping left)', async () => {
     const oldSocket = createMockClient({ token: 'jwt', id: 'OLD' });
     const newSocket = createMockClient({ token: 'jwt', id: 'NEW' });
@@ -254,8 +373,7 @@ describe('ChatGateway handleCheckOwnKeyBundle', () => {
     const gateway = createGateway();
     const client = createMockClient();
     // Test-only access to the gateway's injected service.
-    const gatewayWithKeyExchange =
-      gateway as unknown as GatewayWithKeyExchange;
+    const gatewayWithKeyExchange = gateway as unknown as GatewayWithKeyExchange;
     const keyExchange = gatewayWithKeyExchange.chatKeyExchangeService;
 
     await gateway.handleCheckOwnKeyBundle(client as unknown as Socket);

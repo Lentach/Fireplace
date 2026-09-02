@@ -22,6 +22,9 @@ import { BlockedUser } from './blocked/blocked-user.entity';
 import { FcmToken } from './fcm-tokens/fcm-token.entity';
 import { KeyBundle } from './key-bundles/key-bundle.entity';
 import { OneTimePreKey } from './key-bundles/one-time-pre-key.entity';
+import { IdentityChangeAudit } from './key-bundles/identity-change-audit.entity';
+import { IdentityResetRequest } from './key-bundles/identity-reset-request.entity';
+import { RecoveryKey } from './key-bundles/recovery-key.entity';
 import { SecretNote } from './secret-notes/secret-note.entity';
 import { SecretNotesModule } from './secret-notes/secret-notes.module';
 import { validate } from './config/env.validation';
@@ -36,6 +39,9 @@ import { HttpThrottlerGuard } from './common/http-throttler.guard';
 import { ConversationNotificationPreference } from './conversation-notification-preferences/conversation-notification-preference.entity';
 import { ConversationNotificationPreferencesModule } from './conversation-notification-preferences/conversation-notification-preferences.module';
 import { ProfilePhoto } from './users/profile-photo.entity';
+import { Device } from './key-bundles/device.entity';
+import { AccountAuthorization } from './key-bundles/account-authorization.entity';
+import { MessageEnvelope } from './messages/message-envelope.entity';
 @Module({
   imports: [
     // Load and validate environment variables
@@ -74,8 +80,14 @@ import { ProfilePhoto } from './users/profile-photo.entity';
           FcmToken,
           WebPushSubscription,
           RefreshToken,
+          Device,
+          AccountAuthorization,
+          MessageEnvelope,
           KeyBundle,
           OneTimePreKey,
+          IdentityChangeAudit,
+          IdentityResetRequest,
+          RecoveryKey,
           SecretNote,
           ConversationNotificationPreference,
           ProfilePhoto,

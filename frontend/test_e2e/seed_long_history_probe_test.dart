@@ -75,7 +75,7 @@ void main() {
 
       // Session against the bundle the BROWSER published.
       final bundle = await sender.fetchBundleFor(_targetUserId);
-      await sender.encryption.buildSession(_targetUserId, bundle);
+      await sender.encryption.buildSession(_targetUserId, bundle, expectedIdentityBase64: null);
 
       for (var i = 1; i <= _seedCount; i++) {
         final ciphertext = await sender.encryptText(

@@ -96,7 +96,7 @@ class MessageActionPanel extends StatelessWidget {
     final color = !enabled
         ? Theme.of(context).disabledColor
         : destructive
-        ? Colors.red.shade700
+        ? Theme.of(context).colorScheme.error
         : Theme.of(context).colorScheme.onSurface;
     return InkWell(
       onTap: enabled ? onTap : null,

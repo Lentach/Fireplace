@@ -94,6 +94,177 @@ class AppLocalizationsPl extends AppLocalizations {
   String get devicesLoading => 'Ładowanie…';
 
   @override
+  String get devicesExplainer =>
+      'Urządzenia połączone z tym kontem. Nowe urządzenie można dodać tylko z urządzenia głównego.';
+
+  @override
+  String get devicesLinkedDeviceNote =>
+      'To urządzenie jest połączone. Nowe urządzenia dodaje się z urządzenia głównego.';
+
+  @override
+  String get devicesNotEnrolled =>
+      'Łączenie urządzeń nie jest jeszcze włączone dla tego konta.';
+
+  @override
+  String get devicesEnableLinking => 'Włącz łączenie';
+
+  @override
+  String get devicesLinkADevice => 'Połącz urządzenie';
+
+  @override
+  String get devicesLinkThisDevice => 'Połącz to urządzenie';
+
+  @override
+  String get devicesAlreadyEnrolled =>
+      'Inna instalacja tego konta już włączyła łączenie. Urządzenia można dodawać tylko z tamtego urządzenia.';
+
+  @override
+  String get devicesEnrollFailed =>
+      'Nie udało się włączyć łączenia. Spróbuj ponownie.';
+
+  @override
+  String get devicesChainInvalid =>
+      'Nie można zweryfikować listy urządzeń. Spróbuj ponownie później.';
+
+  @override
+  String get devicesRevokedBadge => 'cofnięte';
+
+  @override
+  String devicesRevokedSection(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Cofnięte urządzenia ($count)',
+      one: 'Cofnięte urządzenie (1)',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get devicesRevokeAction => 'Usuń urządzenie';
+
+  @override
+  String get devicesRevokeTitle => 'Usunąć to urządzenie?';
+
+  @override
+  String get devicesRevokeExplainer =>
+      'Zostanie wylogowane i przestanie odbierać nowe wiadomości. Wiadomości już zapisane na tym urządzeniu nie zostaną usunięte.';
+
+  @override
+  String get devicesRevokeFailed =>
+      'Nie udało się usunąć tego urządzenia. Spróbuj ponownie.';
+
+  @override
+  String get deviceRevokedNotice =>
+      'To urządzenie zostało usunięte z Twojego konta. Twoje wiadomości na nim pozostały — aby pisać dalej, zaloguj się i połącz to urządzenie ponownie.';
+
+  @override
+  String get deviceMismatchTitle => 'To urządzenie zostało usunięte z konta';
+
+  @override
+  String get deviceMismatchBody =>
+      'Klucze szyfrowania tego urządzenia należą do urządzenia usuniętego z Twojego konta, więc przestało ono wysyłać i odbierać zaszyfrowane wiadomości. Aby pisać dalej, połącz to urządzenie ponownie ze swojego drugiego urządzenia. Na pozostałych urządzeniach nic się nie zmieniło.';
+
+  @override
+  String get deviceMismatchAction => 'Połącz to urządzenie';
+
+  @override
+  String get devicesPrimaryBadge => 'główne';
+
+  @override
+  String get devicesThisDeviceKeyless =>
+      'To urządzenie nie ma jeszcze kluczy. Połącz je ze swoim głównym urządzeniem.';
+
+  @override
+  String get linkPrimaryTitle => 'Połącz urządzenie';
+
+  @override
+  String get linkPrimaryExplainer =>
+      'Na nowym urządzeniu wybierz „Połącz to urządzenie”, a potem wpisz tutaj wyświetlony kod.';
+
+  @override
+  String get linkPrimaryCodeLabel => 'Kod z nowego urządzenia';
+
+  @override
+  String get linkPrimaryContinue => 'Dalej';
+
+  @override
+  String get linkSasHeading => 'Porównaj kody';
+
+  @override
+  String get linkSasExplainer =>
+      'Oba urządzenia muszą pokazywać ten sam kod. Zatwierdź tylko wtedy, gdy są identyczne.';
+
+  @override
+  String get linkApprove => 'Zatwierdź';
+
+  @override
+  String get linkCancel => 'Anuluj';
+
+  @override
+  String get linkWaitingForDevice => 'Czekam na nowe urządzenie…';
+
+  @override
+  String get linkPrimaryDone => 'Urządzenie zostało połączone.';
+
+  @override
+  String get linkInvalidCode =>
+      'Nieprawidłowy kod. Przepisz go dokładnie z nowego urządzenia.';
+
+  @override
+  String get linkNoDak =>
+      'Brak klucza autoryzacji na tym urządzeniu. Łączyć można tylko z urządzenia, które włączyło łączenie.';
+
+  @override
+  String get linkFailed => 'Łączenie nie powiodło się';
+
+  @override
+  String get linkStaleVersionRetry =>
+      'Lista urządzeń zmieniła się w trakcie — podpisuję ponownie…';
+
+  @override
+  String get linkNewTitle => 'Połącz to urządzenie';
+
+  @override
+  String get linkNewExplainer =>
+      'Pokaż ten kod na głównym urządzeniu: wybierz tam „Połącz urządzenie” i przepisz kod (albo zeskanuj QR).';
+
+  @override
+  String get linkNewWaitingHello => 'Czekam na główne urządzenie…';
+
+  @override
+  String get linkNewCopy => 'Skopiuj kod';
+
+  @override
+  String get linkNewCopied => 'Kod skopiowany';
+
+  @override
+  String get linkNewCompleting => 'Łączenie…';
+
+  @override
+  String get linkNewRebinding => 'Przełączam sesję na nowe urządzenie…';
+
+  @override
+  String get linkNewDone => 'To urządzenie jest połączone i gotowe.';
+
+  @override
+  String get linkNewAborted => 'Łączenie przerwane';
+
+  @override
+  String get linkNewRetry => 'Spróbuj ponownie';
+
+  @override
+  String get linkAbortReasonExpired => 'Kod wygasł.';
+
+  @override
+  String get linkAbortReasonCancelled =>
+      'Łączenie anulowano na drugim urządzeniu.';
+
+  @override
+  String get linkAbortReasonBadBlob =>
+      'Weryfikacja danych nie powiodła się. Klucze zostały usunięte z tego urządzenia.';
+
+  @override
   String get settingsAppVersion => 'Wersja aplikacji';
 
   @override
@@ -316,6 +487,13 @@ class AppLocalizationsPl extends AppLocalizations {
       'Ta wiadomość nie jest już przechowywana na tym urządzeniu.';
 
   @override
+  String get messageSentBeforeDeviceLinked =>
+      'Wysłana przed połączeniem tego urządzenia.';
+
+  @override
+  String get devicesSyncingNote => 'Synchronizowanie urządzeń…';
+
+  @override
   String get encryptionNotInitialized => 'Szyfrowanie niezainicjowane';
 
   @override
@@ -324,10 +502,39 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get identityDamagedBody =>
-      'Logujesz się na nowym urządzeniu lub w nowej przeglądarce? Twoje konto ma już klucze szyfrowania gdzie indziej, a to urządzenie ich nie ma. Jeśli to Twoje dotychczasowe urządzenie, zapisane klucze zostały utracone. Tak czy inaczej nic nie zostało odtworzone automatycznie — zrobienie tego po cichu zniszczyłoby możliwość odczytania historii.';
+      'Logujesz się na nowym urządzeniu lub w nowej przeglądarce? Twoje konto ma już klucze szyfrowania na innym urządzeniu — połącz to urządzenie stamtąd i nic nie przepadnie. Tylko jeśli to Twoje dotychczasowe urządzenie, a zapisane klucze zostały utracone, zacznij od nowa: powstaną nowe klucze, a wiadomości, których to urządzenie nigdy nie odszyfrowało, będą nie do odzyskania. Nic nie zostało odtworzone automatycznie — zrobienie tego po cichu zniszczyłoby możliwość odczytania historii.';
 
   @override
   String get identityDamagedAction => 'Zacznij od nowa';
+
+  @override
+  String get messageRetrySend => 'Ponów';
+
+  @override
+  String get authStatusSavedSessionUnreadable =>
+      'Nie udało się odczytać zapisanej sesji z tego urządzenia. Twoje logowanie może nadal tam być — uruchom aplikację ponownie.';
+
+  @override
+  String get authStatusRegisterSucceeded =>
+      'Konto utworzone. Zaloguj się, aby kontynuować.';
+
+  @override
+  String get authStatusServerUnreachable =>
+      'Nie można połączyć się z serwerem. Sprawdź połączenie i spróbuj ponownie.';
+
+  @override
+  String get authStatusUnexpectedError =>
+      'Coś poszło nie tak. Spróbuj ponownie.';
+
+  @override
+  String get identityDamagedRecoveryFailed =>
+      'Nie udało się utworzyć nowych kluczy szyfrowania. Spróbuj ponownie.';
+
+  @override
+  String get identityAlertShowDetails => 'Szczegóły';
+
+  @override
+  String get identityAlertHideDetails => 'Ukryj szczegóły';
 
   @override
   String get identityDamagedConfirmTitle => 'Utworzyć nowe klucze?';
@@ -362,6 +569,188 @@ class AppLocalizationsPl extends AppLocalizations {
   @override
   String get peerIdentityFingerprintNoStoredKey =>
       'Brak zapisanego klucza tożsamości dla tego kontaktu.';
+
+  @override
+  String peerIdentityFingerprintChangedNotice(String name) {
+    return 'Klucze użytkownika $name uległy zmianie. Porównaj NOWY odcisk poniżej — poprzedni pokazujemy tylko po to, aby było widać, co się zmieniło.';
+  }
+
+  @override
+  String peerIdentityFingerprintServedNotice(String name) {
+    return 'Ten klucz pochodzi z serwera i żadna wiadomość od użytkownika $name go jeszcze nie potwierdziła. Porównanie go innym kanałem to jedyne zabezpieczenie.';
+  }
+
+  @override
+  String peerIdentityFingerprintNewLabel(String name) {
+    return 'Nowy odcisk tożsamości użytkownika $name';
+  }
+
+  @override
+  String get peerIdentityFingerprintPreviousLabel =>
+      'Poprzednio zaufany odcisk';
+
+  @override
+  String peerIdentityFingerprintOfferChanged(String name) {
+    return 'Nic nie zostało potwierdzone: klucz użytkownika $name zmienił się, gdy to okno było otwarte, więc nie jest to klucz, który właśnie porównałeś. Porównaj odcisk poniżej ponownie przed potwierdzeniem.';
+  }
+
+  @override
+  String peerIdentityFingerprintUnchangedNotice(String name) {
+    return 'Klucz użytkownika $name nie zmienił się od czasu, gdy go zaakceptowałeś. Potwierdź poniżej, aby zamknąć to ostrzeżenie.';
+  }
+
+  @override
+  String peerIdentityFingerprintOfferUnavailable(String name) {
+    return 'Nie udało się wczytać aktualnego klucza użytkownika $name, więc nie ma jeszcze czego porównywać. Sprawdź połączenie i otwórz to ponownie.';
+  }
+
+  @override
+  String peerIdentityChangedTimelineRow(String name) {
+    return 'Klucze bezpieczeństwa $name uległy zmianie — zwykle to logowanie z nowego urządzenia lub przeglądarki. Dotknij, aby zweryfikować.';
+  }
+
+  @override
+  String get ownIdentityReplacedTitle =>
+      'Nowe klucze szyfrowania na Twoim koncie';
+
+  @override
+  String get ownIdentityReplacedBody =>
+      'Inne logowanie przesłało nowe klucze szyfrowania dla Twojego konta — zwykle to nowe urządzenie, przeglądarka lub ponowna instalacja. Jeśli to nie Ty, natychmiast zmień hasło.';
+
+  @override
+  String get ownIdentityReplacedDismissAction => 'Rozumiem';
+
+  @override
+  String get identityResetPendingTitle =>
+      'Ktoś poprosił o zresetowanie Twoich kluczy szyfrowania';
+
+  @override
+  String identityResetPendingBody(String remaining) {
+    return 'Jeśli to nie Ty, anuluj teraz — w przeciwnym razie za $remaining Twoje konto otrzyma nowe klucze szyfrowania, a historia wiadomości stanie się nieczytelna.';
+  }
+
+  @override
+  String get identityResetCancelAction => 'Anuluj';
+
+  @override
+  String identityResetHoursLeft(int hours) {
+    String _temp0 = intl.Intl.pluralLogic(
+      hours,
+      locale: localeName,
+      other: '$hours godzin',
+      few: '$hours godziny',
+      one: '1 godzinę',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String identityResetMinutesLeft(int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes minut',
+      few: '$minutes minuty',
+      one: '1 minutę',
+      zero: 'niecałą minutę',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get identityResetAnyMoment => 'lada chwila';
+
+  @override
+  String get identityUploadLockedTitle =>
+      'Twoje nowe klucze szyfrowania nie zostały opublikowane';
+
+  @override
+  String get identityUploadLockedBody =>
+      'To urządzenie utworzyło nowe klucze, ale konto nadal używa poprzednich, więc inne osoby nie mogą się z Tobą bezpiecznie skontaktować. Jeśli poprzednie klucze wciąż masz na innym urządzeniu, połącz to urządzenie stamtąd — nieopublikowane klucze zostaną odrzucone i nic nie przepadnie. Tylko jeśli tych kluczy nie ma już nigdzie, rozpocznij reset, aby opublikować te — trwa 72 godziny, wylogowuje pozostałe urządzenia, a wszystkie zalogowane sesje otrzymają powiadomienie.';
+
+  @override
+  String get identityResetStartAction => 'Rozpocznij reset';
+
+  @override
+  String get recoveryKeyTitle => 'Klucz odzyskiwania';
+
+  @override
+  String get recoveryKeySubtitle => 'Szybszy powrót, jeśli stracisz klucze';
+
+  @override
+  String get recoveryKeyExplainer =>
+      'Jeśli kiedykolwiek stracisz dostęp do swoich kluczy szyfrowania, uzyskanie nowych trwa 72 godziny — to celowe opóźnienie, dzięki któremu nikt inny nie przejmie po cichu Twojego konta, zanim zdążysz zareagować. Klucz odzyskiwania skraca to oczekiwanie do 1 godziny. Nigdy go nie pomija, a wszystkie zalogowane sesje i tak otrzymają powiadomienie.\n\nSłowa pokazujemy tylko raz i nie zapisujemy ich na tym urządzeniu — przechowywanie ich tutaj oznaczałoby utratę dokładnie wtedy, gdy są potrzebne. Zapisz je w bezpiecznym miejscu, poza urządzeniem.';
+
+  @override
+  String get recoveryKeyGenerateAction => 'Wygeneruj klucz odzyskiwania';
+
+  @override
+  String get recoveryKeyShownOnceWarning =>
+      'Te słowa pokazujemy tylko raz. Zapisz je, zanim przejdziesz dalej — wygenerowanie nowego klucza zastąpi ten.';
+
+  @override
+  String get recoveryKeyCopyAction => 'Kopiuj słowa';
+
+  @override
+  String get recoveryKeyCopied => 'Skopiowano klucz odzyskiwania';
+
+  @override
+  String get recoveryKeySavedAction => 'Zapisałem/am';
+
+  @override
+  String get recoveryKeySaved => 'Zapisano klucz odzyskiwania';
+
+  @override
+  String get recoveryKeySaveFailed =>
+      'Nie udało się zapisać klucza odzyskiwania — nic nie zostało zapisane, więc te słowa nie zadziałają. Spróbuj ponownie.';
+
+  @override
+  String get recoveryPhrasePromptTitle => 'Masz klucz odzyskiwania?';
+
+  @override
+  String get recoveryPhrasePromptBody =>
+      'Wpisanie 12 słów skraca oczekiwanie z 72 godzin do 1. Tak czy inaczej wszystkie zalogowane sesje otrzymają powiadomienie, a reset nadal można anulować.';
+
+  @override
+  String get recoveryPhrasePromptHint => 'dwanaście słów oddzielonych spacjami';
+
+  @override
+  String get recoveryPhraseMalformed =>
+      'To nie wygląda na kompletny 12-słowny klucz odzyskiwania. Sprawdź literówki.';
+
+  @override
+  String get recoveryPhraseUseAction => 'Użyj klucza';
+
+  @override
+  String get recoveryPhraseNoneAction => 'Nie mam go';
+
+  @override
+  String get identityResetStarted =>
+      'Reset rozpoczęty. Wszystkie zalogowane sesje zostały powiadomione, a do końca odliczania można go anulować.';
+
+  @override
+  String get identityResetPhraseTooNew =>
+      'Reset rozpoczęty. Twój klucz odzyskiwania był poprawny, ale został utworzony mniej niż 3 dni temu, więc tym razem nie może skrócić oczekiwania — obowiązują pełne 72 godziny. Nie musisz wpisywać go ponownie.';
+
+  @override
+  String get identityResetAlreadyRunning =>
+      'Dla tego konta reset już trwa. Odliczanie na górze ekranu pokazuje, ile zostało czasu.';
+
+  @override
+  String get identityResetCooldown =>
+      'Reset został niedawno anulowany, więc nowy nie może ruszyć przez maksymalnie 24 godziny. Jeśli ktoś inny wciąż go anuluje, najpierw zmień hasło, aby go wylogować.';
+
+  @override
+  String get identityResetPhraseRejected =>
+      'Te 12 słów nie pasuje do klucza odzyskiwania zapisanego dla tego konta. Możesz spróbować ponownie albo rozpocząć reset bez klucza i poczekać 72 godziny.';
+
+  @override
+  String get identityResetPhraseLocked =>
+      'Zbyt wiele prób z kluczem odzyskiwania. Spróbuj ponownie za około godzinę albo rozpocznij reset bez klucza i poczekaj 72 godziny.';
+
+  @override
+  String get identityResetNoAnswer =>
+      'Brak odpowiedzi serwera, więc nic nie zostało rozpoczęte. Sprawdź połączenie i spróbuj ponownie.';
 
   @override
   String get identityFingerprintUnavailable =>
@@ -1319,4 +1708,10 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get attachmentUnsupportedFileType => 'Nieobsługiwany typ pliku';
+
+  @override
+  String get chatScrollToBottomSemantics => 'Przewiń do najnowszych wiadomości';
+
+  @override
+  String get avatarOpenProfileSemantics => 'Otwórz profil';
 }

@@ -4,11 +4,17 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { KeyBundlesService, KeyBundleData } from './key-bundles.service';
 import { KeyBundle } from './key-bundle.entity';
 import { OneTimePreKey } from './one-time-pre-key.entity';
+import { IdentityChangeAudit } from './identity-change-audit.entity';
+import { AccountAuthorization } from './account-authorization.entity';
+import { IdentityResetService } from './identity-reset.service';
 
 describe('KeyBundlesService', () => {
   let service: KeyBundlesService;
   let keyBundleRepo: Record<string, jest.Mock>;
   let otpRepo: Record<string, jest.Mock>;
+  let auditRepo: Record<string, jest.Mock>;
+  let authorizationRepo: Record<string, jest.Mock>;
+  let identityResetService: Record<string, jest.Mock>;
   // Chainable query-builder mock for the stale-OTP purge in upsertKeyBundle.
   let purgeBuilder: {
     delete: jest.Mock;
@@ -26,19 +32,21 @@ describe('KeyBundlesService', () => {
   };
 
   beforeEach(async () => {
+    purgeBuilder = {
+      delete: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      execute: jest.fn().mockResolvedValue({ affected: 0 }),
+    };
+
     keyBundleRepo = {
       findOne: jest.fn(),
       create: jest.fn(),
       save: jest.fn(),
       delete: jest.fn(),
       upsert: jest.fn(),
-    };
-
-    purgeBuilder = {
-      delete: jest.fn().mockReturnThis(),
-      where: jest.fn().mockReturnThis(),
-      andWhere: jest.fn().mockReturnThis(),
-      execute: jest.fn().mockResolvedValue({ affected: 0 }),
+      // An authorized identity change drops every OTHER device's bundle.
+      createQueryBuilder: jest.fn(() => purgeBuilder),
     };
 
     otpRepo = {
@@ -52,11 +60,42 @@ describe('KeyBundlesService', () => {
       createQueryBuilder: jest.fn(() => purgeBuilder),
     };
 
+    auditRepo = {
+      insert: jest.fn().mockResolvedValue({ identifiers: [{ id: 1 }] }),
+    };
+
+    // Default: NOT enrolled, so §6.1's signature path stays available. Every
+    // pre-(liv) test models a single-device Phase 0b account, which is exactly
+    // this shape; the (liv) tests opt into enrollment explicitly.
+    authorizationRepo = {
+      findOne: jest.fn().mockResolvedValue(null),
+    };
+
+    // Default: no completed reset ceremony exists, so an unsigned identity
+    // replacement is refused. Tests that model a LEGITIMATE replacement opt in
+    // explicitly, which keeps the locked case the default everywhere.
+    identityResetService = {
+      consumeCompletedReset: jest.fn().mockResolvedValue(false),
+      getStatusForUser: jest.fn().mockResolvedValue(null),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         KeyBundlesService,
         { provide: getRepositoryToken(KeyBundle), useValue: keyBundleRepo },
         { provide: getRepositoryToken(OneTimePreKey), useValue: otpRepo },
+        {
+          provide: getRepositoryToken(IdentityChangeAudit),
+          useValue: auditRepo,
+        },
+        {
+          provide: getRepositoryToken(AccountAuthorization),
+          useValue: authorizationRepo,
+        },
+        {
+          provide: IdentityResetService,
+          useValue: identityResetService,
+        },
       ],
     }).compile();
 
@@ -75,8 +114,10 @@ describe('KeyBundlesService', () => {
 
         await expect(service.hasKeyBundle(1)).resolves.toBe(expected);
 
+        // Per device: a device with no bundle of its own has published
+        // nothing, whatever its siblings did.
         expect(keyBundleRepo.findOne).toHaveBeenCalledWith({
-          where: { userId: 1 },
+          where: { userId: 1, deviceId: 1 },
         });
         expect(otpRepo.query).not.toHaveBeenCalled();
       },
@@ -89,14 +130,16 @@ describe('KeyBundlesService', () => {
 
       await service.upsertKeyBundle(1, mockKeyBundleData);
 
+      // (userId, deviceId): the old account-wide conflict target made a
+      // second device's upload overwrite the first device's bundle.
       expect(keyBundleRepo.upsert).toHaveBeenCalledWith(
-        { userId: 1, ...mockKeyBundleData },
-        { conflictPaths: ['userId'] },
+        { userId: 1, deviceId: 1, ...mockKeyBundleData },
+        { conflictPaths: ['userId', 'deviceId'] },
       );
       expect(keyBundleRepo.save).not.toHaveBeenCalled();
     });
 
-    it('warns when an upload replaces an existing identity', async () => {
+    it('warns, writes a durable audit row, and reports the churn when an upload replaces an existing identity', async () => {
       const oldIdentity = 'old-identity-public-key-material';
       const newIdentity = 'new-identity-public-key-material';
       keyBundleRepo.findOne.mockResolvedValue({
@@ -105,23 +148,67 @@ describe('KeyBundlesService', () => {
         identityPublicKey: oldIdentity,
       });
       keyBundleRepo.upsert.mockResolvedValue({ raw: [] });
+      // Authorized by a completed reset ceremony (§6.2) — the legitimate path
+      // for someone who lost their device keys.
+      identityResetService.consumeCompletedReset.mockResolvedValue(true);
       const warnSpy = jest
         .spyOn(Logger.prototype, 'warn')
         .mockImplementation(() => undefined);
 
-      await service.upsertKeyBundle(9, {
+      const result = await service.upsertKeyBundle(9, {
         ...mockKeyBundleData,
         identityPublicKey: newIdentity,
       });
 
       expect(warnSpy).toHaveBeenCalledTimes(1);
       expect(warnSpy).toHaveBeenCalledWith(
-        '[identity-churn] userId=9 oldIdentityPrefix=old-identity newIdentityPrefix=new-identity',
+        // `via` names the authorization: a RESET is the moment the §6.2 roster
+        // teardown runs, a signature is a plain rotation (amendment (xxviii)).
+        '[identity-churn] userId=9 deviceId=1 via=reset oldIdentityPrefix=old-identity newIdentityPrefix=new-identity',
       );
+      // Phase 0a: the churn is durable — a full audit row, not just a log line.
+      expect(auditRepo.insert).toHaveBeenCalledTimes(1);
+      expect(auditRepo.insert).toHaveBeenCalledWith({
+        userId: 9,
+        previousIdentityPublicKey: oldIdentity,
+        newIdentityPublicKey: newIdentity,
+      });
+      expect(result).toEqual({
+        identityChanged: true,
+        authorizedBy: 'reset',
+        previousIdentityPublicKey: oldIdentity,
+      });
       warnSpy.mockRestore();
     });
 
-    it('does not warn when an upload retains the existing identity', async () => {
+    it('an audit-row insert failure never fails the upload (loud log, upload acked)', async () => {
+      keyBundleRepo.findOne.mockResolvedValue({
+        userId: 9,
+        ...mockKeyBundleData,
+        identityPublicKey: 'old-identity',
+      });
+      keyBundleRepo.upsert.mockResolvedValue({ raw: [] });
+      identityResetService.consumeCompletedReset.mockResolvedValue(true);
+      auditRepo.insert.mockRejectedValue(new Error('db down'));
+      const warnSpy = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+      const errorSpy = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => undefined);
+
+      const result = await service.upsertKeyBundle(9, {
+        ...mockKeyBundleData,
+        identityPublicKey: 'new-identity',
+      });
+
+      expect(result.identityChanged).toBe(true);
+      expect(errorSpy).toHaveBeenCalled();
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
+    });
+
+    it('does not warn or audit when an upload retains the existing identity', async () => {
       keyBundleRepo.findOne.mockResolvedValue({
         userId: 10,
         ...mockKeyBundleData,
@@ -134,7 +221,140 @@ describe('KeyBundlesService', () => {
       await service.upsertKeyBundle(10, mockKeyBundleData);
 
       expect(warnSpy).not.toHaveBeenCalled();
+      // Same-identity re-upload (the normal every-connect path) stays silent.
+      expect(auditRepo.insert).not.toHaveBeenCalled();
       warnSpy.mockRestore();
+    });
+
+    it('does not audit a first-time bundle upload (no prior identity)', async () => {
+      keyBundleRepo.findOne.mockResolvedValue(null);
+      keyBundleRepo.upsert.mockResolvedValue({ raw: [] });
+
+      const result = await service.upsertKeyBundle(7, mockKeyBundleData);
+
+      expect(auditRepo.insert).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        identityChanged: false,
+        // Nothing was replaced, so nothing authorized anything.
+        authorizedBy: null,
+        previousIdentityPublicKey: null,
+      });
+    });
+
+    // LANDMINE 2 (T4 rider, coherence F7). A linked device publishes its OWN
+    // bundle under the account's SHARED identity key. If the churn branch
+    // compared anything but the identity, provisioning a second device would
+    // fire a takeover alarm at the user and purge device 1's key material.
+    it('a second device uploading under the SHARED account identity is not churn', async () => {
+      // Where-aware: the (lxiv) guard reads THIS device's row separately from
+      // the account-first row, and a naive single-value mock would hand the
+      // guard device 1's row for a device-2 lookup and refuse a legit link.
+      const deviceOneRow = { userId: 11, deviceId: 1, ...mockKeyBundleData };
+      keyBundleRepo.findOne.mockImplementation(
+        ({ where }: { where: { userId: number; deviceId?: number } }) =>
+          Promise.resolve(
+          where.deviceId == null || where.deviceId === 1 ? deviceOneRow : null,
+          ),
+      );
+      keyBundleRepo.upsert.mockResolvedValue({ raw: [] });
+      const warnSpy = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+
+      // Same identityPublicKey, different device, its own registrationId.
+      const result = await service.upsertKeyBundle(
+        11,
+        { ...mockKeyBundleData, registrationId: 13585 },
+        undefined,
+        2,
+      );
+
+      expect(result.identityChanged).toBe(false);
+      expect(warnSpy).not.toHaveBeenCalled();
+      expect(auditRepo.insert).not.toHaveBeenCalled();
+      // Device 1's bundle and OTPs must survive untouched.
+      expect(keyBundleRepo.delete).not.toHaveBeenCalled();
+      expect(keyBundleRepo.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 11, deviceId: 2 }),
+        { conflictPaths: ['userId', 'deviceId'] },
+      );
+      warnSpy.mockRestore();
+    });
+
+    // Amendment (lxiv) clause 1 — GATE2-REVOKED-DEVICE-RELOGIN-CLOBBER.
+    // Identity and registrationId are minted together, once, in every mint
+    // path, so "same identity, different registrationId, same row" can only be
+    // a DIFFERENT physical install writing into a namespace it does not own —
+    // the revoked-laptop-signs-back-in shape, whose mixed served bundle makes
+    // peers' first messages permanently undecryptable by every device.
+    describe('device material conflict ((lxiv) clause 1)', () => {
+      it('refuses a same-identity upload whose registrationId differs from the stored row', async () => {
+        keyBundleRepo.findOne.mockResolvedValue({
+          userId: 12,
+          deviceId: 1,
+          ...mockKeyBundleData,
+        });
+
+        await expect(
+          service.upsertKeyBundle(12, {
+            ...mockKeyBundleData,
+            registrationId: 99999,
+          }),
+        ).rejects.toThrow('device_material_conflict');
+
+        // Refused BEFORE any write: no clobber, no OTP purge, no audit.
+        expect(keyBundleRepo.upsert).not.toHaveBeenCalled();
+        expect(purgeBuilder.execute).not.toHaveBeenCalled();
+        expect(auditRepo.insert).not.toHaveBeenCalled();
+      });
+
+      it('positive control: a fresh device row is judged by ITS OWN (absent) row, not the account-first row', async () => {
+        const deviceOneRow = { userId: 12, deviceId: 1, ...mockKeyBundleData };
+        keyBundleRepo.findOne.mockImplementation(
+          ({ where }: { where: { userId: number; deviceId?: number } }) =>
+            Promise.resolve(
+            where.deviceId == null || where.deviceId === 1 ? deviceOneRow : null,
+            ),
+        );
+        keyBundleRepo.upsert.mockResolvedValue({ raw: [] });
+
+        // Same shared identity, its own registrationId, no row for device 3
+        // yet: a legitimate first upload from a freshly linked device.
+        const result = await service.upsertKeyBundle(
+          12,
+          { ...mockKeyBundleData, registrationId: 777 },
+          undefined,
+          3,
+        );
+
+        expect(result.identityChanged).toBe(false);
+        expect(keyBundleRepo.upsert).toHaveBeenCalledWith(
+          expect.objectContaining({ userId: 12, deviceId: 3 }),
+          { conflictPaths: ['userId', 'deviceId'] },
+        );
+      });
+
+      it('positive control: an authorized identity change on the same row is not a material conflict', async () => {
+        // The consented-regeneration shape: new identity AND new
+        // registrationId minted together. The (liv)/§6.1 machinery owns this
+        // path; the (lxiv) guard must not fire on it.
+        keyBundleRepo.findOne.mockResolvedValue({
+          userId: 12,
+          deviceId: 1,
+          ...mockKeyBundleData,
+        });
+        keyBundleRepo.upsert.mockResolvedValue({ raw: [] });
+        identityResetService.consumeCompletedReset.mockResolvedValue(true);
+
+        const result = await service.upsertKeyBundle(12, {
+          ...mockKeyBundleData,
+          identityPublicKey: 'regenerated-identity',
+          registrationId: 55555,
+        });
+
+        expect(result.identityChanged).toBe(true);
+        expect(keyBundleRepo.upsert).toHaveBeenCalled();
+      });
     });
 
     it('purges unused OTPs from superseded identity epochs (durable stale-OTP fix)', async () => {
@@ -165,24 +385,235 @@ describe('KeyBundlesService', () => {
     });
   });
 
+  // Registration lock (multi-device spec §6.1). Before 0b, ANY upload with a
+  // valid session could replace the stored identity key — which is what
+  // silently redirects every future conversation to different keys. These pin
+  // the refusal and both authorized paths.
+  describe('registration lock (§6.1)', () => {
+    const STORED = 'BdYgkTwp7ZAWQHWKYxQtsMQZxtVQEtVs1Fo63JM3EKJQ';
+    const REPLACEMENT = 'BV/AuiEQx2o3p6cfoebDWHomEc5VTzNsyNNcuYxf3BVF';
+    // Real client-produced proof: STORED signs REPLACEMENT ‖ 4242 ‖ NONCE.
+    const NONCE = 'AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dw=';
+    const SIGNATURE =
+      '+eSga6vQusMMR5gjRe2rk/XQspEwDVXBmFmGy/1iH2P8kBGS+xQ+vE+xTbnzF+3m878LvYXbIooBi4sAmes7hA==';
+    const SIGNED_USER_ID = 4242;
+
+    beforeEach(() => {
+      keyBundleRepo.findOne.mockResolvedValue({
+        userId: SIGNED_USER_ID,
+        ...mockKeyBundleData,
+        identityPublicKey: STORED,
+      });
+      keyBundleRepo.upsert.mockResolvedValue({ raw: [] });
+    });
+
+    it('refuses an unauthorized identity replacement and writes NOTHING', async () => {
+      const warnSpy = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+
+      await expect(
+        service.upsertKeyBundle(SIGNED_USER_ID, {
+          ...mockKeyBundleData,
+          identityPublicKey: REPLACEMENT,
+        }),
+      ).rejects.toThrow('identity_locked');
+
+      // No bundle written, no OTP epoch purged, no audit row, no alarm state:
+      // a refused attempt must leave the account byte-identical.
+      expect(keyBundleRepo.upsert).not.toHaveBeenCalled();
+      expect(purgeBuilder.execute).not.toHaveBeenCalled();
+      expect(auditRepo.insert).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[identity-lock] REFUSED'),
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('accepts a replacement proven by the previous identity key', async () => {
+      const result = await service.upsertKeyBundle(
+        SIGNED_USER_ID,
+        { ...mockKeyBundleData, identityPublicKey: REPLACEMENT },
+        { signature: SIGNATURE, nonce: NONCE },
+      );
+
+      expect(result.identityChanged).toBe(true);
+      expect(keyBundleRepo.upsert).toHaveBeenCalledTimes(1);
+      // A valid signature must NOT burn a reset ceremony.
+      expect(identityResetService.consumeCompletedReset).not.toHaveBeenCalled();
+    });
+
+    it('refuses when the signature is valid but for a different account', async () => {
+      await expect(
+        service.upsertKeyBundle(
+          SIGNED_USER_ID + 1,
+          { ...mockKeyBundleData, identityPublicKey: REPLACEMENT },
+          { signature: SIGNATURE, nonce: NONCE },
+        ),
+      ).rejects.toThrow('identity_locked');
+      expect(keyBundleRepo.upsert).not.toHaveBeenCalled();
+    });
+
+    it('refuses when the nonce does not match the signed one', async () => {
+      await expect(
+        service.upsertKeyBundle(
+          SIGNED_USER_ID,
+          { ...mockKeyBundleData, identityPublicKey: REPLACEMENT },
+          {
+            signature: SIGNATURE,
+            nonce: Buffer.alloc(32, 1).toString('base64'),
+          },
+        ),
+      ).rejects.toThrow('identity_locked');
+    });
+
+    it('falls back to a completed reset ceremony when the signature is unusable', async () => {
+      identityResetService.consumeCompletedReset.mockResolvedValue(true);
+
+      const result = await service.upsertKeyBundle(
+        SIGNED_USER_ID,
+        { ...mockKeyBundleData, identityPublicKey: REPLACEMENT },
+        { signature: 'not-a-signature', nonce: NONCE },
+      );
+
+      expect(result.identityChanged).toBe(true);
+      expect(identityResetService.consumeCompletedReset).toHaveBeenCalledWith(
+        SIGNED_USER_ID,
+      );
+    });
+
+    it('never consults the ceremony for a same-identity re-upload', async () => {
+      await service.upsertKeyBundle(SIGNED_USER_ID, {
+        ...mockKeyBundleData,
+        identityPublicKey: STORED,
+      });
+
+      expect(identityResetService.consumeCompletedReset).not.toHaveBeenCalled();
+      expect(keyBundleRepo.upsert).toHaveBeenCalledTimes(1);
+    });
+
+    it('never consults the ceremony for a first-ever upload', async () => {
+      keyBundleRepo.findOne.mockResolvedValue(null);
+
+      await service.upsertKeyBundle(SIGNED_USER_ID, mockKeyBundleData);
+
+      expect(identityResetService.consumeCompletedReset).not.toHaveBeenCalled();
+      expect(keyBundleRepo.upsert).toHaveBeenCalledTimes(1);
+    });
+
+    // Amendment (liv), finding F1. The §5.1 link blob ships ikPriv to every
+    // linked device, so on an ENROLLED account "holds the old identity key" no
+    // longer means "is the primary" and the signature path must close.
+    describe('(liv) an ENROLLED account loses the signature path', () => {
+      beforeEach(() => {
+        authorizationRepo.findOne.mockResolvedValue({ userId: SIGNED_USER_ID });
+      });
+
+      it('REFUSES a validly signed identity change and writes NOTHING', async () => {
+        const warnSpy = jest
+          .spyOn(Logger.prototype, 'warn')
+          .mockImplementation(() => undefined);
+
+        // Byte-identical to the proof the non-enrolled test accepts above —
+        // the ONLY difference is that the account is enrolled.
+        await expect(
+          service.upsertKeyBundle(
+            SIGNED_USER_ID,
+            { ...mockKeyBundleData, identityPublicKey: REPLACEMENT },
+            { signature: SIGNATURE, nonce: NONCE },
+          ),
+        ).rejects.toThrow('identity_locked');
+
+        expect(keyBundleRepo.upsert).not.toHaveBeenCalled();
+        expect(purgeBuilder.execute).not.toHaveBeenCalled();
+        expect(auditRepo.insert).not.toHaveBeenCalled();
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining('(liv) signature path REFUSED'),
+        );
+        warnSpy.mockRestore();
+      });
+
+      it('still admits the §6.2 ceremony, which is now the ONLY way', async () => {
+        identityResetService.consumeCompletedReset.mockResolvedValue(true);
+
+        const result = await service.upsertKeyBundle(
+          SIGNED_USER_ID,
+          { ...mockKeyBundleData, identityPublicKey: REPLACEMENT },
+          { signature: SIGNATURE, nonce: NONCE },
+        );
+
+        // The gate must not have made an enrolled account unrecoverable: a
+        // completed ceremony authorizes, and it is what gets spent.
+        expect(result.identityChanged).toBe(true);
+        expect(result.authorizedBy).toBe('reset');
+        expect(identityResetService.consumeCompletedReset).toHaveBeenCalledWith(
+          SIGNED_USER_ID,
+        );
+      });
+
+      it('leaves a same-identity re-upload untouched (the every-connect path)', async () => {
+        // Enrollment must not disturb the normal reconnect, which carries no
+        // proof and changes nothing.
+        await service.upsertKeyBundle(SIGNED_USER_ID, {
+          ...mockKeyBundleData,
+          identityPublicKey: STORED,
+        });
+
+        expect(keyBundleRepo.upsert).toHaveBeenCalledTimes(1);
+        expect(
+          identityResetService.consumeCompletedReset,
+        ).not.toHaveBeenCalled();
+      });
+
+      it('POSITIVE CONTROL: the same proof is accepted when NOT enrolled', async () => {
+        authorizationRepo.findOne.mockResolvedValue(null);
+
+        const result = await service.upsertKeyBundle(
+          SIGNED_USER_ID,
+          { ...mockKeyBundleData, identityPublicKey: REPLACEMENT },
+          { signature: SIGNATURE, nonce: NONCE },
+        );
+
+        // Phase 0b is unchanged: one device, one holder of ikPriv.
+        expect(result.authorizedBy).toBe('signature');
+        expect(
+          identityResetService.consumeCompletedReset,
+        ).not.toHaveBeenCalled();
+      });
+    });
+  });
+
   describe('uploadOneTimePreKeys', () => {
     const keys = [
       { keyId: 0, publicKey: 'pk-0' },
       { keyId: 1, publicKey: 'pk-1' },
     ];
 
-    it('upserts on (userId,keyId) and tags rows with the explicit identity', async () => {
+    it('upserts on (userId,deviceId,keyId) and tags rows with the explicit identity', async () => {
+      // The tag must match what the account actually publishes — see the
+      // refusal test below for why an unpublished tag is not key material the
+      // account can ever serve.
+      keyBundleRepo.findOne.mockResolvedValue({
+        userId: 5,
+        deviceId: 1,
+        identityPublicKey: 'epoch-2-identity',
+      });
       otpRepo.upsert.mockResolvedValue({ raw: [] });
 
       await service.uploadOneTimePreKeys(5, keys, 'epoch-2-identity');
 
-      // No bundle lookup needed — the client supplied the identity tag.
-      expect(keyBundleRepo.findOne).not.toHaveBeenCalled();
+      // Account-scoped lookup: every device shares one IK (§3), so the lowest
+      // device's row IS the account identity.
+      expect(keyBundleRepo.findOne).toHaveBeenCalledWith({
+        where: { userId: 5 },
+        order: { deviceId: 'ASC' },
+      });
       expect(otpRepo.save).not.toHaveBeenCalled();
       expect(otpRepo.upsert).toHaveBeenCalledWith(
         [
           {
             userId: 5,
+            deviceId: 1,
             keyId: 0,
             publicKey: 'pk-0',
             identityPublicKey: 'epoch-2-identity',
@@ -190,14 +621,148 @@ describe('KeyBundlesService', () => {
           },
           {
             userId: 5,
+            deviceId: 1,
             keyId: 1,
             publicKey: 'pk-1',
             identityPublicKey: 'epoch-2-identity',
             used: false,
           },
         ],
-        { conflictPaths: ['userId', 'keyId'] },
+        // keyId slots belong to a DEVICE: two devices may both hold keyId 0,
+        // and neither upload may overwrite the other's private half.
+        { conflictPaths: ['userId', 'deviceId', 'keyId'] },
       );
+    });
+
+    // Proven live 2026-08-18: the lock refused a session's identity and the
+    // very same session still deposited 20 OTPs into the account's device-1
+    // slots, overwriting the legitimate device's keyId 0..19 and stamping them
+    // with the REFUSED identity. Those rows are unservable (the fetch filter
+    // pins the published identity) but the victim's pool is emptied until a
+    // peer fetch triggers preKeysLow. Publishing an identity is locked, so
+    // depositing key material under one must be too (§5.1).
+    it('refuses one-time pre-keys tagged with an identity the account has not published', async () => {
+      keyBundleRepo.findOne.mockResolvedValue({
+        userId: 5,
+        deviceId: 1,
+        identityPublicKey: 'published-identity',
+      });
+
+      await expect(
+        service.uploadOneTimePreKeys(5, keys, 'refused-identity'),
+      ).rejects.toMatchObject({ message: 'identity_locked' });
+
+      // Nothing written and nothing destroyed: the legitimate pool survives.
+      expect(otpRepo.upsert).not.toHaveBeenCalled();
+      expect(otpRepo.delete).not.toHaveBeenCalled();
+      expect(otpRepo.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('accepts a first upload that races its own key bundle (nothing published yet)', async () => {
+      // The client emits uploadKeyBundle and uploadOneTimePreKeys back to back
+      // and socket.io does not await handlers, so the OTP upload can win. With
+      // no published identity there is no victim, and refusing here would
+      // break every fresh registration.
+      keyBundleRepo.findOne.mockResolvedValue(null);
+      otpRepo.upsert.mockResolvedValue({ raw: [] });
+
+      await service.uploadOneTimePreKeys(5, keys, 'epoch-1-identity');
+
+      expect(otpRepo.upsert).toHaveBeenCalledTimes(1);
+    });
+
+    it('accepts an in-flight authorized rotation whose bundle upsert has not landed yet', async () => {
+      // Same race, one step later in an account's life: a completed ceremony
+      // authorizes exactly one replacement, and the new epoch's OTPs may reach
+      // the server before the new bundle commits. Refusing here would strip
+      // the pool of the ONE flow that exists to rescue a user who lost their
+      // keys — the reset-completion path.
+      keyBundleRepo.findOne.mockResolvedValue({
+        userId: 5,
+        deviceId: 1,
+        identityPublicKey: 'old-identity',
+      });
+      identityResetService.getStatusForUser.mockResolvedValue({
+        status: 'completed',
+        deadlineAt: new Date(),
+        shortened: false,
+      });
+      otpRepo.upsert.mockResolvedValue({ raw: [] });
+
+      await service.uploadOneTimePreKeys(5, keys, 'new-identity');
+
+      expect(otpRepo.upsert).toHaveBeenCalledTimes(1);
+      // Reading the grant must never spend it — the bundle upload does that.
+      expect(identityResetService.consumeCompletedReset).not.toHaveBeenCalled();
+    });
+
+    it('still refuses an unpublished tag while a ceremony is merely PENDING', async () => {
+      // A pending ceremony is an alarm, not an authorization: the countdown
+      // exists precisely so the owner can cancel it.
+      keyBundleRepo.findOne.mockResolvedValue({
+        userId: 5,
+        deviceId: 1,
+        identityPublicKey: 'published-identity',
+      });
+      identityResetService.getStatusForUser.mockResolvedValue({
+        status: 'pending',
+        deadlineAt: new Date(),
+        shortened: false,
+      });
+
+      await expect(
+        service.uploadOneTimePreKeys(5, keys, 'refused-identity'),
+      ).rejects.toMatchObject({ message: 'identity_locked' });
+
+      expect(otpRepo.upsert).not.toHaveBeenCalled();
+    });
+
+    // Amendment (lxiv) clause 1, OTP half: the bundle guard alone does not
+    // close the mixed-halves loss — a foreign install sharing the account
+    // identity (a revoked linked device whose login resolved onto the
+    // primary's id) could still deposit ITS OTPs into the owner's pool via
+    // preKeysLow, and a peer fetch would mix owner signedPreKey + foreign OTP.
+    it('refuses one-time pre-keys whose registrationId does not match the device row ((lxiv))', async () => {
+      keyBundleRepo.findOne.mockResolvedValue({
+        userId: 5,
+        deviceId: 1,
+        identityPublicKey: 'published-identity',
+        registrationId: 12345,
+      });
+
+      await expect(
+        service.uploadOneTimePreKeys(5, keys, 'published-identity', 1, 99999),
+      ).rejects.toMatchObject({ message: 'device_material_conflict' });
+
+      expect(otpRepo.upsert).not.toHaveBeenCalled();
+    });
+
+    it('positive control: a matching registrationId install proof passes ((lxiv))', async () => {
+      keyBundleRepo.findOne.mockResolvedValue({
+        userId: 5,
+        deviceId: 1,
+        identityPublicKey: 'published-identity',
+        registrationId: 12345,
+      });
+      otpRepo.upsert.mockResolvedValue({ raw: [] });
+
+      await service.uploadOneTimePreKeys(5, keys, 'published-identity', 1, 12345);
+
+      expect(otpRepo.upsert).toHaveBeenCalledTimes(1);
+    });
+
+    it('positive control: an absent registrationId (pre-(lxiv) client) is accepted', async () => {
+      keyBundleRepo.findOne.mockResolvedValue({
+        userId: 5,
+        deviceId: 1,
+        identityPublicKey: 'published-identity',
+        registrationId: 12345,
+      });
+      otpRepo.upsert.mockResolvedValue({ raw: [] });
+
+      await service.uploadOneTimePreKeys(5, keys, 'published-identity');
+
+      expect(otpRepo.upsert).toHaveBeenCalledTimes(1);
     });
 
     it('rejects untagged OTP uploads instead of inferring the current identity epoch', async () => {
@@ -206,9 +771,11 @@ describe('KeyBundlesService', () => {
         ...mockKeyBundleData,
       });
 
-      await expect(service.uploadOneTimePreKeys(5, keys)).rejects.toMatchObject({
-        message: 'identity_epoch_required',
-      });
+      await expect(service.uploadOneTimePreKeys(5, keys)).rejects.toMatchObject(
+        {
+          message: 'identity_epoch_required',
+        },
+      );
 
       expect(otpRepo.upsert).not.toHaveBeenCalled();
     });
@@ -241,7 +808,10 @@ describe('KeyBundlesService', () => {
     it('claims an OTP filtered by the CURRENT identity epoch ($1 user, $2 identity)', async () => {
       keyBundleRepo.findOne.mockResolvedValue(bundle);
       // Real Postgres shape for UPDATE ... RETURNING: [rows, rowCount].
-      otpRepo.query.mockResolvedValue([[{ id: 10, keyId: 7, publicKey: 'otp-pk-7' }], 1]);
+      otpRepo.query.mockResolvedValue([
+        [{ id: 10, keyId: 7, publicKey: 'otp-pk-7' }],
+        1,
+      ]);
 
       const result = await service.fetchPreKeyBundle(5);
 
@@ -259,7 +829,10 @@ describe('KeyBundlesService', () => {
       const [sql, params] = otpRepo.query.mock.calls[0];
       expect(sql).toContain('UPDATE one_time_pre_keys');
       expect(sql).toContain('"identityPublicKey" = $2');
-      expect(params).toEqual([5, mockKeyBundleData.identityPublicKey]);
+      // $3 is the Phase 1 re-key: one device's claim must never consume the
+      // keyId slot another device minted.
+      expect(sql).toContain('"deviceId" = $3');
+      expect(params).toEqual([5, mockKeyBundleData.identityPublicKey, 1]);
     });
 
     it('returns null OTP fields when the current epoch has no unused pre-keys', async () => {
@@ -271,13 +844,18 @@ describe('KeyBundlesService', () => {
       expect(result?.oneTimePreKeyId).toBeNull();
       expect(result?.oneTimePreKeyPublic).toBeNull();
       // OTP-less bundle is still valid — X3DH completes without a one-time key.
-      expect(result?.identityPublicKey).toBe(mockKeyBundleData.identityPublicKey);
+      expect(result?.identityPublicKey).toBe(
+        mockKeyBundleData.identityPublicKey,
+      );
     });
   });
 
   describe('countUnusedPreKeys', () => {
     it('counts only unused OTPs of the CURRENT identity epoch', async () => {
-      keyBundleRepo.findOne.mockResolvedValue({ userId: 5, ...mockKeyBundleData });
+      keyBundleRepo.findOne.mockResolvedValue({
+        userId: 5,
+        ...mockKeyBundleData,
+      });
       otpRepo.count.mockResolvedValue(15);
 
       const count = await service.countUnusedPreKeys(5);
@@ -286,6 +864,7 @@ describe('KeyBundlesService', () => {
       expect(otpRepo.count).toHaveBeenCalledWith({
         where: {
           userId: 5,
+          deviceId: 1,
           used: false,
           identityPublicKey: mockKeyBundleData.identityPublicKey,
         },
@@ -327,6 +906,44 @@ describe('KeyBundlesService', () => {
       await service.deleteByUserId(5);
 
       expect(callOrder).toEqual(['otp', 'keyBundle']);
+    });
+  });
+
+  describe('purgeDeviceMaterial (§5.5 revocation, falsification 12)', () => {
+    it('deletes the bundle and OTPs of EXACTLY one device', async () => {
+      keyBundleRepo.delete.mockResolvedValue({ affected: 1 });
+      otpRepo.delete.mockResolvedValue({ affected: 40 });
+
+      await service.purgeDeviceMaterial(5, 2);
+
+      // Both scoped by the PAIR: a roster teardown can never reach a
+      // surviving device's material, which is what falsification 12 asserts.
+      expect(keyBundleRepo.delete).toHaveBeenCalledWith({
+        userId: 5,
+        deviceId: 2,
+      });
+      expect(otpRepo.delete).toHaveBeenCalledWith({ userId: 5, deviceId: 2 });
+    });
+
+    it('uses the caller transaction when given a manager', async () => {
+      const bundleDelete = jest.fn().mockResolvedValue({ affected: 1 });
+      const otpDelete = jest.fn().mockResolvedValue({ affected: 1 });
+      const manager = {
+        getRepository: jest.fn((entity: unknown) =>
+          entity === KeyBundle
+            ? { delete: bundleDelete }
+            : { delete: otpDelete },
+        ),
+      };
+
+      await service.purgeDeviceMaterial(5, 2, manager as never);
+
+      expect(bundleDelete).toHaveBeenCalledWith({ userId: 5, deviceId: 2 });
+      expect(otpDelete).toHaveBeenCalledWith({ userId: 5, deviceId: 2 });
+      // The service's own repositories stay untouched, so the delete really
+      // joins the revocation transaction instead of running beside it.
+      expect(keyBundleRepo.delete).not.toHaveBeenCalled();
+      expect(otpRepo.delete).not.toHaveBeenCalled();
     });
   });
 });

@@ -383,7 +383,7 @@ class ChatActionTiles extends StatelessWidget {
       showTopSnackBar(
         context,
         l10n.snackbarCouldNotReadFile,
-        backgroundColor: Colors.red,
+        backgroundColor: Theme.of(context).colorScheme.error,
       );
       return;
     }
@@ -411,7 +411,7 @@ class ChatActionTiles extends StatelessWidget {
     showTopSnackBar(
       context,
       l10n.attachmentUnsupportedFileType,
-      backgroundColor: Colors.red,
+      backgroundColor: Theme.of(context).colorScheme.error,
     );
   }
 
@@ -449,7 +449,7 @@ class ChatActionTiles extends StatelessWidget {
         showTopSnackBar(
           context,
           '${l10n.uploadFailed}: $e',
-          backgroundColor: Colors.red,
+          backgroundColor: Theme.of(context).colorScheme.error,
         );
       }
     }

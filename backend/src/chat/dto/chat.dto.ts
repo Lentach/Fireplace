@@ -1,4 +1,4 @@
-import { Transform, type TransformFnParams } from 'class-transformer';
+import { Transform, Type, type TransformFnParams } from 'class-transformer';
 import {
   IsNumber,
   IsInt,
@@ -11,13 +11,18 @@ import {
   Max,
   Matches,
   ValidateIf,
+  ValidateNested,
   IsIn,
+  IsArray,
+  ArrayMinSize,
+  ArrayMaxSize,
 } from 'class-validator';
 import {
   DISAPPEARING_MAX_SECONDS,
   DISAPPEARING_MIN_SECONDS,
 } from '../../messages/disappearing.constants';
 import { MessageType } from '../../messages/message.entity';
+import { MAX_DEVICE_ID } from '../../key-bundles/key-bundles.service';
 
 /** Cloudinary (https only) or self-hosted media under MEDIA_BASE_URL — prevents SSRF */
 const _mediaOriginEscaped = (
@@ -30,6 +35,42 @@ export const MEDIA_URL_REGEX = new RegExp(
   `^(https://res\\.cloudinary\\.com/[a-zA-Z0-9_-]+/(video|image|raw)/upload/.+|${_mediaOriginEscaped}/media/(avatars|msgs)/[A-Za-z0-9_-]+\\.[A-Za-z0-9]+)$`,
 );
 
+/**
+ * The most per-device ciphertexts one message may carry.
+ *
+ * A fan-out addresses the recipient's live devices plus the sender's OTHER
+ * live devices, and each account's device ids are bounded by
+ * `MAX_DEVICE_ID` — so two accounts can never legitimately need more than
+ * twice that. The bound exists so a crafted client cannot make one send
+ * allocate unbounded envelope rows.
+ */
+export const MAX_ENVELOPES_PER_MESSAGE = 2 * MAX_DEVICE_ID;
+
+/**
+ * One recipient device's ciphertext in a fan-out send (spec §5.2 + §12
+ * amendment (v)).
+ *
+ * Exactly one envelope per (userId, deviceId): Signal decryption consumes the
+ * message key, so two envelopes for one device would brick that device's
+ * ratchet. `userId` is the recipient for inbound copies and the SENDER for
+ * self-sync copies to the sender's OTHER devices (§5.4).
+ */
+export class SendEnvelopeDto {
+  @IsInt()
+  @IsPositive()
+  userId: number;
+
+  @IsInt()
+  @IsPositive()
+  @Max(MAX_DEVICE_ID)
+  deviceId: number;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(65536)
+  ciphertext: string; // Signal ciphertext ("{type}:{base64}") for this device
+}
+
 export class SendMessageDto {
   @IsNumber()
   @IsPositive()
@@ -37,9 +78,10 @@ export class SendMessageDto {
 
   @IsString()
   @ValidateIf(
-    (o) =>
+    (o: SendMessageDto) =>
       !o.encryptedContent &&
-      !['VOICE', 'PING', 'VIDEO'].includes(o?.messageType),
+      !o.envelopes?.length &&
+      !['VOICE', 'PING', 'VIDEO'].includes(o.messageType ?? ''),
   )
   @MinLength(1, { message: 'Message cannot be empty' })
   @MaxLength(5000, { message: 'Message cannot exceed 5000 characters' })
@@ -61,6 +103,18 @@ export class SendMessageDto {
   @IsOptional()
   @IsString()
   tempId?: string; // Client-generated ID for optimistic message matching
+
+  /**
+   * Client-generated token making a send idempotent across a lost ack
+   * (Phase 1, spec §5.4). The sending device holds the ONLY plaintext copy
+   * until the ack lands, so a retry must match the row the server already
+   * committed instead of creating a second message. UNIQUE per sender.
+   */
+  @IsOptional()
+  @IsString()
+  @MinLength(8)
+  @MaxLength(64)
+  sendToken?: string;
 
   @IsOptional()
   @IsString()
@@ -84,6 +138,36 @@ export class SendMessageDto {
   @IsNumber()
   @IsPositive()
   replyToMessageId?: number; // ID of the message being replied to
+
+  /**
+   * Per-device ciphertexts (spec §5.2 + §12 amendment (v)). Presence makes
+   * this a NEW-MODEL send: the row's `encryptedContent` stays NULL and every
+   * ciphertext lives in `message_envelopes`. A legacy single-`encryptedContent`
+   * send is normalized to a one-element device-1 envelope AT INGEST, so
+   * exactly one downstream write path exists (§8 compat).
+   */
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(MAX_ENVELOPES_PER_MESSAGE)
+  @ValidateNested({ each: true })
+  @Type(() => SendEnvelopeDto)
+  envelopes?: SendEnvelopeDto[];
+
+  /**
+   * The sender's and recipient's DAK-signed device-list versions at encrypt
+   * time (spec §5.2 freshness layer 1). Checked only for a party that is
+   * enrolled; a mismatch refuses the send ATOMICALLY with `deviceListStale`.
+   */
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  senderListVersion?: number;
+
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  recipientListVersion?: number;
 }
 
 export class SendFriendRequestDto {

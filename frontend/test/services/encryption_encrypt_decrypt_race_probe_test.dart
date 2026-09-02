@@ -60,7 +60,7 @@ void main() {
   });
 
   Future<void> settleHandshake() async {
-    await alice.buildSession(bobId, flatBundleFrom(bob));
+    await alice.buildSession(bobId, flatBundleFrom(bob), expectedIdentityBase64: null);
     expect(
       await bob.decrypt(aliceId, await alice.encrypt(bobId, 'opener')),
       'opener',

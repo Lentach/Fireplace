@@ -46,6 +46,30 @@ class E2eIdentityCheckUnavailableException implements Exception {
       'the missing identity is a fresh install';
 }
 
+/// Thrown when a served pre-key bundle carries an identity key that is NOT the
+/// account's (spec §3, enforced per §12 amendment (xxxix)).
+///
+/// Every device of an account shares one identity key. A bundle that disagrees
+/// with the key we already trust for that account did not come from the
+/// account: either the server is compromised and is offering its own key for a
+/// device the signed list legitimately names, or the account's key changed
+/// without the device-list chain reflecting it. Both are machine-in-the-middle
+/// until proven otherwise, so the session is refused rather than built.
+///
+/// Distinct from the same-address rotation warning: THAT is a key changing
+/// where one was already known and is surfaced as an alarm the user can read.
+/// This is a key that is wrong on arrival, on an address that has none.
+class AccountIdentityMismatch implements Exception {
+  const AccountIdentityMismatch({required this.userId, required this.deviceId});
+
+  final int userId;
+  final int deviceId;
+
+  @override
+  String toString() =>
+      'AccountIdentityMismatch: the bundle served for userId=$userId '
+      'deviceId=$deviceId carries an identity key that is not the account\'s';
+}
 
 class EncryptionService {
   EncryptionService({
@@ -195,6 +219,11 @@ class EncryptionService {
   /// Public key data to upload to the server (set after key generation).
   Map<String, dynamic>? _keysForUpload;
 
+  /// True only between a §5.1 [adoptProvisionedIdentity] and its ceremony's
+  /// settlement — the sole state in which [discardProvisionedIdentity] may
+  /// destroy key material (T3 review invariant lock).
+  bool _provisionalIdentityAdopted = false;
+
   /// True once [initialize] refused to start because identity material is
   /// incomplete. The only way forward is
   /// [regenerateIdentityAfterConfirmedLoss], which the USER must consent to.
@@ -222,13 +251,389 @@ class EncryptionService {
   /// Called when a peer's identity key changes. Set by the provider.
   void Function(int peerId)? onPeerIdentityChanged;
 
-  /// The user verified [peerId]'s fingerprint out of band. Drops the warning
-  /// for good — this is the ONLY thing that clears it.
-  Future<void> acknowledgePeerIdentity(int peerId) async {
-    if (!_peersWithChangedIdentity.remove(peerId)) return;
-    E2ePersistentDiag.record('PEER_IDENTITY_ACKNOWLEDGED', {'peerId': peerId});
+  /// The user compared [peerId]'s fingerprint out of band and accepted it.
+  /// Returns whether the account anchor actually advanced.
+  ///
+  /// It is also the ONLY thing that advances the I7 account anchor
+  /// (amendment (xlvi)). A peer who completes a §6.2 reset presents a new
+  /// account identity, and their re-enrolled device list cannot verify until
+  /// this device accepts it — but accepting it silently would let one injected
+  /// ciphertext move the anchor and lock the peer out instead. Tying the two
+  /// together means the anchor never moves without an alarm the user saw.
+  ///
+  /// [adoptIdentityBase64] is the key the UI actually DISPLAYED for comparison.
+  /// When present it wins outright over any stored candidate (amendment
+  /// (xlvii) clause 2): promoting a candidate the user was never shown is how
+  /// the ceremony came to verify one number and adopt another. When absent this
+  /// falls back to promoting the stored candidate, which is what a locally
+  /// detected change leaves behind.
+  ///
+  /// **The warning is cleared ONLY if the anchor advanced** (amendment (xlvii)
+  /// clause 1). It used to be dropped first and unconditionally, so a peer with
+  /// no candidate — every peer who completed §6.2, because the accept gate
+  /// withholds their row before Signal can record one — lost the single
+  /// persisted notice of a real event and got nothing repaired in exchange.
+  Future<bool> acknowledgePeerIdentity(
+    int peerId, {
+    String? adoptIdentityBase64,
+  }) async {
+    if (!_peersWithChangedIdentity.contains(peerId)) return false;
+    final name = peerId.toString();
+    final supplied = adoptIdentityBase64;
+    final bool advanced;
+    final String source;
+    if (supplied != null && supplied.isNotEmpty) {
+      // ONLY a key this device already recorded may be pinned, and ONLY if it
+      // is STILL the recorded one. The candidate slot is read once to display a
+      // fingerprint and again to promote, and it has several unconditional
+      // writers, so a plain "check then promote" would let the candidate move
+      // in between — the user compares A out of band and pins B, which is the
+      // clause 2 defect wearing a different hat. The compare-and-swap makes it
+      // atomic: the promotion takes the displayed bytes or refuses.
+      final promoted = await _identityStore.promotePendingAccountIdentity(
+        name,
+        expectedIdentityBase64: supplied,
+      );
+      if (promoted) {
+        advanced = true;
+        source = 'displayed_candidate';
+      } else {
+        // The CAS refused, and it refuses for two materially different reasons
+        // that MUST NOT be conflated (amendment (xlix)): either nothing is
+        // staged, or something DIFFERENT is staged. Read the slot before
+        // considering a re-affirmation, because [adoptAccountIdentity] drops
+        // the candidate and the caller below consumes the warning — so taking
+        // the re-affirmation first would destroy the only record of a key that
+        // arrived under the open dialog AND the sole door back to this
+        // ceremony. A malicious server reaches exactly that state by serving
+        // the HONEST key (so the out-of-band comparison succeeds) and
+        // injecting a ciphertext of its own while the user reads the number
+        // aloud; the user's CORRECT confirmation would otherwise be the
+        // instrument that erases the evidence.
+        final pending = await _identityStore.pendingAccountIdentity(name);
+        final pendingBase64 = pending == null
+            ? null
+            : base64Encode(pending.serialize());
+        if (pendingBase64 != null && pendingBase64 != supplied) {
+          E2ePersistentDiag.record('PEER_IDENTITY_ADOPT_REFUSED', {
+            'peerId': peerId,
+            'reason': 'candidate_changed_since_display',
+          });
+          return false;
+        }
+        // Nothing staged (or the slot already holds exactly what was
+        // confirmed): the one remaining value a human may legitimately
+        // confirm is the key already pinned — a re-affirmation that advances
+        // nothing but resolves the warning.
+        final pinned = await _identityStore.getAccountIdentity(name);
+        if (pinned != null && base64Encode(pinned.serialize()) == supplied) {
+          // (lviii) The slot was read BEFORE this write, so a candidate can
+          // still arrive during it. The store reports whether its guard held;
+          // if it did not, the warning MUST stand — the evidence survives, and
+          // without the warning the door back to this ceremony does not.
+          final guardHeld = await _identityStore.adoptAccountIdentity(
+            name,
+            pinned,
+            expectedPendingBase64: pendingBase64,
+          );
+          if (!guardHeld) {
+            E2ePersistentDiag.record('PEER_IDENTITY_ADOPT_REFUSED', {
+              'peerId': peerId,
+              'reason': 'candidate_changed_since_display',
+            });
+            return false;
+          }
+          advanced = true;
+          source = 'reaffirmed_pin';
+        } else {
+          // An unrecorded key: what the user compared is not what would be
+          // pinned, so nothing is pinned and the warning stands. The caller
+          // must re-display before asking again.
+          E2ePersistentDiag.record('PEER_IDENTITY_ADOPT_REFUSED', {
+            'peerId': peerId,
+            'reason': 'unrecorded_key',
+          });
+          return false;
+        }
+      }
+    } else {
+      advanced = await _identityStore.promotePendingAccountIdentity(name);
+      source = 'pending_candidate';
+    }
+    E2ePersistentDiag.record('PEER_IDENTITY_ACKNOWLEDGED', {
+      'peerId': peerId,
+      'anchorAdvanced': advanced,
+      'source': source,
+    });
+    if (!advanced) return false;
+    _peersWithChangedIdentity.remove(peerId);
     await _persistIdentityChanged();
     onPeerIdentityChanged?.call(peerId);
+    return true;
+  }
+
+  /// Server-corroborated peer identity change (Phase 0a `peerIdentityChanged`
+  /// WS event): the peer's key bundle was REPLACED server-side. Feeds the SAME
+  /// state and persistence as the local libsignal detection — one warning
+  /// surface, cleared only by [acknowledgePeerIdentity]. Usually a legitimate
+  /// new device/browser sign-in on the peer's side, so callers must not word
+  /// it as an attack.
+  Future<void> recordPeerIdentityChangedFromServer(
+    int peerId, {
+    String source = 'server_event',
+  }) async {
+    // (xlviii) clause 2. The userId on this event is whatever the server says,
+    // and nothing here used to check it. A peer this device holds NO account
+    // anchor for has no identity to have CHANGED — there is nothing to compare
+    // in the ceremony and nothing to repair — so recording one is pure noise
+    // that competes for the capped persisted set. ~200 forged ids were enough
+    // to evict a genuine warning across a restart, and since (xlvii) that
+    // warning is the SOLE door to recovery: the flood deleted the repair path
+    // for a peer the server had itself broken.
+    if (!await _hasPinnedAccountIdentity(peerId)) {
+      E2ePersistentDiag.record('PEER_IDENTITY_CHANGED_IGNORED', {
+        'peerId': peerId,
+        'reason': 'no_local_anchor',
+      });
+      return;
+    }
+    if (!_peersWithChangedIdentity.add(peerId)) return;
+    E2ePersistentDiag.record('PEER_IDENTITY_CHANGED', {
+      'peerId': peerId,
+      'source': source,
+    });
+    onPeerIdentityChanged?.call(peerId);
+    await _persistIdentityChanged();
+  }
+
+  /// A session build was REFUSED because the served identity did not match the
+  /// account's anchor ((xxxix)/(lv)). Stages the offered key as the pending
+  /// candidate and raises the identity surface, so the refusal is visible and
+  /// the out-of-band ceremony can repair it.
+  ///
+  /// Deliberately NOT routed through [recordPeerIdentityChangedFromServer]:
+  /// that method's (xlviii) clause 2 guard drops any peer whose
+  /// `getAccountIdentity` is null, which is precisely the shape this path hits
+  /// when the anchor was resolved from a per-device row instead. Reusing it
+  /// would discard the alarm on the exact path (lv) exists to light up. The
+  /// guard filters ids a SERVER asserted with no local anchor; here an anchor
+  /// is what produced the refusal, so its condition is already known true.
+  ///
+  /// Staging grants no trust: the pending slot is read only by the fingerprint
+  /// display and by an explicit human confirmation.
+  Future<void> _recordAccountIdentityRefusal(
+    int peerId,
+    IdentityKey offered,
+  ) async {
+    try {
+      // (lxiii) Only when the slot is EMPTY, matching (xlvii) clause 3's guard
+      // and for its stated reason: the slot is the evidence a human will
+      // compare. Staging unconditionally overwrote a candidate recorded from a
+      // REAL inbound ciphertext with a key the server just served — the
+      // "candidate moves under the open dialog" shape (xlix) clause 2 and
+      // (lviii) preserve, reached from the writer side. It also handed a
+      // hostile server a durable ceremony DoS: vary the served key on every
+      // fetch and every confirmation loses its compare-and-swap, so the warning
+      // never clears and the only door out of the (lvi) refusal stays shut.
+      final name = peerId.toString();
+      final existing = await _identityStore.pendingAccountIdentity(name);
+      if (existing == null) {
+        await _identityStore.stagePendingAccountIdentity(name, offered);
+      }
+    } catch (e) {
+      // A failed staging must not swallow the refusal or the alarm: the banner
+      // is worth more than the candidate, and (xlvii) clause 3's ceremony
+      // re-stages a served key when it finds a standing warning with no offer.
+      debugPrint('[EncryptionService] stage pending identity failed: $e');
+    }
+    if (!_peersWithChangedIdentity.add(peerId)) return;
+    E2ePersistentDiag.record('PEER_IDENTITY_CHANGED', {
+      'peerId': peerId,
+      'source': 'account_identity_mismatch',
+    });
+    onPeerIdentityChanged?.call(peerId);
+    await _persistIdentityChanged();
+  }
+
+  /// Whether this device holds a pinned ACCOUNT identity for [peerId].
+  ///
+  /// Uncertainty answers YES on purpose: losing a genuine identity warning is
+  /// far worse than recording a spurious one, so an unready store or a storage
+  /// error must not become a silent filter on safety notices.
+  Future<bool> _hasPinnedAccountIdentity(int peerId) async {
+    if (!_initialized) return true;
+    try {
+      final pinned = await _identityStore.getAccountIdentity(peerId.toString());
+      return pinned != null;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  // ---------- Own-identity-replaced alarm (Phase 0a, spec §6.0) ----------
+
+  /// ISO-8601 instant of the last server-reported replacement of THIS
+  /// account's key bundle by ANOTHER session (`ownIdentityReplaced` WS event
+  /// or `identity_changed` push). Null when none pending. Persisted per user
+  /// until explicitly dismissed — the alarm must survive a restart.
+  String? _ownIdentityReplacedAt;
+  String? get ownIdentityReplacedAt => _ownIdentityReplacedAt;
+
+  /// Fired when the own-identity-replaced state changes. Set by the provider.
+  void Function()? onOwnIdentityReplaced;
+
+  String _ownIdentityReplacedKey(int userId) =>
+      'e2e_${userId}_own_identity_replaced_v1';
+
+  /// Watermark of the newest replacement the user already dismissed.
+  ///
+  /// Needed because the server now reports the last replacement at connect
+  /// time (so a session that was offline when it happened still learns about
+  /// it). Without this, every reconnect would resurrect an alarm the user
+  /// already acknowledged; with it, only a replacement NEWER than the
+  /// dismissed one can raise the banner again.
+  String? _ownIdentityReplacedSeenAt;
+
+  String _ownIdentityReplacedSeenKey(int userId) =>
+      'e2e_${userId}_own_identity_replaced_seen_v1';
+
+  /// One-shot: THIS device published a new identity and the server has not yet
+  /// reported it back. Amendment (li) clause 2 — replaces a device-clock
+  /// watermark, because that clock was compared against SERVER stamps and a
+  /// fast clock silently suppressed every genuine replacement for the skew.
+  bool _ownPublishUnacknowledged = false;
+
+  String _ownPublishUnackKey(int userId) =>
+      'e2e_${userId}_own_publish_unacked_v1';
+
+  /// How far ahead of us a server instant may legitimately sit. Generous on
+  /// purpose: this bounds ABSURDITY (a `9999-…` suppressor), not clock skew.
+  static const Duration _maxServerInstantSkew = Duration(days: 1);
+
+  /// Amendment (li) clause 1. Parses a server-supplied instant and returns the
+  /// CANONICAL UTC form, or null when the value cannot be trusted to order.
+  ///
+  /// Every downstream comparison of these values is a STRING compare, which is
+  /// sound only for a canonical representation — so canonicalising here is what
+  /// makes that soundness structural instead of an assumption in a comment.
+  static String? normalizeServerInstant(String? raw) {
+    if (raw == null) return null;
+    final parsed = DateTime.tryParse(raw);
+    if (parsed == null) return null;
+    final utc = parsed.toUtc();
+    if (utc.isAfter(DateTime.now().toUtc().add(_maxServerInstantSkew))) {
+      return null;
+    }
+    return utc.toIso8601String();
+  }
+
+  Future<void> recordOwnIdentityReplaced(String occurredAt) async {
+    _ownIdentityReplacedAt = occurredAt;
+    E2ePersistentDiag.record('OWN_IDENTITY_REPLACED', {
+      'occurredAt': occurredAt,
+    });
+    // UI first, persistence after: the alarm must reach the user even when
+    // the write fails (same rule as the peer warning above).
+    onOwnIdentityReplaced?.call();
+    final userId = _userId;
+    if (userId == null) return;
+    try {
+      final prefs = await _sharedPrefs;
+      await prefs.setString(_ownIdentityReplacedKey(userId), occurredAt);
+    } catch (_) {}
+  }
+
+  /// Connect-time hydration from the server's durable audit row (Phase 0b).
+  ///
+  /// Ignores anything the user already dismissed, and anything not newer than
+  /// what is already showing, so reconnect churn cannot re-raise a handled
+  /// alarm. The comparison is a string compare, which is sound because every
+  /// value that reaches here has been through [normalizeServerInstant] — the
+  /// assumption a comment used to assert, now enforced ((li) clause 1).
+  Future<void> recordOwnIdentityReplacedFromServer(String occurredAt) async {
+    // Defence in depth: the provider normalizes, and so do we. An unorderable
+    // instant is IGNORED on this path — hydration exists only to order a past
+    // event against the watermark, and a server that withholds the field
+    // entirely already achieves this, so ignoring grants it nothing new.
+    final normalized = normalizeServerInstant(occurredAt);
+    if (normalized == null) return;
+
+    // Amendment (li) clause 2: the report of OUR OWN republish, consumed once.
+    if (_ownPublishUnacknowledged) {
+      await _clearOwnPublishUnacknowledged();
+      return;
+    }
+    final seen = _ownIdentityReplacedSeenAt;
+    if (seen != null && normalized.compareTo(seen) <= 0) return;
+    final current = _ownIdentityReplacedAt;
+    if (current != null && normalized.compareTo(current) <= 0) return;
+    await recordOwnIdentityReplaced(normalized);
+  }
+
+  /// Records that THIS device published a new identity, so the connect-time
+  /// hydration does not report that replacement back as a warning.
+  ///
+  /// Without it a user who just completed a reset ceremony and re-published
+  /// their keys is told, on their very next connect, that "another sign-in"
+  /// replaced them — an alarm about the recovery they just performed, on a
+  /// fresh install that has no dismissal watermark to suppress it.
+  ///
+  /// A ONE-SHOT flag, not a time window ((li) clause 2). The old form wrote a
+  /// DEVICE-clock watermark ten minutes ahead and compared it against
+  /// SERVER-stamped instants, so a fast device clock silently suppressed every
+  /// genuine replacement for the whole skew. The blind spot is now exactly one
+  /// report instead of ten minutes of them, and it involves no clock at all —
+  /// and an unauthorized replacement still cannot reach it, because the §6.1
+  /// registration lock refuses one that is neither signed nor spending a
+  /// ceremony.
+  Future<void> markOwnIdentityPublished() async {
+    _ownPublishUnacknowledged = true;
+    final userId = _userId;
+    if (userId == null) return;
+    try {
+      final prefs = await _sharedPrefs;
+      await prefs.setInt(_ownPublishUnackKey(userId), 1);
+    } catch (_) {}
+  }
+
+  Future<void> _clearOwnPublishUnacknowledged() async {
+    _ownPublishUnacknowledged = false;
+    final userId = _userId;
+    if (userId == null) return;
+    try {
+      final prefs = await _sharedPrefs;
+      await prefs.remove(_ownPublishUnackKey(userId));
+    } catch (_) {}
+  }
+
+  Future<void> dismissOwnIdentityReplaced() async {
+    final dismissed = _ownIdentityReplacedAt;
+    if (dismissed == null) return;
+    _ownIdentityReplacedAt = null;
+    _ownIdentityReplacedSeenAt = dismissed;
+    E2ePersistentDiag.record('OWN_IDENTITY_REPLACED_DISMISSED', {});
+    onOwnIdentityReplaced?.call();
+    final userId = _userId;
+    if (userId == null) return;
+    try {
+      final prefs = await _sharedPrefs;
+      await prefs.remove(_ownIdentityReplacedKey(userId));
+      await prefs.setString(_ownIdentityReplacedSeenKey(userId), dismissed);
+    } catch (_) {}
+  }
+
+  Future<void> _loadOwnIdentityReplaced(int userId) async {
+    try {
+      final prefs = await _sharedPrefs;
+      _ownIdentityReplacedAt = prefs.getString(_ownIdentityReplacedKey(userId));
+      _ownIdentityReplacedSeenAt = prefs.getString(
+        _ownIdentityReplacedSeenKey(userId),
+      );
+      // (li) clause 2: the flag must survive a restart, because a fresh
+      // install right after a recovery is exactly when the false alarm fired.
+      _ownPublishUnacknowledged =
+          (prefs.getInt(_ownPublishUnackKey(userId)) ?? 0) == 1;
+    } catch (_) {}
   }
 
   Future<void> _persistIdentityChanged() async {
@@ -236,13 +641,18 @@ class EncryptionService {
     if (userId == null) return;
     try {
       final prefs = await _sharedPrefs;
-      // Highest ids kept, same rule as the retired set: bounded degradation (an
-      // old warning drops off) beats an unbounded key competing with the Signal
-      // session records for quota.
-      final sorted = _peersWithChangedIdentity.toList()..sort();
-      final kept = sorted.length > _identityChangedCap
-          ? sorted.sublist(sorted.length - _identityChangedCap)
-          : sorted;
+      // Bounded degradation (an old warning drops off) beats an unbounded key
+      // competing with the Signal session records for quota — but the eviction
+      // MUST be by recency, not by id (xlviii clause 2). This used to sort the
+      // ids and keep the tail, i.e. the 200 numerically HIGHEST, which drops
+      // the LOWEST id: merely the oldest account, and therefore the likeliest
+      // to be a real long-standing contact. `_peersWithChangedIdentity` is a
+      // LinkedHashSet, so iteration order IS insertion order and the tail is
+      // the most recently warned.
+      final ordered = _peersWithChangedIdentity.toList();
+      final kept = ordered.length > _identityChangedCap
+          ? ordered.sublist(ordered.length - _identityChangedCap)
+          : ordered;
       await prefs.setString(_identityChangedKey(userId), jsonEncode(kept));
     } catch (_) {}
   }
@@ -257,6 +667,205 @@ class EncryptionService {
       if (decoded is! List) return;
       _peersWithChangedIdentity.addAll(decoded.whereType<int>());
     } catch (_) {}
+  }
+
+  // ---------- Persisted session-rebuild intent (amendment (xlviii) clause 1) --
+
+  /// Addresses whose Signal session must be rebuilt before the next send,
+  /// as `peerId:deviceId`.
+  ///
+  /// Persisted because the reason it gets set is persisted. A confirmed
+  /// (xlvii) recovery advances the account anchor AND clears the identity
+  /// warning — both durable — while the intent to rebuild the sessions that
+  /// the old key poisoned used to live only in provider memory. Killing the
+  /// app in between therefore left a peer whose anchor said "resolved", whose
+  /// warning was gone, and whose session was still keyed to the identity the
+  /// user had just replaced: the next send silently encrypted to a key the
+  /// peer no longer holds, destroying a message that had one copy.
+  ///
+  /// Insertion-ordered and capped like the warning set: bounded degradation
+  /// beats an unbounded key competing with the session records for quota.
+  final Set<String> _pendingSessionRebuilds = <String>{};
+
+  static const int _sessionRebuildCap = 200;
+
+  String _sessionRebuildKey(int userId) => 'e2e_${userId}_session_rebuild_v1';
+
+  static String _rebuildEntry(int peerId, int deviceId) => '$peerId:$deviceId';
+
+  /// Every persisted rebuild intent, as `(peerId, deviceId)` pairs.
+  Set<(int, int)> get pendingSessionRebuilds {
+    final out = <(int, int)>{};
+    for (final entry in _pendingSessionRebuilds) {
+      final parts = entry.split(':');
+      if (parts.length != 2) continue;
+      final peerId = int.tryParse(parts[0]);
+      final deviceId = int.tryParse(parts[1]);
+      if (peerId == null || deviceId == null) continue;
+      out.add((peerId, deviceId));
+    }
+    return out;
+  }
+
+  /// Durably record that [addresses] of [peerId] need a session rebuild.
+  ///
+  /// Called BEFORE the anchor advances, on purpose (clause 1): a kill between
+  /// the two MUST leave a redundant rebuild rather than a cleared warning over
+  /// a poisoned session. A redundant rebuild costs one pre-key fetch and one
+  /// one-time pre-key; the other ordering costs a message.
+  Future<void> recordSessionRebuilds(
+    int peerId,
+    Iterable<int> addresses,
+  ) async {
+    var added = false;
+    for (final deviceId in addresses) {
+      if (_pendingSessionRebuilds.add(_rebuildEntry(peerId, deviceId))) {
+        added = true;
+      }
+    }
+    if (!added) return;
+    await _persistSessionRebuilds();
+  }
+
+  /// Drop the persisted intent for one address, once a rebuild really happened.
+  Future<void> clearSessionRebuild(int peerId, int deviceId) async {
+    if (!_pendingSessionRebuilds.remove(_rebuildEntry(peerId, deviceId))) {
+      return;
+    }
+    await _persistSessionRebuilds();
+  }
+
+  /// Drop every persisted intent for [peerId] — the acknowledgement was
+  /// refused, so nothing advanced and nothing is poisoned.
+  Future<void> clearSessionRebuildsFor(int peerId) async {
+    final prefix = '$peerId:';
+    final before = _pendingSessionRebuilds.length;
+    _pendingSessionRebuilds.removeWhere((e) => e.startsWith(prefix));
+    if (_pendingSessionRebuilds.length == before) return;
+    await _persistSessionRebuilds();
+  }
+
+  Future<void> _persistSessionRebuilds() async {
+    final userId = _userId;
+    if (userId == null) return;
+    try {
+      final prefs = await _sharedPrefs;
+      final ordered = _pendingSessionRebuilds.toList();
+      final kept = ordered.length > _sessionRebuildCap
+          ? ordered.sublist(ordered.length - _sessionRebuildCap)
+          : ordered;
+      await prefs.setString(_sessionRebuildKey(userId), jsonEncode(kept));
+    } catch (_) {}
+  }
+
+  Future<void> _loadSessionRebuilds(int userId) async {
+    try {
+      final prefs = await _sharedPrefs;
+      final raw = prefs.getString(_sessionRebuildKey(userId));
+      if (raw == null) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return;
+      _pendingSessionRebuilds.addAll(decoded.whereType<String>());
+    } catch (_) {}
+  }
+
+  // ---------- Persisted device-list rollback pins (xlviii clause 3) ----------
+
+  /// Highest device-list version ever verified per PEER userId.
+  ///
+  /// The floor the (xix) rollback refusal reads. Persisted because a process
+  /// restart is a stronger cache invalidation than the one the pin was already
+  /// designed to survive: while it lived only in memory, every app launch let a
+  /// server re-serve an older validly-signed list — including one that
+  /// re-admits a device the peer had revoked.
+  final Map<int, int> _deviceListPins = {};
+
+  /// Pins recorded by this and previous processes, for seeding the cache.
+  Map<int, int> get deviceListPins => Map.unmodifiable(_deviceListPins);
+
+  String _deviceListPinsKey(int userId) => 'e2e_${userId}_devicelist_pins_v1';
+
+  /// Durably record that [peerId]'s list verified at [version]. Monotonic: a
+  /// lower version never lowers the floor.
+  ///
+  /// The WRITE deliberately does not throw ((lvii)). This serialises the ENTIRE
+  /// map on every advance, so a transient failure is repaired by the next
+  /// successful advance; and [DeviceListCache.onPinAdvanced] is a `void`
+  /// callback reached from inside verification, where throwing would turn a
+  /// storage hiccup into a failed verification. It records a diagnostic instead,
+  /// because the failure used to be entirely invisible.
+  Future<void> recordDeviceListPin(int peerId, int version) async {
+    final held = _deviceListPins[peerId];
+    if (held != null && version <= held) return;
+    _deviceListPins[peerId] = version;
+    final userId = _userId;
+    if (userId == null) return;
+    try {
+      final prefs = await _sharedPrefs;
+      await prefs.setString(
+        _deviceListPinsKey(userId),
+        jsonEncode(_deviceListPins.map((k, v) => MapEntry(k.toString(), v))),
+      );
+    } catch (e) {
+      E2ePersistentDiag.record('DEVICELIST_PIN_WRITE_FAILED', {
+        'peerId': peerId,
+        'version': version,
+        'error': e.toString(),
+      });
+    }
+  }
+
+  /// Restore the rollback floors recorded by previous processes.
+  ///
+  /// FAILS CLOSED ((lvii)): a storage or decode error PROPAGATES out of
+  /// [initialize]. This used to swallow everything, which made a read failure
+  /// indistinguishable from "never pinned" — and an empty floor is not neutral.
+  /// [DeviceListCache.adopt] refuses a `not enrolled` answer only when a pin
+  /// exists, and compares against the pin otherwise, so a silently empty floor
+  /// lets a server re-serve an older validly-signed list — including one that
+  /// re-admits a revoked device. That is the window (xix) refuses.
+  ///
+  /// This is the rule the identity load twenty lines below already states: a
+  /// storage error must never be read as an absence. A loud, retryable init
+  /// failure beats a permanent, undetectable downgrade.
+  ///
+  /// A missing key is a GENUINE absence and stays silent: a device that never
+  /// pinned anything has no floor to lose.
+  Future<void> _loadDeviceListPins(int userId) async {
+    final prefs = await _sharedPrefs;
+    final raw = prefs.getString(_deviceListPinsKey(userId));
+    if (raw == null) return;
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(raw);
+    } catch (e) {
+      E2ePersistentDiag.record('DEVICELIST_PIN_LOAD_FAILED', {
+        'userId': userId,
+        'error': e.toString(),
+      });
+      rethrow;
+    }
+    if (decoded is! Map) {
+      E2ePersistentDiag.record('DEVICELIST_PIN_LOAD_FAILED', {
+        'userId': userId,
+        'error': 'stored pins are not a map',
+      });
+      throw StateError('device-list pins for $userId are malformed');
+    }
+    decoded.forEach((key, value) {
+      final peerId = int.tryParse(key.toString());
+      if (peerId == null || value is! int) {
+        // One unusable entry is one lost floor, not a lost store, so it must be
+        // visible without denying every other peer its pin.
+        E2ePersistentDiag.record('DEVICELIST_PIN_ENTRY_SKIPPED', {
+          'userId': userId,
+          'key': key.toString(),
+        });
+        return;
+      }
+      final held = _deviceListPins[peerId];
+      if (held == null || value > held) _deviceListPins[peerId] = value;
+    });
   }
 
   /// Construct the four Signal stores for prefix [p].
@@ -299,6 +908,14 @@ class EncryptionService {
     // Restore warnings the user has not acknowledged yet, before any session
     // work can add to the set.
     await _loadIdentityChanged(userId);
+    await _loadOwnIdentityReplaced(userId);
+    // Rebuild intents outlive the process that recorded them (clause 1): a
+    // recovery confirmed just before the app died must still repair its
+    // sessions on the next launch.
+    await _loadSessionRebuilds(userId);
+    // Rollback floors from previous launches (clause 3), before any device list
+    // can be adopted against an empty floor.
+    await _loadDeviceListPins(userId);
 
     // A THROWING read propagates: a storage error must never be read as "no
     // keys". Only a definitive absence reaches the server-backed fresh-install
@@ -336,7 +953,13 @@ class EncryptionService {
     switch (load) {
       case IdentityLoadResult.loaded:
         debugPrint('[EncryptionService] Loaded existing keys from storage');
-        needsKeyUpload = false;
+        // A non-null _keysForUpload means THIS process minted key material
+        // that may not have reached the server yet — above all the §5.1
+        // adopt path, whose init previously failed (keyless) so the
+        // provider re-enters here after the ceremony. Dropping the flag
+        // would strand the minted signed-prekey/OTPs unpublished until a
+        // preKeysLow bounce.
+        needsKeyUpload = _keysForUpload != null;
       case IdentityLoadResult.partial:
         E2ePersistentDiag.record('IDENTITY_INCOMPLETE', {'userId': userId});
         debugPrint(
@@ -414,6 +1037,33 @@ class EncryptionService {
     final p = 'e2e_${userId}_';
     E2ePersistentDiag.record('IDENTITY_REGEN_CONSENTED', {'userId': userId});
 
+    await _wipeSignalMaterial(p);
+
+
+    _buildStores(p);
+    // Our own identity is new, so every peer will legitimately see a change and
+    // every stored warning about THEM is now noise. Clear the persisted copy
+    // too, or the banners outlive the event that explains them.
+    _peersWithChangedIdentity.clear();
+    await _persistIdentityChanged();
+    // A key regeneration invalidates every session anyway, so a rebuild intent
+    // recorded against the old ones names nothing.
+    _pendingSessionRebuilds.clear();
+    await _persistSessionRebuilds();
+
+    await _generateKeys();
+    needsKeyUpload = true;
+    identityIncomplete = false;
+    _initialized = true;
+  }
+
+  /// Deletes every Signal-material key under [p] — identity, sessions,
+  /// pre-keys, signed pre-keys, peer trust — leaving the content store and
+  /// non-Signal records untouched. Shared by the consented-loss regeneration
+  /// and the (lxv) stale-material disposal; best-effort by design (a partial
+  /// wipe is strictly better than none, and both callers immediately
+  /// overwrite the identity slot).
+  Future<void> _wipeSignalMaterial(String p) async {
     try {
       final all = await _storage.readAll();
       for (final key in all.keys.toList()) {
@@ -432,18 +1082,163 @@ class EncryptionService {
         }
       }
     } catch (_) {}
+  }
 
+  /// §5.1 provisioning adopt (Phase 2 T3, spec §12 item (ii)): install the
+  /// account identity the primary transported in the ceremony blob, on a
+  /// device that has NO identity of its own.
+  ///
+  /// Discipline (frontend/CLAUDE.md §5): the identity record is ONE atomic
+  /// write of the ADOPTED pair plus a locally-minted registrationId — never
+  /// regenerated, and storage is untouched until every input has parsed.
+  /// Signed pre-key and one-time pre-keys are minted into the local stores
+  /// but NOT uploaded — the upload rides the existing OTP-gate path after
+  /// the session rebinds to the assigned deviceId (amendment (b)).
+  ///
+  /// Amendment (lxv): [disposeStaleMaterial] authorizes wiping an EXISTING
+  /// identity before adopting. Passed ONLY by the ceremony when this install
+  /// is in the (lxiv) device-material-mismatch state — material stamped for a
+  /// device the account has revoked. The SAS confirmation plus authenticated
+  /// blob is the user's consent; the content store (sealed history) is
+  /// untouched, so the §5.5 "messages stay" promise holds.
+  Future<void> adoptProvisionedIdentity({
+    required int userId,
+    required String ikPubBase64,
+    required String ikPrivBase64,
+    required String dakPubBase64,
+    bool disposeStaleMaterial = false,
+  }) async {
+    // Invariant lock (T3 review NOTE): adopting over a device that already
+    // holds ANY identity would silently orphan every session keyed to it —
+    // the UI gates this flow on identityIncomplete, but the service must
+    // refuse on its own too. Both record shapes checked (atomic + legacy).
+    // Amendment (lxv) carves out exactly ONE exception: a ceremony-authorized
+    // disposal of (lxiv)-mismatched stale material.
+    final existingPrefix = 'e2e_${userId}_';
+    final holdsIdentity =
+        await _storage.read(key: '${existingPrefix}identity_record_v1') !=
+            null ||
+        await _storage.read(key: '${existingPrefix}identity_key_pair') != null;
+    if (holdsIdentity && !disposeStaleMaterial) {
+      throw StateError(
+        'adoptProvisionedIdentity: device already holds an identity',
+      );
+    }
+    // Parse EVERYTHING first: a malformed blob must fail before any write —
+    // including the (lxv) wipe, or a bad blob would strand the install
+    // keyless without the adopt that justified the disposal.
+    final identityKeyPair = IdentityKeyPair(
+      IdentityKey.fromBytes(base64Decode(ikPubBase64), 0),
+      Curve.decodePrivatePoint(
+        // Library caveat: curve calls mutate handed buffers — fresh copy.
+        Uint8List.fromList(base64Decode(ikPrivBase64)),
+      ),
+    );
+    base64Decode(dakPubBase64); // validity gate only
+
+    if (holdsIdentity) {
+      // (lxv): every input parsed; the stale material may now go.
+      E2ePersistentDiag.record('LINK_STALE_MATERIAL_DISPOSED', {
+        'userId': userId,
+      });
+      await _wipeSignalMaterial(existingPrefix);
+    }
+
+    _userId = userId;
+    final p = 'e2e_${userId}_';
     _buildStores(p);
-    // Our own identity is new, so every peer will legitimately see a change and
-    // every stored warning about THEM is now noise. Clear the persisted copy
-    // too, or the banners outlive the event that explains them.
-    _peersWithChangedIdentity.clear();
-    await _persistIdentityChanged();
 
-    await _generateKeys();
+    final registrationId = generateRegistrationId(false);
+    await _identityStore.initialize(identityKeyPair, registrationId);
+    // (lxiv): adopted material is re-homed by this ceremony — drop any stamp
+    // from a previous life; the post-rebind connect re-stamps the assigned id.
+    try {
+      await _storage.delete(key: _materialDeviceKey(userId));
+    } catch (_) {}
+
+    final signedPreKey = generateSignedPreKey(identityKeyPair, 0);
+    await _signedPreKeyStore.storeSignedPreKey(signedPreKey.id, signedPreKey);
+    final preKeys = generatePreKeys(0, _initialPreKeyBatchSize);
+    await Future.wait(preKeys.map((pk) => _preKeyStore.storePreKey(pk.id, pk)));
+    await _storage.write(
+      key: '${p}next_pre_key_id',
+      value: _initialPreKeyBatchSize.toString(),
+    );
+
+    // The account's device-authority public key, for verifying own signed
+    // lists along the I7 chain (a linked device never holds the private
+    // half, invariant I2).
+    await _storage.write(key: '${p}dak_pub_v1', value: dakPubBase64);
+
+    _keysForUpload = {
+      'keyBundle': {
+        'registrationId': registrationId,
+        'identityPublicKey': base64Encode(
+          identityKeyPair.getPublicKey().serialize(),
+        ),
+        'signedPreKeyId': signedPreKey.id,
+        'signedPreKeyPublic': base64Encode(
+          signedPreKey.getKeyPair().publicKey.serialize(),
+        ),
+        'signedPreKeySignature': base64Encode(signedPreKey.signature),
+      },
+      'oneTimePreKeys': preKeys.map(_preKeyToUploadFormat).toList(),
+    };
+    await _storage.write(key: '${p}setup_complete', value: 'true');
+
     needsKeyUpload = true;
     identityIncomplete = false;
     _initialized = true;
+    _provisionalIdentityAdopted = true;
+    E2ePersistentDiag.record('LINK_IDENTITY_ADOPTED', {'userId': userId});
+  }
+
+  /// Abort hygiene of a failed §5.1 ceremony (I1, falsification 18): delete
+  /// EXACTLY what [adoptProvisionedIdentity] wrote, so N ends as unkeyed as
+  /// it started. Only runs on a device whose ceremony this process started —
+  /// the adopt path is reachable only while the device holds no identity.
+  Future<void> discardProvisionedIdentity(int userId) async {
+    // Invariant lock (T3 review NOTE): this delete is legal ONLY against an
+    // identity this process adopted in a still-unsettled ceremony. Any other
+    // caller would be destroying a real account's keys.
+    if (!_provisionalIdentityAdopted) {
+      throw StateError(
+        'discardProvisionedIdentity: no provisional identity to discard',
+      );
+    }
+    final p = 'e2e_${userId}_';
+    final all = await _storage.readAll();
+    for (final key in all.keys.toList()) {
+      if (!key.startsWith(p)) continue;
+      final suffix = key.substring(p.length);
+      final wroteByAdopt =
+          suffix == 'identity_record_v1' ||
+          suffix == 'identity_key_pair' ||
+          suffix == 'registration_id' ||
+          suffix == 'next_pre_key_id' ||
+          suffix == 'setup_complete' ||
+          suffix == 'dak_pub_v1' ||
+          suffix.startsWith('signed_pre_key_') ||
+          suffix.startsWith('pre_key_');
+      if (wroteByAdopt) {
+        await _storage.delete(key: key);
+      }
+    }
+    _keysForUpload = null;
+    needsKeyUpload = false;
+    _provisionalIdentityAdopted = false;
+    _initialized = false;
+    E2ePersistentDiag.record('LINK_IDENTITY_DISCARDED', {'userId': userId});
+  }
+
+  /// The full identity pair, for the §5.1 primary side building the
+  /// ceremony blob. READ ONLY — the ceremony must never mint identity
+  /// material of its own.
+  Future<IdentityKeyPair> identityKeyPairForLinking() async {
+    if (!_initialized) {
+      throw StateError('encryption service not initialized');
+    }
+    return _identityStore.getIdentityKeyPair();
   }
 
   /// Get the public key data to upload to the server.
@@ -457,6 +1252,12 @@ class EncryptionService {
     final registrationId = generateRegistrationId(false);
 
     await _identityStore.initialize(identityKeyPair, registrationId);
+
+    // (lxiv): freshly minted material has no home yet — drop any stamp from a
+    // previous life so the next server-confirmed device id re-stamps.
+    try {
+      await _storage.delete(key: _materialDeviceKey(uid));
+    } catch (_) {}
 
     // Generate signed pre-key (id = 0)
     final signedPreKey = generateSignedPreKey(identityKeyPair, 0);
@@ -491,9 +1292,10 @@ class EncryptionService {
     await _storage.write(key: 'e2e_${uid}_setup_complete', value: 'true');
   }
 
-  /// Check if we have an active session with the given user.
-  Future<bool> hasSession(int userId) async {
-    final address = SignalProtocolAddress(userId.toString(), _deviceId);
+  /// Check if we have an active session with the given user's [deviceId]
+  /// (default 1 — the pre-multi-device address every legacy caller means).
+  Future<bool> hasSession(int userId, {int deviceId = _deviceId}) async {
+    final address = SignalProtocolAddress(userId.toString(), deviceId);
     return _sessionStore.containsSession(address);
   }
 
@@ -503,12 +1305,13 @@ class EncryptionService {
   ///
   /// Serialized per peer (see [_sessionTails]) so a delete never lands in the
   /// middle of an in-flight encrypt/decrypt load→store window.
-  Future<void> deleteSession(int userId) {
-    return _runSessionSerialized(userId, () async {
-      final address = SignalProtocolAddress(userId.toString(), _deviceId);
+  Future<void> deleteSession(int userId, {int deviceId = _deviceId}) {
+    return _runSessionSerialized(userId, deviceId, () async {
+      final address = SignalProtocolAddress(userId.toString(), deviceId);
       await _sessionStore.deleteSession(address);
       debugPrint(
-        '[EncryptionService] Session deleted for userId=$userId (broken session reset)',
+        '[EncryptionService] Session deleted for userId=$userId '
+        'deviceId=$deviceId (broken session reset)',
       );
     });
   }
@@ -529,18 +1332,35 @@ class EncryptionService {
   /// Serialized per peer (see [_sessionTails]): processPreKeyBundle archives
   /// the current ratchet state and stores a new record — racing it against an
   /// in-flight encrypt/decrypt store loses one side's advance.
-  Future<void> buildSession(int userId, Map<String, dynamic> preKeyBundle) {
+  /// [expectedIdentityBase64] is the account's already-trusted identity key,
+  /// or null when this account has never been contacted on ANY device. When
+  /// present it MUST equal the bundle's key or the build is refused — see
+  /// [_buildSessionSerialized].
+  Future<void> buildSession(
+    int userId,
+    Map<String, dynamic> preKeyBundle, {
+    int deviceId = _deviceId,
+    required String? expectedIdentityBase64,
+  }) {
     return _runSessionSerialized(
       userId,
-      () => _buildSessionSerialized(userId, preKeyBundle),
+      deviceId,
+      () => _buildSessionSerialized(
+        userId,
+        deviceId,
+        preKeyBundle,
+        expectedIdentityBase64,
+      ),
     );
   }
 
   Future<void> _buildSessionSerialized(
     int userId,
+    int deviceId,
     Map<String, dynamic> preKeyBundle,
+    String? expectedIdentityBase64,
   ) async {
-    final address = SignalProtocolAddress(userId.toString(), _deviceId);
+    final address = SignalProtocolAddress(userId.toString(), deviceId);
     final builder = SessionBuilder(
       _cipherSessionStore,
       _preKeyStore,
@@ -562,6 +1382,44 @@ class EncryptionService {
       0,
     );
 
+    // §3 SAYS EVERY DEVICE OF AN ACCOUNT SHARES ONE IDENTITY KEY. ENFORCE IT
+    // (spec §12 amendment (xxxix)).
+    //
+    // Without this the store's TOFU is keyed per (peer, deviceId), so a peer's
+    // newly linked device is a FRESH address: `existing == null`, no change to
+    // detect, trusted in silence. The DAK-signed device list stops a server
+    // inventing a device, but nothing stopped it serving a bundle carrying its
+    // OWN identity key for a device the list legitimately names — a silent
+    // MITM slot on every link, and precisely the capability §2 says a server
+    // alone does not have.
+    //
+    // FAIL CLOSED. The alternative — build the session and warn — was
+    // considered and rejected: a dismissible banner over a live MITM is worse
+    // than a refusal, because the message is already encrypted to the attacker
+    // by the time the user reads it. Refusing costs a peer device we cannot
+    // verify; accepting costs the plaintext.
+    //
+    // A null anchor is genuine first contact with the ACCOUNT (not merely with
+    // this device), which is irreducibly TOFU and stays trusting. The caller
+    // resolves the anchor across the account's known devices, never from a
+    // fixed device slot.
+    final expected = expectedIdentityBase64;
+    if (expected != null) {
+      final offered = base64Encode(identityKey.serialize());
+      if (offered != expected) {
+        debugPrint(
+          '[EncryptionService] REFUSED session userId=$userId '
+          'deviceId=$deviceId reason=account_identity_mismatch',
+        );
+        // (lv) Refusing is right; refusing SILENTLY is what made this a
+        // permanent outage. Stage the offered key and raise the identity
+        // surface BEFORE throwing, so the banner exists and the out-of-band
+        // comparison — the only door out — has a candidate to promote.
+        await _recordAccountIdentityRefusal(userId, identityKey);
+        throw AccountIdentityMismatch(userId: userId, deviceId: deviceId);
+      }
+    }
+
     // DO NOT pre-save the bundle's identity here. This code did that until
     // 2026-08-05, and it silently disabled the MITM warning on the ONE path
     // that matters:
@@ -579,7 +1437,7 @@ class EncryptionService {
 
     final bundle = PreKeyBundle(
       preKeyBundle['registrationId'] as int,
-      _deviceId,
+      deviceId,
       preKeyBundle['oneTimePreKeyId'] as int? ?? 0,
       oneTimePreKey,
       preKeyBundle['signedPreKeyId'] as int,
@@ -594,15 +1452,17 @@ class EncryptionService {
     );
 
     await builder.processPreKeyBundle(bundle);
-    debugPrint('[EncryptionService] Session built with userId=$userId');
+    debugPrint(
+      '[EncryptionService] Session built with userId=$userId deviceId=$deviceId',
+    );
   }
 
-  /// Tail of the in-flight session-mutation chain per peer. Signal's Double
-  /// Ratchet is stateful: EVERY operation that does load→mutate→store on a
-  /// peer's SessionRecord — encrypt, decrypt, buildSession, deleteSession —
-  /// must run through [_runSessionSerialized]. Two such operations
-  /// interleaving at store await points lose one side's advance (lost
-  /// update):
+  /// Tail of the in-flight session-mutation chain per (peer, device) address.
+  /// Signal's Double Ratchet is stateful: EVERY operation that does
+  /// load→mutate→store on an address's SessionRecord — encrypt, decrypt,
+  /// buildSession, deleteSession — must run through [_runSessionSerialized].
+  /// Two such operations interleaving at store await points lose one side's
+  /// advance (lost update):
   ///  - encrypt vs encrypt: both load the same state and emit DUPLICATE
   ///    chain counters (the 2026-07-07 note-burst bug, 0.0.90);
   ///  - encrypt vs decrypt: a decrypt store landing after a concurrent
@@ -612,69 +1472,99 @@ class EncryptionService {
   ///    brand-new message (the post-0.0.90 field reports). Reproduced
   ///    deterministically in encryption_encrypt_decrypt_race_probe_test.dart.
   ///
+  /// Keyed by the COMPOSITE (peerId, deviceId), never peerId alone: two
+  /// devices of one peer hold INDEPENDENT ratchets, and a shared tail would
+  /// let a device-2 store clobber a device-1 store (T4, spec §5.4 — own
+  /// devices are just another peer address to the ratchet layer).
+  ///
   /// NOT a reentrant mutex: guarded methods must stay leaf-level and never
-  /// await another guarded method for the same peer, or they chain behind
+  /// await another guarded method for the same address, or they chain behind
   /// themselves and hang. Cross-operation sequencing (ensureSession →
   /// buildSession then encrypt) belongs at the provider layer as separate
   /// sequential acquisitions.
-  final Map<int, Future<void>> _sessionTails = {};
+  final Map<(int, int), Future<void>> _sessionTails = {};
 
-  String _sessionLockName(int peerId) {
+  /// Cross-context (Web Lock) name for one (peer, device) SessionRecord.
+  ///
+  /// Device 1 keeps the EXACT legacy name: during a rollout window an old
+  /// PWA tab still locks `fireplace-e2e-session-<uid>-<peer>` for its
+  /// device-1 mutations, and a renamed lock would let the two builds
+  /// interleave on the same persisted record. Devices ≥ 2 get their own
+  /// suffix so two devices of one peer never serialize against each other
+  /// across tabs either.
+  String _sessionLockName(int peerId, int deviceId) {
     final userId = _userId;
     if (userId == null) {
       throw StateError('EncryptionService is not initialized');
     }
-    return 'fireplace-e2e-session-$userId-$peerId';
+    return deviceId == _deviceId
+        ? 'fireplace-e2e-session-$userId-$peerId'
+        : 'fireplace-e2e-session-$userId-$peerId-d$deviceId';
   }
 
   /// Queue [action] behind every in-flight mutation in this app engine, then
-  /// take the origin-wide Web Lock for the same account/peer. The browser lock
-  /// is load-bearing: separate PWA tabs have separate Dart heaps and therefore
-  /// separate [_sessionTails], but they mutate the same persisted SessionRecord.
-  Future<T> _runSessionSerialized<T>(int peerId, Future<T> Function() action) {
-    final tail = _sessionTails[peerId] ?? Future<void>.value();
+  /// take the origin-wide Web Lock for the same account/peer/device. The
+  /// browser lock is load-bearing: separate PWA tabs have separate Dart heaps
+  /// and therefore separate [_sessionTails], but they mutate the same
+  /// persisted SessionRecord.
+  Future<T> _runSessionSerialized<T>(
+    int peerId,
+    int deviceId,
+    Future<T> Function() action,
+  ) {
+    final key = (peerId, deviceId);
+    final tail = _sessionTails[key] ?? Future<void>.value();
     final result = tail.then(
-      (_) => _sessionCrossContextLock(_sessionLockName(peerId), action),
+      (_) =>
+          _sessionCrossContextLock(_sessionLockName(peerId, deviceId), action),
     );
-    _sessionTails[peerId] = result.then<void>((_) {}, onError: (_) {});
+    _sessionTails[key] = result.then<void>((_) {}, onError: (_) {});
     return result;
   }
 
-  /// In-flight encrypt count per recipient — the overlap probe. If this is
-  /// ever >0 at enqueue, two sends WERE concurrent even if they did not feel
-  /// "rapid" (a note send overlapping a resync decrypt, a typing-driven op,
-  /// another message). Logged durably so the field report can confirm or rule
-  /// out concurrency as the cause of a peer decrypt failure.
-  final Map<int, int> _encryptInFlight = {};
+  /// In-flight encrypt count per (recipient, device) — the overlap probe. If
+  /// this is ever >0 at enqueue, two sends WERE concurrent even if they did
+  /// not feel "rapid" (a note send overlapping a resync decrypt, a
+  /// typing-driven op, another message). Logged durably so the field report
+  /// can confirm or rule out concurrency as the cause of a peer decrypt
+  /// failure.
+  final Map<(int, int), int> _encryptInFlight = {};
 
-  /// Encrypt a plaintext string for the given recipient.
+  /// Encrypt a plaintext string for the given recipient [deviceId] (default 1).
   /// Returns "{type}:{base64_body}" format.
   ///
-  /// Serialized per peer with decrypt/buildSession/deleteSession (see
-  /// [_sessionTails]): concurrent callers queue in call order.
-  Future<String> encrypt(int recipientUserId, String plaintext) {
-    final inFlight = _encryptInFlight[recipientUserId] ?? 0;
+  /// Serialized per (peer, device) with decrypt/buildSession/deleteSession
+  /// (see [_sessionTails]): concurrent callers queue in call order.
+  Future<String> encrypt(
+    int recipientUserId,
+    String plaintext, {
+    int deviceId = _deviceId,
+  }) {
+    final key = (recipientUserId, deviceId);
+    final inFlight = _encryptInFlight[key] ?? 0;
     if (inFlight > 0) {
       E2ePersistentDiag.record('ENCRYPT_OVERLAP', {
         'recipientId': recipientUserId,
+        'deviceId': deviceId,
         'inFlight': inFlight,
       });
     }
-    _encryptInFlight[recipientUserId] = inFlight + 1;
+    _encryptInFlight[key] = inFlight + 1;
 
     final result = _runSessionSerialized(
       recipientUserId,
-      () => _encryptSerialized(recipientUserId, plaintext),
+      deviceId,
+      () => _encryptSerialized(recipientUserId, deviceId, plaintext),
     );
     // Error-swallowed continuation as the decrement hook, so a failed encrypt
     // never leaks an unhandled async error (the owning caller still sees it
     // via `result`).
     result.then<void>((_) {}, onError: (_) {}).whenComplete(() {
-      final n = (_encryptInFlight[recipientUserId] ?? 1) - 1;
+      final n = (_encryptInFlight[key] ?? 1) - 1;
       if (n <= 0) {
-        _encryptInFlight.remove(recipientUserId);
+        _encryptInFlight.remove(key);
       } else {
-        _encryptInFlight[recipientUserId] = n;
+        _encryptInFlight[key] = n;
       }
     });
     return result;
@@ -682,12 +1572,10 @@ class EncryptionService {
 
   Future<String> _encryptSerialized(
     int recipientUserId,
+    int deviceId,
     String plaintext,
   ) async {
-    final address = SignalProtocolAddress(
-      recipientUserId.toString(),
-      _deviceId,
-    );
+    final address = SignalProtocolAddress(recipientUserId.toString(), deviceId);
     final cipher = SessionCipher(
       _cipherSessionStore,
       _preKeyStore,
@@ -715,8 +1603,9 @@ class EncryptionService {
     int senderUserId,
     String ciphertextStr, {
     int? messageId,
+    int deviceId = _deviceId,
   }) {
-    return _runSessionSerialized(senderUserId, () async {
+    return _runSessionSerialized(senderUserId, deviceId, () async {
       if (messageId != null) {
         final replay = await _loadRawDecryptedContent(messageId, ciphertextStr);
         if (replay != null) {
@@ -728,7 +1617,11 @@ class EncryptionService {
         }
       }
 
-      final plaintext = await _decryptSerialized(senderUserId, ciphertextStr);
+      final plaintext = await _decryptSerialized(
+        senderUserId,
+        deviceId,
+        ciphertextStr,
+      );
       if (messageId != null) {
         await _saveRawDecryptedContent(messageId, ciphertextStr, plaintext);
       }
@@ -738,9 +1631,10 @@ class EncryptionService {
 
   Future<String> _decryptSerialized(
     int senderUserId,
+    int deviceId,
     String ciphertextStr,
   ) async {
-    final address = SignalProtocolAddress(senderUserId.toString(), _deviceId);
+    final address = SignalProtocolAddress(senderUserId.toString(), deviceId);
     final cipher = SessionCipher(
       _cipherSessionStore,
       _preKeyStore,
@@ -862,16 +1756,26 @@ class EncryptionService {
     return _formatIdentityFingerprint(keyPair.getPublicKey());
   }
 
-  /// Get the stored trusted fingerprint for [peerId], if one exists.
+  /// Get the pinned trusted fingerprint for [peerId]'s ACCOUNT, if one exists.
   ///
   /// This is deliberately a read of the trusted identity store rather than a
   /// server-supplied bundle: the user must compare the key this device actually
   /// accepted after the warning, not a fresh network value.
+  ///
+  /// ACCOUNT-scoped, not `(peer, device 1)` (amendment (xlvii) clause 2, the
+  /// same category error (xlvi) fixed everywhere else). The old address was
+  /// wrong twice: [SignalIdentityStore.promotePendingAccountIdentity] only ever
+  /// writes the account row, so the two diverged permanently after any
+  /// acknowledged change, and a post-§6.2 peer has NO device 1 at all — ids are
+  /// never reused — so the one out-of-band MITM check read an empty slot
+  /// precisely for the accounts that had most recently survived a takeover.
+  /// The legacy device-1 backfill inside [getAccountIdentity] keeps every
+  /// single-device peer showing exactly what it showed before.
   Future<String?> getPeerIdentityFingerprint(int peerId) async {
     if (!_initialized) return null;
     try {
-      final identity = await _identityStore.getIdentity(
-        SignalProtocolAddress(peerId.toString(), _deviceId),
+      final identity = await _identityStore.getAccountIdentity(
+        peerId.toString(),
       );
       return identity == null ? null : _formatIdentityFingerprint(identity);
     } catch (_) {
@@ -879,6 +1783,156 @@ class EncryptionService {
       // leave it visibly unavailable, never turn the warning into an exception.
       return null;
     }
+  }
+
+  /// Both sides of the verify-security-keys ceremony for [peerId]: the key this
+  /// device currently trusts, and the key an acknowledgement would pin.
+  ///
+  /// [servedIdentityBase64] is a freshly served account identity, used ONLY
+  /// when no local candidate exists — the (xlvii) clause 3 shape, where the
+  /// peer completed §6.2 and the accept gate refused their row before Signal
+  /// could record anything to acknowledge. A stored candidate always wins over
+  /// it, because a candidate came from a real inbound ciphertext.
+  Future<PeerIdentityVerification> peerIdentityVerification(
+    int peerId, {
+    String? servedIdentityBase64,
+  }) async {
+    if (!_initialized) return const PeerIdentityVerification();
+    try {
+      final name = peerId.toString();
+      final pinned = await _identityStore.getAccountIdentity(name);
+      var offered = await _identityStore.pendingAccountIdentity(name);
+      var offeredWasServed = false;
+      if (offered == null &&
+          servedIdentityBase64 != null &&
+          servedIdentityBase64.isNotEmpty) {
+        offered = IdentityKey.fromBytes(base64Decode(servedIdentityBase64), 0);
+        offeredWasServed = true;
+      }
+      // An offer identical to the pin is not a CHANGE to confirm — but it must
+      // still be offered, because clause 1 only clears a warning when the
+      // anchor advances. Nulling it here left a standing alarm with no control
+      // at all: an alarm the user cannot act on, which is the exact dead end
+      // this amendment exists to remove. Re-affirming the key the user just
+      // compared is a legitimate resolution, so the offer stays and only its
+      // PRESENTATION changes.
+      final offerMatchesPin =
+          offered != null &&
+          pinned != null &&
+          base64Encode(offered.serialize()) == base64Encode(pinned.serialize());
+      // RECORD a served offer as the pending candidate, so that every adoption
+      // promotes a key this device wrote down (see [acknowledgePeerIdentity]).
+      // This cannot clobber a genuine candidate: `offered` is taken from the
+      // served key only when there was no candidate to begin with. Recording
+      // grants no trust — the pending slot is read only by the display and by
+      // the human-gated promotion.
+      if (offeredWasServed && offered != null && !offerMatchesPin) {
+        await _identityStore.stagePendingAccountIdentity(name, offered);
+      }
+      return PeerIdentityVerification(
+        pinnedFingerprint: pinned == null
+            ? null
+            : _formatIdentityFingerprint(pinned),
+        // Suppressed when it equals the pin: showing the same number twice
+        // under "new" and "previous" labels reads as a mismatch.
+        offeredFingerprint: offered == null || offerMatchesPin
+            ? null
+            : _formatIdentityFingerprint(offered),
+        offeredIdentityBase64: offered == null
+            ? null
+            : base64Encode(offered.serialize()),
+        offeredWasServed: offeredWasServed && offered != null,
+        offerMatchesPin: offerMatchesPin,
+      );
+    } catch (_) {
+      return const PeerIdentityVerification();
+    }
+  }
+
+  /// The TOFU-pinned identity public key of [peerId]'s ACCOUNT (base64 of the
+  /// serialized key), or null when none is stored or the read fails.
+  ///
+  /// This is what the T4 device-list cache verifies a peer's DAK enrollment
+  /// against (I7 chain: their TOFU'd IK → E → DAK → list) — deliberately the
+  /// STORED key, never a fresh network value, because the chain must anchor on
+  /// the key this device actually accepted.
+  ///
+  /// ACCOUNT-scoped, not `(peer, device 1)` (spec §12 amendment (xlvi)). §3
+  /// gives one identity key per account, so the device was never the right
+  /// unit; the bug only surfaced once §6.2 started producing accounts with no
+  /// device 1, whose freshly re-enrolled list then anchored on a revoked
+  /// device's key — or on nothing — and could never verify.
+  Future<String?> peerTofuIdentityBase64(int peerId) async {
+    if (!_initialized) return null;
+    try {
+      final identity = await _identityStore.getAccountIdentity(
+        peerId.toString(),
+      );
+      return identity == null ? null : base64Encode(identity.serialize());
+    } catch (_) {
+      // Fail closed at the caller: a null here means "cannot verify", and
+      // the device-list cache refuses to trust anything without the anchor.
+      return null;
+    }
+  }
+
+  /// The account anchor for the (xxxix)/(lvi) SESSION GATE, where a failed read
+  /// MUST NOT look like an absence ((lxii)).
+  ///
+  /// Deliberately a second contract rather than a flag on
+  /// [peerTofuIdentityBase64], because the two callers need OPPOSITE polarities
+  /// and a shared method cannot have both:
+  ///  * The device-list chain wants null on failure — `DeviceListCache.adopt`
+  ///    turns that into `no_tofu_identity` and refuses, so null is already
+  ///    fail-closed there.
+  ///  * This gate treats null as "genuine first contact with the ACCOUNT, which
+  ///    is irreducibly TOFU" and stays TRUSTING, so null on failure is
+  ///    fail-OPEN: one transient storage error would silently restore the
+  ///    vacuous gate for that send and let a served substitute key through.
+  ///
+  /// So: a genuine absence still returns null; a read error THROWS, out of
+  /// `ensureSession`, where (lix) restores the rebuild intent and the send fails
+  /// visibly. Same polarity (lvii) just ruled for the persisted rollback pin,
+  /// and the same answer `_hasPinnedAccountIdentity` already gives for the
+  /// analogous question ("uncertainty answers YES on purpose").
+  Future<String?> peerAccountAnchorForGate(int peerId) async {
+    if (!_initialized) {
+      throw StateError(
+        'account anchor requested for $peerId before initialization',
+      );
+    }
+    final identity = await _identityStore.getAccountIdentity(peerId.toString());
+    return identity == null ? null : base64Encode(identity.serialize());
+  }
+
+  /// The identity key already trusted for [peerId] at [deviceId], or null if
+  /// that address has never been contacted.
+  ///
+  /// Unlike [peerTofuIdentityBase64] this takes the device explicitly, because
+  /// device 1 is NOT a safe default: ids are never reused and a post-§6.2
+  /// account has no device 1 at all, so a fixed slot is empty exactly for the
+  /// accounts that most recently survived a takeover.
+  Future<String?> peerIdentityAt(int peerId, int deviceId) async {
+    if (!_initialized) return null;
+    try {
+      final identity = await _identityStore.getIdentity(
+        SignalProtocolAddress(peerId.toString(), deviceId),
+      );
+      return identity == null ? null : base64Encode(identity.serialize());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Test-only: pin [identityBase64] as [peerId]'s TOFU identity, exactly as
+  /// a first inbound bundle would. Lets device-list cache tests anchor the
+  /// I7 chain without running a full X3DH session build.
+  @visibleForTesting
+  Future<void> debugSavePeerIdentity(int peerId, String identityBase64) async {
+    await _identityStore.saveIdentity(
+      SignalProtocolAddress(peerId.toString(), _deviceId),
+      IdentityKey.fromBytes(base64Decode(identityBase64), 0),
+    );
   }
 
   /// Formats every displayed Signal identity consistently: lowercase hex,
@@ -907,6 +1961,58 @@ class EncryptionService {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Current locally minted registrationId — the (lxiv) install proof sent
+  /// with one-time pre-key uploads so the server can tell this install from a
+  /// foreign one sharing the account identity. Null before init.
+  Future<int?> currentRegistrationId() async {
+    if (!_initialized) return null;
+    try {
+      return await _identityStore.getLocalRegistrationId();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _materialDeviceKey(int userId) => 'e2e_${userId}_material_device_v1';
+
+  /// (lxiv) clause 2 — which device id this install's Signal material was
+  /// provisioned for. TOFU: absent → stamp [deviceId] and answer true; present
+  /// → answer whether the stamp agrees. Every mint/adopt/rebind path CLEARS
+  /// the stamp (an authorized re-homing of the material), so a contradiction
+  /// can only mean material that survived a session-identity change it was
+  /// never re-homed for — the revoked-device-signs-back-in shape, whose bundle
+  /// re-upload would clobber the primary's published keys.
+  Future<bool> confirmMaterialDeviceId(int deviceId) async {
+    final userId = _userId;
+    if (userId == null) return true;
+    final key = _materialDeviceKey(userId);
+    try {
+      final existing = await _storage.read(key: key);
+      final parsed = existing == null ? null : int.tryParse(existing);
+      if (parsed == null) {
+        await _storage.write(key: key, value: deviceId.toString());
+        return true;
+      }
+      return parsed == deviceId;
+    } catch (_) {
+      // A storage failure is not evidence of a foreign install; fail open so
+      // a flaky read cannot take a healthy device out of E2E duty. The server
+      // guard ((lxiv) clause 1) still refuses a genuinely foreign write.
+      return true;
+    }
+  }
+
+  /// Clears the (lxiv) material-device stamp — called by every authorized
+  /// re-homing of this install's material (the §6.2 rebind adoption; the mint
+  /// paths clear inline). The next server-confirmed device id re-stamps.
+  Future<void> clearMaterialDeviceStamp() async {
+    final userId = _userId;
+    if (userId == null) return;
+    try {
+      await _storage.delete(key: _materialDeviceKey(userId));
+    } catch (_) {}
   }
 
   static Map<String, dynamic> _preKeyToUploadFormat(PreKeyRecord pk) => {
@@ -1031,6 +2137,10 @@ class EncryptionService {
     '[Decryption failed]',
     '[Encryption not initialized]',
     '[Message no longer stored on this device]',
+    // A row that predates this device's link (spec §12 amendment (viii)). It
+    // must never overwrite real plaintext: a device that DID decrypt this
+    // message keeps its copy even if a later payload arrives marked.
+    '[Sent before this device was linked]',
   };
 
   /// Persist decrypted message content to survive app restart.
@@ -1070,7 +2180,11 @@ class EncryptionService {
       Map<String, dynamic>? existing;
       // Authoritative: a cache miss here would let the narrower writes below
       // (above all the "[Decryption failed]" label) replace real plaintext.
-      final existingRaw = _rawRecord(await _authoritativeSnapshot(), prefs, key);
+      final existingRaw = _rawRecord(
+        await _authoritativeSnapshot(),
+        prefs,
+        key,
+      );
       if (existingRaw != null) {
         try {
           existing = jsonDecode(existingRaw) as Map<String, dynamic>;
@@ -1273,7 +2387,11 @@ class EncryptionService {
       final prefs = await _sharedPrefs;
       final snapshot = await _authoritativeSnapshot();
       for (final id in wanted) {
-        final raw = _rawRecord(snapshot, prefs, _decryptedContentKey(userId, id));
+        final raw = _rawRecord(
+          snapshot,
+          prefs,
+          _decryptedContentKey(userId, id),
+        );
         if (raw == null) continue;
         try {
           result[id] = jsonDecode(raw) as Map<String, dynamic>;
@@ -2737,10 +3855,7 @@ class EncryptionService {
   String _rawDecryptedContentKey(int userId, int messageId) =>
       '${_rawDecryptedContentPrefix(userId)}$messageId';
 
-  Future<void> _pruneRawDecryptedContent(
-    ContentKv prefs,
-    int userId,
-  ) async {
+  Future<void> _pruneRawDecryptedContent(ContentKv prefs, int userId) async {
     final prefix = _rawDecryptedContentPrefix(userId);
     final keys = prefs
         .getKeys()
@@ -2771,10 +3886,7 @@ class EncryptionService {
   /// happen slightly early; every sweep resets the estimate to the true count.
   int? _cachedContentEstimate;
 
-  Future<void> _pruneDecryptedContentCache(
-    ContentKv prefs,
-    int userId,
-  ) async {
+  Future<void> _pruneDecryptedContentCache(ContentKv prefs, int userId) async {
     // NO reload here: the only caller (saveDecryptedContent) reloaded a few
     // lines earlier and has not awaited anything that could invalidate it.
     if (_decryptedContentCacheLimit <= 0) {
@@ -2850,10 +3962,7 @@ class EncryptionService {
   /// Every key holding a persisted plaintext record for [prefix], across both
   /// stores. The seeding count and the eviction sweep MUST use the same set,
   /// or the estimate can sit under the cap while the real total is over it.
-  Future<Set<String>> _cachedContentKeys(
-    ContentKv prefs,
-    String prefix,
-  ) async {
+  Future<Set<String>> _cachedContentKeys(ContentKv prefs, String prefix) async {
     return <String>{
       // DELIBERATELY the per-engine cache, not [_storeSnapshot]. Eviction here
       // destroys the only copy of a message and calls [markRetired], which is
@@ -2936,4 +4045,58 @@ class LocalHistoryWipeResult {
 
   /// Only this licenses telling the user their history is gone.
   bool get isComplete => failedKeys.isEmpty;
+}
+
+/// Both sides of the verify-security-keys ceremony (spec §12 amendment
+/// (xlvii) clause 2).
+///
+/// The dialog used to display [pinnedFingerprint] while its confirm button
+/// promoted a stored candidate nobody had seen, so the user compared one number
+/// and adopted another. Adoption now pins exactly [offeredIdentityBase64] — the
+/// key whose fingerprint was on screen.
+class PeerIdentityVerification {
+  const PeerIdentityVerification({
+    this.pinnedFingerprint,
+    this.offeredFingerprint,
+    this.offeredIdentityBase64,
+    this.offeredWasServed = false,
+    this.offerMatchesPin = false,
+  });
+
+  /// Fingerprint of the account anchor this device already accepted, or null
+  /// on genuine first contact with the account.
+  final String? pinnedFingerprint;
+
+  /// Fingerprint of the key an acknowledgement would pin, or null when there is
+  /// nothing NEW to compare — either no offer at all, or an offer that already
+  /// equals the pin (see [offerMatchesPin]). Never equal to
+  /// [pinnedFingerprint]: rendering the same number under "new" and "previous"
+  /// labels reads as a mismatch.
+  final String? offeredFingerprint;
+
+  /// Base64 of the offered key, passed straight back to
+  /// [EncryptionService.acknowledgePeerIdentity] so what was verified is what
+  /// gets pinned.
+  final String? offeredIdentityBase64;
+
+  /// The offer came from a FRESH server fetch rather than a stored candidate —
+  /// the (xlvii) clause 3 shape, where the peer completed §6.2 and no inbound
+  /// ciphertext ever got far enough to leave a candidate behind. Worth telling
+  /// the user apart: nothing about this key has been corroborated by a message
+  /// that actually decrypted, so the out-of-band comparison is the only check
+  /// there is.
+  final bool offeredWasServed;
+
+  /// The offered key IS the pinned one, so nothing actually changed.
+  ///
+  /// Kept as an offer rather than discarded: clause 1 clears a warning only
+  /// when the anchor advances, so discarding this left a standing alarm with no
+  /// control to resolve it — an alarm the user cannot act on, which is the dead
+  /// end this amendment exists to remove. Re-affirming the compared key is a
+  /// legitimate resolution; the UI presents it as "unchanged", not as a change.
+  final bool offerMatchesPin;
+
+  /// Is there a key to adopt?
+  bool get hasOffer =>
+      offeredIdentityBase64 != null && offeredIdentityBase64!.isNotEmpty;
 }

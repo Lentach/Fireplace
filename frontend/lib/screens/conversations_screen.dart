@@ -99,9 +99,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     final choice = await showChatHoneycombPicker(
       context,
       friends: friends.friends,
-      inviters: [
-        for (final request in friends.friendRequests) request.sender,
-      ],
+      inviters: [for (final request in friends.friendRequests) request.sender],
     );
     if (choice == null || !mounted) return;
 
@@ -120,9 +118,9 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   /// reach them. Accepting stays in `InvitationsScreen`, which owns the
   /// failure and retry machinery; this only routes there and back.
   Future<void> _openInvitations() async {
-    final peerUserId = await Navigator.of(context).push<int>(
-      MaterialPageRoute(builder: (_) => const InvitationsScreen()),
-    );
+    final peerUserId = await Navigator.of(
+      context,
+    ).push<int>(MaterialPageRoute(builder: (_) => const InvitationsScreen()));
     if (peerUserId == null || !mounted) return;
     _startChatWith(peerUserId);
   }
@@ -130,9 +128,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   void _startChatWith(int userId) {
     final convs = context.read<ConversationsProvider>();
     final existingConversation = convs.conversations
-        .where(
-          (conversation) => convs.getOtherUser(conversation)?.id == userId,
-        )
+        .where((conversation) => convs.getOtherUser(conversation)?.id == userId)
         .firstOrNull;
     if (existingConversation != null) {
       _openChat(existingConversation.id);
@@ -200,12 +196,16 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     final l10n = AppLocalizations.of(context);
     return MainTabScreenHeader(
       title: l10n.chat,
-      leading: GestureDetector(
-        onTap: widget.onAvatarTap,
-        child: AvatarCircle(
-          displayName: user?.username ?? '',
-          radius: 22,
-          profilePictureUrl: user?.profilePictureUrl,
+      leading: Semantics(
+        button: true,
+        label: l10n.avatarOpenProfileSemantics,
+        child: GestureDetector(
+          onTap: widget.onAvatarTap,
+          child: AvatarCircle(
+            displayName: user?.username ?? '',
+            radius: 22,
+            profilePictureUrl: user?.profilePictureUrl,
+          ),
         ),
       ),
       trailing: Stack(
@@ -251,7 +251,6 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
 
   Widget _buildDesktopLayout() {
     final convs = context.watch<ConversationsProvider>();
-    final isDark = RpgTheme.isDark(context);
     final borderColor = FireplaceColors.of(context).convItemBorder;
 
     return Scaffold(
@@ -281,18 +280,14 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                         Icon(
                           Icons.chat_bubble_outline,
                           size: 64,
-                          color: isDark
-                              ? RpgTheme.mutedDark
-                              : RpgTheme.textSecondaryLight,
+                          color: FireplaceColors.of(context).mutedText,
                         ),
                         const SizedBox(height: 16),
                         Text(
                           AppLocalizations.of(context).selectAConversation,
                           style: RpgTheme.bodyFont(
                             fontSize: 16,
-                            color: isDark
-                                ? RpgTheme.mutedDark
-                                : RpgTheme.textSecondaryLight,
+                            color: FireplaceColors.of(context).mutedText,
                           ),
                         ),
                       ],
@@ -308,9 +303,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     final convs = context.watch<ConversationsProvider>();
     final conversations = convs.sortedConversations;
     final isDark = RpgTheme.isDark(context);
-    final mutedColor = isDark
-        ? RpgTheme.mutedDark
-        : RpgTheme.textSecondaryLight;
+    final mutedColor = FireplaceColors.of(context).mutedText;
 
     final media = MediaQuery.paddingOf(context);
     final listPadding = floatingChrome

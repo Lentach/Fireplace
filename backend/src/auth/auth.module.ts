@@ -7,6 +7,7 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { UsersModule } from '../users/users.module';
 import { RefreshTokensModule } from './refresh-tokens.module';
+import { KeyBundlesModule } from '../key-bundles/key-bundles.module';
 
 const DEV_JWT_SECRET = 'super-secret-dev-key';
 
@@ -14,13 +15,17 @@ const DEV_JWT_SECRET = 'super-secret-dev-key';
   imports: [
     UsersModule,
     RefreshTokensModule,
+    // The HTTP guard needs the per-device revocation predicate (§5.5): a
+    // revoked device's access JWT stays cryptographically valid until expiry.
+    KeyBundlesModule,
     PassportModule,
     ConfigModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
-        const secret = configService.get<string>('JWT_SECRET') || DEV_JWT_SECRET;
+        const secret =
+          configService.get<string>('JWT_SECRET') || DEV_JWT_SECRET;
         const isProd = configService.get('NODE_ENV') === 'production';
         if (isProd && (!secret || secret === DEV_JWT_SECRET)) {
           throw new Error(

@@ -25,6 +25,7 @@ class ConversationsProvider extends ChangeNotifier {
   final Map<int, int> _unreadCounts = {}; // conversationId -> count
   final Map<int, MessageModel> _lastMessages = {};
   int? _pendingOpenConversationId;
+
   /// Open this conversation from a notification tap (consumed by [MainShell], not socket flows).
   int? _pendingNotificationConversationId;
 
@@ -93,12 +94,10 @@ class ConversationsProvider extends ChangeNotifier {
     // suppresses a banner for a conversation the user is already viewing, even
     // if the server-side skip races a socket reconnect. Backgrounded → null so
     // notifications still show.
-    _pushSwChannel
-        .postMessage({
-          'type': 'active-conversation',
-          'conversationId': _clientVisible ? _activeConversationId : null,
-        })
-        .ignore();
+    _pushSwChannel.postMessage({
+      'type': 'active-conversation',
+      'conversationId': _clientVisible ? _activeConversationId : null,
+    }).ignore();
   }
 
   // ---------- Public Getters ----------
@@ -124,7 +123,8 @@ class ConversationsProvider extends ChangeNotifier {
   int? get pendingNotificationConversationId =>
       _pendingNotificationConversationId;
   bool get hasLoadedConversationsOnce => _conversationsListReceivedOnce;
-  bool get activeConversationDeletedByOther => _activeConversationDeletedByOther;
+  bool get activeConversationDeletedByOther =>
+      _activeConversationDeletedByOther;
   Map<int, int> get unreadCounts => _unreadCounts;
 
   int getUnreadCount(int conversationId) => _unreadCounts[conversationId] ?? 0;
@@ -204,7 +204,8 @@ class ConversationsProvider extends ChangeNotifier {
         'localCount': _conversations.length,
       });
       debugPrint(
-          '[ConversationsProvider] Ignoring empty conversationsList (${_conversations.length} local conversations preserved)');
+        '[ConversationsProvider] Ignoring empty conversationsList (${_conversations.length} local conversations preserved)',
+      );
       return;
     }
     E2eDiagLog.add('CONV_LIST', {'count': newConvs.length});
@@ -217,6 +218,14 @@ class ConversationsProvider extends ChangeNotifier {
 
     _conversations = newConvs;
     _unreadCounts.clear();
+    // The server list is AUTHORITATIVE over any optimistic pin still waiting
+    // for its answer, so every pre-pin snapshot is now superseded. Keeping one
+    // is how a refusal much later reverts a conversation to state that predates
+    // this refresh — reachable when the settling event never arrives at all
+    // (a socket drop between the server's commit and its emit, or a non-throttle
+    // pin rejection, which rides the bare `error` event that no pin code reads).
+    _prePinState.clear();
+    _preDisappearingTimerState.clear();
 
     for (final c in list) {
       final m = c as Map<String, dynamic>;
@@ -236,15 +245,17 @@ class ConversationsProvider extends ChangeNotifier {
       final lastMsgData = m['lastMessage'];
       if (lastMsgData != null) {
         try {
-          var lastMsg =
-              MessageModel.fromJson(lastMsgData as Map<String, dynamic>);
+          var lastMsg = MessageModel.fromJson(
+            lastMsgData as Map<String, dynamic>,
+          );
           if (lastMsg.displayAsEncryptedPlaceholder) {
             lastMsg = lastMsg.copyWith(content: 'Encrypted message');
           }
           _lastMessages[convId] = lastMsg;
         } catch (e) {
           debugPrint(
-              '[ConversationsProvider] Failed to parse lastMessage for conversation $convId: $e');
+            '[ConversationsProvider] Failed to parse lastMessage for conversation $convId: $e',
+          );
         }
       }
     }
@@ -256,7 +267,9 @@ class ConversationsProvider extends ChangeNotifier {
         .toSet();
     final totalUnread = _unreadCounts.values.fold(0, (sum, v) => sum + v);
     _notificationCleaner.sweepNotificationsKeepUnread(
-        unreadConvIds, totalUnread);
+      unreadConvIds,
+      totalUnread,
+    );
 
     notifyListeners();
   }
@@ -289,9 +302,58 @@ class ConversationsProvider extends ChangeNotifier {
         clearDisappearingTimer: seconds == null,
       );
     }
+    // Settled authoritatively: nothing left to undo, and keeping the snapshot
+    // would let a LATER unrelated refusal revert to stale state.
+    _preDisappearingTimerState.remove(conversationId);
 
     notifyListeners();
   }
+
+  /// The timer each conversation showed BEFORE an optimistic change overwrote
+  /// it.
+  ///
+  /// Same shape and same reason as [_prePinState]: the throttle guard refuses
+  /// `setDisappearingTimer` BEFORE the handler runs, so the refusal knows only
+  /// what was asked for, never what it displaced. Without this the refused
+  /// device kept showing a timer the server and the peer never had — messages
+  /// this user believes will vanish, and which will not.
+  ///
+  /// `null` is a real entry meaning "no timer before", so the map is consulted
+  /// with `containsKey`, never with a null check.
+  final Map<int, int?> _preDisappearingTimerState = {};
+
+  /// Handle 'disappearingTimerFailed' — the change was refused, so restore what
+  /// the optimistic apply overwrote.
+  ///
+  /// With no snapshot there is nothing to undo: either this device never made
+  /// the change, or a previous answer already settled it. Guessing a value here
+  /// would destroy state the server still holds.
+  void onDisappearingTimerFailed(dynamic data) {
+    final conversationId =
+        (data as Map<String, dynamic>)['conversationId'] as int?;
+    if (conversationId == null) return;
+    if (!_preDisappearingTimerState.containsKey(conversationId)) return;
+    final restored = _preDisappearingTimerState.remove(conversationId);
+    final index = _conversations.indexWhere((c) => c.id == conversationId);
+    if (index != -1) {
+      final oldConv = _conversations[index];
+      _conversations[index] = oldConv.copyWith(
+        disappearingTimer: restored,
+        clearDisappearingTimer: restored == null,
+      );
+    }
+    notifyListeners();
+  }
+
+  /// The pin each conversation showed BEFORE an optimistic pin overwrote it.
+  ///
+  /// A refusal cannot carry the prior state — the server refuses a throttled
+  /// `pinMessage` before its handler ever runs, so it knows only what was
+  /// asked for (spec §12 (xxxvii)). Only the pinning device knows what it
+  /// overwrote, so it has to remember. `null` is a real entry, meaning "this
+  /// conversation was UNPINNED before" — which is why the map is consulted with
+  /// `containsKey` and never with a null check.
+  final Map<int, ({int? messageId, MessageModel? preview})> _prePinState = {};
 
   /// Optimistic pin preview from the open chat row (keeps pinner plaintext for own E2E).
   void setPinnedPreviewOptimistic(
@@ -302,6 +364,17 @@ class ConversationsProvider extends ChangeNotifier {
     final index = _conversations.indexWhere((c) => c.id == conversationId);
     if (index == -1) return;
     final oldConv = _conversations[index];
+    // Snapshot BEFORE the overwrite, and only for the first unsettled pin of a
+    // conversation: a second optimistic pin before the first settles must not
+    // replace the snapshot with the first pin's own (optimistic) state, or the
+    // revert would restore a pin the server never accepted either.
+    _prePinState.putIfAbsent(
+      conversationId,
+      () => (
+        messageId: oldConv.pinnedMessageId,
+        preview: oldConv.pinnedMessagePreview,
+      ),
+    );
     _conversations[index] = oldConv.copyWith(
       pinnedMessageId: messageId,
       pinnedMessagePreview: localPreview,
@@ -309,19 +382,42 @@ class ConversationsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Handle 'messagePinFailed' — the pin was refused, so restore what the
+  /// optimistic apply overwrote (spec §12 (xxxvii)).
+  ///
+  /// With no snapshot there is nothing to undo: either this device never
+  /// applied the pin optimistically (the message was not local), or an
+  /// authoritative event already settled it. Doing nothing is then correct —
+  /// clearing the pin here would destroy state the server still holds.
+  void onPinMessageFailed(dynamic data) {
+    final conversationId =
+        (data as Map<String, dynamic>)['conversationId'] as int?;
+    if (conversationId == null) return;
+    final restored = _prePinState.remove(conversationId);
+    if (restored == null) return;
+    final index = _conversations.indexWhere((c) => c.id == conversationId);
+    if (index != -1) {
+      _conversations[index] = _conversations[index].copyWith(
+        pinnedMessageId: restored.messageId,
+        clearPinnedMessageId: restored.messageId == null,
+        pinnedMessagePreview: restored.preview,
+        clearPinnedMessagePreview: restored.preview == null,
+      );
+    }
+    notifyListeners();
+  }
+
   /// Handle 'messagePinned' event — update pin id and preview snapshot.
-  void onMessagePinned(
-    dynamic data, {
-    MessageModel? localPinnedMessage,
-  }) {
+  void onMessagePinned(dynamic data, {MessageModel? localPinnedMessage}) {
     final m = data as Map<String, dynamic>;
     final conversationId = m['conversationId'] as int;
     final pinnedMessageId = m['pinnedMessageId'] as int?;
     MessageModel? preview;
     final previewData = m['pinnedMessage'];
     if (previewData != null) {
-      final serverPreview =
-          MessageModel.fromJson(previewData as Map<String, dynamic>);
+      final serverPreview = MessageModel.fromJson(
+        previewData as Map<String, dynamic>,
+      );
       preview = resolvePinnedPreviewMessage(
         serverPreview: serverPreview,
         localMessage: localPinnedMessage,
@@ -340,12 +436,16 @@ class ConversationsProvider extends ChangeNotifier {
         clearPinnedMessagePreview: preview == null,
       );
     }
+    // Settled authoritatively: the snapshot has nothing left to undo, and
+    // keeping it would let a LATER unrelated refusal revert to stale state.
+    _prePinState.remove(conversationId);
     notifyListeners();
   }
 
   /// Handle 'messageUnpinned' event — clear pin fields.
   void onMessageUnpinned(dynamic data) {
-    final conversationId = (data as Map<String, dynamic>)['conversationId'] as int;
+    final conversationId =
+        (data as Map<String, dynamic>)['conversationId'] as int;
     final index = _conversations.indexWhere((c) => c.id == conversationId);
     if (index != -1) {
       final oldConv = _conversations[index];
@@ -354,6 +454,7 @@ class ConversationsProvider extends ChangeNotifier {
         clearPinnedMessagePreview: true,
       );
     }
+    _prePinState.remove(conversationId);
     notifyListeners();
   }
 
@@ -385,6 +486,14 @@ class ConversationsProvider extends ChangeNotifier {
     final index = _conversations.indexWhere((c) => c.id == conversationId);
     if (index != -1) {
       final oldConv = _conversations[index];
+      // Remember what is being overwritten BEFORE overwriting it, so a refusal
+      // can put it back. putIfAbsent: with two changes in flight the FIRST
+      // snapshot is the last server-confirmed state, and a revert to the
+      // second would restore a timer the server never accepted either.
+      _preDisappearingTimerState.putIfAbsent(
+        conversationId,
+        () => oldConv.disappearingTimer,
+      );
       _conversations[index] = oldConv.copyWith(
         disappearingTimer: timer,
         clearDisappearingTimer: timer == null,
@@ -412,8 +521,9 @@ class ConversationsProvider extends ChangeNotifier {
     final old = _conversations[index];
     final muted = payload['muted'] as bool;
     final mutedUntilRaw = payload['mutedUntil'] as String?;
-    final mutedUntil =
-        mutedUntilRaw == null ? null : DateTime.tryParse(mutedUntilRaw);
+    final mutedUntil = mutedUntilRaw == null
+        ? null
+        : DateTime.tryParse(mutedUntilRaw);
     _conversations[index] = old.copyWith(
       muted: muted,
       mutedUntil: mutedUntil,
@@ -521,8 +631,7 @@ class ConversationsProvider extends ChangeNotifier {
 
   /// Increment the unread count for a conversation by 1.
   void incrementUnreadCount(int conversationId) {
-    _unreadCounts[conversationId] =
-        (_unreadCounts[conversationId] ?? 0) + 1;
+    _unreadCounts[conversationId] = (_unreadCounts[conversationId] ?? 0) + 1;
     notifyListeners();
   }
 
@@ -550,6 +659,8 @@ class ConversationsProvider extends ChangeNotifier {
       _activeConversationId = null;
       _lastMessages.clear();
       _unreadCounts.clear();
+      _prePinState.clear();
+      _preDisappearingTimerState.clear();
       _pendingOpenConversationId = null;
       _pendingNotificationConversationId = null;
       _activeConversationDeletedByOther = false;
@@ -578,6 +689,8 @@ class ConversationsProvider extends ChangeNotifier {
     _currentUserId = null;
     _lastMessages.clear();
     _unreadCounts.clear();
+    _prePinState.clear();
+    _preDisappearingTimerState.clear();
     _pendingOpenConversationId = null;
     _pendingNotificationConversationId = null;
     _activeConversationDeletedByOther = false;

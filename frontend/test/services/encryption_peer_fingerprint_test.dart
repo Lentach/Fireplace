@@ -44,6 +44,72 @@ void main() {
     },
   );
 
+  /// D2 / (xlvii) clause 2. The displayed number MUST follow the ACCOUNT
+  /// anchor. It used to read a fixed `(peer, device 1)` address, which was
+  /// wrong twice over: the account row is the ONLY thing an acknowledgement
+  /// moves, so the two diverged permanently after any accepted change, and a
+  /// post-§6.2 peer has no device 1 at all because ids are never reused.
+  /// The one out-of-band MITM check therefore showed a stale number — or none —
+  /// exactly for the accounts that had most recently survived a takeover.
+  ///
+  /// Rendered fingerprints are compared against OTHER peers holding the same
+  /// key rather than a hand-built string: that keeps the assertion independent
+  /// of a duplicated test formatter.
+  test('follows the account anchor, not a stale device-1 row', () async {
+    final service = EncryptionService();
+    await service.initialize(17, checkServerBundleExists: () async => false);
+    final store = SecureIdentityKeyStore(DualStorage(secure), 'e2e_17_');
+
+    final oldKey = generateIdentityKeyPair().getPublicKey();
+    final newKey = generateIdentityKeyPair().getPublicKey();
+
+    // The peer as we first met them. saveIdentity pins the account anchor too.
+    await store.saveIdentity(SignalProtocolAddress('42', 1), oldKey);
+    // They rotate and a human accepts it: ONLY the account row advances, which
+    // is the divergence the old address could not see.
+    await store.adoptAccountIdentity('42', newKey, expectedPendingBase64: null);
+
+    // Reference renderings of each key, via peers whose only key is that one.
+    await store.adoptAccountIdentity('43', newKey, expectedPendingBase64: null);
+    await store.saveIdentity(SignalProtocolAddress('44', 1), oldKey);
+
+    expect(
+      await service.getPeerIdentityFingerprint(42),
+      await service.getPeerIdentityFingerprint(43),
+      reason: 'the accepted account key is what the user must compare',
+    );
+    expect(
+      await service.getPeerIdentityFingerprint(42),
+      isNot(await service.getPeerIdentityFingerprint(44)),
+      reason:
+          'pre-fix this read the device-1 row and rendered the SUPERSEDED '
+          'key, so the user compared a number the peer no longer had',
+    );
+  });
+
+  /// The other half of D2: a peer who completed §6.2 has no device 1, so the
+  /// old fixed address returned nothing and the dialog said "no stored
+  /// identity key" for a peer we were actively talking to.
+  test('shows a fingerprint for a peer with no device 1 at all', () async {
+    final service = EncryptionService();
+    await service.initialize(17, checkServerBundleExists: () async => false);
+    final store = SecureIdentityKeyStore(DualStorage(secure), 'e2e_17_');
+
+    // Ids are never reused ((a)): a post-reset account is met on a high id.
+    await store.saveIdentity(
+      SignalProtocolAddress('42', 5),
+      generateIdentityKeyPair().getPublicKey(),
+    );
+
+    expect(
+      await service.getPeerIdentityFingerprint(42),
+      isNotNull,
+      reason:
+          'pre-fix the fixed (peer, 1) address was empty for exactly the '
+          'accounts that had most recently survived a takeover',
+    );
+  });
+
   test(
     'returns null when no trusted identity is stored for the peer',
     () async {

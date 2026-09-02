@@ -32,6 +32,14 @@ export class WebPushSubscription {
   @Column({ type: 'text' })
   auth: string;
 
+  /**
+   * Which device registered this endpoint (Phase 1, spec §4). NULL for
+   * endpoints registered before the column existed. Per-device targeting lets
+   * a revoked device stop receiving without touching the others.
+   */
+  @Column({ type: 'int', nullable: true })
+  deviceId: number | null;
+
   @Column({ type: 'varchar', nullable: true })
   userAgent: string | null;
 

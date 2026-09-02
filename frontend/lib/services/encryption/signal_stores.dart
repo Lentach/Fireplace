@@ -463,6 +463,16 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
   String _trustedKey(SignalProtocolAddress address) =>
       '${_p}trusted_identity_${address.getName()}_${address.getDeviceId()}';
 
+  /// The ACCOUNT-level pin (spec §12 amendment (xlvi)): the identity key this
+  /// device has accepted for a peer ACCOUNT, independent of which of their
+  /// devices presented it.
+  ///
+  /// §3 gives one identity key per account, shared to every linked device, so
+  /// this is where the value always belonged. Keying the I7 anchor by
+  /// `(peer, device 1)` was a category error that only became visible when
+  /// §6.2 produced accounts with no device 1 — ids are never reused ((a)).
+  String _accountKey(String name) => '${_p}account_identity_$name';
+
   /// Write-through memo of the trusted peer keys this engine has already read.
   ///
   /// libsignal calls [isTrustedIdentity] on EVERY encrypt and EVERY decrypt, and
@@ -485,12 +495,52 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
   ) async {
     if (identityKey == null) return false;
     final key = _trustedKey(address);
+    final encoded = base64Encode(identityKey.serialize());
+    await _storage.write(key: key, value: encoded);
+    _trustedMemo[key] = identityKey;
+    // The account pin is SET on first contact and never silently moved after
+    // that. Advancing it on every accepted key would hand the anchor to any
+    // single ciphertext: TOFU auto-accepts rotations, and the receive path has
+    // no (xxxix) bundle check, so a colluding server could inject one message
+    // from a device the peer's list legitimately names, carrying a divergent
+    // identity, and the peer's REAL list would stop verifying — the same
+    // fail-closed lockout (xlvi) exists to remove, and one that would not
+    // self-heal because an unchanged key deliberately never re-writes.
+    // A genuine account-level change goes through [promotePendingAccountIdentity],
+    // which the human acknowledgement calls.
+    final accountKey = _accountKey(address.getName());
+    if (!_trustedMemo.containsKey(accountKey) &&
+        await _storage.read(key: accountKey) == null) {
+      await _storage.write(key: accountKey, value: encoded);
+      _trustedMemo[accountKey] = identityKey;
+    }
+    return true;
+  }
+
+  /// The identity key accepted for a peer ACCOUNT, or null on first contact.
+  ///
+  /// Falls back to the legacy `(peer, device 1)` row and adopts it, so an
+  /// install that predates (xlvi) keeps every anchor it had. Without that
+  /// backfill an upgrade would fail-close every existing conversation at once
+  /// — far worse than the defect being fixed.
+  Future<IdentityKey?> getAccountIdentity(String name) async {
+    final key = _accountKey(name);
+    final memo = _trustedMemo[key];
+    if (memo != null) return memo;
+    final stored = await _storage.read(key: key);
+    if (stored != null) {
+      final identity = IdentityKey.fromBytes(base64Decode(stored), 0);
+      _trustedMemo[key] = identity;
+      return identity;
+    }
+    final legacy = await getIdentity(SignalProtocolAddress(name, 1));
+    if (legacy == null) return null;
     await _storage.write(
       key: key,
-      value: base64Encode(identityKey.serialize()),
+      value: base64Encode(legacy.serialize()),
     );
-    _trustedMemo[key] = identityKey;
-    return true;
+    _trustedMemo[key] = legacy;
+    return legacy;
   }
 
   @override
@@ -513,10 +563,169 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
       // Unchanged: deliberately NO write. This runs per message.
       return true;
     }
+    // First contact with this ADDRESS is not necessarily first contact with the
+    // ACCOUNT, and that gap used to swallow the alarm entirely: a peer's §6.2
+    // reset — or a server introducing a device under an identity of its own
+    // choosing — arrives on a device id we have never seen, so the per-address
+    // rule read it as first contact and said nothing (amendment (xlvi)).
+    //
+    // Resolved for EVERY address now, not only unseen ones (amendment (xlvii)
+    // clause 4). The account anchor is the value a HUMAN accepted, so a
+    // per-device row still holding an older key is not news. Without this the
+    // explicit adoption (xlvii) clause 3 adds would re-raise the alarm on the
+    // peer's very next message — training the user to dismiss the one surface
+    // that detects a real takeover, which is the failure (xlvi) clause 2
+    // already refused to accept in the other direction.
+    final accountBefore = await getAccountIdentity(address.getName());
+    final matchesAccount =
+        accountBefore != null && _sameIdentity(accountBefore, identityKey);
     await saveIdentity(address, identityKey);
-    if (existing != null) {
+    if (!matchesAccount && (existing != null || accountBefore != null)) {
+      // Hold the candidate rather than adopting it. The anchor moves only when
+      // a human acknowledges the change, so a forged key can raise a VISIBLE
+      // alarm but can never quietly become the thing the I7 chain trusts.
+      //
+      // PERSISTED, because the warning it accompanies is persisted too: the
+      // user may well acknowledge after a restart, and an in-memory candidate
+      // would leave that acknowledgement with nothing to promote — the peer
+      // would stay unverifiable with no way left to say so.
+      await _storage.write(
+        key: _pendingKey(address.getName()),
+        value: encodedOf(identityKey),
+      );
       onIdentityChanged?.call(address);
     }
+    return true;
+  }
+
+  static String encodedOf(IdentityKey key) => base64Encode(key.serialize());
+
+  /// An identity seen for a peer ACCOUNT that differs from its pinned anchor,
+  /// awaiting human acknowledgement (amendment (xlvi)).
+  String _pendingKey(String name) => '${_p}pending_account_identity_$name';
+
+  /// The user acknowledged [name]'s identity change, so the account anchor may
+  /// now advance to the key that triggered it.
+  ///
+  /// Moving the anchor always costs an alarm the user actually saw. This was
+  /// the ONLY way an established anchor moved until (xlvii) clause 3, which
+  /// added [adoptAccountIdentity] for the peer this path cannot serve at all:
+  /// one whose candidate was never recorded because the accept gate refused
+  /// their row before Signal could look at it.
+  ///
+  /// **COMPARE-AND-SWAP on [expectedIdentityBase64].** The candidate slot is
+  /// read twice by the ceremony — once to DISPLAY a fingerprint, once here to
+  /// promote — and it has more than one unconditional writer ([saveIdentity]
+  /// via `isTrustedIdentity`, and [stagePendingAccountIdentity] when the key
+  /// came from the server). Promoting whatever happens to be stored at confirm
+  /// time would therefore let a key change land BETWEEN display and
+  /// confirmation, so the user compares fingerprint A out of band and pins
+  /// key B — which is the (xlvii) clause 2 defect wearing a different hat.
+  /// A caller that passes the exact identity it displayed gets an atomic
+  /// promotion or a refusal, never a substitution.
+  Future<bool> promotePendingAccountIdentity(
+    String name, {
+    String? expectedIdentityBase64,
+  }) async {
+    final pendingKey = _pendingKey(name);
+    final stored = await _storage.read(key: pendingKey);
+    if (stored == null) return false;
+    if (expectedIdentityBase64 != null && stored != expectedIdentityBase64) {
+      // The candidate moved under us. Refuse: the caller must re-display.
+      return false;
+    }
+    final identity = IdentityKey.fromBytes(base64Decode(stored), 0);
+    final key = _accountKey(name);
+    await _storage.write(key: key, value: stored);
+    _trustedMemo[key] = identity;
+    await _storage.delete(key: pendingKey);
+    return true;
+  }
+
+  /// The identity awaiting acknowledgement for [name], or null when none is
+  /// held.
+  ///
+  /// Read by the verification UI so the user compares the key adoption will
+  /// ACTUALLY pin (amendment (xlvii) clause 2). The dialog used to display the
+  /// pinned anchor while the confirm button promoted this one, so the ceremony
+  /// verified one number and adopted another.
+  Future<IdentityKey?> pendingAccountIdentity(String name) async {
+    final stored = await _storage.read(key: _pendingKey(name));
+    if (stored == null) return null;
+    return IdentityKey.fromBytes(base64Decode(stored), 0);
+  }
+
+  /// Stage [identity] as [name]'s pending candidate — a key SEEN for this
+  /// account and awaiting human acceptance, exactly like one recorded by an
+  /// inbound ciphertext.
+  ///
+  /// Used for a key the server served on request (amendment (xlvii) clause 3),
+  /// so that every adoption promotes a candidate this device recorded. That
+  /// keeps "the pinned key is the key the human was shown" a STRUCTURAL
+  /// property rather than a convention held by one call site.
+  ///
+  /// Grants no trust whatsoever: the pending slot is read only by the display
+  /// and by [promotePendingAccountIdentity], which needs a standing alarm and a
+  /// human action.
+  Future<void> stagePendingAccountIdentity(
+    String name,
+    IdentityKey identity,
+  ) async {
+    await _storage.write(
+      key: _pendingKey(name),
+      value: encodedOf(identity),
+    );
+  }
+
+  /// The user compared [identity] against [name]'s own copy out of band and
+  /// accepted it. Pins it as the account anchor.
+  ///
+  /// The escape hatch for a peer whose recovery path fail-closed before any
+  /// candidate could be recorded (amendment (xlvii) clause 3): after a
+  /// completed §6.2 reset the accept gate withholds the peer's row before
+  /// Signal runs, so [promotePendingAccountIdentity] has nothing to promote and
+  /// the peer stays permanently unreachable in BOTH directions.
+  ///
+  /// Only ever reached from an explicit human confirmation of a DISPLAYED
+  /// fingerprint — never from a path that merely received bytes. The key is
+  /// server-supplied and untrusted; the out-of-band comparison is the entire
+  /// defence, exactly as it is on first contact (I7).
+  ///
+  /// **[expectedPendingBase64] is REQUIRED and clears the candidate slot only
+  /// when the slot still holds exactly that value** (amendment (xlix) clause
+  /// 2). This method used to delete the candidate unconditionally, which let a
+  /// re-affirmation of the pinned key destroy a DIFFERENT key that had arrived
+  /// under the open dialog — and, because the caller clears the persisted
+  /// warning on success, destroy the only door back to this ceremony with it.
+  /// Pass null to assert "no candidate was observed": a candidate that appeared
+  /// since is then deliberately LEFT IN PLACE, because keeping evidence is the
+  /// safe direction. The parameter is required rather than defaulted so no
+  /// future caller can inherit the unguarded behaviour by omission.
+  /// Returns whether the pending slot was EXACTLY as the caller expected
+  /// ((lviii)). False means a candidate appeared or changed during this write,
+  /// so the caller MUST NOT consume the warning that leads back here: the
+  /// evidence survives, and without the warning the door to the ceremony does
+  /// not. The anchor write always happens and is never rolled back — the
+  /// re-affirmation path passes the already-pinned key, so it is idempotent.
+  Future<bool> adoptAccountIdentity(
+    String name,
+    IdentityKey identity, {
+    required String? expectedPendingBase64,
+  }) async {
+    final key = _accountKey(name);
+    await _storage.write(key: key, value: encodedOf(identity));
+    _trustedMemo[key] = identity;
+    final pendingKey = _pendingKey(name);
+    final stored = await _storage.read(key: pendingKey);
+    if (expectedPendingBase64 == null) {
+      // The caller asserted it observed NO candidate. This used to return
+      // before reading, which is exactly the state where a candidate arriving
+      // under the open dialog is invisible. Report it — and still never delete
+      // a candidate we were not told about ((xlix) clause 2).
+      return stored == null;
+    }
+    if (stored != expectedPendingBase64) return false;
+    await _storage.delete(key: pendingKey);
     return true;
   }
 

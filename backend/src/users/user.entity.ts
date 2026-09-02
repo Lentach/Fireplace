@@ -36,10 +36,20 @@ export class User {
   @OneToMany(() => ProfilePhoto, (photo) => photo.user)
   profilePhotos: ProfilePhoto[];
 
-
   @CreateDateColumn()
   createdAt: Date;
 
   @Column({ type: 'timestamp', nullable: true })
   passwordChangedAt: Date | null;
+
+  /**
+   * The per-account deviceId allocator (Phase 2, spec §12 Stage-0 amendment
+   * (a), migration 0016). Every existing account is single-device device 1,
+   * so the NEXT id is 2 — the default IS the backfill. Allocation is one
+   * atomic UPDATE ... RETURNING (DevicesService.allocateDeviceId); the value
+   * only ever grows — gaps from aborted ceremonies are expected and safe
+   * (monotonic-never-reused, not dense).
+   */
+  @Column({ default: 2 })
+  nextDeviceId: number;
 }

@@ -22,6 +22,20 @@ export function userRoom(userId: number): string {
 }
 
 /**
+ * Per-DEVICE Socket.IO room (spec §5.3). Every authenticated socket joins this
+ * alongside its user room, using the `deviceId` JWT claim (a token issued
+ * before that claim existed is device 1, §8), so ciphertext can be addressed
+ * to the one device that can actually decrypt it.
+ *
+ * The user room stays the address for METADATA every device must see
+ * (reactions, delivery, list changes, deletes); this room is for ciphertext
+ * and for anything else that is true of one device only.
+ */
+export function deviceRoom(userId: number, deviceId: number): string {
+  return `device:${userId}:${deviceId}`;
+}
+
+/**
  * Every live socket for `userId` (one per open tab/device).
  *
  * Only for callers that must inspect socket STATE — currently just push
@@ -54,22 +68,25 @@ export function isUserOnline(server: Server, userId: number): boolean {
 }
 
 /**
- * The user's most recently connected socket, or undefined when offline.
+ * The device's most recently connected socket, or undefined when that device
+ * has no live socket.
  *
- * The single resolution point for anything that must treat one tab as "the"
- * tab. Delivery of ciphertext and the decision to suppress a push MUST both
- * go through this, or they disagree: address the newest tab while polling
- * every tab for focus and you get the case where the message is delivered to
- * a background tab, the push is suppressed because a DIFFERENT tab is
- * focused, and the user sees neither. Resolving once keeps them coherent by
- * construction — and when the ciphertext carve-out below is lifted, both move
- * to room-wide together.
+ * The single resolution point for anything that must treat one socket as "the"
+ * socket of a device. Delivery of ciphertext and the decision to suppress a
+ * push MUST both go through this, or they disagree: address the newest tab
+ * while polling every tab for focus and you get the case where the message is
+ * delivered to a background tab, the push is suppressed because a DIFFERENT
+ * tab is focused, and the user sees neither. Resolving once keeps them
+ * coherent by construction.
  */
-export function newestSocketForUser(
+export function newestSocketForDevice(
   server: Server,
   userId: number,
+  deviceId: number,
 ): Socket | undefined {
-  const socketIds = server.sockets?.adapter?.rooms?.get(userRoom(userId));
+  const socketIds = server.sockets?.adapter?.rooms?.get(
+    deviceRoom(userId, deviceId),
+  );
   if (!socketIds || socketIds.size === 0) return undefined;
   // Set preserves insertion order, so the last entry is the newest join.
   let newestId: string | undefined;
@@ -78,38 +95,66 @@ export function newestSocketForUser(
 }
 
 /**
- * Deliver to exactly ONE of the user's tabs — the most recently connected.
+ * EVERY live socket of ONE device (spec §5.5 revocation kick).
  *
- * RESERVED FOR CIPHERTEXT-BEARING EVENTS (`newMessage`, `messageEdited`).
- * Everything else must use `server.to(userRoom(id))` so every tab receives.
- *
- * Why this exists. Signal decryption is NOT idempotent: decrypting a message
- * consumes its message key and advances the ratchet. Both tabs share one
- * IndexedDB session store, and the client's Web Lock serialises them but does
- * not deduplicate them — so fanning one ciphertext to two tabs makes the first
- * decrypt succeed and the second FAIL, landing in the client's decryption
- * failure policy. That path is documented client-side as the most dangerous
- * code in its messaging layer, because a wrong branch there can destroy a
- * working session. Fanning out ciphertext would manufacture that failure on
- * every multi-tab message.
- *
- * Picking the newest socket reproduces exactly the old `onlineUsers` map's
- * last-write-wins behaviour, so this is a no-op relative to today rather than
- * a regression — while every non-ciphertext event still gets the multi-tab fix.
- *
- * TEMPORARY. Remove once the client either (a) checks a shared decrypted-message
- * cache before attempting a live decrypt, race-free, or (b) provably no-ops when
- * a sibling tab already decrypted the ciphertext. Then these two events move to
- * `server.to(userRoom(id))` like everything else — and push suppression must
- * move to room-wide in the SAME change, never separately.
+ * Distinct from {@link newestSocketForDevice} on purpose: delivery narrows to
+ * the newest tab because Signal decryption is not idempotent, but a KICK must
+ * reach every tab of the revoked device — leaving an older tab connected would
+ * leave it able to send, which is exactly what revocation removes.
  */
-export function emitToNewestTab(
+export function socketsForDevice(
   server: Server,
   userId: number,
+  deviceId: number,
+): Socket[] {
+  const socketIds = server.sockets?.adapter?.rooms?.get(
+    deviceRoom(userId, deviceId),
+  );
+  if (!socketIds) return [];
+  const sockets: Socket[] = [];
+  // Snapshot first: disconnecting mutates the room set the iterator walks.
+  for (const socketId of [...socketIds]) {
+    const socket = server.sockets?.sockets?.get(socketId);
+    if (socket) sockets.push(socket);
+  }
+  return sockets;
+}
+
+/**
+ * Deliver to exactly ONE socket of ONE device — the most recently connected
+ * (spec §5.3: `emitToNewestTab` survives, demoted to *within one device*).
+ *
+ * RESERVED FOR CIPHERTEXT-BEARING EVENTS (`newMessage`, `messageEdited`).
+ * Everything else must use `server.to(userRoom(id))` so every device receives.
+ *
+ * Why this exists. Signal decryption is NOT idempotent: decrypting a message
+ * consumes its message key and advances the ratchet. Tabs of one web device
+ * share one IndexedDB session store, and the client's Web Lock serialises them
+ * but does not deduplicate them — so fanning one ciphertext to two tabs makes
+ * the first decrypt succeed and the second FAIL, landing in the client's
+ * decryption failure policy. That path is documented client-side as the most
+ * dangerous code in its messaging layer, because a wrong branch there can
+ * destroy a working session.
+ *
+ * Note what this is NOT: it is not a way to pick one device out of several.
+ * Under envelopes each device has its OWN ciphertext, so the caller emits once
+ * PER DEVICE and this narrows each of those emits to that device's newest tab.
+ *
+ * TEMPORARY, per device. Remove once the client either (a) checks a shared
+ * decrypted-message cache before attempting a live decrypt, race-free, or
+ * (b) provably no-ops when a sibling TAB of the same device already decrypted
+ * the ciphertext. Then these events move to `server.to(deviceRoom(id, did))` —
+ * and push suppression must move to device-room-wide in the SAME change, never
+ * separately.
+ */
+export function emitToDeviceNewestSocket(
+  server: Server,
+  userId: number,
+  deviceId: number,
   event: string,
   payload: unknown,
 ): boolean {
-  const socket = newestSocketForUser(server, userId);
+  const socket = newestSocketForDevice(server, userId, deviceId);
   if (!socket) return false;
   socket.emit(event, payload);
   return true;

@@ -162,11 +162,40 @@ describe('MessagesService.getUnreadSummaryForUser', () => {
   });
 });
 
-describe('MessagesService.editMessage', () => {
+describe('MessagesService.applyEdit', () => {
   let service: MessagesService;
   let repo: jest.Mocked<Repository<Message>>;
+  let messageUpdate: jest.Mock;
+  let envelopeQb: {
+    insert: jest.Mock;
+    into: jest.Mock;
+    values: jest.Mock;
+    orUpdate: jest.Mock;
+    execute: jest.Mock;
+  };
 
   beforeEach(async () => {
+    messageUpdate = jest.fn().mockResolvedValue({ affected: 1 });
+    envelopeQb = {
+      insert: jest.fn().mockReturnThis(),
+      into: jest.fn().mockReturnThis(),
+      values: jest.fn().mockReturnThis(),
+      orUpdate: jest.fn().mockReturnThis(),
+      execute: jest.fn().mockResolvedValue({}),
+    };
+    const manager: Record<string, unknown> = {
+      getRepository: jest.fn((entity: unknown) =>
+        entity === Message
+          ? { update: messageUpdate }
+          : { createQueryBuilder: jest.fn(() => envelopeQb) },
+      ),
+    };
+    // The real manager hands the callback ITSELF, so the row update and the
+    // envelope upsert share one transaction.
+    manager.transaction = jest.fn(
+      (cb: (m: unknown) => Promise<unknown>) => cb(manager) as Promise<unknown>,
+    );
+
     const module = await Test.createTestingModule({
       providers: [
         MessagesService,
@@ -174,7 +203,7 @@ describe('MessagesService.editMessage', () => {
           provide: getRepositoryToken(Message),
           useValue: {
             findOne: jest.fn(),
-            save: jest.fn((m) => Promise.resolve(m)),
+            manager,
           },
         },
         mediaCleanupMock(),
@@ -184,7 +213,7 @@ describe('MessagesService.editMessage', () => {
     repo = module.get(getRepositoryToken(Message));
   });
 
-  it('returns null and does not save when caller is not the sender', async () => {
+  it('returns null and writes nothing when caller is not the sender', async () => {
     repo.findOne.mockResolvedValue({
       id: 5,
       sender: { id: 99 },
@@ -192,83 +221,299 @@ describe('MessagesService.editMessage', () => {
       encryptedContent: 'old',
     } as unknown as Message);
 
-    const result = await service.editMessage(5, 1, {
+    const result = await service.applyEdit(5, 1, {
       encryptedContent: 'new',
       content: '[encrypted]',
     });
 
     expect(result).toBeNull();
-    expect(repo.save).not.toHaveBeenCalled();
+    expect(messageUpdate).not.toHaveBeenCalled();
+    expect(envelopeQb.execute).not.toHaveBeenCalled();
   });
 
   it('returns null when the message does not exist', async () => {
     repo.findOne.mockResolvedValue(null);
 
-    const result = await service.editMessage(5, 1, { encryptedContent: 'new' });
+    const result = await service.applyEdit(5, 1, { encryptedContent: 'new' });
 
     expect(result).toBeNull();
-    expect(repo.save).not.toHaveBeenCalled();
+    expect(messageUpdate).not.toHaveBeenCalled();
   });
 
-  it('updates encryptedContent, content and editedAt for the sender and returns the saved row', async () => {
-    const existing = {
+  it('updates content, editedAt and originDeviceId through a COLUMN-SCOPED update', async () => {
+    repo.findOne.mockResolvedValue({
       id: 5,
       sender: { id: 1 },
       content: 'old plaintext',
       encryptedContent: 'old-cipher',
       editedAt: null,
-    } as unknown as Message;
-    repo.findOne.mockResolvedValue(existing);
+    } as unknown as Message);
 
     const before = Date.now();
-    const result = await service.editMessage(5, 1, {
+    const result = await service.applyEdit(5, 1, {
       encryptedContent: 'new-cipher',
       content: '[encrypted]',
+      originDeviceId: 3,
     });
 
-    expect(repo.save).toHaveBeenCalledTimes(1);
-    expect(result).not.toBeNull();
-    expect(result!.encryptedContent).toBe('new-cipher');
-    expect(result!.content).toBe('[encrypted]');
+    expect(messageUpdate).toHaveBeenCalledTimes(1);
+    const [criteria, patch] = messageUpdate.mock.calls[0] as [
+      Record<string, unknown>,
+      Record<string, unknown>,
+    ];
+    expect(criteria).toEqual({ id: 5 });
+    expect(patch.content).toBe('[encrypted]');
+    expect(patch.encryptedContent).toBe('new-cipher');
+    expect(patch.originDeviceId).toBe(3);
+    // A full-entity save would carry deliveryStatus and the expiry stamps back
+    // to whatever they held when this method read the row.
+    expect(Object.keys(patch).sort()).toEqual([
+      'content',
+      'editedAt',
+      'encryptedContent',
+      'originDeviceId',
+    ]);
     expect(result!.editedAt).toBeInstanceOf(Date);
     expect(result!.editedAt!.getTime()).toBeGreaterThanOrEqual(before);
+    expect(result!.originDeviceId).toBe(3);
   });
 
-  it('preserves existing encryptedContent when only content is provided', async () => {
-    const existing = {
+  it('leaves the legacy column ALONE when encryptedContent is omitted (new-model row)', async () => {
+    repo.findOne.mockResolvedValue({
       id: 5,
       sender: { id: 1 },
-      content: 'old plaintext',
-      encryptedContent: 'old-cipher',
+      content: '[encrypted]',
+      encryptedContent: null,
       editedAt: null,
-    } as unknown as Message;
-    repo.findOne.mockResolvedValue(existing);
+    } as unknown as Message);
 
-    const result = await service.editMessage(5, 1, {
-      content: 'new plaintext',
+    await service.applyEdit(5, 1, {
+      content: '[encrypted]',
+      originDeviceId: 2,
+      envelopes: [{ userId: 7, deviceId: 1, ciphertext: 'c1' }],
     });
 
-    expect(result).not.toBeNull();
-    expect(result!.content).toBe('new plaintext');
-    // encryptedContent omitted (undefined) → left untouched
-    expect(result!.encryptedContent).toBe('old-cipher');
+    const [, patch] = messageUpdate.mock.calls[0] as [
+      unknown,
+      Record<string, unknown>,
+    ];
+    expect('encryptedContent' in patch).toBe(false);
   });
 
   it('clears encryptedContent when explicitly passed null', async () => {
-    const existing = {
+    repo.findOne.mockResolvedValue({
       id: 5,
       sender: { id: 1 },
       content: '[encrypted]',
       encryptedContent: 'old-cipher',
       editedAt: null,
-    } as unknown as Message;
-    repo.findOne.mockResolvedValue(existing);
+    } as unknown as Message);
 
-    const result = await service.editMessage(5, 1, { encryptedContent: null });
+    const result = await service.applyEdit(5, 1, { encryptedContent: null });
 
-    expect(result).not.toBeNull();
+    const [, patch] = messageUpdate.mock.calls[0] as [
+      unknown,
+      Record<string, unknown>,
+    ];
     // explicit null (!== undefined) → field is set to null, not skipped
+    expect(patch.encryptedContent).toBeNull();
     expect(result!.encryptedContent).toBeNull();
+  });
+
+  it('UPSERTs the named envelopes CONTENT-ONLY, so an existing deliveredAt survives (F8)', async () => {
+    repo.findOne.mockResolvedValue({
+      id: 5,
+      sender: { id: 1 },
+      content: '[encrypted]',
+      encryptedContent: null,
+    } as unknown as Message);
+
+    await service.applyEdit(5, 1, {
+      content: '[encrypted]',
+      originDeviceId: 1,
+      envelopes: [
+        { userId: 7, deviceId: 1, ciphertext: 'c-peer-1' },
+        { userId: 7, deviceId: 4, ciphertext: 'c-peer-4' },
+        { userId: 1, deviceId: 2, ciphertext: 'c-self-2' },
+      ],
+    });
+
+    expect(envelopeQb.execute).toHaveBeenCalledTimes(1);
+    expect(envelopeQb.values).toHaveBeenCalledWith([
+      {
+        messageId: 5,
+        recipientUserId: 7,
+        recipientDeviceId: 1,
+        ciphertext: 'c-peer-1',
+        deliveredAt: null,
+        readAt: null,
+      },
+      {
+        messageId: 5,
+        recipientUserId: 7,
+        recipientDeviceId: 4,
+        ciphertext: 'c-peer-4',
+        deliveredAt: null,
+        readAt: null,
+      },
+      {
+        messageId: 5,
+        recipientUserId: 1,
+        recipientDeviceId: 2,
+        ciphertext: 'c-self-2',
+        deliveredAt: null,
+        readAt: null,
+      },
+    ]);
+    // THE ticket's core assertion: the conflict clause overwrites `ciphertext`
+    // and NOTHING else. This is load-bearing precisely BECAUSE `values()` above
+    // passes `deliveredAt: null` — listing the column here (or using save())
+    // would push that null over a delivered envelope's real stamp and regress
+    // the §4 projection.
+    //
+    // Scope, per spec §12 (xxxviii): the surviving column that MATTERS is
+    // `deliveredAt`. `readAt` is never written by any code path — `stampEnvelope`'s
+    // sole call site passes 'deliveredAt', and `markConversationRead` drives the
+    // message ROW without touching the envelope — so claiming this test protects
+    // `readAt` would be claiming an always-NULL column trivially survives.
+    expect(envelopeQb.orUpdate).toHaveBeenCalledWith(
+      ['ciphertext'],
+      ['messageId', 'recipientUserId', 'recipientDeviceId'],
+    );
+  });
+
+  it('touches no envelope repository when the edit carries no envelopes', async () => {
+    repo.findOne.mockResolvedValue({
+      id: 5,
+      sender: { id: 1 },
+      content: '[encrypted]',
+      encryptedContent: 'legacy',
+    } as unknown as Message);
+
+    await service.applyEdit(5, 1, { encryptedContent: 'new', content: '[encrypted]' });
+
+    expect(messageUpdate).toHaveBeenCalledTimes(1);
+    expect(envelopeQb.execute).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The lost-ack reconcile is only exactly-once if the lookup is SENDER-SCOPED
+ * (Phase 1, spec §5.4). A send token is unique per sender, not globally, so a
+ * query that dropped the sender clause would let one account's retry reconcile
+ * onto ANOTHER account's row — re-acking a stranger's message and leaking its
+ * id and conversation back to the wrong client. Nothing pinned the clause.
+ */
+describe('MessagesService.findBySendToken', () => {
+  it('scopes the lookup to the SENDER, not the token alone', async () => {
+    const repo = { findOne: jest.fn().mockResolvedValue(null) };
+    const module = await Test.createTestingModule({
+      providers: [
+        MessagesService,
+        { provide: getRepositoryToken(Message), useValue: repo },
+        mediaCleanupMock(),
+      ],
+    }).compile();
+    const service = module.get(MessagesService);
+
+    await service.findBySendToken(42, 'tok-abcdefgh');
+
+    expect(repo.findOne).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { sender: { id: 42 }, sendToken: 'tok-abcdefgh' },
+      }),
+    );
+  });
+});
+
+/**
+ * The WRITE half of envelope-stamp survival (spec §12 (xxxviii)).
+ *
+ * `applyEdit`'s content-only conflict clause is what stops an EDIT from zeroing
+ * a stamp; this is what stops a second DELIVERY from moving one. Nothing pinned
+ * either property of `stampEnvelope` before — it was mocked out everywhere it
+ * was used — even though the columns are unreadable over the wire, so a
+ * regression here would be invisible until a per-device delivery feature
+ * eventually reads them.
+ */
+describe('MessagesService.stampEnvelope', () => {
+  type UpdateBuilder = {
+    update: jest.Mock;
+    set: jest.Mock;
+    where: jest.Mock;
+    execute: jest.Mock;
+  };
+  let builder: UpdateBuilder;
+  let service: MessagesService;
+
+  beforeEach(async () => {
+    builder = {
+      update: jest.fn().mockReturnThis(),
+      set: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      execute: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
+    const module = await Test.createTestingModule({
+      providers: [
+        MessagesService,
+        {
+          provide: getRepositoryToken(Message),
+          useValue: {
+            manager: {
+              getRepository: jest.fn(() => ({
+                createQueryBuilder: jest.fn(() => builder),
+              })),
+            },
+          },
+        },
+        mediaCleanupMock(),
+      ],
+    }).compile();
+    service = module.get(MessagesService);
+  });
+
+  /** The `set` payload, with the SQL-function values resolved to strings. */
+  function assignedColumns(): Record<string, string> {
+    const [patch] = builder.set.mock.calls[0] as [
+      Record<string, () => string>,
+    ];
+    return Object.fromEntries(
+      Object.entries(patch).map(([column, value]) => [column, value()]),
+    );
+  }
+
+  it('assigns ONLY the named column, so stamping delivery cannot touch readAt', async () => {
+    await service.stampEnvelope(5, 7, 2, 'deliveredAt');
+
+    expect(assignedColumns()).toEqual({ deliveredAt: 'now()' });
+  });
+
+  it('is WRITE-ONCE: an already-stamped envelope is excluded by the predicate', async () => {
+    await service.stampEnvelope(5, 7, 2, 'deliveredAt');
+
+    const [predicate] = builder.where.mock.calls[0] as [string];
+    // This is the survival property expressible without a database: a second
+    // `messageDelivered` — a reconnect, or a second socket of the same device —
+    // must not move an existing stamp forward, so the first delivery time is
+    // the durable one.
+    expect(predicate).toContain('"deliveredAt" IS NULL');
+  });
+
+  it('is scoped to exactly one (message, recipient, device) — no cross-device bleed', async () => {
+    await service.stampEnvelope(5, 7, 2, 'deliveredAt');
+
+    const [predicate, params] = builder.where.mock.calls[0] as [
+      string,
+      Record<string, number>,
+    ];
+    expect(predicate).toContain('"messageId" = :messageId');
+    expect(predicate).toContain('"recipientUserId" = :recipientUserId');
+    expect(predicate).toContain('"recipientDeviceId" = :recipientDeviceId');
+    expect(params).toEqual({
+      messageId: 5,
+      recipientUserId: 7,
+      recipientDeviceId: 2,
+    });
   });
 });
 
@@ -761,5 +1006,197 @@ describe('MessagesService reactions (BE-152/BE-201 atomicity)', () => {
     store = '{corrupt';
     await service.addOrUpdateReaction(42, 1, '👍');
     expect(JSON.parse(store as string)).toEqual({ '👍': [1] });
+  });
+});
+
+describe('MessagesService.create envelope fan-out (spec §5.2 + §12 (v))', () => {
+  /** The transactional manager the service asks for per-entity repositories. */
+  type TxManager = { getRepository: jest.Mock };
+  type MessageRepoMock = {
+    create: jest.Mock;
+    save: jest.Mock;
+    findOne: jest.Mock;
+    manager: { transaction: jest.Mock };
+  };
+
+  let service: MessagesService;
+  let repo: MessageRepoMock;
+  let messageRepo: { save: jest.Mock };
+  let envelopeRepo: { insert: jest.Mock };
+
+  beforeEach(async () => {
+    messageRepo = {
+      save: jest.fn((msg: object) => Promise.resolve({ ...msg, id: 500 })),
+    };
+    envelopeRepo = { insert: jest.fn().mockResolvedValue(undefined) };
+    const manager: TxManager = {
+      // The transactional manager hands out per-entity repositories; keying on
+      // the entity name keeps the assertion independent of import identity.
+      getRepository: jest.fn((entity: { name: string }) =>
+        entity.name === 'Message' ? messageRepo : envelopeRepo,
+      ),
+    };
+    repo = {
+      create: jest.fn((fields: object) => fields),
+      save: jest.fn(),
+      findOne: jest.fn(),
+      manager: {
+        transaction: jest.fn((run: (m: TxManager) => Promise<unknown>) =>
+          run(manager),
+        ),
+      },
+    };
+
+    const module = await Test.createTestingModule({
+      providers: [
+        MessagesService,
+        { provide: getRepositoryToken(Message), useValue: repo },
+        mediaCleanupMock(),
+      ],
+    }).compile();
+    service = module.get(MessagesService);
+  });
+
+  const sender = { id: 1 } as never;
+  const conversation = { id: 10 } as never;
+
+  it('writes the row and every envelope inside ONE transaction', async () => {
+    const message = await service.create('[encrypted]', sender, conversation, {
+      envelopes: [
+        { userId: 2, deviceId: 1, ciphertext: '3:for-bob-1' },
+        { userId: 2, deviceId: 2, ciphertext: '3:for-bob-2' },
+      ],
+    });
+
+    expect(repo.manager.transaction).toHaveBeenCalledTimes(1);
+    // The non-transactional save must NOT be the writer for a fan-out: a
+    // half-written send would leave a device unable to ever read the message.
+    expect(repo.save).not.toHaveBeenCalled();
+    expect(messageRepo.save).toHaveBeenCalledTimes(1);
+    expect(envelopeRepo.insert).toHaveBeenCalledWith([
+      {
+        messageId: 500,
+        recipientUserId: 2,
+        recipientDeviceId: 1,
+        ciphertext: '3:for-bob-1',
+        deliveredAt: null,
+        readAt: null,
+      },
+      {
+        messageId: 500,
+        recipientUserId: 2,
+        recipientDeviceId: 2,
+        ciphertext: '3:for-bob-2',
+        deliveredAt: null,
+        readAt: null,
+      },
+    ]);
+    expect(message.id).toBe(500);
+  });
+
+  it('keeps the original single save when there are no envelopes', async () => {
+    repo.save.mockResolvedValue({ id: 501 });
+
+    await service.create('hello', sender, conversation, {});
+
+    expect(repo.manager.transaction).not.toHaveBeenCalled();
+    expect(repo.save).toHaveBeenCalledTimes(1);
+    expect(envelopeRepo.insert).not.toHaveBeenCalled();
+  });
+});
+
+describe('MessagesService.updateDeliveryStatus projection (falsification 19)', () => {
+  type UpdateBuilder = {
+    update: jest.Mock;
+    set: jest.Mock;
+    where: jest.Mock;
+    execute: jest.Mock;
+  };
+
+  let service: MessagesService;
+  let repo: {
+    findOne: jest.Mock;
+    save: jest.Mock;
+    createQueryBuilder: jest.Mock;
+  };
+  let builder: UpdateBuilder;
+
+  beforeEach(async () => {
+    builder = {
+      update: jest.fn().mockReturnThis(),
+      set: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      execute: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
+    repo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 100,
+        deliveryStatus: MessageDeliveryStatus.SENT,
+        expiresAt: null,
+        disappearAfterSeconds: 300,
+        sender: { id: 1 },
+        conversation: { id: 10 },
+      }),
+      save: jest.fn(),
+      createQueryBuilder: jest.fn(() => builder),
+    };
+
+    const module = await Test.createTestingModule({
+      providers: [
+        MessagesService,
+        { provide: getRepositoryToken(Message), useValue: repo },
+        mediaCleanupMock(),
+      ],
+    }).compile();
+    service = module.get(MessagesService);
+  });
+
+  it('writes ONLY deliveryStatus, via a scoped UPDATE and never a full-entity save', async () => {
+    await service.updateDeliveryStatus(100, MessageDeliveryStatus.DELIVERED);
+
+    // A full-entity save would rewrite every column from a possibly stale
+    // in-memory copy and could silently revert a concurrent write.
+    expect(repo.save).not.toHaveBeenCalled();
+    expect(builder.set).toHaveBeenCalledWith({
+      deliveryStatus: MessageDeliveryStatus.DELIVERED,
+    });
+    // Nothing about expiry or the disappearing TTL is touched (rider F9, I9).
+    const written = builder.set.mock.calls[0][0] as Record<string, unknown>;
+    expect(written).not.toHaveProperty('expiresAt');
+    expect(written).not.toHaveProperty('disappearAfterSeconds');
+    expect(builder.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the monotonic guard in the WHERE so a race cannot regress the status', async () => {
+    await service.updateDeliveryStatus(100, MessageDeliveryStatus.READ);
+
+    const [clause, params] = builder.where.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(clause).toContain('"deliveryStatus" IN');
+    expect(params.messageId).toBe(100);
+    // READ may only overwrite the strictly lower statuses.
+    expect(params.lowerStatuses).toEqual(
+      expect.arrayContaining([
+        MessageDeliveryStatus.SENT,
+        MessageDeliveryStatus.DELIVERED,
+      ]),
+    );
+    expect(params.lowerStatuses).not.toContain(MessageDeliveryStatus.READ);
+  });
+
+  it('issues no UPDATE at all when the status would not advance', async () => {
+    repo.findOne.mockResolvedValue({
+      id: 100,
+      deliveryStatus: MessageDeliveryStatus.READ,
+      sender: { id: 1 },
+      conversation: { id: 10 },
+    });
+
+    await service.updateDeliveryStatus(100, MessageDeliveryStatus.DELIVERED);
+
+    expect(repo.createQueryBuilder).not.toHaveBeenCalled();
+    expect(repo.save).not.toHaveBeenCalled();
   });
 });

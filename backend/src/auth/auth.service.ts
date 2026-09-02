@@ -4,6 +4,8 @@ import * as bcrypt from 'bcrypt';
 import { User } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
 import { RefreshTokensService } from './refresh-tokens.service';
+import { DevicesService } from '../key-bundles/devices.service';
+import { DEFAULT_DEVICE_ID } from '../key-bundles/key-bundles.service';
 
 // Precomputed bcrypt hash used for a constant-time comparison when the
 // identifier matches no user, so "no such user" takes the same time as a wrong
@@ -19,6 +21,7 @@ export class AuthService {
     private usersService: UsersService,
     private jwtService: JwtService,
     private refreshTokensService: RefreshTokensService,
+    private devicesService: DevicesService,
   ) {}
 
   async register(username: string, password: string) {
@@ -66,12 +69,24 @@ export class AuthService {
       `login success userId=${user.id} username=${user.username}`,
     );
 
+    // Every session belongs to a device (Phase 1, spec §4). This is the
+    // account's LIVE PRIMARY, never a hardcoded 1: a §6.2 reset revokes the
+    // pre-reset roster and moves the account onto a freshly allocated id
+    // (amendment (xxviii)), so claiming device 1 here would hand the owner a
+    // token for a revoked device — which the §5.5 session gates then refuse,
+    // locking them out with the correct password. Legacy accounts with no
+    // rows still resolve to device 1 (§8).
+    const deviceId = await this.devicesService.resolveLoginDeviceId(user.id);
     const payload = {
       sub: user.id,
       username: user.username,
       tag: user.tag,
+      deviceId,
     };
-    const refresh_token = await this.refreshTokensService.createToken(user.id);
+    const refresh_token = await this.refreshTokensService.createToken(
+      user.id,
+      deviceId,
+    );
     return {
       access_token: this.jwtService.sign(payload),
       refresh_token,
@@ -79,9 +94,9 @@ export class AuthService {
   }
 
   async refreshWithToken(refreshTokenPlain: string) {
-    const userId =
+    const session =
       await this.refreshTokensService.consumeAndSlide(refreshTokenPlain);
-    const user = await this.usersService.findById(userId);
+    const user = await this.usersService.findById(session.userId);
     if (!user) {
       throw new UnauthorizedException();
     }
@@ -89,6 +104,9 @@ export class AuthService {
       sub: user.id,
       username: user.username,
       tag: user.tag,
+      // The refresh row remembers which device the session belongs to; a row
+      // predating the column is device 1 (§8).
+      deviceId: session.deviceId ?? DEFAULT_DEVICE_ID,
     };
     return {
       access_token: this.jwtService.sign(payload),

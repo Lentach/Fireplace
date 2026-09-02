@@ -23,14 +23,19 @@ class _FakeEnc extends EncryptionProvider {
   @override
   Future<void> deleteSessionWithPeer(int peerUserId) async {}
   @override
-  Future<void> ensureSession(int recipientId) async {}
+  Future<void> ensureSession(int recipientId, {int deviceId = 1}) async {}
   @override
-  Future<String> encrypt(int recipientId, String plaintext) async => 'cipher';
+  Future<String> encrypt(
+    int recipientId,
+    String plaintext, {
+    int deviceId = 1,
+  }) async => 'cipher';
   @override
   Future<String> decrypt(
     int senderId,
     String ciphertext, {
     int? messageId,
+    int deviceId = 1,
   }) async =>
       jsonEncode(E2eEnvelope.build(decryptMap[ciphertext] ?? 'decrypted'));
   @override

@@ -82,6 +82,85 @@ export class PushNotificationsService implements OnModuleInit {
     ]);
   }
 
+  /**
+   * Phase 0a takeover alarm (multi-device spec §6.0): content-free security
+   * notice to EVERY registered endpoint of the account after its key-bundle
+   * identity was replaced. Deliberately bypasses the message coalescer (not
+   * conversation-scoped, must not debounce) and carries only a type — the
+   * client wakes and shows the "new device/browser sign-in" copy itself.
+   * Endpoint sets are per-token/per-endpoint, so the replacing device may
+   * receive its own alarm — harmless.
+   */
+  async notifyIdentityChanged(userId: number): Promise<void> {
+    await Promise.all([
+      this.notifyIdentityChangedFcm(userId),
+      this.sendWebPushToUser(userId, { type: 'identity_changed' }),
+    ]);
+  }
+
+  private async notifyIdentityChangedFcm(userId: number): Promise<void> {
+    if (!this.fcmInitialized) return;
+    const tokens = await this.fcmTokensService.findTokensByUserId(userId, [
+      'android',
+      'ios',
+    ]);
+    if (!tokens.length) return;
+    try {
+      await admin.messaging().sendEachForMulticast({
+        tokens,
+        data: { type: 'identity_changed' }, // content-free, Google-readable
+        android: { priority: 'high' },
+        apns: { payload: { aps: { contentAvailable: true } } },
+      });
+    } catch {
+      // BE-502: no userId in prod-visible logs.
+      this.logger.warn('FCM identity-changed send failed');
+    }
+  }
+
+  /**
+   * Phase 0b reset ceremony (multi-device spec §6.2): content-free notice that
+   * an account-identity reset was requested, or that it was cancelled.
+   *
+   * Push is the ONLY channel that reaches a device whose app is closed, and
+   * this app has no email — which is precisely why the ceremony's delay is
+   * long. Bypasses the message coalescer (not conversation-scoped, must never
+   * debounce) and carries only a type; the client renders its own copy and
+   * offers the one-tap cancel.
+   */
+  async notifyIdentityReset(
+    userId: number,
+    type: 'identity_reset_pending' | 'identity_reset_cancelled' | 'recovery_key_enrolled',
+  ): Promise<void> {
+    await Promise.all([
+      this.notifyIdentityResetFcm(userId, type),
+      this.sendWebPushToUser(userId, { type }),
+    ]);
+  }
+
+  private async notifyIdentityResetFcm(
+    userId: number,
+    type: 'identity_reset_pending' | 'identity_reset_cancelled' | 'recovery_key_enrolled',
+  ): Promise<void> {
+    if (!this.fcmInitialized) return;
+    const tokens = await this.fcmTokensService.findTokensByUserId(userId, [
+      'android',
+      'ios',
+    ]);
+    if (!tokens.length) return;
+    try {
+      await admin.messaging().sendEachForMulticast({
+        tokens,
+        data: { type }, // content-free, Google-readable
+        android: { priority: 'high' },
+        apns: { payload: { aps: { contentAvailable: true } } },
+      });
+    } catch {
+      // BE-502: no userId in prod-visible logs.
+      this.logger.warn('FCM identity-reset send failed');
+    }
+  }
+
   private async notifyFcm(
     userId: number,
     options: NotifyOptions,
