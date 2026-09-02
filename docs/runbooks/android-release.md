@@ -7,10 +7,10 @@ an earlier revision of this header said "not yet merged", which was stale).
 A release APK keeps decrypted plaintext, media keys, pending-send plaintext
 and the JWT out of the SharedPreferences XML: content lives sealed in a SQLCipher database
 (`files/fp_content.db`) and the JWT lives in Keystore-backed secure storage. **Distribution is
-gated on two things, both owner tasks:** (1) the real-phone smoke — voice play/seek/cached
-replay, push, upgrade from a pre-Phase-2 install; (2) the **`.jks` off-PC backup**, still
-outstanding — see "Backing it up" below, because a lost keystore permanently ends updates for
-everyone who installed. See `frontend/CLAUDE.md` §5 for the store's invariants.
+gated on the real-phone smoke (owner task):** voice play/seek/cached replay, push with the app
+KILLED on a release-signed build, upgrade from a pre-Phase-2 install. The **`.jks` off-PC backup
+is DONE (2026-09-02)** — see "Backing it up" for the fingerprints and where the copies are.
+See `frontend/CLAUDE.md` §5 for the store's invariants.
 
 **`CONTENT_KEY_CANARY_LOST` is NOT one of these gates.** `ContentKeyCanary.checkAndArm()` is
 `if (!_isWeb) return;` — a no-op on native; it measures web IndexedDB+WebCrypto durability and
@@ -62,30 +62,53 @@ copy key.properties.example key.properties
   neither path is tracked, and `git check-ignore -v` names the rules
   (`frontend/android/.gitignore:12`, root `.gitignore:47`).
 
-### Backing it up (the one unrecoverable artifact)
+### Backing it up (the one unrecoverable artifact) — DONE 2026-09-02
 
-`frontend/android/keystore/fireplace-release.jks` exists on the dev PC and **nowhere else**.
-Lose it and existing installs can never be updated again — the only path left for a user is
-uninstall, which destroys their Signal keys and history. This outranks every other gate in
-this runbook.
+`frontend/android/keystore/fireplace-release.jks` is the app's identity. Lose it and existing
+installs can never be updated again — the only path left for a user is uninstall, which destroys
+their Signal keys and history. This outranks every other gate in this runbook.
 
+**Known-good fingerprints (public-safe, record-of-truth):**
+
+| What | SHA-256 | Meaning |
+|---|---|---|
+| `fireplace-release.jks` file (4430 bytes) | `9559773E3232D091F5CECB2149B8D5A1B937E2540DC2F31F6370AA8E6421052C` | every backup copy must hash to this |
+| Signing certificate (alias `fireplace`, PKCS12, created 2026-07-29, valid to 2053-12-14) | `8E:9A:6B:F3:7B:58:A8:43:2C:42:D8:9E:31:99:00:7C:4A:A9:07:7E:29:7A:96:6A:2F:2C:A7:58:5C:DF:40:5D` | what `apksigner verify --print-certs` must print on every shipped APK; what Play/Firebase ask for |
+| `fireplace-release.jks.enc` (4448 bytes, AES-256-CBC, PBKDF2 600k iters) | `B0FF9B2F7F412D48D772DB7CC25D0BAF5A61D47BDE0590A4A18EE2C1F7165BED` | the cloud copy; check before decrypting |
+
+**Where the copies are (two failure domains, neither is the dev PC):**
+1. Plain `.jks` + `README.txt` on the owner's external USB drive (label `maxone`), folder
+   `umbra-keystore-backup/`. Written, cache-flushed (`Write-VolumeCache`), read back → file hash matched.
+2. `fireplace-release.jks.enc` in the owner's Google Drive — ciphertext only; Google never sees the key.
+   Passphrase is NOT the keystore password and exists only on paper (transcription was PROVEN: the
+   paper copy was typed back and decrypted the archive to the file hash above; the first attempt had
+   three base64 confusables wrong — `l`/`1`, `E`/`e` — which is why the round-trip check is mandatory).
+3. **Passwords are on paper, hidden, separate from the USB**: the keystore/key password (also in the
+   gitignored `frontend/android/key.properties` on the dev PC) and the archive passphrase.
+
+**Restore proof done 2026-09-02:** an APK signed with the USB copy
+(`apksigner sign --ks <usb>/fireplace-release.jks --ks-key-alias fireplace …`) verifies with the
+certificate SHA-256 above — the backup is usable, not merely byte-identical.
+
+**Restore recipe:**
 ```powershell
-# 1. Fingerprint the live keystore. Record this value somewhere you will still have it later.
-Get-FileHash frontend/android/keystore/fireplace-release.jks -Algorithm SHA256
-
-# 2. Copy to at least TWO destinations that are not this PC and not the same failure domain
-#    (e.g. an encrypted password-manager attachment AND an offline USB / external drive).
-#    The two passwords live in the password manager as fields, NOT next to the file:
-#    key.properties is plaintext, so a backup holding both the .jks and key.properties in
-#    one place is a single-object compromise.
-
-# 3. Verify each copy AFTER writing it — a backup you have not read back is a guess.
-Get-FileHash <path-to-copy> -Algorithm SHA256   # must equal step 1
+# from the USB: copy, then hash must equal the file SHA-256 above
+Get-FileHash fireplace-release.jks -Algorithm SHA256
+# from Google Drive: check the .enc hash, then decrypt (openssl ships with Git for Windows)
+Get-FileHash fireplace-release.jks.enc -Algorithm SHA256
+openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -in fireplace-release.jks.enc -out fireplace-release.jks
+# then: place at frontend/android/keystore/, recreate android/key.properties from key.properties.example
+# (storeFile=../keystore/fireplace-release.jks, keyAlias=fireplace, both passwords from the paper),
+# build, and confirm: apksigner verify --print-certs app-release.apk  → certificate SHA-256 above
 ```
 
-A restore is only proven when a build signed by the restored keystore reports the same
-certificate as the shipped one: `apksigner verify --print-certs <apk>`. Do that check once,
-now, while a known-good original still exists — not on the day you need the backup.
+**Re-doing a backup (e.g. new USB):** copy → `Write-VolumeCache -DriveLetter X` → `Get-FileHash` on the
+copy must equal the file hash. For a new encrypted copy: `openssl enc -aes-256-cbc -pbkdf2 -iter 600000
+-salt -in fireplace-release.jks -out fireplace-release.jks.enc -pass file:<passfile>`; put the passphrase
+in a local file (never in a chat/terminal history), strip CRLF (`tr -d '\r\n'`) before use, decrypt
+back and hash-compare, have the paper copy typed back and verified the same way, then delete the
+pass files. apksigner reads `--ks-pass file:` and `--key-pass file:` from the SAME file line by line —
+write the password twice.
 
 ## Build
 
