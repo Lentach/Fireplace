@@ -186,4 +186,5 @@ non-default stack must set `E2E_DB_CONTAINER`, or `e2eSql` fires at the dev DB.
   the honest rule with no door; the phone's own banner routes the reset. A locked install can
   still send with its unpublished identity (pre-programme behaviour). `deviceRevokedNotice` after
   a remote revoke was not visible in the semantics tree on the login screen — check visually.
-- E7 (owner's go on PR #144) is still the only open exit criterion.
+- E7 DONE: merged `2c553b2`, deployed 0.2.0 (Addendum 3). Programme closed; residuals stay in
+  `.planning/multi-device/task_plan.md`.
