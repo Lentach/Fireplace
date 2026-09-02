@@ -59,7 +59,7 @@ Nothing merged, nothing deployed.** ➡ **`2026-09-02-session-perfection-pass-lx
   `flutter run` UNINSTALLED the app → keys + DAK gone; account 693 is now a real lost-primary case.
   `disk.dataPartition.size=16G` + one `-wipe-data`. Owner's "emulator is laggy" was host RAM (1.1 GB
   free: web compile + idle Gradle daemon) — never overlap a release web build with the emulator.
-- Verified: analyze clean · **flutter 1697/10sk** · verifier OK · backend untouched. Open: a linked device
+- Verified: analyze clean · **flutter 1698/10sk** · verifier OK · backend untouched. Open: a linked device
   cannot know its primary is gone (no server signal until a reset); a locked install can still send.
 
 **Date:** 2026-09-02 — **THE WHOLE MULTI-DEVICE PROGRAMME RAN LIVE ON TWO REAL SURFACES (Pixel 7

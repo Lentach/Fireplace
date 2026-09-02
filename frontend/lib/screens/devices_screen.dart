@@ -305,11 +305,14 @@ class _DevicesScreenState extends State<DevicesScreen> {
       ),
     );
     if (confirmed ?? false) {
+      await controller.revokeDevice(entry.deviceId);
       // (lxix): the tombstone is the user's confirmation that the revoke
       // took — open the section so the row lands where they can see it,
-      // instead of vanishing behind a collapsed disclosure.
-      if (mounted) setState(() => _showRevoked = true);
-      await controller.revokeDevice(entry.deviceId);
+      // instead of vanishing behind a collapsed disclosure. Skipped when the
+      // request never left this device (`no_dak`, `sign_failed`); the
+      // server's answer arrives later and cannot be gated here.
+      if (!mounted || controller.revokeError != null) return;
+      setState(() => _showRevoked = true);
     }
   }
 

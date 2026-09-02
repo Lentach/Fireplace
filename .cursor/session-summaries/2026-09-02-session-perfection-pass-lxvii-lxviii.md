@@ -145,8 +145,14 @@ non-default stack must set `E2E_DB_CONTAINER`, or `e2eSql` fires at the dev DB.
   `_confirmRevoke` — the tombstone is the confirmation; collapsed it would just vanish; falsified
   `Found 0 widgets with key device-row-2`, +1 test, mutation harness now asserts the perl
   substitution count and restores via `git checkout --`); ARB `one` branch made grammatical. Live on
-  the primary: revoked web `#3` → section opened, `#3` struck under `#2`, "(2)". Suite 1697/10sk.
+  the primary: revoked web `#3` → section opened, `#3` struck under `#2`, "(2)".
   **Web `#3` on the probe context is therefore revoked**; 696's primary #1 stays clean.
+- Second refinement: the expand runs AFTER `revokeDevice` and only when `revokeError` is null — a
+  `no_dak`/`sign_failed` revoke never left the device; the socket answer arrives later and cannot be
+  gated here. The screen test plants a real DAK in the mock Keystore for the success case and none
+  for the refusal case (falsified: dropping the gate → `Found 1 widget with key device-row-2` in the
+  refusal test). Suite 1698/10sk. Harness lesson: back up to a temp copy, never `git checkout --`,
+  when the baseline is uncommitted — it restored HEAD once and the refinement had to be re-applied.
 
 ## Notes for next session
 - Throwaway accounts: 693 and 695 are BURNED (lost primaries, both by the `flutter run` uninstall

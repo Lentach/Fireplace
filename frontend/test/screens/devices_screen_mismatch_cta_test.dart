@@ -22,11 +22,15 @@ import 'package:fireplace/providers/auth_provider.dart';
 import 'package:fireplace/providers/connection_provider.dart';
 import 'package:fireplace/providers/encryption_provider.dart';
 import 'package:fireplace/screens/devices_screen.dart';
+import 'package:fireplace/services/device_link/dak_store.dart';
 import 'package:fireplace/services/device_link/link_ceremony_controller.dart';
+import 'package:fireplace/services/device_list/device_authority_engine.dart';
 import 'package:fireplace/services/device_list/device_list_canonical.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
 import 'package:provider/provider.dart';
 
 class _FakeAuthProvider extends AuthProvider {
@@ -99,6 +103,8 @@ const _enrolledList = DeviceList(
 );
 
 void main() {
+  setUp(() => FlutterSecureStorage.setMockInitialValues({}));
+
   testWidgets(
     'device-material mismatch offers the device-side ceremony, not the '
     'primary flow',
@@ -307,18 +313,52 @@ void main() {
       });
 
       // The tombstone is the user's confirmation that the revoke took; a
-      // collapsed section would make the row simply vanish.
-      testWidgets('confirming a revoke opens the section', (tester) async {
-        await pumpTombstones(tester);
-        expect(find.byKey(const Key('device-row-2')), findsNothing);
+      // collapsed section would make the row simply vanish. The screen builds
+      // its controller on the default Keystore, so the DAK is planted there.
+      Future<void> armDak() async {
+        final engine = DeviceAuthorityEngine();
+        engine.mintEnrollment(
+          userId: 7,
+          identity: generateIdentityKeyPair(),
+          createdAtMs: 1755600000000,
+        );
+        final exported = engine.exportDakForPersistence();
+        await DakStore().persistArmed(
+          DakRecord(
+            userId: 7,
+            dakPub: exported['dakPub']!,
+            dakPriv: exported['dakPriv']!,
+            createdAtMs: 1755600000000,
+          ),
+        );
+      }
+
+      Future<void> revokeRow4(WidgetTester tester) async {
         await tester.tap(find.byKey(const Key('device-revoke-4')));
         await tester.pumpAndSettle();
         await tester.tap(find.text('Remove device').last);
         // The revoke is in flight against a fake that never answers, so the
-        // busy indicator animates forever: pump a frame, do not settle.
+        // busy indicator animates forever: pump frames, do not settle.
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      testWidgets('confirming a revoke opens the section', (tester) async {
+        await armDak();
+        await pumpTombstones(tester);
+        expect(find.byKey(const Key('device-row-2')), findsNothing);
+        await revokeRow4(tester);
         expect(find.byKey(const Key('device-row-2')), findsOneWidget);
+      });
+
+      testWidgets('a revoke that never left the device opens nothing', (
+        tester,
+      ) async {
+        // No DAK in the Keystore: `no_dak`, the request is never emitted, and
+        // popping the section open would confirm a revoke that did not happen.
+        await pumpTombstones(tester);
+        await revokeRow4(tester);
+        expect(find.byKey(const Key('device-row-2')), findsNothing);
       });
     });
   });
