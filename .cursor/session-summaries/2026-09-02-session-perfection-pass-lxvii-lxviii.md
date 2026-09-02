@@ -126,8 +126,9 @@ non-default stack must set `E2E_DB_CONTAINER`, or `e2eSql` fires at the dev DB.
   (primary #1 on the AVD, web #3 on the headless probe context).
 
 ## Notes for next session
-- Accounts 693/694 are burned (693 = lost primary, by tooling). 695 `mdqa0902c` is a clean
-  primary (device 1) with web `#4` linked on the headless probe context; 694 untouched on `:8095`.
+- Throwaway accounts: 693 and 695 are BURNED (lost primaries, both by the `flutter run` uninstall
+  trap in the addendum); 694 untouched on `:8095`. **696 `mdqa0902d` is the clean pair** — primary
+  #1 on the AVD, web #3 on the headless probe context (#2 revoked).
 - Open, recorded, not fixed: a linked device cannot know its primary is gone (no DAK anywhere is
   invisible server-side until a reset), so its "new devices are added from the primary" note is
   the honest rule with no door; the phone's own banner routes the reset. A locked install can
