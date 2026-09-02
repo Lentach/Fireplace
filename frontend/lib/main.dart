@@ -210,10 +210,17 @@ class _AuthGateState extends State<AuthGate> {
     // pre-keys under the device the teardown just revoked.
     conn.onSessionRebound = auth.adoptProvisionedSession;
 
-    // Detect logout transition (true → false) - ensure clean disconnect
+    // Detect logout transition (true → false) - ensure clean disconnect, and
+    // pop every route pushed above this gate. Amendment (lxvi) clause 1: a
+    // SERVER-initiated end (§5.5 `deviceRevoked`) lands while the user may be
+    // inside a pushed chat or the devices screen; swapping this subtree to
+    // AuthScreen leaves that route on top, rendering a blank surface over the
+    // very notice that tells the user what to do next.
     if (!auth.isLoggedIn && _previousLoggedInState) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         conn.disconnect(isLogout: true);
+        if (!mounted) return;
+        Navigator.of(context).popUntil((route) => route.isFirst);
       });
     }
 

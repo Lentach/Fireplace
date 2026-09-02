@@ -37,47 +37,54 @@ class _LinkThisDeviceScreenState extends State<LinkThisDeviceScreen> {
     final colors = theme.colorScheme;
     final l10n = AppLocalizations.of(context);
 
-    return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
-      extendBodyBehindAppBar: true,
-      appBar: GlassTopBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-          onPressed: () {
-            final step = widget.controller.newDeviceStep;
-            if (step != NewDeviceLinkStep.done &&
-                step != NewDeviceLinkStep.aborted &&
-                step != NewDeviceLinkStep.idle) {
-              widget.controller.abortNewDevice('cancelled_locally');
-            }
-            Navigator.of(context).pop();
-          },
-        ),
-        title: Text(
-          l10n.linkNewTitle,
-          style: RpgTheme.bodyFont(
-            fontSize: 16,
-            color: colors.onSurface,
-            fontWeight: FontWeight.w600,
+    // Amendment (lxvi) clause 3: the abort hangs off the POP, not the arrow,
+    // so gesture/hardware/browser back take the same exit — a stage the user
+    // walked away from must never stay approvable by the primary (I1).
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) return;
+        final step = widget.controller.newDeviceStep;
+        if (step != NewDeviceLinkStep.done &&
+            step != NewDeviceLinkStep.aborted &&
+            step != NewDeviceLinkStep.idle) {
+          widget.controller.abortNewDevice('cancelled_locally');
+        }
+      },
+      child: Scaffold(
+        backgroundColor: theme.scaffoldBackgroundColor,
+        extendBodyBehindAppBar: true,
+        appBar: GlassTopBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          title: Text(
+            l10n.linkNewTitle,
+            style: RpgTheme.bodyFont(
+              fontSize: 16,
+              color: colors.onSurface,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
-      ),
-      body: AnimatedBuilder(
-        animation: widget.controller,
-        builder: (context, _) => SingleChildScrollView(
-          padding: EdgeInsets.only(
-            top:
-                MediaQuery.paddingOf(context).top +
-                GlassTopBar.capsuleHeight +
-                16,
-            bottom: MediaQuery.paddingOf(context).bottom + 24,
-            left: 24,
-            right: 24,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: _buildStep(context),
+        body: AnimatedBuilder(
+          animation: widget.controller,
+          builder: (context, _) => SingleChildScrollView(
+            padding: EdgeInsets.only(
+              top:
+                  MediaQuery.paddingOf(context).top +
+                  GlassTopBar.capsuleHeight +
+                  16,
+              bottom: MediaQuery.paddingOf(context).bottom + 24,
+              left: 24,
+              right: 24,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: _buildStep(context),
+            ),
           ),
         ),
       ),
@@ -252,8 +259,9 @@ class _LinkThisDeviceScreenState extends State<LinkThisDeviceScreen> {
         final reasonLabel = switch (reason) {
           'expired' => l10n.linkAbortReasonExpired,
           'cancelled' => l10n.linkAbortReasonCancelled,
-          'bad_mac' || 'malformed' || 'blob_user_mismatch' =>
-            l10n.linkAbortReasonBadBlob,
+          'bad_mac' ||
+          'malformed' ||
+          'blob_user_mismatch' => l10n.linkAbortReasonBadBlob,
           _ => '${l10n.linkNewAborted} ($reason)',
         };
         return [
@@ -271,9 +279,8 @@ class _LinkThisDeviceScreenState extends State<LinkThisDeviceScreen> {
             button: true,
             child: OutlinedButton(
               key: const Key('link-new-retry'),
-              onPressed: () => controller.startNewDeviceFlow(
-                platform: linkPlatformLabel(),
-              ),
+              onPressed: () =>
+                  controller.startNewDeviceFlow(platform: linkPlatformLabel()),
               child: Text(l10n.linkNewRetry),
             ),
           ),

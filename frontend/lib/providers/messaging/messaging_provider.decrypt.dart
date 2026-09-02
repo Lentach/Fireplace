@@ -404,9 +404,15 @@ extension MessagingDecrypt on MessagingProvider {
   }
 
   /// True when [msg] has displayable plaintext (or decrypted media), not an E2E placeholder.
+  ///
+  /// The `none_for_device` sentinel is a placeholder too (amendment (lxvi)
+  /// clause 2): counting it as usable let the snapshot hydration skip the
+  /// persisted copy, so a re-linked install showed "sent before this device
+  /// was linked" over rows it had already decrypted under its previous id.
   bool _hasUsableDecryptedContent(MessageModel msg) {
     if (_isRetiredMessage(msg) ||
         msg.content == _kDecryptionFailedLabel ||
+        msg.content == kNotLinkedYetMessageLabel ||
         msg.content == '[Encryption not initialized]') {
       return false;
     }

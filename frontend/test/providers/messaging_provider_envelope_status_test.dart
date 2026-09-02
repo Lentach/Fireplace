@@ -172,4 +172,86 @@ void main() {
       expect(row.envelopeStatus, 'own_origin');
     });
   });
+
+  group('(lxvi) clause 2 — local plaintext outranks the none_for_device marker',
+      () {
+    // A re-linked install is a NEW device id (amendment (a): ids are never
+    // reused), so the history read answers `none_for_device` for every row
+    // that predates it — including rows THIS install already decrypted and
+    // sealed under its previous id. Live QA 2026-09-02: those rows rendered
+    // "sent before this device was linked" while the plaintext sat on disk.
+    //
+    // Falsification contract: removing `kNotLinkedYetMessageLabel` from
+    // `_hasUsableDecryptedContent`'s placeholder set turns the first test RED
+    // (the hydration pass counts the sentinel as usable and never consults
+    // storage); the second is the control that a genuinely pre-link row is
+    // unchanged.
+    late MessagingProvider provider;
+    late ConversationsProvider conversations;
+    late EncryptionProvider encryption;
+
+    setUp(() async {
+      FlutterSecureStorage.setMockInitialValues({});
+      SharedPreferences.setMockInitialValues({});
+
+      encryption = EncryptionProvider();
+      encryption.setEmitCallback((event, data) {
+        if (event == 'checkOwnKeyBundle') {
+          encryption.onOwnKeyBundleStatus({'exists': false});
+        }
+      });
+      encryption.setOwnDeviceId(3);
+      await encryption.initializeE2E(1);
+      await pumpEventQueue(times: 200);
+
+      provider = MessagingProvider();
+      conversations = ConversationsProvider();
+      conversations.setCurrentUserId(1);
+      conversations.onConversationsList([_convJson()]);
+      conversations.openConversation(10);
+      provider.setConversationsProvider(conversations);
+      provider.setEncryptionProvider(encryption);
+      provider.setCurrentUserId(1);
+      provider.setIncomingMessageSoundEnabledForTest(false);
+      provider.onConnect(false);
+      provider.setActiveConversationIdForTest(10);
+      provider.setEmitCallback((event, data) {});
+    });
+
+    test('a marked row this install already decrypted renders its sealed '
+        'plaintext, not the placeholder', () async {
+      // Sealed under the previous device id, exactly as the decrypt pass
+      // persists a successful decrypt.
+      await encryption.saveDecryptedContent(201, {
+        'content': 'msg1 decrypted as device 2',
+        'messageType': 'TEXT',
+      }, conversationId: 10);
+      expect(
+        (await encryption.getDecryptedContent(201))?['content'],
+        'msg1 decrypted as device 2',
+      );
+
+      provider.onMessageHistory({
+        'conversationId': 10,
+        'messages': [_row(id: 201, envelopeStatus: 'none_for_device')],
+      });
+      await pumpEventQueue(times: 200);
+
+      final row = provider.messages.firstWhere((m) => m.id == 201);
+      expect(row.content, 'msg1 decrypted as device 2');
+      expect(row.envelopeStatus, 'none_for_device');
+    });
+
+    test('a marked row with nothing local keeps the honest placeholder',
+        () async {
+      provider.onMessageHistory({
+        'conversationId': 10,
+        'messages': [_row(id: 202, envelopeStatus: 'none_for_device')],
+      });
+      await pumpEventQueue(times: 200);
+
+      final row = provider.messages.firstWhere((m) => m.id == 202);
+      expect(row.content, kNotLinkedYetMessageLabel);
+    });
+  });
 }

@@ -35,42 +35,48 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
     final colors = theme.colorScheme;
     final l10n = AppLocalizations.of(context);
 
-    return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
-      extendBodyBehindAppBar: true,
-      appBar: GlassTopBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-          onPressed: () {
-            widget.controller.cancelPrimary();
-            Navigator.of(context).pop();
-          },
-        ),
-        title: Text(
-          l10n.linkPrimaryTitle,
-          style: RpgTheme.bodyFont(
-            fontSize: 16,
-            color: colors.onSurface,
-            fontWeight: FontWeight.w600,
+    // Amendment (lxvi) clause 3: the cancel hangs off the POP, not the arrow,
+    // so gesture/hardware/browser back take the same exit and never leave a
+    // live stage behind. `cancelPrimary` is idempotent for a `done` ceremony.
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) widget.controller.cancelPrimary();
+      },
+      child: Scaffold(
+        backgroundColor: theme.scaffoldBackgroundColor,
+        extendBodyBehindAppBar: true,
+        appBar: GlassTopBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          title: Text(
+            l10n.linkPrimaryTitle,
+            style: RpgTheme.bodyFont(
+              fontSize: 16,
+              color: colors.onSurface,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
-      ),
-      body: AnimatedBuilder(
-        animation: widget.controller,
-        builder: (context, _) => SingleChildScrollView(
-          padding: EdgeInsets.only(
-            top:
-                MediaQuery.paddingOf(context).top +
-                GlassTopBar.capsuleHeight +
-                16,
-            bottom: MediaQuery.paddingOf(context).bottom + 24,
-            left: 24,
-            right: 24,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: _buildStep(context),
+        body: AnimatedBuilder(
+          animation: widget.controller,
+          builder: (context, _) => SingleChildScrollView(
+            padding: EdgeInsets.only(
+              top:
+                  MediaQuery.paddingOf(context).top +
+                  GlassTopBar.capsuleHeight +
+                  16,
+              bottom: MediaQuery.paddingOf(context).bottom + 24,
+              left: 24,
+              right: 24,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: _buildStep(context),
+            ),
           ),
         ),
       ),

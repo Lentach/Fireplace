@@ -16,6 +16,38 @@ which holds the full account — **rotating an entry out of this file loses noth
 > `2026-08-22-session-t8-harness-sweep.md`). For multi-device specifically the permanent record is
 > `.planning/multi-device/` (`FINISH-HERE.md`, `progress.md`, `task_plan.md`), not this file.
 
+**Date:** 2026-09-02 — **THE WHOLE MULTI-DEVICE PROGRAMME RAN LIVE ON TWO REAL SURFACES (Pixel 7
+emulator primary + release-web install) — link, fan-out, self-sync both ways, §5.5 revoke, (lxiv)
+relogin, (lxv) re-link recovery — ALL OBSERVED. The 08-31 session's uncommitted (lxv) fix is
+proven end to end and committed; the same run found THREE more defects on that path, fixed under
+owner-ratified (lxvi) (three clauses), each falsified two-way AND re-verified live on rebuilt
+surfaces. Index now (a)–(lxvi). Nothing merged, nothing deployed.** ➡
+**`2026-09-02-session-two-device-live-qa-lxv-lxvi.md`** (environment recipe, DB evidence, the
+four UX observations left for the owner).
+- **(lxv) live:** revoke web #2 → relogin lands on device 1 → `E2E_DEVICE_MISMATCH` banner, device
+  1's `registrationId` **6852 untouched**, zero audit rows, no upload attempted → banner CTA →
+  device-side "Połącz to urządzenie" (dead-end 1 closed) → SAS approve →
+  `LINK_STALE_MATERIAL_DISPOSED → LINK_IDENTITY_ADOPTED` (dead-end 2 closed) → device 3, stamp 3,
+  messaging works. Fan-out/self-sync proven by `message_envelopes` rows (1601: 693/1+693/2; 1602:
+  693/1+694/1; 1603: 693/2+694/1).
+- **(lxvi) c1 — remote revoke while a chat is open painted a blank GREY page** (twice; empty
+  semantics, no error): the pushed `ChatDetailScreen` outlived `AuthGate`'s swap and sat over the
+  (lxiv) notice. `AuthGate` now pops the root navigator on the logged-in→out transition.
+- **(lxvi) c2 — after re-link, rows this install had ALREADY decrypted showed "Wysłana przed
+  połączeniem tego urządzenia" with the plaintext on disk** — the (lxv) "messages stay" sentence
+  held in storage, not display. `_hasUsableDecryptedContent` counted the `none_for_device`
+  sentinel as usable, so hydration never read the sealed copy. Sentinel is now a placeholder.
+- **(lxvi) c3 — system back (gesture/hardware/browser) skipped the ceremony cancel on BOTH link
+  screens**; only the arrow cancelled. Reopening showed the previous ceremony's `done`; a
+  new device backing out mid-SAS left a stage the primary could still approve (I1). `PopScope`.
+- Suite **1675/10sk**, analyze clean, verifier OK; backend untouched. ⚠️ Process: one
+  falsification silently did NOT land (multi-line call vs. regex — the HANDOFF §10 trap) and
+  its test stayed green; caught by counting surviving call sites, redone with the mutation
+  printed. **Print the mutated line every time.**
+- Left for the owner (recorded, not changed): keyless banner offers only "Zacznij od nowa"
+  (never "link"); keyless Devices screen shows red chain-invalid; Devices screen stale until
+  re-entry after a ceremony; linked device offered the primary flow (fails closed `linkNoDak`).
+
 **Date:** 2026-08-30b — **THE BOUNDED MERGE-GATE REVIEW (Option A) RAN — 2× MERGE-SAFE, 1× BLOCKING —
 AND THE ONE BLOCKING FINDING IS FIXED UNDER OWNER-RATIFIED (lxiv), both halves falsified. The index
 now runs (a)–(lxiv). Nothing merged, nothing deployed.** ➡ **`2026-08-30-session-bounded-gate-lxiv.md`**.
@@ -421,14 +453,3 @@ programme moves.**
 - **P3 corrected an OVERCLAIM of mine.** I wrote that dictating `nextListVersion` "grants the server no authority it lacks". True for a STALE version (refused), false for an INFLATED one: every later mutation must exceed the stored version, so a hostile server naming a number near the ceiling freezes the device list for good, and it stays frozen after the server turns honest. The client cannot authenticate the number — the row it would check is the orphaned one — so it applies a plausibility ceiling. **The amendment now states the inflation case instead of papering over it.**
 - **Falsified three ways, each restored byte-exact and re-run green.** Guard removed → never-enrolled test fails, enrolled one passes. Version hardcoded to 1 → enrolled fails `Expected <3> Actual <1>`, and **the never-enrolled test STAYS GREEN, because for it 1 really is right** — that pair discriminates a derived version from a hardcoded one. Client trigger cut → `Expected length <1>, Actual []`.
 - **Verified `e4ee24c`: backend 1041/62 · ratchet PASS 889 (floor 906) · analyze clean · flutter 1551/10sk · wire 44/4sk · opt-in reset probe 2/2.** The wire probe's second group is new and opt-in for the same reasons as the first. ⚠️ A full `test_e2e` run right after several probe runs throws `ThrottlerException` in `takeover_alarm_test.dart` `setUpAll` — **budget artifact, not a failure**; restart the backend to refund and re-run.
-
-**Date:** 2026-08-26 — **APP ICON REPLACED (silver hex, all 42 assets, master `e27fd1b`, CI 4/4) AND THE UMBRA RENAME IS RATIFIED, BUILT, MERGED AND DEPLOYED — app repo PR #152 MERGED to master as `be7c095` and live as 0.1.20 (see DEPLOY STATE at top). Landing repo PR #3 ALSO merged + deployed 08-29 (see below).** ➡ **`2026-08-26-session.md`** (icon detail) + PR bodies (full rename classification tables). ⚠️ The rename subagent FABRICATED its version-bump claim — `0be4aa1` said 0.1.20 but still carried 0.1.19; the bump is the reviewer follow-up `bf8586e` (correction note in the PR body). Re-verify subagent compliance claims like any volatile fact.
-- **PR #152 spans backend+frontend** (secret-note public page strings `secret-notes.controller.ts:147/149/157/247`) ⇒ **release needs the SPLIT deploy (§4), not a frontend-only push.** Renames only user-facing brand: manifest/index/Info.plist/AndroidManifest labels, MaterialApp title, auth+settings wordmarks, ARB en/pl, `ic_stat_fireplace`→`ic_stat_umbra` **with new white-hex artwork** (old flame would have survived a bare rename; NOT device-verified — CI has no Android build). Untouched by design: package/bundle ids, domain, ALL code identifiers, Web Lock/IndexedDB/secure-storage names, channel id/tag — renaming those bricks installed-PWA identity or storage.
-- **Landing repo: PR #3 MERGED (`69caf87`) + DEPLOYED 2026-08-29** — brand text, E1 ember favicon/logo (recolored from silver in `dd4338d`), new `public/og.png` (ember hex + Umbra wordmark). `deploy-landing.ps1` hit the same exit-21 at the swap; manual stage+swap → PUBLISHED_OK. **⚠️ OWNER-CAUGHT MISS post-deploy: the header/footer wordmarks were `FIRE<b>PLACE</b>` SPLIT SPANS — invisible to every grep for "fireplace" (contiguous string never existed in any file). Fixed `0d0fa13`, republished, live-verified (0 split spans, UMBRA ×2). LESSON: brand/string sweeps MUST eyeball the RENDERED page — split-span/two-tone wordmarks defeat string search.** Owner still owes: README screenshot recapture (`docs/screens/*.webp` old brand), GitHub repo renames, domain decision.
-- Work done in worktrees per owner instruction (`fireplace-umbra`, `fireplace-landing-umbra`); both main checkouts end clean on master. Suites on PR #152: frontend 1328/10sk, backend 681/49, ratchet 906.
-- Design provenance: scenes (starfield/eclipse) rejected after Apple HIG research (one element, one focal point, simple background); **iOS 18 tinted-mode simulated via luminance mapping** — thick pale outline survives, dark solid fill vanishes. Owner picked bare silver hex; 48px bottom-rim dropout was measured (vertex luma 27 on bg 7) and fixed (`#333`→`#4A4A4A`, stroke 10→12 → luma 49) with owner approval of the before/after.
-- **2026-08-29 follow-up on PR #152: launcher icon recolored to the eclipse ember gradient (E1), head `99b1d84`, CI 6/6 after every commit** — owner supplied a diamond-ring eclipse photo; three variants built (E1 ember hex / E2 diamond-ring hex / E3 annular circle, masters `umbra-e1-*.svg` in `.planning/branding/`), owner picked E1 ("sun indicator is kinda meh" — no glint). Rim gradient `#FFE9B8`→`#7A4526` at 10 o'clock; 48/60/96px dim-side luma 102/107/108 (silver baseline 49). `32ab482` = 42 launcher assets; `afe070e` = HAND-PLACED web push icons `notification-icon-512/192` (flutter_launcher_icons does not emit them — they'd have kept the silver hex in push toasts); `99b1d84` = last outward-facing strings: link-preview User-Agent `Fireplace/1.0`→`Umbra/1.0` (third-party servers see it) + two stale comments quoting the renamed "Open Umbra" reveal-page label. `notification-badge-96` + `ic_stat_umbra` deliberately untouched (alpha-only — Android tints flat white, so only the outline exists there). Regeneration ran INSIDE the `fireplace-umbra` worktree (masters are gitignored in the main checkout); all NEW commits, no force-push, so older SHA references stay valid. NB: landing PR #3's favicons/logos still carry the SILVER hex and `og.png` is old-brand artwork — recolor pending owner word.
-- **Masters + SVG→PNG pipeline live in gitignored `.planning/branding/`** (`@resvg/resvg-js` via node — no inkscape/magick on this PC). Tweak = edit the 722 B SVG, `rasterize.mjs`, `dart run flutter_launcher_icons`.
-- **Trap avoided, config now idempotent:** `flutter_launcher_icons` overwrote `manifest.json` colors `#F7F4F0`→`#000000`; reverted and pinned the yaml `web:` colors to cream (re-run → zero diff). Also added `remove_alpha_ios: true` (App Store rejects alpha). `notification-badge-96` stays pure white-on-transparent per `web-push-sw.js:205-208`.
-- **Not device-verified:** every asset class checked by pixels/geometry; no phone homescreen was seen this session.
-

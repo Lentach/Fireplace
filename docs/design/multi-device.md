@@ -2179,6 +2179,77 @@ that is the designed outcome).
        on the DAK slot; the honest fix remains the compare-and-delete/compare-and-promote primitive
        residual 1 already calls for.
 
+- **Amendment 2026-08-31 (D17, ratified by the owner BEFORE the fix; from the live two-device QA
+  session — Android emulator primary + real-browser web install driving §5.1, §5.5 and the (lxiv)
+  relogin end-to-end):**
+  - **(lxv) The (lxiv) recovery MUST be COMPLETABLE: a mismatched install re-entering the §5.1
+    ceremony disposes its stale Signal material inline with the adoption.** Live QA proved the
+    promised recovery dead-ended twice on the same hidden assumption — that only a KEYLESS install
+    ever runs the device-side flow. A revoked install that signs back in is not keyless: its dead
+    identity survived logout by design. First dead end: `devices_screen.dart` gated the
+    device-side CTA on `identityIncomplete` alone, so exactly the install the (lxiv) banner routes
+    here was offered the PRIMARY-side flow it can never complete (it holds no DAK; fail-closed
+    `no_dak`). The gate is now `identityIncomplete OR deviceMaterialMismatch`. Second dead end,
+    one step deeper: `adoptProvisionedIdentity`'s T3 invariant lock ("refuse when the device
+    already holds ANY identity") aborted the SAS-confirmed re-link with `adopt_failed`. The lock
+    stays — its carve-out is exactly ONE shape: the ceremony passes `disposeStaleMaterial: true`
+    only when the provider is in the (lxiv) mismatch state, read live at blob time; the service
+    then wipes the stale Signal material (identity, sessions, pre-keys, signed pre-keys, peer
+    trust — the same suffix family the consented-loss regeneration wipes, now one shared
+    primitive) and adopts atomically after. Ordering law: the wipe runs AFTER the blob is
+    MAC-verified, decrypted, user-matched and fully parsed — a malformed blob must fail before
+    the wipe, or it would strand the install keyless without the adopt that justified the
+    disposal. Consent law: the SAS confirmation plus authenticated blob IS the user's consent to
+    dispose material that provably cannot serve this session (stamped for a revoked device id);
+    the content store is untouched — sealed history lives under independent content keys, so the
+    §5.5 revoke dialog's "messages stay" promise holds. Non-goals, recorded: the disposal is NOT
+    reachable outside a ceremony (the flag defaults false everywhere, including the historical
+    controller constructor shape), and `rebind_failed` after a (lxv) disposal is no worse than
+    after a keyless link — the adopted identity is committed and clause 1 of (lxiv) still guards
+    the server rows.
+
+- **Amendment 2026-09-02 (D18, ratified by the owner BEFORE the fix; from the second live
+  two-device QA — Android emulator primary (device 1) + real-browser web install, which proved
+  (lxv) end to end (mismatch banner → device-side CTA → re-link → `LINK_STALE_MATERIAL_DISPOSED`
+  → `LINK_IDENTITY_ADOPTED` → device 3, device 1's bundle byte-untouched) and then found two
+  defects on the same path that no amendment covered):**
+  - **(lxvi) clause 1 — a remote session end MUST leave the auth surface on top.** §5.5's
+    `deviceRevoked` arrives while the user may be anywhere; the client's `AuthGate` swaps its OWN
+    subtree to the sign-in screen, but any route pushed above it on the root navigator (the open
+    chat, the devices screen) survives the swap and keeps rendering over it against providers that
+    were just cleared — observed twice as a blank grey page with an EMPTY semantics tree and no
+    thrown error. The (lxiv) notice ("sign in and link this device again") was therefore invisible
+    at the only moment it is shown; a reload reaches the sign-in screen but the notice is in-memory
+    and lost. Rule: on the logged-in → logged-out transition `AuthGate` pops the root navigator to
+    its first route, in the same post-frame step that disconnects the socket. Pre-existing
+    mechanism (any provider-driven logout — `refresh_invalid`, expiry — had the same shape), new
+    reachability: `deviceRevoked` is the first logout the SERVER initiates at an arbitrary moment.
+  - **(lxvi) clause 2 — local plaintext outranks the `none_for_device` marker.** The (lxv) text
+    claimed the §5.5 "messages stay" promise holds because the content store is untouched. In
+    STORAGE it holds; in DISPLAY it did not: after a (lxv) re-link the install is a NEW device id,
+    the history read answers `none_for_device` for every row that predates it, and the client
+    stamped the "sent before this device was linked" placeholder at ingestion — over rows THIS
+    install had already decrypted and sealed under its previous id. The stamped row carries no
+    ciphertext, `needsDecryption` is false, and `_hasUsableDecryptedContent` counted the sentinel
+    as usable, so the hydration pass never consulted the persisted copy. Rule: the sentinel is a
+    placeholder, never usable content; the snapshot hydration consults the local sealed plaintext
+    for such rows and upgrades them, and the placeholder is what remains ONLY when nothing local
+    exists — which is the honest (viii) meaning. No decrypt is attempted (there is no ciphertext),
+    no retry path is armed (every retry predicate is gated on `needsDecryption`), and a genuinely
+    pre-link row is unchanged. The (lxv) "messages stay" sentence now holds in both senses.
+  - **(lxvi) clause 3 — every way off a ceremony screen cancels the ceremony.** Both §5.1 screens
+    cancelled only from their own app-bar arrow (`cancelPrimary` / `abortNewDevice`); the
+    system back — Android gesture or hardware back, browser back — popped the route and left the
+    ceremony running. Observed as the primary's screen reopening in the previous ceremony's `done`
+    state (a second link in one sitting was impossible); the worse shape follows from the same
+    code: a new device that backs out mid-SAS leaves a live stage the primary can still approve,
+    and the identity is adopted behind a screen nobody is looking at — the I1 abort hygiene that
+    falsification 18 pins for every FAILURE path, skipped for the one path the user takes on
+    purpose. Rule: the cancel/abort hangs off the route's pop (`PopScope`), so the arrow, the
+    gesture and the browser all take the same exit. Idempotent by construction: a `done` primary
+    only resets local state (no `cancelProvisioning` for a consumed stage), and the new-device
+    abort is skipped in `done`/`aborted`/`idle` exactly as the arrow already did.
+
 
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the
