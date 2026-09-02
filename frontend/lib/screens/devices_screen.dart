@@ -49,7 +49,16 @@ class _DevicesScreenState extends State<DevicesScreen> {
       // predicate is the provider's, not a snapshot.
       staleDisposalAuthorized: () => encryption.linkDisposesStaleMaterial,
       reconnect: (accessToken) async {
-        await connection.connect(userId, accessToken, AppConfig.baseUrl);
+        // `immediate`: the reconnect debounce would defer this to a timer and
+        // return at once, so the rebind's await would resolve BEFORE the
+        // socket carries the new device — the same reason the §6.2 rebind
+        // passes it. Rate-limited by the ceremony itself, not the cooldown.
+        await connection.connect(
+          userId,
+          accessToken,
+          AppConfig.baseUrl,
+          immediate: true,
+        );
       },
     );
     _controller = controller;

@@ -92,6 +92,32 @@ void main() {
     expect(listRequests(), 1, reason: 'nothing may be emitted between sockets');
   });
 
+  test('a failed rebind aborts with rebind_failed and emits nothing', () async {
+    // The adopt succeeded and the server committed the device, but session
+    // adoption failed afterwards: the identity is real, so the controller
+    // surfaces the failure instead of discarding it.
+    final controller = LinkCeremonyController(
+      userId: userId,
+      emit: (event, data) => emitted.add((event, data)),
+      identity: _NoIdentity(),
+      adoptSession: (_) async => throw StateError('storage down'),
+      reconnect: (_) async {},
+      dakStore: _StubDakStore(null),
+    );
+    addTearDown(controller.dispose);
+    controller.newDeviceStep = NewDeviceLinkStep.completing;
+    controller.onProvisioningCompleted({
+      'success': true,
+      'access_token': 'bound-access',
+      'refresh_token': 'bound-refresh',
+    });
+    await pumpEventQueue();
+
+    expect(controller.newDeviceStep, NewDeviceLinkStep.aborted);
+    expect(controller.newDeviceError, 'rebind_failed');
+    expect(listRequests(), 0);
+  });
+
   test('session readiness re-requests the device list', () async {
     final controller = build();
     addTearDown(controller.dispose);

@@ -265,6 +265,8 @@ class LinkCeremonyController extends ChangeNotifier
     // against this device's own TOFU'd identity — the server's word alone is
     // never trusted for list content.
     final tofu = await _identity.ownIdentityPublicKeyBase64();
+    // A `deviceList` answer can land as the screen pops.
+    if (_disposed) return;
     if (tofu == null) {
       // Keyless device (new-device flow candidate): render the list fields
       // unverified is NOT an option — mark the chain unverifiable.
