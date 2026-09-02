@@ -152,12 +152,12 @@ non-default stack must set `E2E_DB_CONTAINER`, or `e2eSql` fires at the dev DB.
   gated here. The screen test plants a real DAK in the mock Keystore for the success case and none
   for the refusal case (falsified: dropping the gate → `Found 1 widget with key device-row-2` in the
   refusal test). Suite 1698/10sk. Harness lesson: back up to a temp copy, never `git checkout --`,
-  when the baseline is uncommitted — it restored HEAD once and the refinement had to be re-applied.
+  when the baseline is uncommitted — it restored HEAD once and the refinement had to be re-applied. Live pass RE-RUN on the shipped gated code: re-linked web `#4`, revoked it → section opened, `#4` struck, "(3)". **Web `#4` on the probe context is now revoked too.**
 
 ## Notes for next session
 - Throwaway accounts: 693 and 695 are BURNED (lost primaries, both by the `flutter run` uninstall
   trap in the addendum); 694 untouched on `:8095`. **696 `mdqa0902d` is the clean pair** — primary
-  #1 on the AVD; web #2 and #3 both revoked (the probe context holds a revoked #3 — re-link it as #4).
+  #1 on the AVD; web #2 and #3 both revoked (web #2–#4 all revoked; the probe context holds a revoked #4 — re-link it as #5).
 - Open, recorded, not fixed: a linked device cannot know its primary is gone (no DAK anywhere is
   invisible server-side until a reset), so its "new devices are added from the primary" note is
   the honest rule with no door; the phone's own banner routes the reset. A locked install can

@@ -2338,11 +2338,14 @@ that is the designed outcome).
     absent when there are none, collapsed on every visit. Falsified two-way: flat rendering →
     `Found 1 widget with key device-row-2`; tombstones-first ordering → `Expected: less than
     <196.0> / Actual: <316.0>`.
-    Two refinements from review: (1) a revoke that LEFT the device (no `no_dak`/`sign_failed`) OPENS the section after `revokeDevice` returns, because the tombstone
-    is the user's confirmation that the revoke took and a collapsed section would make the row
-    simply vanish (falsified: `Found 0 widgets with key device-row-2`); (2) the ARB `one` branch is
-    grammatical ("Cofnięte urządzenie (1)" / "Revoked device (1)"). Live on the primary: revoke `#3`
-    → section opened itself, `#3` struck under `#2`, "Cofnięte urządzenia (2)".
+    Two refinements from review: (1) a revoke that LEFT the device (no `no_dak`/`sign_failed`)
+    OPENS the section once `revokeDevice` returns, because the tombstone is the user's
+    confirmation that the revoke took and a collapsed section would make the row simply vanish;
+    the server's answer lands later and is not gated (falsified both ways: `Found 0 widgets with
+    key device-row-2` on success, `Found 1 widget` on a refused revoke); (2) the ARB `one` branch
+    is grammatical ("Cofnięte urządzenie (1)" / "Revoked device (1)"). Live on the primary, on the
+    shipped gated code: re-linked web `#4`, revoked it → the section opened itself, `#4` struck
+    under `#2`/`#3`, "Cofnięte urządzenia (3)".
 
 
 
