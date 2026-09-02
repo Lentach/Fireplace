@@ -108,6 +108,23 @@ non-default stack must set `E2E_DB_CONTAINER`, or `e2eSql` fires at the dev DB.
   (`WhereIterable:[]`), DAK gate, keyless suppression, init notify (`Expected: > 0 / Actual: <0>`).
 - Live on rebuilt bundles each time, as above. `flutter analyze` clean; full suite: see LATEST.
 
+## Addendum (`7b1b020`, after review notes)
+- The §5.1 rebind reconnect lambda now passes `immediate: true` — the reconnect debounce returned
+  before the socket existed, so the rebind's await resolved into the gap (same reason the §6.2
+  rebind passes it). `_verifyOwnList` guards its post-await notify against a popped screen. The
+  failed-rebind controller test is restored. Suite 1693/10sk, CI 33638332259 green.
+- **Honesty note:** `7b1b020`'s commit message claims a live verification on account 696 that ran
+  against the PRE-edit web bundle (the change lives in the new device's bundle; a reviewer caught
+  it). The real one came after: web rebuilt, hard-reloaded, `#2` revoked, re-linked as `#3` —
+  "done" 2.2 s after approval, Devices screen correct 3 s later, diag `E2E_DEVICE_MISMATCH →
+  LINK_STALE_MATERIAL_DISPOSED → LINK_IDENTITY_ADOPTED`.
+- **`flutter run` wiped a primary TWICE today**, two causes (`INSUFFICIENT_STORAGE`, then
+  `VERSION_DOWNGRADE` — a versionCode-10024 build had been installed on the AVD): any install
+  failure makes it uninstall, taking keys + DAK. On a QA primary, `adb uninstall` deliberately or
+  check `dumpsys package com.fireplace.app | grep versionCode` first; treat primary state as
+  non-durable across relaunches. 693 and 695 are burned; **696 `mdqa0902d` is the clean pair**
+  (primary #1 on the AVD, web #3 on the headless probe context).
+
 ## Notes for next session
 - Accounts 693/694 are burned (693 = lost primary, by tooling). 695 `mdqa0902c` is a clean
   primary (device 1) with web `#4` linked on the headless probe context; 694 untouched on `:8095`.
