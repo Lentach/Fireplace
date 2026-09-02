@@ -13,7 +13,11 @@ which holds the full account — **rotating an entry out of this file loses noth
 > **never `git revert 0cbf17b`**), PWA notifications (`2026-08-20-session-notif-regression.md`),
 > the Actions billing/CI economics history (`2026-08-18-session-actions-billing-and-0.1.16.md`),
 > and this programme's own T7/T8 tickets (`2026-08-22-session-t7-edit-refan.md`,
-> `2026-08-22-session-t8-harness-sweep.md`). For multi-device specifically the permanent record is
+> `2026-08-22-session-t8-harness-sweep.md`), and the Umbra rename/app-icon entry rotated out on
+> 2026-09-02 (`2026-08-26-session.md`: brand sweeps MUST eyeball the RENDERED page — split-span
+> wordmarks defeat grep; re-verify subagent compliance claims, one fabricated its version bump; owner
+> still owes README screenshot recapture, GitHub repo renames, the domain decision). For multi-device
+> specifically the permanent record is
 > `.planning/multi-device/` (`FINISH-HERE.md`, `progress.md`, `task_plan.md`), not this file.
 
 **Date:** 2026-09-02 — **THE WHOLE MULTI-DEVICE PROGRAMME RAN LIVE ON TWO REAL SURFACES (Pixel 7
