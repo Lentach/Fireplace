@@ -191,4 +191,72 @@ void main() {
         reason: 'without the proof the server cannot tell this install from a '
             'foreign one sharing the account identity');
   });
+
+  // Amendment (lxvii) clause 2 — the link predicates are OWNED by the provider,
+  // so the devices screen's CTA gate and the ceremony's disposal authorization
+  // read one truth. Three shapes admit the device-side flow; two of them
+  // authorize disposing the existing identity.
+  test('(lxvii): a lock-refused identity admits the link AND its disposal', () async {
+    final provider = buildProvider();
+    provider.setOwnDeviceId(1);
+    await provider.initializeE2E(ownUserId);
+    await pumpEventQueue(times: 200);
+
+    expect(provider.needsDeviceLink, isFalse, reason: 'healthy: no link door');
+    expect(provider.linkDisposesStaleMaterial, isFalse);
+
+    // The server refuses the upload: the identity this install holds will
+    // never serve this session.
+    provider.onKeyBundleUploaded({'success': false, 'error': 'identity_locked'});
+
+    expect(provider.identityUploadLocked, isTrue);
+    expect(provider.linkDisposesStaleMaterial, isTrue,
+        reason: 'a refused identity is stale material, exactly like (lxiv)');
+    expect(provider.needsDeviceLink, isTrue,
+        reason: 'the CTA must not vanish behind a cleared identityIncomplete');
+
+    // The lock clears where it always did: a successful re-upload.
+    provider.onKeyBundleUploaded({'success': true});
+    expect(provider.linkDisposesStaleMaterial, isFalse);
+    expect(provider.needsDeviceLink, isFalse);
+  });
+
+  test('(lxvii): the (lxiv) mismatch shape reads through the same predicates', () async {
+    final provider = buildProvider();
+    provider.setOwnDeviceId(2);
+    await provider.initializeE2E(ownUserId);
+    await pumpEventQueue(times: 200);
+    provider.setOwnDeviceId(1);
+    await pumpEventQueue(times: 200);
+
+    expect(provider.deviceMaterialMismatch, isTrue);
+    expect(provider.linkDisposesStaleMaterial, isTrue);
+    expect(provider.needsDeviceLink, isTrue);
+  });
+
+  // (lxvii) made the lock flag a DISPOSAL authorization, so its lifetime is
+  // now load-bearing: this provider is a process singleton reused across
+  // logins, and a refusal answered for account A must not authorize wiping
+  // account B's healthy identity in B's ceremony.
+  test('(lxvii): the lock does not outlive the session it was answered for', () async {
+    final provider = buildProvider();
+    provider.setOwnDeviceId(1);
+    await provider.initializeE2E(ownUserId);
+    await pumpEventQueue(times: 200);
+    provider.onKeyBundleUploaded({'success': false, 'error': 'identity_locked'});
+    expect(provider.linkDisposesStaleMaterial, isTrue);
+
+    provider.clearAll(); // logout
+    expect(provider.linkDisposesStaleMaterial, isFalse,
+        reason: 'a stale lock would authorize wiping the next account\'s identity');
+    expect(provider.needsDeviceLink, isFalse);
+
+    provider.onKeyBundleUploaded({'success': false, 'error': 'identity_locked'});
+    expect(provider.linkDisposesStaleMaterial, isTrue);
+    provider.onConnect(false); // fresh connect, possibly another account
+    expect(provider.linkDisposesStaleMaterial, isFalse);
+    provider.onKeyBundleUploaded({'success': false, 'error': 'identity_locked'});
+    provider.onConnect(true); // a reconnect of the SAME session keeps it
+    expect(provider.linkDisposesStaleMaterial, isTrue);
+  });
 }

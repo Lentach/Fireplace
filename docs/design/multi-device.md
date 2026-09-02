@@ -2250,6 +2250,81 @@ that is the designed outcome).
     only resets local state (no `cancelProvisioning` for a consumed stage), and the new-device
     abort is skipped in `done`/`aborted`/`idle` exactly as the arrow already did.
 
+- **Amendment 2026-09-02 (D19, owner's blanket "achieve perfection" authorization; from the
+  keyless-second-install probe the (lxvi) session left as its open question — does "start fresh"
+  on an unlinked install clobber the primary's `key_bundles` row?):** it does NOT (the (0b) lock
+  refused: `KEY_BUNDLE_IDENTITY_LOCKED`, `OTP_UPLOAD_DROPPED`, device 1's row and pool
+  byte-untouched, zero audit rows). What it does instead is close every non-destructive exit on
+  the CLIENT. Observed on a fresh browser context signed in as an enrolled account: the only
+  offered door was "start fresh"; one tap and a confirm later the install held a fresh identity
+  the account will never publish, the devices screen's link CTA was gone (its gate was
+  `identityIncomplete`, which the regeneration clears), the devices screen showed only the red
+  chain-invalid line, and the sole remaining action was a 72 h reset that REVOKES the phone. A
+  second-device user — the population §1 exists for — is routed at the destructive door first and
+  then locked out of the safe one by taking it.
+  - **(lxvii) clause 1 — the keyless banner leads with the link.** A keyless install of an
+    account whose server bundle exists (`IDENTITY_GUARD_SERVER_BUNDLE_EXISTS`) is, first, a
+    second device; "the usual device lost its keys" is the rarer shape and its remedy is
+    destructive. Rule: the banner's always-visible action routes to the devices screen (the
+    §5.1 device-side flow, exactly as the (lxiv) mismatch banner does), and "start fresh" moves
+    into the banner's disclosure as a secondary action — still reachable in two taps, still
+    behind its confirm dialog, no longer the thing a thumb lands on. The body copy names both
+    shapes in that order. For an account that never enabled linking the link door still tells
+    the truth: the ceremony is opened from the device that holds the keys, and that screen
+    offers "enable linking" first.
+  - **(lxvii) clause 2 — an identity the lock refused is stale material.** The (lxv) carve-out
+    admitted exactly one shape of existing identity to the ceremony's disposal: material stamped
+    for a revoked device id. A refused regeneration is the same fact reached from the other side
+    — the server has said, durably, that this identity will never serve this session — so it is
+    admitted as the second and last shape. Rule: the devices screen offers the device-side CTA
+    while `identityIncomplete || deviceMaterialMismatch || identityUploadLocked`, the ceremony's
+    `disposeStaleMaterial` is authorized while `deviceMaterialMismatch || identityUploadLocked`
+    (both read live at blob time, both predicates owned by the provider so a third caller cannot
+    drift), and the locked banner gains the same link door as clause 1, with "start reset"
+    demoted to its disclosure. The (lxv) ordering and consent laws apply unchanged: wipe only
+    after the blob is verified, decrypted, user-matched and parsed; the SAS plus authenticated
+    blob is the consent; the content store is untouched. The lock flag clears where it always
+    did — on the successful same-identity re-upload the post-rebind reconnect performs.
+  - Non-goal, recorded: a locked install can still SEND with its unpublished identity (nothing
+    gates the send path on `identityUploadLocked`); peers see a TOFU identity-change pill and the
+    message decrypts. Pre-programme behaviour, unchanged here.
+
+- **Amendment 2026-09-02 (D20, same authorization; the (lxvii) live re-verification — locked web
+  install → link door → ceremony → `LINK_STALE_MATERIAL_DISPOSED` → `LINK_IDENTITY_ADOPTED` →
+  device 6, device 1 untouched — then walked the devices screen and confirmed three of the
+  residuals the (lxvi) session had only noted):**
+  - **(lxviii) clause 1 — the devices screen re-reads the list when its own ceremony completes.**
+    `refreshDeviceList()` ran only in the screen's `initState`. After a device-side ceremony the
+    screen underneath the ceremony route still showed the pre-ceremony `chainInvalid` line and
+    the keyless CTA — for an install that had JUST been told "linked and ready" — and only a
+    re-entry showed the verified list with this device on it. The `deviceListChanged` broadcast
+    cannot be relied on here: it lands while the install is between sockets (rebind →
+    disconnect → reconnect). Rule: the controller re-requests the list itself once the rebind
+    reaches `done`, after the reconnect. **Second half, found when the first was re-verified
+    live:** the list refresh alone left the screen keyless for ~20 s, because the provider's
+    init success path flips `identityIncomplete` and `isE2EReady` and NEVER notifies — every
+    watcher (the shell banner, the devices screen) repainted only on the next unrelated notify.
+    Rule: a successful init notifies. Pinned by a test in the exact live shape (keyless init →
+    adopt → reconnect init → a notification observed with both flags healthy).
+  - **(lxviii) clause 2 — only the DAK holder is offered the primary flow.** The enrolled branch
+    offered "link a device" on every enrolled install, so a linked device was invited into a
+    flow that fails closed with `linkNoDak` only after the user typed a code from a third device.
+    "Primary" is read from the one fact that defines it (§5.5: the primary is the only DAK
+    holder), not from `deviceId == 1` — the revoke gate's own note admits device 1 stops being
+    true after a §6.2 reset. Rule: the controller resolves DAK presence on every list refresh;
+    the screen offers the primary CTA only when it is present, and a linked device gets one
+    line saying new devices are added from the primary. The explainer no longer says "this"
+    device is the primary.
+  - **(lxviii) clause 3 — a keyless install is not shown a chain failure.** The list verifies
+    against this install's own identity; with none (or with an identity the lock refused) the
+    chain cannot verify, and the screen rendered that as the red `devicesChainInvalid` line
+    directly above "this device holds no keys yet — link it". Two explanations for one state,
+    one of them alarming and neither actionable beyond the CTA. Rule: while the device-side
+    flow is what the screen offers, the list section is empty; the keyless text and the CTA are
+    the whole message. The verification result itself is unchanged (still `chainInvalid`, still
+    `no_local_identity`) — this is presentation, and the fresh-identity re-verification of
+    clause 1 is what turns it into a list.
+
 
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the

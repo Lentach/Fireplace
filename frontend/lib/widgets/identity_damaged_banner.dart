@@ -3,11 +3,13 @@ import 'package:provider/provider.dart';
 
 import '../l10n/app_localizations.dart';
 import '../providers/encryption_provider.dart';
+import '../screens/devices_screen.dart';
 import 'glass/glass_dialog.dart';
 import 'identity_alert_banner.dart';
 import 'top_snackbar.dart';
 
-/// Shown when the stored Signal identity is damaged (present but incomplete).
+/// Shown when the stored Signal identity is damaged (present but incomplete)
+/// or absent while the account already has one published elsewhere.
 ///
 /// Initialization deliberately FAILS CLOSED in that state rather than minting a
 /// new identity, because regenerating silently is precisely the bug that
@@ -16,9 +18,13 @@ import 'top_snackbar.dart';
 /// banner the user sees `[encrypted]` on every message, on every boot, with no
 /// explanation and no reachable way out.
 ///
-/// The escape hatch is destructive, so it is explicit and confirmed, and the
-/// dialog states exactly what is lost (all undecrypted ciphertext) and what is
-/// not (history this device already decrypted — the plaintext cache survives).
+/// Two ways out, ordered by amendment (lxvii): the always-visible action is the
+/// §5.1 link — a keyless install of an enrolled account is, first of all, a
+/// second device, and linking is non-destructive. "Start fresh" is the remedy
+/// for the rarer shape (the usual device lost its keys), is destructive, and
+/// so lives in the disclosure behind its confirm dialog, which states exactly
+/// what is lost (all undecrypted ciphertext) and what is not (history this
+/// device already decrypted — the plaintext cache survives).
 class IdentityDamagedBanner extends StatelessWidget {
   const IdentityDamagedBanner({super.key});
 
@@ -83,15 +89,23 @@ class IdentityDamagedBanner extends StatelessWidget {
       icon: Icons.gpp_bad_outlined,
       title: l10n.identityDamagedTitle,
       detail: l10n.identityDamagedBody,
-      // Disabled while running: key generation mints 100 prekeys, and a second
-      // tap would race a concurrent identity write.
-      //
       // Foreground is pinned to onErrorContainer: the default TextButton colour
       // is the theme PRIMARY, which renders near-invisible on the red error
-      // container (caught in a real Chrome render, not by analyze). This is the
-      // one action a user with damaged keys has, so it stays visible even while
-      // the explanation is collapsed.
+      // container (caught in a real Chrome render, not by analyze). The link
+      // is the safe door, so it stays visible while the explanation is
+      // collapsed — the devices screen hosts the device-side flow.
       action: TextButton(
+        key: const Key('identity-damaged-link'),
+        onPressed: () => Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const DevicesScreen())),
+        style: TextButton.styleFrom(foregroundColor: colors.onErrorContainer),
+        child: Text(l10n.devicesLinkThisDevice),
+      ),
+      // Disabled while running: key generation mints 100 prekeys, and a second
+      // tap would race a concurrent identity write.
+      secondaryAction: TextButton(
+        key: const Key('identity-damaged-start-fresh'),
         onPressed: busy ? null : () => _confirmAndRecover(context),
         style: TextButton.styleFrom(foregroundColor: colors.onErrorContainer),
         child: busy

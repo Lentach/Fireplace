@@ -44,9 +44,10 @@ class _DevicesScreenState extends State<DevicesScreen> {
       emit: connection.emit,
       identity: EncryptionServiceLinkGateway(encryption.encryptionService),
       adoptSession: auth.adoptProvisionedSession,
-      // (lxv): the ceremony may dispose (lxiv)-mismatched stale material.
-      // Read live at blob time — the flag is the provider's, not a snapshot.
-      staleDisposalAuthorized: () => encryption.deviceMaterialMismatch,
+      // (lxv)/(lxvii): the ceremony may dispose stale material — (lxiv)
+      // mismatch or a lock-refused identity. Read live at blob time — the
+      // predicate is the provider's, not a snapshot.
+      staleDisposalAuthorized: () => encryption.linkDisposesStaleMaterial,
       reconnect: (accessToken) async {
         await connection.connect(userId, accessToken, AppConfig.baseUrl);
       },
@@ -74,14 +75,13 @@ class _DevicesScreenState extends State<DevicesScreen> {
     final l10n = AppLocalizations.of(context);
     final controller = _controller;
     final encryption = context.watch<EncryptionProvider>();
-    // The device-side (§5.1 N) CTA is the way out for BOTH shapes of "this
-    // install cannot do E2E duty here": no identity at all, and (lxiv) stale
-    // material stamped for a different device id (a revoked install that
-    // signed back in). The mismatch shape is NOT keyless — without this OR the
-    // screen would offer the primary-side flow, which such a device can never
-    // complete (it holds no DAK), dead-ending the banner's promised recovery.
-    final keyless =
-        encryption.identityIncomplete || encryption.deviceMaterialMismatch;
+    // The device-side (§5.1 N) CTA is the way out for EVERY shape of "this
+    // install cannot do E2E duty here": no identity at all, (lxiv) stale
+    // material stamped for a different device id, and (lxvii) an identity the
+    // registration lock refused. None of these is served by the primary-side
+    // flow, which such a device can never complete (it holds no DAK), so
+    // offering it would dead-end the banner's promised recovery.
+    final keyless = encryption.needsDeviceLink;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -135,7 +135,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
           ),
         ),
         const SizedBox(height: 20),
-        ..._buildListSection(context, controller),
+        ..._buildListSection(context, controller, keyless: keyless),
         const SizedBox(height: 24),
         ..._buildActions(context, controller, keyless: keyless),
       ],
@@ -144,11 +144,21 @@ class _DevicesScreenState extends State<DevicesScreen> {
 
   List<Widget> _buildListSection(
     BuildContext context,
-    LinkCeremonyController controller,
-  ) {
+    LinkCeremonyController controller, {
+    required bool keyless,
+  }) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final l10n = AppLocalizations.of(context);
+
+    // (lxviii) clause 3: the list verifies against this install's own
+    // identity, so a keyless (or lock-refused) install cannot verify it and
+    // the answer is `chainInvalid` by construction. Rendering that in red
+    // directly above "this device holds no keys yet — link it" is two
+    // explanations for one state, one of them alarming. The CTA is the whole
+    // message; the list appears once the ceremony gives this install an
+    // identity (clause 1's refresh).
+    if (keyless) return const [];
 
     switch (controller.listState) {
       case DeviceListState.loading:
@@ -318,23 +328,42 @@ class _DevicesScreenState extends State<DevicesScreen> {
         ),
       );
     } else if (controller.listState == DeviceListState.enrolled) {
-      actions.add(
-        Semantics(
-          label: l10n.devicesLinkADevice,
-          button: true,
-          child: FilledButton(
-            key: const Key('devices-link-a-device'),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => LinkDeviceScreen(controller: controller),
-                ),
-              );
-            },
-            child: Text(l10n.devicesLinkADevice),
-          ),
-        ),
-      );
+      // (lxviii) clause 2: the primary-side flow needs the DAK, and only the
+      // primary holds it (§5.5). A linked device is told where linking
+      // happens instead of being walked into `linkNoDak` after typing a code.
+      // `null` = not resolved yet: offer nothing rather than the wrong thing.
+      switch (controller.holdsDak) {
+        case true:
+          actions.add(
+            Semantics(
+              label: l10n.devicesLinkADevice,
+              button: true,
+              child: FilledButton(
+                key: const Key('devices-link-a-device'),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => LinkDeviceScreen(controller: controller),
+                    ),
+                  );
+                },
+                child: Text(l10n.devicesLinkADevice),
+              ),
+            ),
+          );
+        case false:
+          actions.add(
+            Text(
+              l10n.devicesLinkedDeviceNote,
+              key: const Key('devices-linked-device-note'),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colors.onSurfaceVariant,
+              ),
+            ),
+          );
+        case null:
+          break;
+      }
     }
 
     final enrollError = controller.enrollError;

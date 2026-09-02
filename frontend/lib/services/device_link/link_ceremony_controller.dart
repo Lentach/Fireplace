@@ -55,6 +55,12 @@ abstract class ProvisioningEventSink {
   void onDeviceList(dynamic data);
   void onDeviceListChanged(dynamic data);
   void onDeviceRevocationCompleted(dynamic data);
+
+  /// The session's socket just became authenticated (`socketReady`). The
+  /// only moment an emit is guaranteed to reach the CURRENT socket — a
+  /// rebind's reconnect returns before its transport exists, and an
+  /// account-room broadcast that landed between sockets is gone.
+  void onSessionReady();
 }
 
 /// The narrow identity surface the ceremony needs. Production wraps
@@ -178,6 +184,14 @@ class LinkCeremonyController extends ChangeNotifier
   DeviceList? verifiedList;
   String? listFailureReason;
 
+  /// Whether THIS install holds the account's DAK — the one fact that makes
+  /// it the primary (§5.5: the primary is the only DAK holder; amendment
+  /// (lxviii) clause 2). `null` until the first refresh has resolved it. The
+  /// screen offers the primary-side flow only when this is true; a linked
+  /// device would otherwise be invited into a flow that fails closed with
+  /// `linkNoDak` after the user typed a code.
+  bool? holdsDak;
+
   /// The raw authorization fields of the last VERIFIED own-list answer —
   /// the primary flow signs against these.
   Map<String, dynamic>? _authorization;
@@ -218,7 +232,18 @@ class LinkCeremonyController extends ChangeNotifier
 
   void refreshDeviceList() {
     _emit('getDeviceList', {'userId': userId});
+    unawaited(_resolveDakPresence());
   }
+
+  Future<void> _resolveDakPresence() async {
+    final present = await _readDak() != null;
+    // The screen may have popped during the Keystore read.
+    if (_disposed || holdsDak == present) return;
+    holdsDak = present;
+    notifyListeners();
+  }
+
+  bool _disposed = false;
 
   @override
   void onDeviceList(dynamic data) {
@@ -281,6 +306,14 @@ class LinkCeremonyController extends ChangeNotifier
   @override
   void onDeviceListChanged(dynamic data) {
     if (data is! Map || data['userId'] != userId) return;
+    refreshDeviceList();
+  }
+
+  @override
+  void onSessionReady() {
+    // (lxviii) clause 1: every authenticated (re)connect re-reads the list.
+    // Covers the rebind reconnect of this install's own ceremony and any
+    // `deviceListChanged` broadcast that landed while it was between sockets.
     refreshDeviceList();
   }
 
@@ -826,6 +859,11 @@ class LinkCeremonyController extends ChangeNotifier
       await _reconnect(access);
       newDeviceStep = NewDeviceLinkStep.done;
       notifyListeners();
+      // (lxviii) clause 1: the devices screen beneath this route still holds
+      // the pre-ceremony answer. The list is re-read from [onSessionReady] —
+      // NOT here: `_reconnect` returns before the new transport exists, so an
+      // emit at this point lands in the gap between sockets (observed live:
+      // the screen kept the pre-ceremony version).
     } catch (_) {
       // Session adoption failed AFTER the server committed the device. The
       // identity is real and committed — discarding it now would orphan the
@@ -880,6 +918,7 @@ class LinkCeremonyController extends ChangeNotifier
 
   @override
   void dispose() {
+    _disposed = true;
     _expiryTimer?.cancel();
     super.dispose();
   }

@@ -143,4 +143,55 @@ void main() {
               '(lost ${e.key})');
     }
   });
+
+  // Amendment (lxviii) clause 1 — the live shape of a keyless install being
+  // linked: init fails closed (identityIncomplete), the ceremony adopts an
+  // identity, the rebind reconnect re-runs init. That second init flips
+  // identityIncomplete and isE2EReady but never notified, so the "no keys"
+  // banner and the devices screen's keyless CTA stayed painted for ~20 s.
+  //
+  // Falsification contract: removing the notify at the end of the init
+  // success path turns this RED (no notification after the flip).
+  test('a successful init after a keyless adopt NOTIFIES the UI', () async {
+    final provider = EncryptionProvider();
+    provider.setEmitCallback((event, data) {
+      if (event == 'checkOwnKeyBundle') {
+        // The account already has keys elsewhere: this install is keyless.
+        provider.onOwnKeyBundleStatus({'exists': true});
+      }
+    });
+    provider.setOwnDeviceId(1);
+    await provider.initializeE2E(ownUserId);
+    await pumpEventQueue(times: 200);
+    expect(provider.identityIncomplete, isTrue, reason: 'precondition');
+    expect(provider.isE2EReady, isFalse);
+
+    final blob = mintBlobInputs();
+    await provider.encryptionService.adoptProvisionedIdentity(
+      userId: ownUserId,
+      ikPubBase64: blob.ikPub,
+      ikPrivBase64: blob.ikPriv,
+      dakPubBase64: blob.dakPub,
+    );
+
+    var notifiedWhileHealthy = 0;
+    provider.addListener(() {
+      if (!provider.identityIncomplete && provider.isE2EReady) {
+        notifiedWhileHealthy++;
+      }
+    });
+    // The rebind reconnect: same user, init not yet successful → re-runs.
+    provider.onConnect(true);
+    await provider.initializeE2E(ownUserId);
+    await pumpEventQueue(times: 200);
+
+    expect(provider.identityIncomplete, isFalse);
+    expect(provider.isE2EReady, isTrue);
+    expect(
+      notifiedWhileHealthy,
+      greaterThan(0),
+      reason: 'the UI must learn the install is linked without waiting for '
+          'an unrelated notify',
+    );
+  });
 }

@@ -9,10 +9,7 @@ import '../services/api_service.dart';
 import '../services/push_service.dart';
 import '../services/device_link/dak_store.dart';
 import '../services/device_link/link_ceremony_controller.dart'
-    show
-        EncryptionServiceLinkGateway,
-        ProvisioningEventSink,
-        linkPlatformLabel;
+    show EncryptionServiceLinkGateway, ProvisioningEventSink, linkPlatformLabel;
 import '../services/device_list/device_authority_engine.dart';
 import '../services/server_clock.dart';
 import '../services/socket_service.dart';
@@ -384,6 +381,10 @@ class ConnectionProvider extends ChangeNotifier {
     // keys. A session that was closed when the request landed opens straight
     // into the banner instead of a silent, un-cancellable delay.
     _encryptionProvider?.refreshOwnAccountStatus();
+    // (lxviii) clause 1: a devices screen that is open across a reconnect —
+    // above all its own ceremony's rebind — re-reads the list on the socket
+    // that can actually answer.
+    _provisioningSink?.onSessionReady();
 
     if (activeConvId != null) {
       _conversationsProvider?.reemitPushClientState();

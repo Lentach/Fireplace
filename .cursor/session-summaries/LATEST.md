@@ -13,12 +13,49 @@ which holds the full account — **rotating an entry out of this file loses noth
 > **never `git revert 0cbf17b`**), PWA notifications (`2026-08-20-session-notif-regression.md`),
 > the Actions billing/CI economics history (`2026-08-18-session-actions-billing-and-0.1.16.md`),
 > and this programme's own T7/T8 tickets (`2026-08-22-session-t7-edit-refan.md`,
-> `2026-08-22-session-t8-harness-sweep.md`), and the Umbra rename/app-icon entry rotated out on
-> 2026-09-02 (`2026-08-26-session.md`: brand sweeps MUST eyeball the RENDERED page — split-span
-> wordmarks defeat grep; re-verify subagent compliance claims, one fabricated its version bump; owner
-> still owes README screenshot recapture, GitHub repo renames, the domain decision). For multi-device
-> specifically the permanent record is
+> `2026-08-22-session-t8-harness-sweep.md`), the T10 reset-addressability entry rotated out on
+> 2026-09-02 (`2026-08-26-session-t10-reset-addressability.md`, spec (xlv): a completed §6.2 reset
+> left the account unreachable for the whole programme; **a harness can only find bugs in the shapes
+> it builds** — the never-enrolled reset had a live population of exactly 0; hostile
+> `nextListVersion` inflation is bounded by a plausibility ceiling), and the Umbra rename/app-icon
+> entry rotated out the same day (`2026-08-26-session.md`: brand sweeps MUST eyeball the RENDERED
+> page — split-span wordmarks defeat grep; re-verify subagent compliance claims, one fabricated its
+> version bump; owner still owes README screenshot recapture, GitHub repo renames, the domain
+> decision). For multi-device specifically the permanent record is
 > `.planning/multi-device/` (`FINISH-HERE.md`, `progress.md`, `task_plan.md`), not this file.
+
+**Date:** 2026-09-02b — **THE "IS IT DEPLOYABLE?" PASS: the keyless-install probe found a ONE-TAP DEAD
+END (server safe, client's exits closed), fixed under (lxvii); the three devices-screen residuals fixed
+under (lxviii); migrations 0013–0016 REHEARSED in production mode over a pre-programme DB — no blocker.
+Each fix proven from source → §12 → built → falsified two-way → re-verified live on rebuilt bundles.
+Nothing merged, nothing deployed.** ➡ **`2026-09-02-session-perfection-pass-lxvii-lxviii.md`**.
+- **⚠️ "Zacznij od nowa" on a keyless second install does NOT clobber the primary** (the (0b) lock
+  refused: `KEY_BUNDLE_IDENTITY_LOCKED`, device 1's row byte-untouched) **but it closed every safe
+  exit**: the link CTA's gate was `identityIncomplete`, which the regeneration clears, so the install
+  held an unpublishable identity with only a 72 h phone-revoking reset left. **(lxvii)**: the keyless
+  banner LEADS with "Połącz to urządzenie" and demotes "start fresh" to the disclosure; a lock-refused
+  identity is admitted to the (lxv) disposal exactly like (lxiv) material (`needsDeviceLink`,
+  `linkDisposesStaleMaterial`, provider-owned). A reviewer caught that the lock flag never cleared on
+  logout — with disposal authority that would have wiped the NEXT account's healthy identity; cleared
+  in `clearAll`/`onConnect(false)`, pinned.
+- **(lxviii)**: the devices screen was stale after its own ceremony for TWO reasons — the list was
+  never re-read (fixed via `ProvisioningEventSink.onSessionReady`, called from `socketReady`; a refresh
+  right after the rebind's `connect()` lands in the socket gap and kept the OLD list version live), and
+  **the provider's init success path never notified** (banner + keyless CTA stayed ~20 s). Only the DAK
+  holder is offered "Połącz urządzenie" (`holdsDak` from the Keystore; linked devices get a note); a
+  keyless install no longer sees the red chain line. Live: 4 s after "done", the same screen showed
+  `web · #4` as this device.
+- **Migration dry-run (subagent, artifacts spot-checked)**: master's harness seeded a pre-programme DB;
+  the branch backend in PRODUCTION mode applied 0013–0016 in ~150 ms; legacy rows all served; branch
+  harness 44/6sk; old client 12/15 (the 3 are the intended §6.1 lock, the amended edit echo, an
+  adversarial probe). Deploy note: set `E2E_DB_CONTAINER` for any harness run against a non-default
+  stack or `e2eSql` hits the dev DB.
+- **⚠️ Tooling wiped the primary**: the AVD's `/data` (6 GB) was 86% full → `adb install` failed →
+  `flutter run` UNINSTALLED the app → keys + DAK gone; account 693 is now a real lost-primary case.
+  `disk.dataPartition.size=16G` + one `-wipe-data`. Owner's "emulator is laggy" was host RAM (1.1 GB
+  free: web compile + idle Gradle daemon) — never overlap a release web build with the emulator.
+- Verified: analyze clean · **flutter 1692/10sk** · verifier OK · backend untouched. Open: a linked device
+  cannot know its primary is gone (no server signal until a reset); a locked install can still send.
 
 **Date:** 2026-09-02 — **THE WHOLE MULTI-DEVICE PROGRAMME RAN LIVE ON TWO REAL SURFACES (Pixel 7
 emulator primary + release-web install) — link, fan-out, self-sync both ways, §5.5 revoke, (lxiv)
@@ -447,13 +484,3 @@ programme moves.**
 - **Falsified both clauses.** Anchor reverted to device 1 → the no-device-1 and follows-the-change cases fail while the upgrade-path case still passes (that pair discriminates). Account-change branch removed → the silence case fails alone. The reviewer also caught the upgrade-path test as **vacuous**; it now deletes the legacy row and asserts the anchor SURVIVES, proving adoption rather than a re-read.
 - **Client-side only — no wire field, no migration, no DAK-signed bytes.** Verified `a96be65`: **analyze clean · flutter 1558/10sk**; backend untouched since `e4ee24c` (1041/62 · ratchet 889).
 - **(xl) is still the durable end state** — binding the account identity INTO the signed list would make the anchor unguessable rather than merely account-scoped. It changes (d)-governed canonical bytes and needs a list-version migration, which is why a recovery-breaking defect was not made to wait on it.
-
-**Date:** 2026-08-26b — **T10: a completed §6.2 reset left the account UNREACHABLE, and it had been true the whole programme.** Session detail: `2026-08-26-session-t10-reset-addressability.md`; spec §12 **(xlv)**; commits `75b4b7b` (fix) → `e4ee24c` (review fold). NOT merged, NOT deployed. **Found by re-reading a vague residual note against source, not by any suite** — the note called it a Phase-3 cleanup.
-- **⚠️ THE DEFECT, both account shapes, permanent and BIDIRECTIONAL.** The teardown allocates a fresh device id ((a): ids are never reused) and revokes the rest, but nothing re-established the DAK-signed list peers use to ADDRESS the account. **Never enrolled** (the majority shape — enrollment happens only when a second device is linked): no row, so the server answers `authorization: null`, which the client answers by synthesizing the single device 1 a non-enrolled account has *by construction* — and §6.2 is exactly what breaks that construction. **SILENT**: the server accepts envelopes for any device id, so every message is lost with no error anywhere. **Previously enrolled**: the row survives by design ((xxix)) but names the devices just revoked, signed by a DAK that died with the lost devices — a peer that re-TOFUs the new identity gets `invalid_enrollment_signature` and fails closed.
-- **⚠️ WHY NINE TICKETS AND THREE GATE REVIEWERS MISSED IT — the most transferable lesson here.** The harness only ever reset accounts it had LINKED first, because falsification 12 needs two partitions to be non-vacuous. So the never-enrolled reset, **the common case**, had never once been constructed. Confirmed against the live DB before writing any code: every account that has actually completed a reset (537, 583–587) is enrolled, and the dangerous shape had a population of **exactly 0**. **A harness can only find bugs in the shapes it builds** — the same lesson as the T9 wire run, one level up.
-- **The fix is the step (xxix) already reserved.** Its own text says the row is "REPLACED later, by a fresh IK-signed enrollment"; nothing implemented it, and `enrollDeviceAuthority` is emitted from exactly ONE place in the client — the link ceremony. **The server has always admitted precisely this replacement** (`device-list.service.ts`: an enrollment that no longer verifies under the current published identity is orphaned, and only an identity change can orphan it). So clause 1 is client-side, and it **cannot live on `LinkCeremonyController`** — `devices_screen.dart` registers that, and a recovery runs at login with no screen mounted, so the sink is null.
-- **Clause 2: a roster that cannot receive is REFUSED, in silence**, exactly as an entitlement refusal is — silence is fail-closed on the client (I5). Converts the dangerous silent shape into the survivable visible one. An account with no live device at all keeps the historical answer, so the guard invents no new refusal.
-- **The reviewer's P2 was the good one: there was no RETRY.** A dropped socket or a 20 s ack timeout stranded the account forever, since the teardown runs only on the upload that consumes the ceremony. The server now re-offers the terms on EVERY authenticated upload, via **one predicate — `DeviceListService.pendingReplacementVersion` — shared by both clauses**. That also caught a shape the first cut missed: clause 2 only tested `!row`, so the *enrolled* orphan had no retry offer at all.
-- **P3 corrected an OVERCLAIM of mine.** I wrote that dictating `nextListVersion` "grants the server no authority it lacks". True for a STALE version (refused), false for an INFLATED one: every later mutation must exceed the stored version, so a hostile server naming a number near the ceiling freezes the device list for good, and it stays frozen after the server turns honest. The client cannot authenticate the number — the row it would check is the orphaned one — so it applies a plausibility ceiling. **The amendment now states the inflation case instead of papering over it.**
-- **Falsified three ways, each restored byte-exact and re-run green.** Guard removed → never-enrolled test fails, enrolled one passes. Version hardcoded to 1 → enrolled fails `Expected <3> Actual <1>`, and **the never-enrolled test STAYS GREEN, because for it 1 really is right** — that pair discriminates a derived version from a hardcoded one. Client trigger cut → `Expected length <1>, Actual []`.
-- **Verified `e4ee24c`: backend 1041/62 · ratchet PASS 889 (floor 906) · analyze clean · flutter 1551/10sk · wire 44/4sk · opt-in reset probe 2/2.** The wire probe's second group is new and opt-in for the same reasons as the first. ⚠️ A full `test_e2e` run right after several probe runs throws `ThrottlerException` in `takeover_alarm_test.dart` `setUpAll` — **budget artifact, not a failure**; restart the backend to refund and re-run.

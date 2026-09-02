@@ -1326,6 +1326,13 @@ class EncryptionProvider extends ChangeNotifier {
         _e2eFlowLog('E2E_INIT_DONE', {
           'needsKeyUpload': _encryptionService.needsKeyUpload,
         });
+        // (lxviii) clause 1: this pass may have just turned a keyless install
+        // into a linked one — `identityIncomplete` flipped at the load above
+        // and `isE2EReady` flips here — and NOTHING below this line notifies
+        // on the success path. Observed live: the "no keys" banner and the
+        // devices screen's keyless CTA stayed painted for ~20 s after the
+        // ceremony reported done, until an unrelated notify repainted them.
+        notifyListeners();
       } else {
         // Reconnect: stores are already valid — skip re-initialization to avoid
         // the window where _identityStore._identityKeyPair is null and to prevent
@@ -1624,6 +1631,20 @@ class EncryptionProvider extends ChangeNotifier {
   /// Cleared by a successful upload (which a completed ceremony enables).
   bool _identityUploadLocked = false;
   bool get identityUploadLocked => _identityUploadLocked;
+
+  /// (lxvii) clause 2: the two shapes of EXISTING identity the §5.1 ceremony
+  /// may dispose before adopting — material stamped for a revoked device id
+  /// ((lxiv) mismatch) and an identity the registration lock refused. Both are
+  /// server-stated facts that this identity will never serve this session.
+  /// Owned here so the devices screen's CTA gate and the ceremony's disposal
+  /// authorization cannot drift apart.
+  bool get linkDisposesStaleMaterial =>
+      deviceMaterialMismatch || identityUploadLocked;
+
+  /// True while this install cannot do E2E duty under its session's device id
+  /// and the §5.1 device-side flow is its way out: no identity at all, or
+  /// stale material per [linkDisposesStaleMaterial].
+  bool get needsDeviceLink => identityIncomplete || linkDisposesStaleMaterial;
 
   // ---------- Identity reset ceremony (Phase 0b, spec §6.2) ----------
 
@@ -2133,6 +2154,10 @@ class EncryptionProvider extends ChangeNotifier {
       _forceSessionRebuild.clear();
       _generatingMoreKeys = false;
       _deviceMaterialMismatch = false;
+      // (lxvii) clause 2 made this flag authorize disposing an existing
+      // identity, so a lock left standing by the previous account must never
+      // reach the next one's ceremony.
+      _identityUploadLocked = false;
       _currentUserId = null;
       // Fresh connect may be a different account: forget verified lists AND
       // their rollback pins (they are per-account TOFU state).
@@ -2175,6 +2200,11 @@ class EncryptionProvider extends ChangeNotifier {
     // only plaintext copy on `[Decryption failed]`. Back to unconfirmed.
     _ownDeviceId = 1;
     _ownDeviceIdConfirmed = false;
+    _deviceMaterialMismatch = false;
+    // Same reason as onConnect: a session-scoped refusal, and since (lxvii)
+    // a disposal authorization. It must not outlive the account it was
+    // answered for.
+    _identityUploadLocked = false;
     _deviceListCache.clear();
     // The §6.2 ceremony belongs to the ACCOUNT, and this provider is a process
     // singleton reused across logins. Left standing, user A's countdown renders

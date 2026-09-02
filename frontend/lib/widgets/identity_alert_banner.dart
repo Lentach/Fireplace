@@ -34,6 +34,7 @@ class IdentityAlertBanner extends StatefulWidget {
     required this.detail,
     this.summary,
     this.action,
+    this.secondaryAction,
     this.semanticPrefix,
   });
 
@@ -54,6 +55,13 @@ class IdentityAlertBanner extends StatefulWidget {
   /// The primary action. Stays visible while collapsed: for a damaged identity
   /// this is the user's ONLY way out, so it must never be behind a disclosure.
   final Widget? action;
+
+  /// An optional second action, shown ONLY inside the disclosure under the
+  /// detail text. For a destructive remedy that is the rarer of two shapes
+  /// (amendment (lxvii): "start fresh" behind "link this device") — still two
+  /// taps away and still visible to a screen reader, but never the thing a
+  /// thumb lands on while the banner is collapsed.
+  final Widget? secondaryAction;
 
   /// Prepended to the screen-reader announcement, e.g. a severity word.
   final String? semanticPrefix;
@@ -178,11 +186,21 @@ class _IdentityAlertBannerState extends State<IdentityAlertBanner> {
                             top: 8,
                             right: 8,
                           ),
-                          child: Text(
-                            widget.detail,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: onColor,
-                            ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                widget.detail,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: onColor,
+                                ),
+                              ),
+                              if (widget.secondaryAction case final second?)
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: second,
+                                ),
+                            ],
                           ),
                         )
                       : const SizedBox(width: double.infinity),

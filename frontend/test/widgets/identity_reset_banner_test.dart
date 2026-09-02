@@ -1,4 +1,7 @@
 import 'package:fireplace/l10n/app_localizations.dart';
+import 'package:fireplace/models/user_model.dart';
+import 'package:fireplace/providers/auth_provider.dart';
+import 'package:fireplace/providers/connection_provider.dart';
 import 'package:fireplace/providers/encryption_provider.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/identity_reset_pending_banner.dart';
@@ -53,9 +56,27 @@ class _FakeEncryption extends EncryptionProvider {
   }
 }
 
+class _FakeAuthProvider extends AuthProvider {
+  @override
+  UserModel? get currentUser => UserModel(id: 7, username: 'qa', tag: '0001');
+}
+
+class _FakeConnectionProvider extends ConnectionProvider {
+  @override
+  int? get currentUserId => 7;
+}
+
 Widget _host(EncryptionProvider encryption) {
-  return ChangeNotifierProvider<EncryptionProvider>.value(
-    value: encryption,
+  // The auth and connection fakes exist so the DevicesScreen the (lxvii) link
+  // action pushes can build; the banner itself reads only encryption.
+  return MultiProvider(
+    providers: [
+      ChangeNotifierProvider<AuthProvider>(create: (_) => _FakeAuthProvider()),
+      ChangeNotifierProvider<ConnectionProvider>(
+        create: (_) => _FakeConnectionProvider(),
+      ),
+      ChangeNotifierProvider<EncryptionProvider>.value(value: encryption),
+    ],
     child: MaterialApp(
       theme: RpgTheme.themeDataLight,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -132,16 +153,44 @@ void main() {
   // them, the server refuses to publish because the account still holds the
   // previous identity, and nothing tells them. Peers then keep encrypting to
   // keys this device cannot read, behind a UI that claims recovery worked.
-  testWidgets('a refused key publication is surfaced with a way out', (
+  //
+  // (lxvii) clause 2: the visible way out is the LINK — the account's keys
+  // exist on another device, and the ceremony disposes the refused identity.
+  // The reset (which revokes every other device) is the rarer remedy and sits
+  // in the disclosure.
+  testWidgets('a refused key publication leads with the link', (tester) async {
+    final encryption = _FakeEncryption(locked: true);
+    await tester.pumpWidget(_host(encryption));
+    final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+
+    expect(find.byIcon(Icons.key_off_outlined), findsOneWidget);
+    expect(find.textContaining('not published'), findsOneWidget);
+    expect(find.text(l10n.devicesLinkThisDevice), findsOneWidget);
+    expect(
+      find.byKey(const Key('identity-reset-banner-start-reset')),
+      findsNothing,
+      reason: 'the reset lives in the disclosure',
+    );
+
+    final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+    await tester.tap(find.byKey(const Key('identity-reset-banner-action')));
+    await tester.pump();
+    expect(navigator.canPop(), isTrue, reason: 'routes to the §5.1 host');
+    expect(encryption.startCalls, 0);
+    expect(encryption.cancelCalls, 0);
+  });
+
+  testWidgets('the reset is two taps away and asks for the phrase first', (
     tester,
   ) async {
     final encryption = _FakeEncryption(locked: true);
     await tester.pumpWidget(_host(encryption));
 
-    expect(find.byIcon(Icons.key_off_outlined), findsOneWidget);
-    expect(find.textContaining('not published'), findsOneWidget);
-
-    await tester.tap(find.byType(TextButton));
+    await tester.tap(find.byIcon(Icons.expand_more));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('identity-reset-banner-start-reset')),
+    );
     await tester.pumpAndSettle();
 
     // The recovery key is asked for FIRST: it is the difference between
@@ -167,7 +216,11 @@ void main() {
     final encryption = _FakeEncryption(locked: true);
     await tester.pumpWidget(_host(encryption));
 
-    await tester.tap(find.byType(TextButton));
+    await tester.tap(find.byIcon(Icons.expand_more));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('identity-reset-banner-start-reset')),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();

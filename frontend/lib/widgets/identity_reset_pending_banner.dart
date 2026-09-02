@@ -4,10 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/app_localizations.dart';
+import '../providers/encryption_provider.dart';
+import '../screens/devices_screen.dart';
+import 'identity_alert_banner.dart';
 import 'recovery_phrase_prompt.dart';
 import 'top_snackbar.dart';
-import '../providers/encryption_provider.dart';
-import 'identity_alert_banner.dart';
 
 /// Phase 0b reset ceremony (multi-device spec §6.2): somebody asked the server
 /// to let this account install new encryption keys, and a countdown is running.
@@ -95,7 +96,10 @@ class _IdentityResetPendingBannerState
     // The server refused to publish this device's new keys. Without a surface
     // the user is left believing they recovered while peers keep encrypting to
     // an identity they no longer hold, so this state is as loud as a pending
-    // ceremony — and its action is the only way out.
+    // ceremony. Two ways out, ordered by amendment (lxvii): link this install
+    // from the device that holds the published keys (non-destructive, the
+    // ceremony disposes the refused identity), or start the reset — which
+    // revokes every other device, and so lives in the disclosure.
     final locked = context.select<EncryptionProvider, bool>(
       (e) => e.identityUploadLocked,
     );
@@ -129,13 +133,14 @@ class _IdentityResetPendingBannerState
       // Foreground pinned to onErrorContainer: theme primary is nearly
       // invisible on the error container (same reason as the 0a banner).
       action: TextButton(
+        key: const Key('identity-reset-banner-action'),
         onPressed: () {
           if (pending) {
             context.read<EncryptionProvider>().cancelIdentityReset();
           } else {
-            // Ask for a recovery key first: it is the difference between
-            // waiting an hour and waiting three days.
-            startIdentityResetFlow(context);
+            Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const DevicesScreen()));
           }
         },
         style: TextButton.styleFrom(
@@ -143,11 +148,21 @@ class _IdentityResetPendingBannerState
           textStyle: const TextStyle(fontWeight: FontWeight.w700),
         ),
         child: Text(
-          pending
-              ? l10n.identityResetCancelAction
-              : l10n.identityResetStartAction,
+          pending ? l10n.identityResetCancelAction : l10n.devicesLinkThisDevice,
         ),
       ),
+      secondaryAction: pending
+          ? null
+          : TextButton(
+              key: const Key('identity-reset-banner-start-reset'),
+              // Ask for a recovery key first: it is the difference between
+              // waiting an hour and waiting three days.
+              onPressed: () => startIdentityResetFlow(context),
+              style: TextButton.styleFrom(
+                foregroundColor: colors.onErrorContainer,
+              ),
+              child: Text(l10n.identityResetStartAction),
+            ),
     );
   }
 }

@@ -95,7 +95,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get devicesExplainer =>
-      'Devices linked to this account. A new device can only be added from this, the primary device.';
+      'Devices linked to this account. A new device can only be added from the primary device.';
+
+  @override
+  String get devicesLinkedDeviceNote =>
+      'This device is linked. New devices are added from the primary device.';
 
   @override
   String get devicesNotEnrolled =>
@@ -484,7 +488,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get identityDamagedBody =>
-      'Signed in on a new device or browser? Your account already has encryption keys elsewhere, and this device does not have them. If this is your usual device, its stored keys were lost. Either way nothing was regenerated automatically — doing that silently would destroy your ability to read your history.';
+      'Signed in on a new device or browser? Your account already has encryption keys on another device — link this one from there and nothing is lost. Only if this is your usual device and its stored keys are gone should you start fresh: that makes new keys and any message this device never decrypted can never be recovered. Nothing was regenerated automatically — doing that silently would destroy your ability to read your history.';
 
   @override
   String get identityDamagedAction => 'Start fresh';
@@ -644,7 +648,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get identityUploadLockedBody =>
-      'This device made new keys, but the account still uses the previous ones, so other people cannot reach you securely. Start a reset to publish these keys — it takes 72 hours and everyone signed in is notified.';
+      'This device made new keys, but the account still uses the previous ones, so other people cannot reach you securely. If you still have the previous keys on another device, link this one from there — the unpublished keys are discarded and nothing is lost. Only if those keys are gone everywhere should you start a reset to publish these — it takes 72 hours, signs out every other device, and everyone signed in is notified.';
 
   @override
   String get identityResetStartAction => 'Start reset';

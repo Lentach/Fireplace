@@ -263,8 +263,14 @@ abstract class AppLocalizations {
   /// No description provided for @devicesExplainer.
   ///
   /// In pl, this message translates to:
-  /// **'Urządzenia połączone z tym kontem. Nowe urządzenie można dodać tylko z tego, głównego urządzenia.'**
+  /// **'Urządzenia połączone z tym kontem. Nowe urządzenie można dodać tylko z urządzenia głównego.'**
   String get devicesExplainer;
+
+  /// No description provided for @devicesLinkedDeviceNote.
+  ///
+  /// In pl, this message translates to:
+  /// **'To urządzenie jest połączone. Nowe urządzenia dodaje się z urządzenia głównego.'**
+  String get devicesLinkedDeviceNote;
 
   /// No description provided for @devicesNotEnrolled.
   ///
@@ -959,7 +965,7 @@ abstract class AppLocalizations {
   /// No description provided for @identityDamagedBody.
   ///
   /// In pl, this message translates to:
-  /// **'Logujesz się na nowym urządzeniu lub w nowej przeglądarce? Twoje konto ma już klucze szyfrowania gdzie indziej, a to urządzenie ich nie ma. Jeśli to Twoje dotychczasowe urządzenie, zapisane klucze zostały utracone. Tak czy inaczej nic nie zostało odtworzone automatycznie — zrobienie tego po cichu zniszczyłoby możliwość odczytania historii.'**
+  /// **'Logujesz się na nowym urządzeniu lub w nowej przeglądarce? Twoje konto ma już klucze szyfrowania na innym urządzeniu — połącz to urządzenie stamtąd i nic nie przepadnie. Tylko jeśli to Twoje dotychczasowe urządzenie, a zapisane klucze zostały utracone, zacznij od nowa: powstaną nowe klucze, a wiadomości, których to urządzenie nigdy nie odszyfrowało, będą nie do odzyskania. Nic nie zostało odtworzone automatycznie — zrobienie tego po cichu zniszczyłoby możliwość odczytania historii.'**
   String get identityDamagedBody;
 
   /// No description provided for @identityDamagedAction.
@@ -1181,7 +1187,7 @@ abstract class AppLocalizations {
   /// No description provided for @identityUploadLockedBody.
   ///
   /// In pl, this message translates to:
-  /// **'To urządzenie utworzyło nowe klucze, ale konto nadal używa poprzednich, więc inne osoby nie mogą się z Tobą bezpiecznie skontaktować. Rozpocznij reset, aby opublikować te klucze — trwa 72 godziny, a wszystkie zalogowane sesje otrzymają powiadomienie.'**
+  /// **'To urządzenie utworzyło nowe klucze, ale konto nadal używa poprzednich, więc inne osoby nie mogą się z Tobą bezpiecznie skontaktować. Jeśli poprzednie klucze wciąż masz na innym urządzeniu, połącz to urządzenie stamtąd — nieopublikowane klucze zostaną odrzucone i nic nie przepadnie. Tylko jeśli tych kluczy nie ma już nigdzie, rozpocznij reset, aby opublikować te — trwa 72 godziny, wylogowuje pozostałe urządzenia, a wszystkie zalogowane sesje otrzymają powiadomienie.'**
   String get identityUploadLockedBody;
 
   /// No description provided for @identityResetStartAction.
