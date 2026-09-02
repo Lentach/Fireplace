@@ -141,11 +141,17 @@ non-default stack must set `E2E_DB_CONTAINER`, or `e2eSql` fires at the dev DB.
 - Trap for the record: two mutation runs "passed" before the real one — perl `\n` patterns miss a
   CRLF working copy and the formatter had re-split the target line. Always print the mutated line
   from `git diff` before trusting a red.
+- Review refinements: confirming a revoke opens the section (`_showRevoked = true` in
+  `_confirmRevoke` — the tombstone is the confirmation; collapsed it would just vanish; falsified
+  `Found 0 widgets with key device-row-2`, +1 test, mutation harness now asserts the perl
+  substitution count and restores via `git checkout --`); ARB `one` branch made grammatical. Live on
+  the primary: revoked web `#3` → section opened, `#3` struck under `#2`, "(2)". Suite 1697/10sk.
+  **Web `#3` on the probe context is therefore revoked**; 696's primary #1 stays clean.
 
 ## Notes for next session
 - Throwaway accounts: 693 and 695 are BURNED (lost primaries, both by the `flutter run` uninstall
   trap in the addendum); 694 untouched on `:8095`. **696 `mdqa0902d` is the clean pair** — primary
-  #1 on the AVD, web #3 on the headless probe context (#2 revoked).
+  #1 on the AVD; web #2 and #3 both revoked (the probe context holds a revoked #3 — re-link it as #4).
 - Open, recorded, not fixed: a linked device cannot know its primary is gone (no DAK anywhere is
   invisible server-side until a reset), so its "new devices are added from the primary" note is
   the honest rule with no door; the phone's own banner routes the reset. A locked install can

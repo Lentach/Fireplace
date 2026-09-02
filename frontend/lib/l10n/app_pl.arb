@@ -37,7 +37,7 @@
   "devicesEnrollFailed": "Nie udało się włączyć łączenia. Spróbuj ponownie.",
   "devicesChainInvalid": "Nie można zweryfikować listy urządzeń. Spróbuj ponownie później.",
   "devicesRevokedBadge": "cofnięte",
-  "devicesRevokedSection": "{count, plural, one{Cofnięte urządzenia (1)} other{Cofnięte urządzenia ({count})}}",
+  "devicesRevokedSection": "{count, plural, one{Cofnięte urządzenie (1)} other{Cofnięte urządzenia ({count})}}",
   "@devicesRevokedSection": {
     "placeholders": { "count": { "type": "num" } }
   },

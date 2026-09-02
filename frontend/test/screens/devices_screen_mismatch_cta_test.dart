@@ -305,6 +305,21 @@ void main() {
         await pumpEnrolled(tester, holdsDak: true);
         expect(find.byKey(const Key('devices-revoked-toggle')), findsNothing);
       });
+
+      // The tombstone is the user's confirmation that the revoke took; a
+      // collapsed section would make the row simply vanish.
+      testWidgets('confirming a revoke opens the section', (tester) async {
+        await pumpTombstones(tester);
+        expect(find.byKey(const Key('device-row-2')), findsNothing);
+        await tester.tap(find.byKey(const Key('device-revoke-4')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Remove device').last);
+        // The revoke is in flight against a fake that never answers, so the
+        // busy indicator animates forever: pump a frame, do not settle.
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(find.byKey(const Key('device-row-2')), findsOneWidget);
+      });
     });
   });
 }

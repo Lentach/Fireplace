@@ -2338,6 +2338,11 @@ that is the designed outcome).
     absent when there are none, collapsed on every visit. Falsified two-way: flat rendering →
     `Found 1 widget with key device-row-2`; tombstones-first ordering → `Expected: less than
     <196.0> / Actual: <316.0>`.
+    Two refinements from review: (1) confirming a revoke OPENS the section, because the tombstone
+    is the user's confirmation that the revoke took and a collapsed section would make the row
+    simply vanish (falsified: `Found 0 widgets with key device-row-2`); (2) the ARB `one` branch is
+    grammatical ("Cofnięte urządzenie (1)" / "Revoked device (1)"). Live on the primary: revoke `#3`
+    → section opened itself, `#3` struck under `#2`, "Cofnięte urządzenia (2)".
 
 
 

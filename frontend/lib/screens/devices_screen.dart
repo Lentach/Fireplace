@@ -305,6 +305,10 @@ class _DevicesScreenState extends State<DevicesScreen> {
       ),
     );
     if (confirmed ?? false) {
+      // (lxix): the tombstone is the user's confirmation that the revoke
+      // took — open the section so the row lands where they can see it,
+      // instead of vanishing behind a collapsed disclosure.
+      if (mounted) setState(() => _showRevoked = true);
       await controller.revokeDevice(entry.deviceId);
     }
   }

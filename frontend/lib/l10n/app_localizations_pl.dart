@@ -135,7 +135,7 @@ class AppLocalizationsPl extends AppLocalizations {
       count,
       locale: localeName,
       other: 'Cofnięte urządzenia ($count)',
-      one: 'Cofnięte urządzenia (1)',
+      one: 'Cofnięte urządzenie (1)',
     );
     return '$_temp0';
   }

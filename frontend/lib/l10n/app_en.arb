@@ -37,7 +37,7 @@
   "devicesEnrollFailed": "Could not enable linking. Try again.",
   "devicesChainInvalid": "The device list could not be verified. Try again later.",
   "devicesRevokedBadge": "revoked",
-  "devicesRevokedSection": "{count, plural, one{Revoked devices (1)} other{Revoked devices ({count})}}",
+  "devicesRevokedSection": "{count, plural, one{Revoked device (1)} other{Revoked devices ({count})}}",
   "@devicesRevokedSection": {
     "placeholders": { "count": { "type": "num" } }
   },

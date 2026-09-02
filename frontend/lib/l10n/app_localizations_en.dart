@@ -134,7 +134,7 @@ class AppLocalizationsEn extends AppLocalizations {
       count,
       locale: localeName,
       other: 'Revoked devices ($count)',
-      one: 'Revoked devices (1)',
+      one: 'Revoked device (1)',
     );
     return '$_temp0';
   }
