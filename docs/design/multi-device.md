@@ -2430,7 +2430,7 @@ that is the designed outcome).
     before the banner appears, instead of raising it offline — the banner's only action needs the
     server anyway.
     Rider (review of the first cut): the discard is PROVEN, never attempted blind. `_wipeSignalMaterial`
-    reports whether enumeration succeeded; on failure the (lxxi) branch records
+    reports whether the wipe is PROVEN complete (listed AND every row deleted); otherwise the (lxxi) branch records
     `IDENTITY_RESIDUE_DISCARD_DEFERRED` and throws `E2eIdentityCheckUnavailableException` — minting
     over rows it could not see is the stranded-ratchet state the discard exists to prevent (§5.11 R1
     doctrine: inconclusive reads as present). The (lxv) disposal keeps its best-effort semantics.

@@ -22,6 +22,7 @@ class _ScriptedDualStorage extends DualStorage {
 
   final Map<String, String> store = {};
   bool throwReadAll = false;
+  bool throwDelete = false;
   int writeCount = 0;
 
   @override
@@ -35,6 +36,7 @@ class _ScriptedDualStorage extends DualStorage {
 
   @override
   Future<void> delete({required String key}) async {
+    if (throwDelete) throw Exception('delete failed');
     store.remove(key);
   }
 
@@ -96,6 +98,26 @@ void main() {
     );
     expect(storage.writeCount, 0);
     expect(service.identityIncomplete, isFalse);
+    expect(
+      E2ePersistentDiag.entries
+          .where((e) => e.contains('IDENTITY_RESIDUE_DISCARD_DEFERRED')),
+      hasLength(1),
+    );
+  });
+
+  test('a residue row that was seen but could NOT be deleted also DEFERS — '
+      'a surviving session under a fresh identity is the same stranded state',
+      () async {
+    storage.store['e2e_37_session_2_1'] = 'ratchet';
+    storage.throwDelete = true;
+
+    await expectLater(
+      service.initialize(37, checkServerBundleExists: () async => false),
+      throwsA(isA<E2eIdentityCheckUnavailableException>()),
+    );
+    expect(storage.writeCount, 0);
+    expect(storage.store['e2e_37_session_2_1'], 'ratchet');
+    expect(storage.store.keys, isNot(contains('e2e_37_identity_record_v1')));
     expect(
       E2ePersistentDiag.entries
           .where((e) => e.contains('IDENTITY_RESIDUE_DISCARD_DEFERRED')),

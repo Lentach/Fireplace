@@ -1042,10 +1042,11 @@ class EncryptionService {
   /// non-Signal records untouched. Shared by the (lxxi) never-published
   /// residue discard and the (lxv) stale-material disposal.
   ///
-  /// Returns whether the ENUMERATION succeeded: `false` means the store could
-  /// not be listed and nothing was deleted. The (lxv) caller ignores that
-  /// (it immediately overwrites the identity slot; a partial wipe beats none);
-  /// the (lxxi) caller MUST NOT mint over rows it could not see.
+  /// Returns whether the wipe is PROVEN complete: the store was listed AND
+  /// every Signal-material row under [p] was deleted. `false` means at least
+  /// one row may still exist. The (lxv) caller ignores that (it immediately
+  /// overwrites the identity slot; a partial wipe beats none); the (lxxi)
+  /// caller MUST NOT mint over a row it could not see or could not remove.
   Future<bool> _wipeSignalMaterial(String p) async {
     final Map<String, String> all;
     try {
@@ -1053,6 +1054,7 @@ class EncryptionService {
     } catch (_) {
       return false;
     }
+    var deletedAll = true;
     for (final key in all.keys.toList()) {
       if (!key.startsWith(p)) continue;
       final suffix = key.substring(p.length);
@@ -1068,11 +1070,12 @@ class EncryptionService {
         try {
           await _storage.delete(key: key);
         } catch (_) {
-          // Best-effort per row; the identity slot is overwritten regardless.
+          // Keep going — every row that CAN go should — but report it.
+          deletedAll = false;
         }
       }
     }
-    return true;
+    return deletedAll;
   }
 
   /// §5.1 provisioning adopt (Phase 2 T3, spec §12 item (ii)): install the
