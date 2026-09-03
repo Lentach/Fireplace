@@ -164,13 +164,14 @@ void main() {
     });
   });
 
-  group('DevicePasscodeStore partial record', () {
-    // Fail-OPEN, deliberately. "Enabled but no verifier" is unverifiable: no
-    // code can ever satisfy it, so honouring the flag would brick the app for
-    // a user whose Keystore was reset by an OS restore. It buys nothing on
-    // web either — the flag and the verifier share one localStorage, so
-    // anything that can delete the verifier can also clear the flag.
-    test('enabled with a missing verifier reads as disabled', () async {
+  group('DevicePasscodeStore damaged credential', () {
+    // The flag READ TRUE, so a passcode exists and only its verifier is
+    // missing. Reporting that as "no passcode" would let a wiped or tampered
+    // Keystore entry silently UNLOCK the app — the error-as-absence
+    // inversion `AuthTokenStore` was hardened against. It is reported as
+    // damaged so the gate can fail CLOSED and route the user to recovery.
+    test('a flag with a missing verifier reads as damaged, not disabled',
+        () async {
       final store = DevicePasscodeStore(useSecureStorage: false);
       await store.saveCredential(
         mode: PasscodeMode.digits6,
@@ -182,8 +183,29 @@ void main() {
       await prefs.remove(DevicePasscodeStore.verifierKey);
 
       final record = await store.load();
-      expect(record.enabled, isFalse);
+      expect(record.credentialDamaged, isTrue);
+      expect(record.enabled, isFalse, reason: 'nothing can be verified');
       expect(record.verifier, isNull);
+    });
+
+    test('a missing salt is damaged too', () async {
+      final store = DevicePasscodeStore(useSecureStorage: false);
+      await store.saveCredential(
+        mode: PasscodeMode.digits4,
+        salt: _bytes(const [1]),
+        verifier: _bytes(const [2]),
+        iterations: 1,
+      );
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(DevicePasscodeStore.saltKey);
+
+      expect((await store.load()).credentialDamaged, isTrue);
+    });
+
+    test('no flag at all is plain disabled, never damaged', () async {
+      final record = await DevicePasscodeStore(useSecureStorage: false).load();
+      expect(record.enabled, isFalse);
+      expect(record.credentialDamaged, isFalse);
     });
   });
 }

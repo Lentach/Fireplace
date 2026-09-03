@@ -47,7 +47,9 @@ biometrics, no wipe passcode, no hidden chats. Header padlock in scope.
   sheet, auto-lock chooser, change/disable gated on the current code.
 - Wiring: `main.dart` (provider + gate), `main_shell.dart` (lifecycle + web visibility),
   Chats header padlock, Settings SECURITY row, 37 ARB keys in both arbs, `flutter gen-l10n`.
-- Version bumped `0.1.24 → 0.1.25`.
+- Version left at `0.1.24`: root §5 scopes the PATCH bump to production releases, and prod already
+  serves 0.1.24 off `feat/video-messages` — two branches must not claim the same number. Whoever
+  releases this bumps it then.
 
 ## Key files
 
@@ -58,8 +60,7 @@ biometrics, no wipe passcode, no hidden chats. Header padlock in scope.
   `frontend/test/support/passcode_fakes.dart` + 6 test files.
 - Edited: `frontend/lib/main.dart`, `frontend/lib/screens/main_shell.dart`,
   `frontend/lib/screens/conversations_screen.dart`, `frontend/lib/screens/settings_screen.dart`,
-  `frontend/lib/l10n/app_pl.arb` + `app_en.arb`, `frontend/pubspec.yaml`,
-  `frontend/CLAUDE.md` (§2 + new §10), root `CLAUDE.md` §3 counts.
+  `frontend/lib/l10n/app_pl.arb` + `app_en.arb`, `frontend/CLAUDE.md` (§2 + new §10), root `CLAUDE.md` §3 counts.
 - Test harnesses that now need a `PasscodeProvider` or a prefs mock: `test/widget_test.dart`,
   `test/main/*`, `test/screens/settings_console_test.dart`,
   `test/screens/settings_screen_scroll_physics_test.dart`,
@@ -69,9 +70,10 @@ biometrics, no wipe passcode, no hidden chats. Header padlock in scope.
 ## Verification
 
 - `flutter analyze --no-fatal-infos lib test` → **No issues found**.
-- `flutter test` → **1426 passed / 14 skipped**; `node scripts/verify-claude-frontend-test-counts.mjs`
-  → OK (root §3 updated). The 14th–11th skips are the new real-PBKDF2 tests (host has no native
-  webcrypto; they run on device / in the browser).
+- `flutter test` → **1431 passed / 14 skipped**; `node scripts/verify-claude-frontend-test-counts.mjs`
+  → OK (root §3 updated). The 4 new skips are the real-PBKDF2 tests (host has no native webcrypto —
+  confirmed by the skip count, and the published PBKDF2-SHA256 vector among them; the real primitive
+  was instead exercised live in the browser, see below).
 - **Live PWA run** (`flutter run -d web-server :8099` against the dev backend on :3000, driven with
   the browser tool, throwaway account `passcodeqa` in the fireplace-0a dev DB): header padlock left
   of `+` → intro → Options sheet → 4-digit set → repeat → management screen ("Włączona · Po 1
@@ -82,6 +84,17 @@ biometrics, no wipe passcode, no hidden chats. Header padlock in scope.
   Screens captured light + dark (`.planning/passcode-lock/shots/`).
 - While locked, the app vanishes from the accessibility tree (Offstage), and a widget test proves
   guarded subtree STATE survives a lock/unlock cycle.
+
+## Late correction (post-commit, advisory-driven)
+
+`PasscodeStore` originally resolved "enabled flag set but salt/verifier missing" to DISABLED
+(fail-open). That is the error-as-absence inversion `AuthTokenStore` was hardened against: a wiped
+or tampered Keystore entry would silently UNLOCK the app. Now `PasscodeRecord.credentialDamaged`
+carries that case and the gate fails **CLOSED** (`PASSCODE_CREDENTIAL_DAMAGED`; every entry answers
+`unavailable`, the recovery door is the way through). The opposite polarity is kept — and now
+documented — for an unreadable/hanging store: with no readable FLAG we cannot invent a lock for a
+user who may never have set one, so that stays "no passcode" (`PASSCODE_STORE_UNREADABLE`). Six new
+tests pin both polarities.
 
 ## Notes for next session
 

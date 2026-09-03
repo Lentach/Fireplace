@@ -47,6 +47,7 @@ class PasscodeRecord {
     required this.lastActiveAtMs,
     required this.failedAttempts,
     required this.lockoutUntilMs,
+    this.credentialDamaged = false,
   });
 
   static const PasscodeRecord disabled = PasscodeRecord(
@@ -62,6 +63,12 @@ class PasscodeRecord {
   );
 
   final bool enabled;
+
+  /// The enabled flag is set but the salt/verifier could not be read: a
+  /// passcode EXISTS and cannot be checked. The gate must stay closed and
+  /// route the user to recovery — never treat this as "no passcode".
+  final bool credentialDamaged;
+
   final PasscodeMode mode;
   final Uint8List? salt;
   final Uint8List? verifier;
@@ -143,13 +150,23 @@ class DevicePasscodeStore implements PasscodeStore {
     final autoLock =
         prefs.getInt(autoLockKey) ?? kPasscodeAutoLockDefaultSeconds;
     final flagged = prefs.getBool(enabledKey) ?? false;
-    // Fail-open on a partial credential: a flag with no verifier can never be
-    // satisfied by any code the user types, so honouring it would be a
-    // permanent lockout caused by storage damage rather than by the user.
+    // A flag with a MISSING secret is not "no passcode" — it is a passcode
+    // whose verifier we cannot read. Resolving that to disabled would mean a
+    // damaged (or deliberately damaged) Keystore silently UNLOCKS the app,
+    // the error-as-absence inversion `AuthTokenStore` exists to avoid. So it
+    // is reported separately and the gate fails CLOSED on it, with the
+    // recovery door as the only way through.
+    //
+    // The opposite polarity applies one level up: if the FLAG itself cannot be
+    // read (the whole load threw or hung), the provider treats that as no
+    // passcode — inventing a lock for a user who never set one would be a
+    // storage hiccup locking someone out of their own app.
     final enabled = flagged && salt != null && verifier != null;
+    final damaged = flagged && (salt == null || verifier == null);
 
     return PasscodeRecord(
       enabled: enabled,
+      credentialDamaged: damaged,
       mode: PasscodeMode.fromStorage(prefs.getString(modeKey)),
       salt: enabled ? salt : null,
       verifier: enabled ? verifier : null,

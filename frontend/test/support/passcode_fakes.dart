@@ -105,6 +105,7 @@ class MemoryPasscodeStore implements PasscodeStore {
     bool clearLockout = false,
   }) => PasscodeRecord(
     enabled: record.enabled,
+    credentialDamaged: record.credentialDamaged,
     mode: record.mode,
     salt: record.salt,
     verifier: record.verifier,

@@ -112,18 +112,28 @@ class PasscodeProvider extends ChangeNotifier {
     try {
       _record = await _store.load().timeout(kPasscodeStoreReadTimeout);
     } catch (e) {
-      // A store that THROWS is not evidence of a passcode. Holding the gate
-      // on `unknown` forever would brick the app behind a blank surface with
-      // no way in — the exact shape of this repo's worst field bugs. Fail
-      // open, loudly: the same call the store already makes for a partial
-      // credential (`DevicePasscodeStore.load`), and on web the enabled flag
-      // lives in the very storage that just failed, so a reader who can
-      // damage it can also clear it.
+      // A store that THROWS or HANGS gives us no flag at all, and inventing a
+      // lock for someone who may never have set one would let a storage
+      // hiccup lock a user out of their own app. Holding `unknown` forever is
+      // worse still: the gate would brick the app behind a blank surface with
+      // no way in. So: no readable flag ⇒ no passcode, recorded loudly.
       E2ePersistentDiag.record('PASSCODE_STORE_UNREADABLE', {
         'errorType': e.runtimeType.toString(),
       });
       _record = PasscodeRecord.disabled;
       _setState(PasscodeLockState.disabled);
+      return;
+    }
+    if (_record.credentialDamaged) {
+      // Opposite polarity, deliberately: the flag READ TRUE, so a passcode
+      // exists and its verifier is what we cannot read. Resolving that to
+      // "unlocked" is the error-as-absence inversion that `AuthTokenStore`
+      // was hardened against — a wiped or tampered Keystore entry would
+      // silently open the app. Fail CLOSED; the lock screen's recovery door
+      // (logout, keys intact) is the way through, and every code entry
+      // reports `unavailable` rather than "wrong".
+      E2ePersistentDiag.record('PASSCODE_CREDENTIAL_DAMAGED', const {});
+      _setState(PasscodeLockState.locked);
       return;
     }
     if (!_record.enabled) {

@@ -117,6 +117,54 @@ void main() {
     });
   });
 
+  group('a damaged credential', () {
+    // Flag true, verifier unreadable: a passcode EXISTS and cannot be
+    // checked. Fail CLOSED — the opposite polarity to an unreadable store,
+    // because here there is positive evidence the user set one.
+    PasscodeProvider damagedProvider() {
+      store.record = PasscodeRecord(
+        enabled: false,
+        credentialDamaged: true,
+        mode: PasscodeMode.digits4,
+        salt: null,
+        verifier: null,
+        iterations: 1,
+        autoLockSeconds: 3600,
+        lastActiveAtMs: now,
+        failedAttempts: 0,
+        lockoutUntilMs: null,
+      );
+      return build();
+    }
+
+    test('boots LOCKED even though nothing can verify a code', () async {
+      final damaged = damagedProvider();
+      await damaged.initialize();
+
+      expect(damaged.state, PasscodeLockState.locked);
+    });
+
+    test('every code attempt reports unavailable, never wrong', () async {
+      final damaged = damagedProvider();
+      await damaged.initialize();
+
+      expect(await damaged.unlock('1234'), PasscodeUnlockResult.unavailable);
+      expect(damaged.state, PasscodeLockState.locked);
+      expect(damaged.failedAttempts, 0);
+    });
+
+    test('recovery is the way out and it clears the wreckage', () async {
+      final damaged = damagedProvider();
+      await damaged.initialize();
+
+      await damaged.clearForRecovery();
+
+      expect(damaged.state, PasscodeLockState.disabled);
+      expect(store.record.enabled, isFalse);
+      expect(store.record.credentialDamaged, isFalse);
+    });
+  });
+
   group('enable', () {
     test('stores a credential and leaves the app unlocked', () async {
       await passcode.initialize();
