@@ -502,7 +502,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get identityDamagedBody =>
-      'Logujesz się na nowym urządzeniu lub w nowej przeglądarce? Twoje konto ma już klucze szyfrowania na innym urządzeniu — połącz to urządzenie stamtąd i nic nie przepadnie. Nic nie zostało odtworzone automatycznie: nowym kluczom utworzonym tutaj nikt by nie ufał, a zrobienie tego po cichu zniszczyłoby możliwość odczytania historii.';
+      'Logujesz się na nowym urządzeniu lub w nowej przeglądarce? Twoje konto ma już klucze szyfrowania na innym urządzeniu — połącz to urządzenie stamtąd i nic nie przepadnie. Nic nie zostało odtworzone automatycznie: nowym kluczom utworzonym tutaj nikt by nie ufał, a zrobienie tego po cichu zniszczyłoby możliwość odczytania historii.\n\nNie masz już działającego urządzenia głównego? Rozpocznij reset: po 72 godzinach (1 godzinie z kluczem odzyskiwania) to urządzenie otrzyma nowe klucze, pozostałe urządzenia zostaną wylogowane, a wiadomości, których to urządzenie nigdy nie odszyfrowało, będą nie do odzyskania.';
 
   @override
   String get messageRetrySend => 'Ponów';

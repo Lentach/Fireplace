@@ -499,7 +499,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get identityDamagedBody =>
-      'Signed in on a new device or browser? Your account already has encryption keys on another device — link this one from there and nothing is lost. Nothing was regenerated automatically: new keys made here would be trusted by no one, and doing that silently would destroy your ability to read your history.';
+      'Signed in on a new device or browser? Your account already has encryption keys on another device — link this one from there and nothing is lost. Nothing was regenerated automatically: new keys made here would be trusted by no one, and doing that silently would destroy your ability to read your history.\n\nNo working main device anymore? Start a reset: after 72 hours (1 hour with your recovery key) this device gets new keys, every other device is signed out, and any message this device never decrypted can never be recovered.';
 
   @override
   String get messageRetrySend => 'Retry';

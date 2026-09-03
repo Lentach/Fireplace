@@ -52,6 +52,17 @@ class _FakeEncryption extends EncryptionProvider {
   final List<String?> adoptedKeys = <String?>[];
   String? replacedAt;
   int dismissCalls = 0;
+  DateTime? resetDeadline;
+  int resetStartCalls = 0;
+
+  @override
+  DateTime? get identityResetDeadline => resetDeadline;
+
+  @override
+  void requestIdentityReset({String? recoveryPhrase}) {
+    resetStartCalls++;
+    notifyListeners();
+  }
 
   @override
   bool get identityIncomplete => damaged;
@@ -273,28 +284,73 @@ void main() {
       );
     });
 
-    testWidgets('no destructive action exists, collapsed or expanded', (
+    testWidgets('start-fresh is gone; the reset door lives in the disclosure', (
       tester,
     ) async {
       final encryption = _FakeEncryption(damaged: true);
       await tester.pumpWidget(_host(encryption, const IdentityDamagedBanner()));
       final l10n = await AppLocalizations.delegate.load(const Locale('en'));
 
+      // Collapsed: the link is the only thing a thumb lands on.
       expect(find.byType(TextButton), findsOneWidget);
+      expect(find.byKey(const Key('identity-damaged-start-reset')), findsNothing);
       await tester.tap(find.byIcon(Icons.expand_more));
       await tester.pumpAndSettle();
 
-      // (lxxi): the disclosure used to hide "Start fresh". The only button on
-      // this banner, in either state, is the link; the copy no longer
-      // suggests making new keys either.
-      expect(find.byType(TextButton), findsOneWidget);
-      expect(find.byKey(const Key('identity-damaged-link')), findsOneWidget);
+      // (lxxi): no start-fresh, no spinner, no copy suggesting new keys.
       expect(find.byKey(const Key('identity-damaged-start-fresh')), findsNothing);
       expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(
         l10n.identityDamagedBody.toLowerCase(),
         isNot(contains('start fresh')),
       );
+      // (lxxii): the reset door, next to the sentence that names its cost.
+      expect(find.byKey(const Key('identity-damaged-start-reset')), findsOneWidget);
+      expect(find.text(l10n.identityResetStartAction), findsOneWidget);
+      expect(l10n.identityDamagedBody, contains('72 hours'));
+    });
+
+    testWidgets('the reset door asks for the phrase first and backs out clean', (
+      tester,
+    ) async {
+      final encryption = _FakeEncryption(damaged: true);
+      await tester.pumpWidget(_host(encryption, const IdentityDamagedBanner()));
+
+      await tester.tap(find.byIcon(Icons.expand_more));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('identity-damaged-start-reset')));
+      await tester.pumpAndSettle();
+
+      // Same flow as the lock-refused banner: nobody lands in the 72 h path
+      // just because this was the button they found.
+      expect(find.textContaining('recovery key'), findsWidgets);
+      expect(encryption.resetStartCalls, 0);
+
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(encryption.resetStartCalls, 0, reason: 'dismiss starts nothing');
+
+      await tester.tap(find.byKey(const Key('identity-damaged-start-reset')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("I don't have one"));
+      await tester.pumpAndSettle();
+      expect(encryption.resetStartCalls, 1);
+    });
+
+    testWidgets('the reset door hides while a ceremony is already running', (
+      tester,
+    ) async {
+      final encryption = _FakeEncryption(damaged: true)
+        ..resetDeadline = DateTime.now().add(const Duration(hours: 3));
+      await tester.pumpWidget(_host(encryption, const IdentityDamagedBanner()));
+
+      await tester.tap(find.byIcon(Icons.expand_more));
+      await tester.pumpAndSettle();
+
+      // The pending banner owns that state (countdown + cancel); a second
+      // "start" would only answer `existing`.
+      expect(find.byKey(const Key('identity-damaged-start-reset')), findsNothing);
+      expect(find.byKey(const Key('identity-damaged-link')), findsOneWidget);
     });
   });
 

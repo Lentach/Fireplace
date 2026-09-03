@@ -2438,6 +2438,21 @@ that is the designed outcome).
     the server check removed from the residue branch → "residue + bundle exists" mints a key over
     the enrolled identity; enumeration failing + `false` → `E2eIdentityCheckUnavailableException`,
     zero writes.
+  - **(lxxii) — the keyless banner carries the reset door.** Before (lxxi) the ONLY route from a plain
+    keyless install of an enrolled account to the §6.2 reset was accidental: tap "start fresh", have the
+    registration lock refuse the upload, and only THEN did `IdentityResetPendingBanner` render with
+    "Rozpocznij reset" (`identityUploadLocked`). (lxxi) removed that button and with it the doorway —
+    shipped as 0.2.1 with the gap open (owner's words, the day before: "I don't see any reset button").
+    Rule: `IdentityDamagedBanner` keeps the §5.1 link as its always-visible action and gains, in the
+    disclosure, the SAME secondary action the lock-refused banner has — `identityResetStartAction`
+    through `startIdentityResetFlow` (phrase asked first, every entry point in one order) — and its
+    body closes with the honest cost: no working primary → reset; 72 h, or 1 h with the recovery
+    phrase; every other device is signed out; ciphertext this device never decrypted is gone. The door
+    HIDES while a reset is already pending (`identityResetDeadline != null`) — the pending banner owns
+    that state and offers cancel, and two "start" buttons for one ceremony would answer `existing`.
+    Reset itself is unchanged: server, delay, notifications, spend-by-upload.
+    Falsification: door removed → `Found 0 widgets with key identity-damaged-start-reset`; pending
+    gate removed → the door renders beside a running countdown.
 
 
 
