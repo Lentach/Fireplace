@@ -13,6 +13,7 @@ import '../constants/app_constants.dart';
 import '../providers/auth_provider.dart';
 import '../providers/connection_provider.dart';
 import '../providers/conversations_provider.dart';
+import '../providers/passcode_provider.dart';
 import '../providers/friends_provider.dart';
 import 'chat_detail_screen.dart';
 import '../utils/pending_deep_link_stub.dart'
@@ -80,12 +81,18 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         if (!mounted) return;
         E2eDiagLog.add('TAB_VIS', {'visible': visible});
         final auth = context.read<AuthProvider>();
+        // On web this listener is the reliable background/foreground signal
+        // (Flutter's lifecycle events are thinner in the browser), so the
+        // passcode clock is driven from BOTH here and
+        // didChangeAppLifecycleState. Both paths are idempotent.
         if (!visible) {
+          unawaited(context.read<PasscodeProvider>().noteBackgrounded());
           if (auth.currentUser != null && auth.token != null) {
             context.read<ConversationsProvider>().setClientVisible(false);
           }
           return;
         }
+        unawaited(context.read<PasscodeProvider>().evaluateOnForeground());
         unawaited(_recoverForeground(markVisible: true));
       });
       // bfcache restore: the snapshot is coherent, only the socket is dead —
@@ -200,6 +207,9 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
 
     switch (state) {
       case AppLifecycleState.resumed:
+        // Ordered FIRST: the lock verdict must be taken before any reconnect
+        // or resync work paints anything behind it.
+        unawaited(context.read<PasscodeProvider>().evaluateOnForeground());
         unawaited(() async {
           await auth.ensureSessionReady();
           if (!mounted) return;
@@ -222,6 +232,11 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         unawaited(
           NativeContentStore.instance?.onAppBackground() ?? Future.value(),
         );
+        // Stamp the away-clock on the way OUT: on web this process may never
+        // run code again (a frozen page is REPLACED by a reload on thaw, and
+        // iOS can kill the PWA outright), so the persisted stamp is the only
+        // thing the next boot can reason from.
+        unawaited(context.read<PasscodeProvider>().noteBackgrounded());
         break;
     }
   }

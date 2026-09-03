@@ -1814,4 +1814,113 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get avatarOpenProfileSemantics => 'Open profile';
+
+  @override
+  String get passcodeLock => 'Passcode Lock';
+
+  @override
+  String get passcodeStateOn => 'On';
+
+  @override
+  String get passcodeStateOff => 'Off';
+
+  @override
+  String get passcodeIntro =>
+      'You can add a Passcode Lock to Umbra to make your account more private.';
+
+  @override
+  String get passcodeTurnOn => 'Turn Passcode Lock On';
+
+  @override
+  String get passcodeTurnOff => 'Turn Passcode Lock Off';
+
+  @override
+  String get passcodeChange => 'Change Passcode';
+
+  @override
+  String get passcodeAutoLock => 'Auto-Lock';
+
+  @override
+  String get passcodeAutoLockImmediately => 'Immediately';
+
+  @override
+  String get passcodeAutoLockMinute => 'After 1 minute';
+
+  @override
+  String get passcodeAutoLockFiveMinutes => 'After 5 minutes';
+
+  @override
+  String get passcodeAutoLockHour => 'After 1 hour';
+
+  @override
+  String get passcodeEnterTitle => 'Enter passcode';
+
+  @override
+  String get passcodeSetTitle => 'Set passcode';
+
+  @override
+  String get passcodeRepeatTitle => 'Re-enter passcode';
+
+  @override
+  String get passcodeCurrentTitle => 'Enter current passcode';
+
+  @override
+  String get passcodeOptions => 'Passcode Options';
+
+  @override
+  String get passcodeOptionCustom => 'Custom Alphanumeric Passcode';
+
+  @override
+  String get passcodeOptionSixDigits => '6-Digit Numeric Code';
+
+  @override
+  String get passcodeOptionFourDigits => '4-Digit Numeric Code';
+
+  @override
+  String get passcodeConfirmAction => 'Confirm';
+
+  @override
+  String get passcodeCustomHint => 'Passcode';
+
+  @override
+  String get passcodeWrong => 'Wrong passcode. Try again.';
+
+  @override
+  String get passcodeMismatch => 'The codes did not match. Start again.';
+
+  @override
+  String get passcodeTooShort => 'Use at least 4 characters.';
+
+  @override
+  String passcodeBlocked(int seconds) {
+    return 'Too many attempts. Try again in ${seconds}s.';
+  }
+
+  @override
+  String get passcodeUnavailable =>
+      'This device could not secure the passcode.';
+
+  @override
+  String get passcodeForgot => 'Forgot your passcode?';
+
+  @override
+  String get passcodeForgotExplainer =>
+      'Logging out clears the passcode. Your messages stay on this device and come back when you sign in again with your account password.';
+
+  @override
+  String get passcodeForgotAction => 'Log out and clear passcode';
+
+  @override
+  String get passcodeLockNowTooltip => 'Lock app';
+
+  @override
+  String get passcodeSetUpTooltip => 'Set up Passcode Lock';
+
+  @override
+  String get passcodeNote =>
+      'If you forget your passcode, log out and sign back in with your account password — your messages stay on this device.';
+
+  @override
+  String get passcodeScopeNote =>
+      'The passcode locks this app on this device. It does not encrypt stored data and is never sent to the server.';
 }

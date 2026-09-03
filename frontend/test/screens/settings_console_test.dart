@@ -2,6 +2,7 @@ import 'package:fireplace/l10n/app_localizations.dart';
 import 'package:fireplace/models/chat_background_preference.dart';
 import 'package:fireplace/providers/auth_provider.dart';
 import 'package:fireplace/providers/connection_provider.dart';
+import 'package:fireplace/providers/passcode_provider.dart';
 import 'package:fireplace/providers/settings_provider.dart';
 import 'package:fireplace/screens/settings_screen.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
@@ -11,6 +12,8 @@ import 'package:fireplace/widgets/settings_console.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+
+import '../support/passcode_fakes.dart';
 
 Widget _host({
   Size size = const Size(390, 844),
@@ -30,6 +33,13 @@ Widget _host({
       ChangeNotifierProvider(
         create: (_) =>
             SettingsProvider(initialThemePreference: themePreference),
+      ),
+      // The SECURITY section carries the Passcode Lock row.
+      ChangeNotifierProvider(
+        create: (_) => PasscodeProvider(
+          store: MemoryPasscodeStore(),
+          kdf: FakePasscodeKdf(),
+        ),
       ),
     ],
     child: MaterialApp(

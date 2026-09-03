@@ -3205,6 +3205,210 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Otwórz profil'**
   String get avatarOpenProfileSemantics;
+
+  /// No description provided for @passcodeLock.
+  ///
+  /// In pl, this message translates to:
+  /// **'Blokada kodem'**
+  String get passcodeLock;
+
+  /// No description provided for @passcodeStateOn.
+  ///
+  /// In pl, this message translates to:
+  /// **'Włączona'**
+  String get passcodeStateOn;
+
+  /// No description provided for @passcodeStateOff.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wyłączona'**
+  String get passcodeStateOff;
+
+  /// No description provided for @passcodeIntro.
+  ///
+  /// In pl, this message translates to:
+  /// **'Możesz dodać blokadę kodem do Umbry, aby Twoje konto było bardziej prywatne.'**
+  String get passcodeIntro;
+
+  /// No description provided for @passcodeTurnOn.
+  ///
+  /// In pl, this message translates to:
+  /// **'Włącz blokadę kodem'**
+  String get passcodeTurnOn;
+
+  /// No description provided for @passcodeTurnOff.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wyłącz blokadę kodem'**
+  String get passcodeTurnOff;
+
+  /// No description provided for @passcodeChange.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zmień kod'**
+  String get passcodeChange;
+
+  /// No description provided for @passcodeAutoLock.
+  ///
+  /// In pl, this message translates to:
+  /// **'Automatyczna blokada'**
+  String get passcodeAutoLock;
+
+  /// No description provided for @passcodeAutoLockImmediately.
+  ///
+  /// In pl, this message translates to:
+  /// **'Natychmiast'**
+  String get passcodeAutoLockImmediately;
+
+  /// No description provided for @passcodeAutoLockMinute.
+  ///
+  /// In pl, this message translates to:
+  /// **'Po 1 minucie'**
+  String get passcodeAutoLockMinute;
+
+  /// No description provided for @passcodeAutoLockFiveMinutes.
+  ///
+  /// In pl, this message translates to:
+  /// **'Po 5 minutach'**
+  String get passcodeAutoLockFiveMinutes;
+
+  /// No description provided for @passcodeAutoLockHour.
+  ///
+  /// In pl, this message translates to:
+  /// **'Po 1 godzinie'**
+  String get passcodeAutoLockHour;
+
+  /// No description provided for @passcodeEnterTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wpisz kod'**
+  String get passcodeEnterTitle;
+
+  /// No description provided for @passcodeSetTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ustaw kod'**
+  String get passcodeSetTitle;
+
+  /// No description provided for @passcodeRepeatTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Powtórz kod'**
+  String get passcodeRepeatTitle;
+
+  /// No description provided for @passcodeCurrentTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wpisz obecny kod'**
+  String get passcodeCurrentTitle;
+
+  /// No description provided for @passcodeOptions.
+  ///
+  /// In pl, this message translates to:
+  /// **'Opcje kodu'**
+  String get passcodeOptions;
+
+  /// No description provided for @passcodeOptionCustom.
+  ///
+  /// In pl, this message translates to:
+  /// **'Własny kod alfanumeryczny'**
+  String get passcodeOptionCustom;
+
+  /// No description provided for @passcodeOptionSixDigits.
+  ///
+  /// In pl, this message translates to:
+  /// **'6-cyfrowy kod'**
+  String get passcodeOptionSixDigits;
+
+  /// No description provided for @passcodeOptionFourDigits.
+  ///
+  /// In pl, this message translates to:
+  /// **'4-cyfrowy kod'**
+  String get passcodeOptionFourDigits;
+
+  /// No description provided for @passcodeConfirmAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zatwierdź'**
+  String get passcodeConfirmAction;
+
+  /// No description provided for @passcodeCustomHint.
+  ///
+  /// In pl, this message translates to:
+  /// **'Kod dostępu'**
+  String get passcodeCustomHint;
+
+  /// No description provided for @passcodeWrong.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nieprawidłowy kod. Spróbuj ponownie.'**
+  String get passcodeWrong;
+
+  /// No description provided for @passcodeMismatch.
+  ///
+  /// In pl, this message translates to:
+  /// **'Kody nie są takie same. Zacznij od nowa.'**
+  String get passcodeMismatch;
+
+  /// No description provided for @passcodeTooShort.
+  ///
+  /// In pl, this message translates to:
+  /// **'Użyj co najmniej 4 znaków.'**
+  String get passcodeTooShort;
+
+  /// No description provided for @passcodeBlocked.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zbyt wiele prób. Spróbuj ponownie za {seconds} s.'**
+  String passcodeBlocked(int seconds);
+
+  /// No description provided for @passcodeUnavailable.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się zabezpieczyć kodu na tym urządzeniu.'**
+  String get passcodeUnavailable;
+
+  /// No description provided for @passcodeForgot.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie pamiętasz kodu?'**
+  String get passcodeForgot;
+
+  /// No description provided for @passcodeForgotExplainer.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wylogowanie usuwa kod. Twoje wiadomości zostają na tym urządzeniu i wrócą po ponownym zalogowaniu hasłem konta.'**
+  String get passcodeForgotExplainer;
+
+  /// No description provided for @passcodeForgotAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wyloguj i usuń kod'**
+  String get passcodeForgotAction;
+
+  /// No description provided for @passcodeLockNowTooltip.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zablokuj aplikację'**
+  String get passcodeLockNowTooltip;
+
+  /// No description provided for @passcodeSetUpTooltip.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ustaw blokadę kodem'**
+  String get passcodeSetUpTooltip;
+
+  /// No description provided for @passcodeNote.
+  ///
+  /// In pl, this message translates to:
+  /// **'Jeśli zapomnisz kodu, wyloguj się i zaloguj ponownie hasłem konta — wiadomości zostaną na tym urządzeniu.'**
+  String get passcodeNote;
+
+  /// No description provided for @passcodeScopeNote.
+  ///
+  /// In pl, this message translates to:
+  /// **'Kod blokuje tę aplikację na tym urządzeniu. Nie szyfruje danych na dysku i nie jest wysyłany na serwer.'**
+  String get passcodeScopeNote;
 }
 
 class _AppLocalizationsDelegate

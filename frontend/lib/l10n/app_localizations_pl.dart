@@ -1839,4 +1839,113 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get avatarOpenProfileSemantics => 'Otwórz profil';
+
+  @override
+  String get passcodeLock => 'Blokada kodem';
+
+  @override
+  String get passcodeStateOn => 'Włączona';
+
+  @override
+  String get passcodeStateOff => 'Wyłączona';
+
+  @override
+  String get passcodeIntro =>
+      'Możesz dodać blokadę kodem do Umbry, aby Twoje konto było bardziej prywatne.';
+
+  @override
+  String get passcodeTurnOn => 'Włącz blokadę kodem';
+
+  @override
+  String get passcodeTurnOff => 'Wyłącz blokadę kodem';
+
+  @override
+  String get passcodeChange => 'Zmień kod';
+
+  @override
+  String get passcodeAutoLock => 'Automatyczna blokada';
+
+  @override
+  String get passcodeAutoLockImmediately => 'Natychmiast';
+
+  @override
+  String get passcodeAutoLockMinute => 'Po 1 minucie';
+
+  @override
+  String get passcodeAutoLockFiveMinutes => 'Po 5 minutach';
+
+  @override
+  String get passcodeAutoLockHour => 'Po 1 godzinie';
+
+  @override
+  String get passcodeEnterTitle => 'Wpisz kod';
+
+  @override
+  String get passcodeSetTitle => 'Ustaw kod';
+
+  @override
+  String get passcodeRepeatTitle => 'Powtórz kod';
+
+  @override
+  String get passcodeCurrentTitle => 'Wpisz obecny kod';
+
+  @override
+  String get passcodeOptions => 'Opcje kodu';
+
+  @override
+  String get passcodeOptionCustom => 'Własny kod alfanumeryczny';
+
+  @override
+  String get passcodeOptionSixDigits => '6-cyfrowy kod';
+
+  @override
+  String get passcodeOptionFourDigits => '4-cyfrowy kod';
+
+  @override
+  String get passcodeConfirmAction => 'Zatwierdź';
+
+  @override
+  String get passcodeCustomHint => 'Kod dostępu';
+
+  @override
+  String get passcodeWrong => 'Nieprawidłowy kod. Spróbuj ponownie.';
+
+  @override
+  String get passcodeMismatch => 'Kody nie są takie same. Zacznij od nowa.';
+
+  @override
+  String get passcodeTooShort => 'Użyj co najmniej 4 znaków.';
+
+  @override
+  String passcodeBlocked(int seconds) {
+    return 'Zbyt wiele prób. Spróbuj ponownie za $seconds s.';
+  }
+
+  @override
+  String get passcodeUnavailable =>
+      'Nie udało się zabezpieczyć kodu na tym urządzeniu.';
+
+  @override
+  String get passcodeForgot => 'Nie pamiętasz kodu?';
+
+  @override
+  String get passcodeForgotExplainer =>
+      'Wylogowanie usuwa kod. Twoje wiadomości zostają na tym urządzeniu i wrócą po ponownym zalogowaniu hasłem konta.';
+
+  @override
+  String get passcodeForgotAction => 'Wyloguj i usuń kod';
+
+  @override
+  String get passcodeLockNowTooltip => 'Zablokuj aplikację';
+
+  @override
+  String get passcodeSetUpTooltip => 'Ustaw blokadę kodem';
+
+  @override
+  String get passcodeNote =>
+      'Jeśli zapomnisz kodu, wyloguj się i zaloguj ponownie hasłem konta — wiadomości zostaną na tym urządzeniu.';
+
+  @override
+  String get passcodeScopeNote =>
+      'Kod blokuje tę aplikację na tym urządzeniu. Nie szyfruje danych na dysku i nie jest wysyłany na serwer.';
 }

@@ -9,6 +9,7 @@ import '../providers/auth_provider.dart';
 import '../l10n/auth_status_text.dart';
 import '../providers/connection_provider.dart';
 import '../providers/encryption_provider.dart';
+import '../providers/passcode_provider.dart';
 import '../providers/settings_provider.dart';
 import '../services/api_service.dart';
 import '../services/push_service.dart';
@@ -27,6 +28,7 @@ import 'blocked_users_screen.dart';
 import 'devices_screen.dart';
 import 'privacy_safety_screen.dart';
 import 'recovery_key_screen.dart';
+import 'passcode_lock_screen.dart';
 import '../utils/instant_opaque_route.dart';
 import 'user_card_screen.dart';
 
@@ -552,6 +554,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       );
                     },
+                  ),
+                  Consumer<PasscodeProvider>(
+                    builder: (context, passcode, _) => SettingsConsoleRow(
+                      key: const Key('settings-passcode-row'),
+                      glyph: ConsoleGlyph.password,
+                      title: l10n.passcodeLock,
+                      subtitle: passcode.isEnabled
+                          ? l10n.passcodeStateOn
+                          : l10n.passcodeStateOff,
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const PasscodeLockScreen(),
+                          ),
+                        );
+                      },
+                    ),
                   ),
                   SettingsConsoleRow(
                     glyph: ConsoleGlyph.keys,

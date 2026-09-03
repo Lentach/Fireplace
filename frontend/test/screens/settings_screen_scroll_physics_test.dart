@@ -1,6 +1,7 @@
 import 'package:fireplace/l10n/app_localizations.dart';
 import 'package:fireplace/providers/auth_provider.dart';
 import 'package:fireplace/providers/connection_provider.dart';
+import 'package:fireplace/providers/passcode_provider.dart';
 import 'package:fireplace/providers/settings_provider.dart';
 import 'package:fireplace/screens/settings_screen.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
@@ -10,6 +11,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher_platform_interface/link.dart';
 import 'package:url_launcher_platform_interface/url_launcher_platform_interface.dart';
+
+import '../support/passcode_fakes.dart';
 
 class _FakeUrlLauncher extends UrlLauncherPlatform {
   String? launchedUrl;
@@ -32,6 +35,13 @@ Widget _settingsApp({Locale locale = const Locale('en')}) {
       ChangeNotifierProvider(create: (_) => AuthProvider()),
       ChangeNotifierProvider(create: (_) => ConnectionProvider()),
       ChangeNotifierProvider(create: (_) => SettingsProvider()),
+      // The SECURITY section carries the Passcode Lock row.
+      ChangeNotifierProvider(
+        create: (_) => PasscodeProvider(
+          store: MemoryPasscodeStore(),
+          kdf: FakePasscodeKdf(),
+        ),
+      ),
     ],
     child: MaterialApp(
       theme: RpgTheme.themeDataLight,

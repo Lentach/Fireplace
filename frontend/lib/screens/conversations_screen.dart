@@ -11,6 +11,7 @@ import '../providers/conversations_provider.dart';
 import '../providers/encryption_provider.dart';
 import '../providers/friends_provider.dart';
 import '../providers/messaging_provider.dart';
+import '../providers/passcode_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/avatar_circle.dart';
 import '../widgets/chat_honeycomb_picker.dart';
@@ -20,6 +21,7 @@ import '../widgets/conversation_list_skeleton.dart';
 import '../widgets/main_tab_screen_header.dart';
 import '../utils/instant_opaque_route.dart';
 import 'chat_detail_screen.dart';
+import 'passcode_lock_screen.dart';
 import 'invitations_screen.dart';
 
 class ConversationsScreen extends StatefulWidget {
@@ -208,41 +210,74 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
           ),
         ),
       ),
-      trailing: Stack(
-        clipBehavior: Clip.none,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          IconButton(
-            key: const Key('conversations-new-chat-button'),
-            icon: Icon(
-              Icons.add_circle_outline,
-              color: colorScheme.primary,
-              size: 28,
-            ),
-            onPressed: _showNewChatPicker,
-            tooltip: l10n.chatPickerOpenTooltip,
-          ),
-          Consumer<FriendsProvider>(
-            builder: (context, friends, _) {
-              if (friends.pendingRequestsCount == 0) {
-                return const SizedBox.shrink();
-              }
-              return Positioned(
-                right: 2,
-                top: 2,
-                // Pointy-top hex like every other badge in the app (owner
-                // ruling 2026-08-03: no circles for counts).
-                child: HexCountBadge(
-                  label: '${friends.pendingRequestsCount}',
-                  size: 18,
-                  background: colorScheme.error,
-                  textStyle: RpgTheme.bodyFont(
-                    fontSize: 10,
-                    color: colorScheme.onError,
-                    fontWeight: FontWeight.bold,
+          // Zangi parity (owner ask): the padlock sits immediately left of
+          // `+`, lower emphasis than it. Enabled → lock the app right now;
+          // not configured → open the setup screen, so the Chats screen is a
+          // door to the feature and not just a switch for it.
+          Consumer<PasscodeProvider>(
+            builder: (context, passcode, _) => IconButton(
+              key: const Key('conversations-passcode-button'),
+              icon: Icon(
+                passcode.isEnabled ? Icons.lock_outline : Icons.lock_open,
+                color: colorScheme.onSurface,
+                size: 22,
+              ),
+              tooltip: passcode.isEnabled
+                  ? l10n.passcodeLockNowTooltip
+                  : l10n.passcodeSetUpTooltip,
+              onPressed: () {
+                if (passcode.isEnabled) {
+                  passcode.lockNow();
+                  return;
+                }
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const PasscodeLockScreen(),
                   ),
+                );
+              },
+            ),
+          ),
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              IconButton(
+                key: const Key('conversations-new-chat-button'),
+                icon: Icon(
+                  Icons.add_circle_outline,
+                  color: colorScheme.primary,
+                  size: 28,
                 ),
-              );
-            },
+                onPressed: _showNewChatPicker,
+                tooltip: l10n.chatPickerOpenTooltip,
+              ),
+              Consumer<FriendsProvider>(
+                builder: (context, friends, _) {
+                  if (friends.pendingRequestsCount == 0) {
+                    return const SizedBox.shrink();
+                  }
+                  return Positioned(
+                    right: 2,
+                    top: 2,
+                    // Pointy-top hex like every other badge in the app (owner
+                    // ruling 2026-08-03: no circles for counts).
+                    child: HexCountBadge(
+                      label: '${friends.pendingRequestsCount}',
+                      size: 18,
+                      background: colorScheme.error,
+                      textStyle: RpgTheme.bodyFont(
+                        fontSize: 10,
+                        color: colorScheme.onError,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
           ),
         ],
       ),

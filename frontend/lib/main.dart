@@ -21,6 +21,7 @@ import 'providers/conversations_provider.dart';
 import 'providers/encryption_provider.dart';
 import 'providers/friends_provider.dart';
 import 'providers/messaging_provider.dart';
+import 'providers/passcode_provider.dart';
 import 'providers/settings_provider.dart';
 import 'screens/auth_screen.dart';
 import 'screens/device_link_gate_screen.dart';
@@ -32,6 +33,7 @@ import 'utils/storage_persist.dart';
 import 'utils/e2e_persistent_diag.dart';
 import 'utils/web_document_background.dart';
 import 'widgets/portrait_lock_shell.dart';
+import 'widgets/passcode_gate.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -156,6 +158,12 @@ class FireplaceApp extends StatelessWidget {
             coldStartConversationId: coldStartConversationId,
           ),
         ),
+        // 8th provider (was 7): the app-level Passcode Lock. Reads its
+        // credential immediately so `PasscodeGate` can hold the first frame
+        // instead of flashing the shell on a locked cold start.
+        ChangeNotifierProvider(
+          create: (_) => PasscodeProvider()..initialize().ignore(),
+        ),
       ],
       child: Consumer<SettingsProvider>(
         builder: (context, settings, _) {
@@ -172,7 +180,9 @@ class FireplaceApp extends StatelessWidget {
               syncWebDocumentBackground(
                 Theme.of(context).scaffoldBackgroundColor,
               );
-              return PortraitLockShell(child: child ?? const SizedBox.shrink());
+              return PortraitLockShell(
+                child: PasscodeGate(child: child ?? const SizedBox.shrink()),
+              );
             },
             theme: settings.lightTheme,
             darkTheme: settings.darkTheme,
