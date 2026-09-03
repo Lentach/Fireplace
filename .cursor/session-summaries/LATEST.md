@@ -24,9 +24,32 @@ which holds the full account — **rotating an entry out of this file loses noth
 > decision), and the T11 entry rotated out on 2026-09-02 (spec (xlvi) is recorded in full at
 > `docs/design/multi-device.md` §12, amendment 2026-08-26), and the D1/D2 recovery entry rotated out
 > on 2026-09-03 (`2026-08-29-session-d1-d2-recovery.md`, spec (xlvii)–(xlix): read its THREE
-> addenda — a warning the user cannot act on is a dead end; recovery state must survive a restart). For multi-device specifically the
+> addenda — a warning the user cannot act on is a dead end; recovery state must survive a restart), and the
+> 08-30b bounded-gate entry rotated out on 2026-09-03 (`2026-08-30-session-bounded-gate-lxiv.md`, spec (lxiv):
+> the revoked-device relogin CLOBBER — a `registrationId` may not change under an unchanged identity, the OTP
+> replenishment path bypasses `upsertKeyBundle` so BOTH uploads carry the guard; the own-device confirmation is
+> per-socket; residual 8 `_reenrollAfterReset` has no in-flight latch, recorded not fixed). For multi-device specifically the
 > permanent record is `.planning/multi-device/` (`FINISH-HERE.md`, `progress.md`, `task_plan.md`),
 > not this file.
+
+**Date:** 2026-09-03 (later) — **0.2.1 IS LIVE (frontend `a9b477f`, smoke 5/5; backend untouched 0.2.0) —
+carries (lxix)+(lxx) from the morning AND (lxxi): "ZACZNIJ OD NOWA" IS GONE.** It was the ONLY path that
+manufactured an install able to encrypt under an identity no peer trusts (`_e2eInitialized = true` + `onE2EReady`
+BEFORE the upload the registration lock refuses). The keyless banner now offers the §5.1 link alone. Second half:
+every non-`loaded` identity load — absent, absent+residue, partial — is decided by the SERVER: bundle exists →
+fail closed (link/reset); UNKNOWN → deferred; explicit "no bundle" → residue discarded (`IDENTITY_RESIDUE_DISCARDED`)
+and a fresh identity minted without asking. Safe because the login resolves to the LIVE PRIMARY, whose bundle is
+absent only when never published or when a completed §6.2 reset awaits its spending upload. Proven live on a rebuilt
+bundle with two accounts (enrolled-keyless 697: link-only banner; never-enrolled 699 with seeded residue: discard +
+mint + bundle on server). ➡ **`2026-09-03-session-lxxi-start-fresh-removed.md`**.
+- Owner decisions this session: A shape = delete + auto-fresh; deploy after A; KEEP the `OWN_DEVICE_LIST_UNVERIFIED`
+  diag; the §3 thief matrix comes NEXT, before B. Order after that: B composer gate → C reset door (extends THIS
+  banner's disclosure — (lxxi) names it) → D collapse placeholders → E rename → F.
+- Two doc lies fixed on the way: `frontend/CLAUDE.md` §5 claimed the residue probe biases to "fresh install" on a
+  failing `readAll` (it fails CLOSED, B2b R1); runbook step 3E pointed at the deleted action.
+- Suite **1718/10sk**, e2e 43/2 (dead `RECOVERED_USER_ID` probe removed), CI 5/5. Owner: close + reopen the PWA.
+- ⚠️ Main checkout is on **`feat/passcode-lock`** now (dirty) — not `feat/video-messages` as the handoff said.
+- Trap: seeding web sig-store residue needs JSON-encoded localStorage values, or the sealed store's probe fails.
 
 **Date:** 2026-09-03 — **THE OWNER'S FIRST REAL LINK (PWA primary + desktop browser, prod 0.2.0) WORKED, and
 its two rough edges are fixed under (lxx): the QR is now a DEEP LINK (`/link#<code>`, phone camera opens the
@@ -123,67 +146,5 @@ four UX observations left for the owner).
 - **Release build facts:** `build-android.ps1` reads the Giphy key ONLY from `$env:GIPHY_API_KEY` (dot-source `deploy-web.config.ps1` first). SHA256 `7436…0ef1` (full hash in `docs/runbooks/android-release.md`). **versionCode floor is 10024** — master is `0.1.21` → `10021` is a refused downgrade; bump `pubspec.yaml` past 0.1.24 for every future install. Runbook user wording switched to **NEW ACCOUNTS ONLY** for this single-device APK (owner's call); once multi-device DEPLOYS, the link-device ceremony replaces that wording.
 - **Domain is NOT an APK blocker** (corrects 08-30): Android keys/session live in Keystore/SQLCipher, not origin-keyed; a later `BASE_URL` change is an app update with no logout. Web is the immovable side (old origin serves forever, only `/welcome/` redirects). Owner's pick pending.
 - Owner still owes: PIN feature → rebuild → real-phone smoke (runbook items 2/4/5/6 + tap opens the right chat) → GitHub Release; repo renames; iOS reinstall for the ember icon. Kaspersky stays off (owner's choice — exclusions are no longer a gate). Throwaway prod accounts ids 104–106 can be deleted anytime.
-
-**Date:** 2026-08-30b — **THE BOUNDED MERGE-GATE REVIEW (Option A) RAN — 2× MERGE-SAFE, 1× BLOCKING —
-AND THE ONE BLOCKING FINDING IS FIXED UNDER OWNER-RATIFIED (lxiv), both halves falsified. The index
-now runs (a)–(lxiv). Nothing merged, nothing deployed.** ➡ **`2026-08-30-session-bounded-gate-lxiv.md`**.
-Owner said "get it ready to merge and deploy" → the recommended one-question round ran (normal user,
-honest server, working storage: lose a message / lose access / get stuck?). Message lifecycle SAFE;
-stuck states SAFE with all seven (lxiii) residuals re-judged non-blocking one by one; identity
-lifecycle found **GATE2-REVOKED-DEVICE-RELOGIN-CLOBBER**, every hop re-verified first-hand:
-- **The finding:** revoke your laptop → its own notice says "sign in again" → password login resolves
-  onto the PRIMARY's device id (`resolveLoginDeviceId`) → the laptop still holds the shared account
-  IK plus its OWN SPK/registrationId/OTPs → its every-connect re-upload passes silently
-  (`identityChanged=false`: no lock, no audit, no alarm) and **clobbers the phone's bundle row**;
-  the served bundle mixes two installs' X3DH halves ⇒ **peers' first messages permanently
-  undecryptable by EVERY device while showing delivered**. Normal taps, honest server. (xxii) built
-  the door; two open-ended gate rounds missed it; the one narrow question found it.
-- **(lxiv) clause 1 (server):** `registrationId` may not change while the identity is unchanged —
-  minted together, once, so that shape is always a foreign install. `device_material_conflict`
-  refusal on `uploadKeyBundle` AND on `uploadOneTimePreKeys` (optional install proof; absent =
-  pre-(lxiv) client, accepted). ⚠️ **The first draft claimed the bundle guard alone closed it —
-  WRONG: the OTP replenishment path bypasses `upsertKeyBundle`** and poisons the pool from the other
-  side; caught in review of the amendment itself, corrected in the spec.
-- **(lxiv) clause 2 (client):** durable stamp `e2e_<uid>_material_device_v1`, one rule — every
-  authorized re-homing clears it, the next confirmed own-device id TOFU-stamps it. On contradiction
-  the install refuses ALL E2E duty (`isE2EReady` false), publishes nothing, and a
-  `DeviceMismatchBanner` routes to re-linking. The §6.2 rebind clears BEFORE its reconnect — without
-  that the RECOVERING device trips its own gate (caught at design time, pinned by a control test).
-  `deviceRevokedNotice` re-worded en+pl: the old copy INVITED the bug.
-- **Falsified five ways** (2 backend, 3 client), each reversion RED on exactly its test, positive
-  controls green, restored byte-exact. Suites: backend **1060/62**, flutter **1658/10sk**, analyze
-  clean, ratchet PASS 906→890 (+1 real vs 889, floor untouched), both count verifiers OK,
-  `CLAUDE.md` §3+§7 updated. New residual 8 under (lxiv): `_reenrollAfterReset` has no in-flight
-  latch (SIXTH slot-root-cause instance) — RECORDED, not fixed.
-- ⚠️ **The first push went 6/7 — `e2e-wire` RED, and rightly:** the harness's "an upload lands on
-  the SESSION's device" test PINNED the pre-(lxiv) contract (same-identity `registrationId+1`
-  accepted onto the row — the clobber landing, asserted as correct). Rewritten (`fbb35e5`):
-  claim-ignoring proven with the SAME registrationId; the foreign-registrationId upload asserted
-  REFUSED (`device_material_conflict`, row untouched). Full wire run against a live backend:
-  **44/6sk green** — the refusal is OBSERVED on the wire. Ops: a bare
-  `docker compose restart backend` wedged nest (the 08-22b trap); `down && up` cured it.
-- **Master-line work merged in TWO waves the same day.** Wave 1 (docs-only): iOS orb parked + PR
-  #151 draft + prod reverted to master, README retitled to Umbra, /welcome/ no-cache fix
-  (`2026-08-30-session-ios-orb-parked.md` + deploy runbook). Wave 2 (CODE — merged here as
-  `origin/master` @ `c9abf46`): **0.1.21 SHIPPED — PR #151, the composer three-door Android
-  attachment sheet + picker-span protections; iOS reverted to the file_picker fallback** (touches
-  the composer, which keeps its standing owner warning), plus its ARB strings — auto-merged cleanly
-  with this branch's (lxiv) keys, gen-l10n re-run and counts re-measured post-merge. Master's own
-  LATEST index text was superseded by this file at each merge (this copy is the surviving book).
-- **FINAL (lxiv) REVIEW RAN (owner asked): one fresh reviewer pair, change-scoped.** Lens A found a
-  REAL P1 in the fix itself — the confirmed own-device id survived reconnects into the new init
-  gate, so a §6.2 rebind (and a §5.1 link reconnect) TOFU-stamped the STALE id before `socketReady`
-  delivered the fresh one, stranding the exact device the ceremony had just recovered
-  (`initializeE2E` runs on TRANSPORT connect, `connection_provider.dart:307`, always before ready).
-  Verified hop-by-hop, reproduced RED, fixed by making the confirmation per-socket
-  (`onConnect` resets `_ownDeviceIdConfirmed` — unconfirmed is the documented-safe (xii) state),
-  falsified (only the strand test reddens), flutter now **1659/10sk**. Lens B (defensively
-  re-framed after two content-filter refusals) verdict **SHIP**: every `key_bundles`/`one_time_pre_keys`
-  writer is guarded or inherently safe; two P3s folded — the spec now records that the served
-  `registrationId` is public so clause 1 is a CORRECTNESS gate, not an authorization control (a
-  modified same-account client is outside the gate's threat model — it can already run a §6.2
-  reset), and the OTP DTO bound tightened to `@IsPositive`.
-- Session start: branch was 1 docs commit behind master → merged clean (`5efd223`), PR #144
-  MERGEABLE, CI green pre-existing. **The only open item is again the owner's merge decision.**
 
 - **Still binding, from the rolled-off 2026-08-21 T6 entry** (full text in `2026-08-21-session-t6-revocation.md`, closure in decision record §11, settlement spec §12 **(xxi)–(xxix)**): **a LOCKOUT lives in this area — login used to hardcode `deviceId = 1` (`auth.service.ts:74`), so the moment a reset revoked device 1 the correct password minted a token for a revoked device and both session gates correctly refused it.** Login resolves the LIVE PRIMARY (`DevicesService.resolveLoginDeviceId`); the regression test names the lockout. **The session gates deny only on an EXPLICIT `revokedAt` (xxii)** — a MISSING `devices` row must NEVER deny, or the whole pre-Phase-1 install base loses access; that is deliberately the inverse polarity of `DevicesService.isActive`, which gates key-material uploads and must fail closed on absence. **Both predicates stay; do not unify them.** **I6 silence is a separate rule from rejection (xxiii):** `getServedMessageIds` answers a revoked device with NOTHING — an empty list would mean "destroy all of them". **`account_authorizations` is REPLACED, never dropped (xxix)**, and the replacement is admitted only when the STORED enrollment no longer verifies under the account's CURRENT published identity — self-verifying, so no flag and no nullable state (this is the hook T10's (xlv) finally used). **The accept-side gate ((e)/(xxvii)) withholds on VERIFIED data only and its refusals are never terminal**; when the fetch itself FAILS, withholding applies to `originDeviceId >= 2` only, or one broken `getDeviceList` answer silences every conversation of a single-device account. **⚠️ THE APP-PROOF EARNED ITS KEEP:** the revoke button failed live with NOTHING in the server log — `revokeDevice` never armed its DAK from the Keystore, so `signList` threw before any emit, **and the unit suite was green because it pre-armed the engine — a test that could not fail.** Drive the production path.
