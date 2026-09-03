@@ -70,7 +70,7 @@ biometrics, no wipe passcode, no hidden chats. Header padlock in scope.
 ## Verification
 
 - `flutter analyze --no-fatal-infos lib test` → **No issues found**.
-- `flutter test` → **1434 passed / 14 skipped**; `node scripts/verify-claude-frontend-test-counts.mjs`
+- `flutter test` → **1436 passed / 14 skipped**; `node scripts/verify-claude-frontend-test-counts.mjs`
   → OK (root §3 updated). The 4 new skips are the real-PBKDF2 tests (host has no native webcrypto —
   confirmed by the skip count, and the published PBKDF2-SHA256 vector among them; the real primitive
   was instead exercised live in the browser, see below).
@@ -97,8 +97,11 @@ user who may never have set one, so that stays "no passcode" (`PASSCODE_STORE_UN
 and that throw escaped `load()` into branch (a) — so the flag is now read FIRST from prefs and
 `_readSecrets` retries the whole triple (150/400 ms, `AuthTokenStore`'s cadence and reasoning)
 before reporting nulls with `PASSCODE_SECRET_UNREADABLE`. A transient hiccup therefore cannot read
-as damage, and a persistent fault cannot read as absence. Nine new tests pin both polarities,
-including retry recovery.
+as damage, and a persistent fault cannot read as absence. Eleven new tests pin both polarities, retry recovery, and the budget
+ordering: the retry budget (`DevicePasscodeStore.secretReadBudget`, 1.05 s worst case with a 250 ms
+per-attempt timeout) MUST stay below the provider's `kPasscodeStoreReadTimeout` (raised 1.5 s →
+2.5 s), or the outer timeout fires first, the provider takes the no-readable-flag branch, and a
+flagged-but-slow store unlocks — an assertion now guards that ordering.
 
 ## Notes for next session
 

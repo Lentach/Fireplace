@@ -145,10 +145,25 @@ class DevicePasscodeStore implements PasscodeStore {
   /// restores, early-boot contention). A hiccup must not be mistaken for a
   /// damaged credential, because that costs the user a lock screen no code
   /// can open.
+  ///
+  /// **The budget is bounded on purpose and `kPasscodeStoreReadTimeout` is
+  /// derived from it.** If the retries could outlast that ceiling, the outer
+  /// timeout would fire, the provider would take its no-readable-flag branch,
+  /// and a flagged-but-slow store would silently UNLOCK — the very bypass the
+  /// damaged-credential verdict exists to close. Worst case here is
+  /// 3 × [_secretAttemptTimeout] + 300 ms of delays = 1.05 s.
   static const List<Duration> _secretRetryDelays = [
-    Duration(milliseconds: 150),
-    Duration(milliseconds: 400),
+    Duration(milliseconds: 100),
+    Duration(milliseconds: 200),
   ];
+
+  /// Per-attempt ceiling, so a HANGING read (not just a throwing one) still
+  /// consumes a bounded slice of the budget.
+  static const Duration _secretAttemptTimeout = Duration(milliseconds: 250);
+
+  /// Worst-case time [load]'s secret half can take. Kept public so the
+  /// provider's own ceiling can be asserted against it in a test.
+  static const Duration secretReadBudget = Duration(milliseconds: 1050);
 
   @override
   Future<PasscodeRecord> load() async {
@@ -196,13 +211,13 @@ class DevicePasscodeStore implements PasscodeStore {
         await Future<void>.delayed(_secretRetryDelays[attempt - 1]);
       }
       try {
-        return (
-          salt: _decode(await _readSecret(prefs, saltKey)),
-          verifier: _decode(await _readSecret(prefs, verifierKey)),
-          iterations:
-              int.tryParse(await _readSecret(prefs, iterationsKey) ?? '') ??
-                  kPasscodeKdfIterations,
-        );
+        return await (() async => (
+              salt: _decode(await _readSecret(prefs, saltKey)),
+              verifier: _decode(await _readSecret(prefs, verifierKey)),
+              iterations:
+                  int.tryParse(await _readSecret(prefs, iterationsKey) ?? '') ??
+                      kPasscodeKdfIterations,
+            ))().timeout(_secretAttemptTimeout);
       } catch (e) {
         lastError = e;
       }

@@ -41,9 +41,14 @@ const int kPasscodeMinAlphanumericLength = 4;
 ///
 /// The gate covers the app until this resolves, so a storage layer that HANGS
 /// (rather than throws) would otherwise leave a blank surface with no way in
-/// and no error — the worst failure this feature can have. A hung read is
-/// therefore treated as "no passcode", loudly.
-const Duration kPasscodeStoreReadTimeout = Duration(milliseconds: 1500);
+/// and no error — the worst failure this feature can have.
+///
+/// **It MUST stay above `DevicePasscodeStore.secretReadBudget` (1.05 s) plus
+/// the SharedPreferences read that precedes it.** If this fired first, the
+/// catch below would take the no-readable-flag branch and a flagged-but-slow
+/// store would silently unlock, re-opening the bypass `credentialDamaged`
+/// closes. `test/services/passcode_store_test.dart` asserts the ordering.
+const Duration kPasscodeStoreReadTimeout = Duration(milliseconds: 2500);
 
 /// The app-level passcode: a device-local gate in front of the whole logged-in
 /// shell, in the shape Zangi ships and the owner approved on 2026-09-03.

@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/services.dart' show PlatformException;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:fireplace/providers/passcode_provider.dart' show kPasscodeStoreReadTimeout;
 import 'package:fireplace/services/passcode_store.dart';
 import 'package:fireplace/services/secure_kv.dart';
 import 'package:fireplace/utils/passcode_autolock.dart';
@@ -295,4 +297,55 @@ void main() {
       expect(record.verifier, _bytes(const [3, 4]));
     });
   });
+
+  group('read budget', () {
+    test('the secret budget stays inside the provider ceiling', () {
+      // If the retries could outlast the provider's timeout, the timeout wins,
+      // the provider takes its no-readable-flag branch, and a flagged-but-slow
+      // store UNLOCKS. This assertion is the guard on that ordering.
+      expect(
+        DevicePasscodeStore.secretReadBudget,
+        lessThan(kPasscodeStoreReadTimeout),
+      );
+    });
+
+    test('a HANGING secret read still returns damaged, inside the budget',
+        () async {
+      SharedPreferences.setMockInitialValues({
+        DevicePasscodeStore.enabledKey: true,
+      });
+      final store = DevicePasscodeStore(
+        secure: _HangingSecureKv(),
+        useSecureStorage: true,
+      );
+
+      final started = DateTime.now();
+      final record = await store.load();
+      final elapsed = DateTime.now().difference(started);
+
+      expect(record.credentialDamaged, isTrue,
+          reason: 'a hang must not read as "no passcode"');
+      expect(record.enabled, isFalse);
+      expect(
+        elapsed,
+        lessThan(kPasscodeStoreReadTimeout),
+        reason: 'must finish before the provider gives up on it',
+      );
+    });
+  });
+}
+
+/// Reads that never complete — the shape a wedged platform channel takes.
+class _HangingSecureKv implements SecureKv {
+  @override
+  Future<String?> read(String key) => Completer<String?>().future;
+
+  @override
+  Future<void> write(String key, String value) async {}
+
+  @override
+  Future<void> delete(String key) async {}
+
+  @override
+  Future<Map<String, String>> readAll() async => const {};
 }
