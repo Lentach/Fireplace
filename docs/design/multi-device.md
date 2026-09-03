@@ -2384,6 +2384,14 @@ that is the designed outcome).
     `OWN_DEVICE_LIST_UNVERIFIED {reason}` persisted diag, because the screen's one generic line hid
     the reason (`malformed_answer` / `invalid_enrollment_signature` / …) a field report needs.
     Falsified: wait removed → `Expected: staging / Actual: failed` at Approve without a list.
+    Review riders, same day: (i) a FOURTH non-verified exit (`authorization is! Map`) also hung the
+    stage — all four exits now call one `_failWaitingStage()`; (ii) `toDeepLink` builds the URL from
+    scheme/host/port only, because `Uri.replace` kept the origin's query and a QR minted while
+    `?notify_conv=` was still in the bar would have carried it; (iii) every navigation the ceremony
+    triggers from a controller notification runs post-frame — the mid-build `setState` the first
+    test run surfaced was a real defect. (iv) A persisted `OWN_DEVICE_LIST_UNVERIFIED {reason}` diag
+    was added WITHOUT the owner's prior ask (the standing instrumentation rule) — disclosed in the
+    session summary; the owner may strike it.
   - **Not in this amendment:** an in-app camera scanner on the primary (`getUserMedia` +
     `BarcodeDetector`/jsQR on web, `mobile_scanner` on native). The OS camera + deep link covers the
     "scan and done" ask on every phone; the in-app scanner is a convenience for desktops with webcams.

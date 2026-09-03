@@ -246,6 +246,18 @@ class LinkCeremonyController extends ChangeNotifier
 
   bool _disposed = false;
 
+  /// A staging that waited for the list ((lxx) clause 3) cannot proceed
+  /// without one: every exit of the list answer that does not end in a
+  /// VERIFIED list — absent, malformed, keyless, chain-invalid — fails the
+  /// ceremony with a reason rather than leaving it in `staging` forever.
+  /// One place, so a new exit cannot forget it.
+  void _failWaitingStage() {
+    if (!_resignPending) return;
+    _resignPending = false;
+    primaryError = 'list_unavailable';
+    primaryStep = PrimaryLinkStep.failed;
+  }
+
   @override
   void onDeviceList(dynamic data) {
     if (data is! Map || data['userId'] != userId) return;
@@ -254,17 +266,15 @@ class LinkCeremonyController extends ChangeNotifier
       listState = DeviceListState.notEnrolled;
       verifiedList = null;
       _authorization = null;
-      if (_resignPending) {
-        // A staging waited for a list and the account has none: nothing to
-        // sign against, so say so rather than sit in `staging`.
-        _resignPending = false;
-        primaryError = 'list_unavailable';
-        primaryStep = PrimaryLinkStep.failed;
-      }
+      _failWaitingStage();
       notifyListeners();
       return;
     }
-    if (authorization is! Map) return;
+    if (authorization is! Map) {
+      _failWaitingStage();
+      notifyListeners();
+      return;
+    }
     _verifyOwnList(authorization.cast<String, dynamic>());
   }
 
@@ -281,6 +291,7 @@ class LinkCeremonyController extends ChangeNotifier
       listState = DeviceListState.chainInvalid;
       listFailureReason = 'no_local_identity';
       _authorization = null;
+      _failWaitingStage();
       notifyListeners();
       return;
     }
@@ -300,13 +311,7 @@ class LinkCeremonyController extends ChangeNotifier
         'userId': userId,
         'reason': result.reason,
       });
-      if (_resignPending) {
-        // A staging that waited for this list cannot proceed: surface the
-        // chain reason instead of leaving the ceremony in `staging` forever.
-        _resignPending = false;
-        primaryError = 'list_unavailable';
-        primaryStep = PrimaryLinkStep.failed;
-      }
+      _failWaitingStage();
     } else {
       listState = DeviceListState.enrolled;
       verifiedList = result.deviceList;

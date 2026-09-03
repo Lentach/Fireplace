@@ -44,8 +44,13 @@ class _LinkThisDeviceScreenState extends State<LinkThisDeviceScreen> {
     if (_popped || !mounted) return;
     if (widget.controller.newDeviceStep != NewDeviceLinkStep.done) return;
     _popped = true;
-    showTopSnackBar(context, AppLocalizations.of(context).linkNewDone);
-    Navigator.of(context).pop();
+    // Delivered from a controller notification, possibly mid-build: never
+    // navigate inside a build phase.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      showTopSnackBar(context, AppLocalizations.of(context).linkNewDone);
+      Navigator.of(context).pop();
+    });
   }
 
   @override

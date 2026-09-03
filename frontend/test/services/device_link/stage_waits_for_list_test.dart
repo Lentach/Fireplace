@@ -168,6 +168,17 @@ void main() {
     expect(count('provisionDevice'), 0);
   });
 
+  test('a malformed answer while staging fails, never hangs', () async {
+    await reachSasWithoutList();
+    await controller.approvePrimary();
+    expect(controller.primaryStep, PrimaryLinkStep.staging);
+
+    controller.onDeviceList({'userId': _userId, 'authorization': 'junk'});
+
+    expect(controller.primaryStep, PrimaryLinkStep.failed);
+    expect(controller.primaryError, 'list_unavailable');
+  });
+
   test('a not-enrolled answer while staging fails, never hangs', () async {
     await reachSasWithoutList();
     await controller.approvePrimary();

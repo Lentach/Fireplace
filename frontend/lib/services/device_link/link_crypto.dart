@@ -405,8 +405,13 @@ class LinkOobCode {
   /// the browser never sends it anywhere — fragments are not part of an HTTP
   /// request, so amendment (c) ("ephPubN never transits the server") holds
   /// byte for byte. [tryParse] accepts this form back, and the plain code.
-  String toDeepLink(Uri origin) =>
-      origin.replace(path: kLinkDeepLinkPath, fragment: encode()).toString();
+  String toDeepLink(Uri origin) => Uri(
+    scheme: origin.scheme,
+    host: origin.host,
+    port: origin.hasPort ? origin.port : null,
+    path: kLinkDeepLinkPath,
+    fragment: encode(),
+  ).toString();
 
   /// Strict parse; ANY violation returns null, never a partial result.
   /// Accepts the bare code or a [toDeepLink] URL (any origin: the fragment

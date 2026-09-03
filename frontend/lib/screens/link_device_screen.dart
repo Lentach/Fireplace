@@ -56,9 +56,14 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
     if (_popped || !mounted) return;
     if (widget.controller.primaryStep != PrimaryLinkStep.done) return;
     _popped = true;
-    // The toast lives on the root Overlay, which outlives this route.
-    showTopSnackBar(context, AppLocalizations.of(context).linkPrimaryDone);
-    Navigator.of(context).pop();
+    // Delivered from a controller notification, possibly mid-build: never
+    // navigate inside a build phase. The toast lives on the root Overlay,
+    // which outlives this route.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      showTopSnackBar(context, AppLocalizations.of(context).linkPrimaryDone);
+      Navigator.of(context).pop();
+    });
   }
 
   @override

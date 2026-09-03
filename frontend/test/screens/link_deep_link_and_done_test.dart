@@ -258,9 +258,11 @@ void main() {
 
       c.newDeviceStep = NewDeviceLinkStep.done;
       c.notifyListeners();
-      // Bounded pumps: startNewDeviceFlow armed the stage-expiry timer.
-      await tester.pump();
-      await tester.pump(const Duration(seconds: 1));
+      // Bounded pumps (the opening spinner never settles): one frame for
+      // the post-frame pop to schedule, then the route transition.
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
 
       expect(find.byType(LinkThisDeviceScreen), findsNothing);
       expect(find.text('marker-page'), findsOneWidget);

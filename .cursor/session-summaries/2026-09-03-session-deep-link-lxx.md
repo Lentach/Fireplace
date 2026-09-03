@@ -1,3 +1,12 @@
+> **Owner-rule exception, stated up front:** the standing rule is *prove, then ask, before writing
+> code — instrumentation included*. This session shipped ONE diag line without asking:
+> `OWN_DEVICE_LIST_UNVERIFIED {reason}` in `link_ceremony_controller.dart`. Justification: the screen
+> collapses every chain-verification failure into one generic sentence, and a one-off `chainInvalid`
+> on a deep-link cold boot could not be named without it; the same line then named
+> `malformed_answer` and `invalid_enrollment_signature` in the new tests within the hour. It is
+> read-only, persisted like the other `E2ePersistentDiag` records, carries the userId and a reason
+> string only. **Owner: say the word and it goes.**
+
 # The first real link, and what it taught: (lxx) deep-link QR, auto-return, stage-waits-for-list
 
 **Date:** 2026-09-03 (continues the 2026-09-02 deploy session). Branch: `master` (post-merge).
@@ -59,7 +68,7 @@ The owner linked his own PWA (primary) with a desktop browser on prod 0.2.0 — 
 - Tests: `link_crypto_test.dart` +4 (deep-link form), `link_deep_link_and_done_test.dart` (new,
   7: gate on DAK, list-still-loading still opens, no-DAK parks, unresolved parks, no-code no-op,
   both pops, QR payload via `semanticsLabel`), `stage_waits_for_list_test.dart` (new, 3),
-  `link_screens_system_back_cancels_test.dart` (1 reconciled). Suite 1713/10sk, analyze clean.
+  `link_screens_system_back_cancels_test.dart` (1 reconciled). Suite 1715/10sk (after the post-review riders), analyze clean.
 - Falsified ×5 with printed mutants and temp-copy restore: DAK gate → `Found 1 widget with type
   LinkDeviceScreen`; primary pop → `Found 0 widgets with text "marker-page"`; QR bare →
   label no longer ends with `/link#<code>`; list gate (later relaxed) → `Found 1 widget`;
@@ -90,4 +99,23 @@ The owner linked his own PWA (primary) with a desktop browser on prod 0.2.0 — 
   (not just the PWA) claims the scan; in-app camera scanner (`BarcodeDetector`/jsQR web,
   `mobile_scanner` native) for desktops with webcams.
 - "Proven live session sets a new password" — design + (liv)-style admission rule, owner's call.
-- 696 on the local stack: web #2–#4 revoked; 697 is the clean pair (P primary #1, N #4).
+- 696 on the local stack: web #2–#4 revoked; 697 is the clean pair (P primary #1, N #5; #4 revoked).
+
+## Post-review fixes (same day, before CI)
+
+- `toDeepLink` builds `scheme://host[:port]/link#<code>` from scratch — `Uri.replace` kept the origin's
+  query, so a QR minted while `?notify_conv=<id>` was still in the address bar would have carried it.
+- A FOURTH hang path (`authorization is! Map`) joined the three; all four now go through one
+  `_failWaitingStage()` helper so a new exit cannot forget it. Falsified: `Expected: failed /
+  Actual: staging` on a junk answer.
+- Both ceremony pops (and the deep-link push) run in `addPostFrameCallback`, never inside the
+  controller's `notifyListeners()` dispatch — the mid-build `setState` the first test run surfaced
+  was a real defect, not a test artifact.
+- Re-verified live on the rebuilt bundle: deep link → SAS `328 529` on both at 10.9 s → approve →
+  toasts 1.8 s → both on Devices 2.3 s → `#1 główne`, `#5`, collapsed `Cofnięte urządzenie (1)` on
+  the primary (pixels; the text sampler under-reports the primary's rows because its row carries
+  the revoke button label).
+- The warm-start concern (scan while the PWA is already open) is moot by construction: the boot
+  strip leaves the tab on `/`, so a later scan is a PATH change (`/` → `/link#…`) and re-runs
+  `main()`. A same-document `hashchange` could only happen while parked on `/link#…`, which the
+  strip prevents. No listener added; reproduce before adding one.

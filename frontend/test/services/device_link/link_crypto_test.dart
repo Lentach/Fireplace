@@ -341,6 +341,14 @@ void main() {
         expect(url, 'https://example.test/link#${code.encode()}');
       });
 
+      test('a query string on the origin never reaches the QR', () {
+        // On web `Uri.base` can still carry `?notify_conv=<id>` at QR time.
+        final url = code.toDeepLink(
+          Uri.parse('https://example.test/?notify_conv=42'),
+        );
+        expect(url, 'https://example.test/link#${code.encode()}');
+      });
+
       test('parses the URL form back to the same code', () {
         final url = code.toDeepLink(Uri.parse('https://example.test'));
         final parsed = LinkOobCode.tryParse(url);
