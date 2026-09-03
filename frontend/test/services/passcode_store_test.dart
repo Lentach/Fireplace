@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'package:flutter/services.dart' show PlatformException;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fireplace/services/passcode_store.dart';
@@ -23,6 +24,36 @@ class _FakeSecureKv implements SecureKv {
 }
 
 Uint8List _bytes(List<int> b) => Uint8List.fromList(b);
+
+
+/// Models a faulting Keystore: reads THROW rather than returning null, which
+/// is the common Android failure shape. [failFirst] makes only the first N
+/// read attempts fail, i.e. a transient hiccup.
+class _ThrowingSecureKv implements SecureKv {
+  _ThrowingSecureKv({this.failFirst});
+
+  final int? failFirst;
+  final Map<String, String> values = {};
+  int reads = 0;
+
+  @override
+  Future<String?> read(String key) async {
+    reads++;
+    if (failFirst == null || reads <= failFirst!) {
+      throw PlatformException(code: 'keystore', message: 'read failed');
+    }
+    return values[key];
+  }
+
+  @override
+  Future<void> write(String key, String value) async => values[key] = value;
+
+  @override
+  Future<void> delete(String key) async => values.remove(key);
+
+  @override
+  Future<Map<String, String>> readAll() async => Map.of(values);
+}
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -206,6 +237,62 @@ void main() {
       final record = await DevicePasscodeStore(useSecureStorage: false).load();
       expect(record.enabled, isFalse);
       expect(record.credentialDamaged, isFalse);
+    });
+  });
+
+  group('DevicePasscodeStore with a THROWING secure store', () {
+    // On Android a Keystore fault throws far more often than it returns null,
+    // and a throw used to escape load() into the provider's fail-OPEN branch
+    // — i.e. a broken Keystore silently unlocked the app. The flag is now
+    // read first and the secret read is retried, then reported as damaged.
+    test('a flagged credential with unreadable secrets reads as damaged',
+        () async {
+      final secure = _ThrowingSecureKv();
+      SharedPreferences.setMockInitialValues({
+        DevicePasscodeStore.enabledKey: true,
+        DevicePasscodeStore.modeKey: 'digits4',
+      });
+
+      final record = await DevicePasscodeStore(
+        secure: secure,
+        useSecureStorage: true,
+      ).load();
+
+      expect(record.credentialDamaged, isTrue);
+      expect(record.enabled, isFalse);
+      expect(secure.reads, greaterThan(1), reason: 'must retry a hiccup');
+    });
+
+    test('an UNflagged store that throws is plain disabled, not damaged',
+        () async {
+      final record = await DevicePasscodeStore(
+        secure: _ThrowingSecureKv(),
+        useSecureStorage: true,
+      ).load();
+
+      expect(record.enabled, isFalse);
+      expect(record.credentialDamaged, isFalse);
+    });
+
+    test('a transient failure is retried and the credential survives',
+        () async {
+      final secure = _ThrowingSecureKv(failFirst: 1);
+      await DevicePasscodeStore(secure: secure, useSecureStorage: true)
+          .saveCredential(
+        mode: PasscodeMode.digits4,
+        salt: _bytes(const [1, 2]),
+        verifier: _bytes(const [3, 4]),
+        iterations: 9,
+      );
+
+      final record = await DevicePasscodeStore(
+        secure: secure,
+        useSecureStorage: true,
+      ).load();
+
+      expect(record.enabled, isTrue, reason: 'retry recovered the read');
+      expect(record.credentialDamaged, isFalse);
+      expect(record.verifier, _bytes(const [3, 4]));
     });
   });
 }

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../utils/e2e_persistent_diag.dart';
 import '../utils/passcode_autolock.dart';
 import 'passcode_kdf.dart';
 import 'secure_kv.dart';
@@ -139,43 +140,77 @@ class DevicePasscodeStore implements PasscodeStore {
   static const String verifierKey = 'fp_passcode_verifier_v1';
   static const String iterationsKey = 'fp_passcode_iterations_v1';
 
+  /// Retry cadence for the SECRET half, mirroring `AuthTokenStore.read`:
+  /// Android Keystore reads fail transiently (after OS updates, backup
+  /// restores, early-boot contention). A hiccup must not be mistaken for a
+  /// damaged credential, because that costs the user a lock screen no code
+  /// can open.
+  static const List<Duration> _secretRetryDelays = [
+    Duration(milliseconds: 150),
+    Duration(milliseconds: 400),
+  ];
+
   @override
   Future<PasscodeRecord> load() async {
     final prefs = await SharedPreferences.getInstance();
-    final salt = _decode(await _readSecret(prefs, saltKey));
-    final verifier = _decode(await _readSecret(prefs, verifierKey));
-    final iterations =
-        int.tryParse(await _readSecret(prefs, iterationsKey) ?? '') ??
-            kPasscodeKdfIterations;
+    // The FLAG is read first and from prefs, which cannot throw here: every
+    // later decision needs to know whether a passcode exists at all, and a
+    // secret read that throws must not be able to hide that fact (it used to
+    // propagate out of load() and land in the provider's fail-OPEN branch —
+    // a throwing Keystore silently unlocking the app).
+    final flagged = prefs.getBool(enabledKey) ?? false;
     final autoLock =
         prefs.getInt(autoLockKey) ?? kPasscodeAutoLockDefaultSeconds;
-    final flagged = prefs.getBool(enabledKey) ?? false;
-    // A flag with a MISSING secret is not "no passcode" — it is a passcode
-    // whose verifier we cannot read. Resolving that to disabled would mean a
-    // damaged (or deliberately damaged) Keystore silently UNLOCKS the app,
-    // the error-as-absence inversion `AuthTokenStore` exists to avoid. So it
-    // is reported separately and the gate fails CLOSED on it, with the
-    // recovery door as the only way through.
-    //
-    // The opposite polarity applies one level up: if the FLAG itself cannot be
-    // read (the whole load threw or hung), the provider treats that as no
-    // passcode — inventing a lock for a user who never set one would be a
-    // storage hiccup locking someone out of their own app.
-    final enabled = flagged && salt != null && verifier != null;
-    final damaged = flagged && (salt == null || verifier == null);
+
+    final secrets = await _readSecrets(prefs);
+
+    // Unreadable and MISSING are the same verdict here — both mean no code
+    // can be checked — but only because the read was retried first.
+    final enabled =
+        flagged && secrets.salt != null && secrets.verifier != null;
+    final damaged = flagged && !enabled;
 
     return PasscodeRecord(
       enabled: enabled,
       credentialDamaged: damaged,
       mode: PasscodeMode.fromStorage(prefs.getString(modeKey)),
-      salt: enabled ? salt : null,
-      verifier: enabled ? verifier : null,
-      iterations: iterations,
+      salt: enabled ? secrets.salt : null,
+      verifier: enabled ? secrets.verifier : null,
+      iterations: secrets.iterations,
       autoLockSeconds: autoLock,
       lastActiveAtMs: prefs.getInt(lastActiveKey),
       failedAttempts: prefs.getInt(failedAttemptsKey) ?? 0,
       lockoutUntilMs: prefs.getInt(lockoutUntilKey),
     );
+  }
+
+  /// Reads salt/verifier/iterations, retrying the whole triple on any error.
+  /// Returns nulls when storage still refuses — never throws, so the caller's
+  /// flag-based verdict always gets taken.
+  Future<({Uint8List? salt, Uint8List? verifier, int iterations})> _readSecrets(
+    SharedPreferences prefs,
+  ) async {
+    Object? lastError;
+    for (var attempt = 0; attempt <= _secretRetryDelays.length; attempt++) {
+      if (attempt > 0) {
+        await Future<void>.delayed(_secretRetryDelays[attempt - 1]);
+      }
+      try {
+        return (
+          salt: _decode(await _readSecret(prefs, saltKey)),
+          verifier: _decode(await _readSecret(prefs, verifierKey)),
+          iterations:
+              int.tryParse(await _readSecret(prefs, iterationsKey) ?? '') ??
+                  kPasscodeKdfIterations,
+        );
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    E2ePersistentDiag.record('PASSCODE_SECRET_UNREADABLE', {
+      'errorType': lastError.runtimeType.toString(),
+    });
+    return (salt: null, verifier: null, iterations: kPasscodeKdfIterations);
   }
 
   @override

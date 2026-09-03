@@ -70,7 +70,7 @@ biometrics, no wipe passcode, no hidden chats. Header padlock in scope.
 ## Verification
 
 - `flutter analyze --no-fatal-infos lib test` → **No issues found**.
-- `flutter test` → **1431 passed / 14 skipped**; `node scripts/verify-claude-frontend-test-counts.mjs`
+- `flutter test` → **1434 passed / 14 skipped**; `node scripts/verify-claude-frontend-test-counts.mjs`
   → OK (root §3 updated). The 4 new skips are the real-PBKDF2 tests (host has no native webcrypto —
   confirmed by the skip count, and the published PBKDF2-SHA256 vector among them; the real primitive
   was instead exercised live in the browser, see below).
@@ -93,8 +93,12 @@ or tampered Keystore entry would silently UNLOCK the app. Now `PasscodeRecord.cr
 carries that case and the gate fails **CLOSED** (`PASSCODE_CREDENTIAL_DAMAGED`; every entry answers
 `unavailable`, the recovery door is the way through). The opposite polarity is kept — and now
 documented — for an unreadable/hanging store: with no readable FLAG we cannot invent a lock for a
-user who may never have set one, so that stays "no passcode" (`PASSCODE_STORE_UNREADABLE`). Six new
-tests pin both polarities.
+user who may never have set one, so that stays "no passcode" (`PASSCODE_STORE_UNREADABLE`). Follow-up in the same review round: on Android a Keystore fault THROWS rather than returning null,
+and that throw escaped `load()` into branch (a) — so the flag is now read FIRST from prefs and
+`_readSecrets` retries the whole triple (150/400 ms, `AuthTokenStore`'s cadence and reasoning)
+before reporting nulls with `PASSCODE_SECRET_UNREADABLE`. A transient hiccup therefore cannot read
+as damage, and a persistent fault cannot read as absence. Nine new tests pin both polarities,
+including retry recovery.
 
 ## Notes for next session
 
