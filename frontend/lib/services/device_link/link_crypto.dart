@@ -29,7 +29,12 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
 import 'package:pointycastle/export.dart'
-    show AESEngine, CBCBlockCipher, KeyParameter, ParametersWithIV, PKCS7Padding;
+    show
+        AESEngine,
+        CBCBlockCipher,
+        KeyParameter,
+        ParametersWithIV,
+        PKCS7Padding;
 
 /// Serialized Curve25519 public keys: 33 bytes with a leading 0x05.
 const int kLinkEphemeralPublicKeyLength = 33;
@@ -74,10 +79,7 @@ Uint8List hkdfSha256({
   var block = <int>[];
   var counter = 1;
   while (okm.length < length) {
-    block = Hmac(
-      sha256,
-      prk,
-    ).convert(<int>[...block, ...info, counter]).bytes;
+    block = Hmac(sha256, prk).convert(<int>[...block, ...info, counter]).bytes;
     okm.addAll(block);
     counter++;
   }
@@ -287,7 +289,11 @@ Uint8List sealLinkBlob({
     iv: iv,
     input: padded,
   );
-  final macInput = Uint8List.fromList([_kBlobVersionByte, ...iv, ...ciphertext]);
+  final macInput = Uint8List.fromList([
+    _kBlobVersionByte,
+    ...iv,
+    ...ciphertext,
+  ]);
   final mac = Hmac(sha256, keys.macKey).convert(macInput).bytes;
   return Uint8List.fromList([...macInput, ...mac]);
 }
@@ -364,6 +370,11 @@ final RegExp _uuidPattern = RegExp(
 );
 final RegExp _platformPattern = RegExp(r'^[A-Za-z0-9_-]{1,32}$');
 
+/// Path of the QR deep link. Served by the SPA fallback (nginx `try_files …
+/// /index.html`); it collides with no proxied API prefix and needs no server
+/// route. The payload rides the fragment, never the path or query.
+const String kLinkDeepLinkPath = '/link';
+
 /// The out-of-band code (spec item (i)): the exact ASCII string
 /// `fp-link.v1.<provisioningId>.<base64url(ephPubN), no padding>.<platform>`.
 /// This is the ONLY channel `ephPubN` ever travels (amendment (c)) — QR and
@@ -389,9 +400,25 @@ class LinkOobCode {
     return 'fp-link.v1.$provisioningId.$b64url.$platform';
   }
 
+  /// The QR form: the code carried in the FRAGMENT of the app's own URL, so
+  /// a phone camera opens the installed app instead of a search page, and
+  /// the browser never sends it anywhere — fragments are not part of an HTTP
+  /// request, so amendment (c) ("ephPubN never transits the server") holds
+  /// byte for byte. [tryParse] accepts this form back, and the plain code.
+  String toDeepLink(Uri origin) =>
+      origin.replace(path: kLinkDeepLinkPath, fragment: encode()).toString();
+
   /// Strict parse; ANY violation returns null, never a partial result.
+  /// Accepts the bare code or a [toDeepLink] URL (any origin: the fragment
+  /// is the payload, the host is only what the camera needed to open us).
   static LinkOobCode? tryParse(String raw) {
-    final parts = raw.split('.');
+    var text = raw.trim();
+    if (!text.startsWith('fp-link.')) {
+      final uri = Uri.tryParse(text);
+      if (uri == null || uri.fragment.isEmpty) return null;
+      text = uri.fragment;
+    }
+    final parts = text.split('.');
     if (parts.length != 5) return null;
     if (parts[0] != 'fp-link' || parts[1] != 'v1') return null;
     final provisioningId = parts[2];
@@ -401,8 +428,7 @@ class LinkOobCode {
     if (keySegment.isEmpty || keySegment.contains('=')) return null;
     final Uint8List ephPubN;
     try {
-      final padded =
-          keySegment + '=' * ((4 - keySegment.length % 4) % 4);
+      final padded = keySegment + '=' * ((4 - keySegment.length % 4) % 4);
       ephPubN = base64Url.decode(padded);
     } catch (_) {
       return null;

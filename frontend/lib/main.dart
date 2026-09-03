@@ -9,6 +9,9 @@ import 'fcm_background_stub.dart'
     as fcm_background;
 import 'utils/notify_conv_param_stub.dart'
     if (dart.library.html) 'utils/notify_conv_param_web.dart';
+import 'utils/link_fragment_stub.dart'
+    if (dart.library.html) 'utils/link_fragment_web.dart';
+import 'services/device_link/pending_link_code.dart';
 import 'utils/pending_deep_link_stub.dart'
     if (dart.library.html) 'utils/pending_deep_link_web.dart';
 import 'l10n/app_localizations.dart';
@@ -73,6 +76,12 @@ Future<void> main() async {
   final pendingDeepLinkConvId = await consumePendingNotificationDeepLink();
   final coldStartConvId = consumeNotifyConvParam() ?? pendingDeepLinkConvId;
   stripNotifyConvParam();
+  // A QR scanned by a phone camera lands here as `/link#fp-link.v1.…`. Park
+  // the code for the devices screen and scrub the URL — the code is one-shot
+  // and must not survive a refresh or sit in history.
+  final linkFragment = consumeLinkFragment();
+  if (linkFragment != null) PendingLinkCode.arm(linkFragment);
+  stripLinkFragment();
   // Load the durable E2E failure log (survives restarts) before the UI mounts.
   await E2ePersistentDiag.init();
   // Measure WebCrypto-backed secure-store durability without delaying first paint.

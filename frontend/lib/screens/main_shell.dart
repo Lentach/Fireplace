@@ -6,6 +6,8 @@ import 'package:provider/provider.dart';
 import 'contacts_screen.dart';
 import 'conversations_screen.dart';
 import 'settings_screen.dart';
+import 'devices_screen.dart';
+import '../services/device_link/pending_link_code.dart';
 import '../l10n/app_localizations.dart';
 import '../constants/app_constants.dart';
 import '../providers/auth_provider.dart';
@@ -55,6 +57,16 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       final auth = context.read<AuthProvider>();
       final conn = context.read<ConnectionProvider>();
       auth.setOnAccessTokenChanged(conn.applyRefreshedAccessToken);
+      // A QR scanned by the phone camera booted us at `/link#<code>`: route
+      // straight to the devices screen, which consumes the code once it
+      // knows this install holds the DAK. Pushed on the ROOT navigator, above
+      // the shell, like the settings path does.
+      if (PendingLinkCode.isArmed && mounted) {
+        Navigator.of(
+          context,
+          rootNavigator: true,
+        ).push(MaterialPageRoute(builder: (_) => const DevicesScreen()));
+      }
     });
     if (kIsWeb) {
       WidgetsBinding.instance.addPostFrameCallback((_) {

@@ -2347,6 +2347,47 @@ that is the designed outcome).
     shipped gated code: re-linked web `#4`, revoked it → the section opened itself, `#4` struck
     under `#2`/`#3`, "Cofnięte urządzenia (3)".
 
+- **Amendment 2026-09-02 (D22, owner-directed from the FIRST REAL LINK on prod 0.2.0 — the owner's
+  PWA primary + a desktop browser; the ceremony worked, and two things around it did not):**
+  - **(lxx) clause 1 — the QR is a deep link.** The QR encoded the bare `fp-link.v1.…` string, and the
+    primary has no in-app scanner, so a phone camera offered a web search. Rule: the QR carries
+    `<app origin>/link#<code>` — the code in the URL FRAGMENT, which a browser never includes in any
+    request, so amendment (c) ("ephPubN never transits the server") holds byte for byte and nginx
+    logs see `/link` alone. `/link` is served by the SPA fallback; it collides with no API prefix and
+    needs no server route. The web boot reads the fragment ONCE, parks the code
+    (`PendingLinkCode`), scrubs the URL from the address bar and history, and the shell routes to the
+    devices screen, which starts the primary-side ceremony PREFILLED — but only once `holdsDak` is
+    resolved true ((lxviii) clause 2): a linked device that scanned a QR is shown its note, and the
+    parked code is left for a primary. `LinkOobCode.tryParse` accepts the URL form back and ignores
+    the host — the fragment is the payload. The text code and paste path are unchanged (item (i)).
+    Falsified: gate dropped → `Found 1 widget with type LinkDeviceScreen` on a no-DAK install; QR
+    back to the bare code → the semantics label no longer ends with `/link#<code>`.
+  - **(lxx) clause 2 — a finished ceremony returns to the devices screen.** Both sides ended on a
+    checkmark the user had to back out of. Rule: `done` pops the ceremony route and the confirmation
+    is a toast on the screen underneath; the devices screen re-reads the list on the rebound socket
+    ((lxviii) clause 1), so the new row is there on arrival. The pop's cancel/abort hooks are inert
+    for `done`, which is where this touches (lxvi) clause 3: its "system back after done is a plain
+    exit" pin becomes "done exits by itself, as a plain exit" — the exit is now automatic, and the
+    contract it defends (flow reset, no `cancelProvisioning` for a consumed stage) is asserted on
+    the auto-pop instead. Falsified: pop removed → `Found 0 widgets with text "marker-page"`.
+  - **(lxx) clause 3 — staging waits for the verified list; it does not fail on its absence.** Found
+    by the first live deep-link run, not by review: on a cold boot the Keystore read that resolves
+    `holdsDak` beat the list fetch, the parked code started the ceremony at once, both sides showed a
+    matching SAS, and Approve failed with `list_unavailable` — the stage was valid, only the list had
+    not arrived. The manual path has the same latent race (`startPrimaryFlow` never fetched a list).
+    First fix tried and REJECTED: gating the deep link on `listState == enrolled` — that converts the
+    race into a silent dead end whenever the list does not verify, worse than the search page.
+    Rule: `_stageProvisionDevice` with no list in hand fetches it and re-stages on the same
+    `_resignPending` mechanism and retry cap the (falsification 20) stale-version path uses; a list
+    that arrives `chainInvalid` or `not enrolled` while a stage waits FAILS the ceremony with
+    `list_unavailable` — never leaves it in `staging`. The screen gate is the DAK alone. Also added:
+    `OWN_DEVICE_LIST_UNVERIFIED {reason}` persisted diag, because the screen's one generic line hid
+    the reason (`malformed_answer` / `invalid_enrollment_signature` / …) a field report needs.
+    Falsified: wait removed → `Expected: staging / Actual: failed` at Approve without a list.
+  - **Not in this amendment:** an in-app camera scanner on the primary (`getUserMedia` +
+    `BarcodeDetector`/jsQR on web, `mobile_scanner` on native). The OS camera + deep link covers the
+    "scan and done" ask on every phone; the in-app scanner is a convenience for desktops with webcams.
+
 
 
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase

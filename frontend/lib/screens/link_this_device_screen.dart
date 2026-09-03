@@ -4,6 +4,9 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../l10n/app_localizations.dart';
 import '../services/device_link/link_ceremony_controller.dart';
+import '../services/device_link/link_crypto.dart';
+import '../utils/link_fragment_stub.dart'
+    if (dart.library.html) '../utils/link_fragment_web.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/glass/glass_top_bar.dart';
 import '../widgets/top_snackbar.dart';
@@ -25,10 +28,30 @@ class LinkThisDeviceScreen extends StatefulWidget {
 }
 
 class _LinkThisDeviceScreenState extends State<LinkThisDeviceScreen> {
+  bool _popped = false;
+
   @override
   void initState() {
     super.initState();
+    widget.controller.addListener(_onStep);
     widget.controller.startNewDeviceFlow(platform: linkPlatformLabel());
+  }
+
+  /// Same exit as the primary side: `done` returns to the devices screen —
+  /// which re-reads the list on the rebound socket ((lxviii) clause 1) — and
+  /// the confirmation is a toast there. The pop is not an abort for `done`.
+  void _onStep() {
+    if (_popped || !mounted) return;
+    if (widget.controller.newDeviceStep != NewDeviceLinkStep.done) return;
+    _popped = true;
+    showTopSnackBar(context, AppLocalizations.of(context).linkNewDone);
+    Navigator.of(context).pop();
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onStep);
+    super.dispose();
   }
 
   @override
@@ -130,11 +153,26 @@ class _LinkThisDeviceScreenState extends State<LinkThisDeviceScreen> {
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: QrImageView(
-                data: code,
-                version: QrVersions.auto,
-                size: 200,
-                backgroundColor: Colors.white,
+              // The QR is the deep-link form: a phone camera opens the app
+              // at `/link#<code>`; the fragment never leaves the browser.
+              // The semantics label carries the same payload so a screen
+              // reader (and the widget test) sees exactly what the camera
+              // will.
+              child: Builder(
+                builder: (_) {
+                  final qrPayload =
+                      LinkOobCode.tryParse(
+                        code,
+                      )?.toDeepLink(linkDeepLinkOrigin()) ??
+                      code;
+                  return QrImageView(
+                    data: qrPayload,
+                    semanticsLabel: 'link qr $qrPayload',
+                    version: QrVersions.auto,
+                    size: 200,
+                    backgroundColor: Colors.white,
+                  );
+                },
               ),
             ),
           ),

@@ -26,14 +26,10 @@ void main() {
     ephPubP: ephPubP,
   );
 
-  Uint8List secretOfN() => linkSharedSecret(
-    theirEphPub: ephPubP,
-    ownEphPriv: ephN.privateKey,
-  );
-  Uint8List secretOfP() => linkSharedSecret(
-    theirEphPub: ephPubN,
-    ownEphPriv: ephP.privateKey,
-  );
+  Uint8List secretOfN() =>
+      linkSharedSecret(theirEphPub: ephPubP, ownEphPriv: ephN.privateKey);
+  Uint8List secretOfP() =>
+      linkSharedSecret(theirEphPub: ephPubN, ownEphPriv: ephP.privateKey);
 
   LinkBlobPayload payload() => const LinkBlobPayload(
     userId: 7,
@@ -123,27 +119,30 @@ void main() {
       expect(swappedN, isNot(honestSas));
     });
 
-    test('adversary with the public transcript cannot compute either target', () {
-      // The adversary holds provisioningId, ephPubN, ephPubP (all public)
-      // plus its OWN private keys. Its best derivations are DH agreements of
-      // its own private half against each honest public — neither equals the
-      // honest SAS (that needs ephPrivN·ephPubP or ephPrivP·ephPubN).
-      final adversary = generateLinkEphemeral();
-      final honest = deriveLinkSas(
-        sharedSecret: secretOfN(),
-        transcript: transcript,
-      );
-      for (final target in [ephPubN, ephPubP]) {
-        final guess = deriveLinkSas(
-          sharedSecret: linkSharedSecret(
-            theirEphPub: target,
-            ownEphPriv: adversary.privateKey,
-          ),
+    test(
+      'adversary with the public transcript cannot compute either target',
+      () {
+        // The adversary holds provisioningId, ephPubN, ephPubP (all public)
+        // plus its OWN private keys. Its best derivations are DH agreements of
+        // its own private half against each honest public — neither equals the
+        // honest SAS (that needs ephPrivN·ephPubP or ephPrivP·ephPubN).
+        final adversary = generateLinkEphemeral();
+        final honest = deriveLinkSas(
+          sharedSecret: secretOfN(),
           transcript: transcript,
         );
-        expect(guess, isNot(honest));
-      }
-    });
+        for (final target in [ephPubN, ephPubP]) {
+          final guess = deriveLinkSas(
+            sharedSecret: linkSharedSecret(
+              theirEphPub: target,
+              ownEphPriv: adversary.privateKey,
+            ),
+            transcript: transcript,
+          );
+          expect(guess, isNot(honest));
+        }
+      },
+    );
 
     test('leading zeros survive the 6-digit rendering', () {
       // Grind a transcript whose SAS value starts with a zero digit, then
@@ -152,7 +151,8 @@ void main() {
       final secret = secretOfN();
       for (var i = 0; i < 10000; i++) {
         final t = linkTranscript(
-          provisioningId: 'a0000000-0000-4000-8000-${i.toString().padLeft(12, '0')}',
+          provisioningId:
+              'a0000000-0000-4000-8000-${i.toString().padLeft(12, '0')}',
           ephPubN: ephPubN,
           ephPubP: ephPubP,
         );
@@ -161,19 +161,17 @@ void main() {
         expect(sas[3], ' ');
         if (sas.startsWith('0')) return;
       }
-      fail('no zero-leading SAS found in 10000 transcripts — format law untested');
+      fail(
+        'no zero-leading SAS found in 10000 transcripts — format law untested',
+      );
     });
   });
 
   group('blob seal/open (falsifications 8/18 client halves)', () {
-    LinkBlobKeys keysOfN() => deriveLinkBlobKeys(
-      sharedSecret: secretOfN(),
-      transcript: transcript,
-    );
-    LinkBlobKeys keysOfP() => deriveLinkBlobKeys(
-      sharedSecret: secretOfP(),
-      transcript: transcript,
-    );
+    LinkBlobKeys keysOfN() =>
+        deriveLinkBlobKeys(sharedSecret: secretOfN(), transcript: transcript);
+    LinkBlobKeys keysOfP() =>
+        deriveLinkBlobKeys(sharedSecret: secretOfP(), transcript: transcript);
 
     test('roundtrip: P seals, N opens, payload identical', () {
       final blob = sealLinkBlob(keys: keysOfP(), payload: payload());
@@ -250,10 +248,7 @@ void main() {
 
     test('a MAC-valid blob with non-payload JSON is malformed', () {
       final keys = keysOfP();
-      final forged = sealLinkBlob(
-        keys: keys,
-        payload: payload(),
-      );
+      final forged = sealLinkBlob(keys: keys, payload: payload());
       // Re-seal arbitrary JSON under the honest keys via the public API is
       // not possible (sealLinkBlob takes a payload), so parse strictness is
       // pinned at the fromJson boundary instead.
@@ -328,6 +323,46 @@ void main() {
       final raw =
           'fp-link.v1.$provisioningId.${base64UrlEncode(forged).replaceAll('=', '')}.web';
       expect(LinkOobCode.tryParse(raw), isNull);
+    });
+
+    // The QR carries the code in the FRAGMENT of the app's URL so a phone
+    // camera opens the app instead of a search page. The fragment is never
+    // part of an HTTP request, so amendment (c) holds; the parser accepts
+    // the URL form back, and nothing but the fragment matters.
+    group('deep-link form', () {
+      final code = LinkOobCode(
+        provisioningId: provisioningId,
+        ephPubN: ephPubN,
+        platform: 'web',
+      );
+
+      test('builds /link#<code> on the given origin', () {
+        final url = code.toDeepLink(Uri.parse('https://example.test/app/x'));
+        expect(url, 'https://example.test/link#${code.encode()}');
+      });
+
+      test('parses the URL form back to the same code', () {
+        final url = code.toDeepLink(Uri.parse('https://example.test'));
+        final parsed = LinkOobCode.tryParse(url);
+        expect(parsed, isNotNull);
+        expect(parsed!.encode(), code.encode());
+      });
+
+      test('the host is not trusted and not required to match', () {
+        final foreign = 'https://evil.example/anything#${code.encode()}';
+        expect(LinkOobCode.tryParse(foreign)?.encode(), code.encode());
+      });
+
+      test('a URL without a link fragment is rejected', () {
+        expect(LinkOobCode.tryParse('https://example.test/link'), isNull);
+        expect(LinkOobCode.tryParse('https://example.test/link#'), isNull);
+        expect(
+          LinkOobCode.tryParse(
+            'https://example.test/link?code=${code.encode()}',
+          ),
+          isNull,
+        );
+      });
     });
   });
 }

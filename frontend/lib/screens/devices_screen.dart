@@ -7,6 +7,7 @@ import '../providers/auth_provider.dart';
 import '../providers/connection_provider.dart';
 import '../providers/encryption_provider.dart';
 import '../services/device_link/link_ceremony_controller.dart';
+import '../services/device_link/pending_link_code.dart';
 import '../services/device_list/device_list_canonical.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/glass/glass_top_bar.dart';
@@ -67,13 +68,45 @@ class _DevicesScreenState extends State<DevicesScreen> {
     _controller = controller;
     _connection = connection;
     connection.registerProvisioningSink(controller);
+    controller.addListener(_maybeOpenPendingLink);
     controller.refreshDeviceList();
+  }
+
+  /// A code that arrived by QR deep link opens the primary-side ceremony
+  /// with the code already entered — but only once this install is KNOWN to
+  /// hold the DAK ((lxviii) clause 2): a linked device that scanned a QR
+  /// must not be walked into a flow that fails with `linkNoDak`. The
+  /// verified list is NOT a precondition here: on a cold boot the DAK read
+  /// wins the race against the list fetch, and gating on the list would
+  /// park the code forever behind a list that never verifies. The ceremony
+  /// itself waits for the list at staging (and fails with a reason if it
+  /// never comes), so the user always sees a screen, never a silent no-op.
+  /// Consumed exactly once; a stale slot never replays.
+  bool _openedPendingLink = false;
+  void _maybeOpenPendingLink() {
+    final controller = _controller;
+    if (controller == null || _openedPendingLink || !mounted) return;
+    if (controller.holdsDak != true || !PendingLinkCode.isArmed) return;
+    final code = PendingLinkCode.take();
+    if (code == null) return;
+    _openedPendingLink = true;
+    // Delivered from a controller notification, possibly mid-build.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) =>
+              LinkDeviceScreen(controller: controller, initialCode: code),
+        ),
+      );
+    });
   }
 
   @override
   void dispose() {
     final controller = _controller;
     if (controller != null) {
+      controller.removeListener(_maybeOpenPendingLink);
       _connection?.unregisterProvisioningSink(controller);
       controller.dispose();
     }

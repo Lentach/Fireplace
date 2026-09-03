@@ -27,6 +27,7 @@ import 'package:flutter/foundation.dart';
 import '../device_list/device_authority_engine.dart';
 import '../device_list/device_list_canonical.dart';
 import '../encryption_service.dart';
+import '../../utils/e2e_persistent_diag.dart';
 import 'dak_store.dart';
 import 'link_crypto.dart';
 
@@ -253,6 +254,13 @@ class LinkCeremonyController extends ChangeNotifier
       listState = DeviceListState.notEnrolled;
       verifiedList = null;
       _authorization = null;
+      if (_resignPending) {
+        // A staging waited for a list and the account has none: nothing to
+        // sign against, so say so rather than sit in `staging`.
+        _resignPending = false;
+        primaryError = 'list_unavailable';
+        primaryStep = PrimaryLinkStep.failed;
+      }
       notifyListeners();
       return;
     }
@@ -285,6 +293,20 @@ class LinkCeremonyController extends ChangeNotifier
       listState = DeviceListState.chainInvalid;
       listFailureReason = result.reason;
       _authorization = null;
+      // The screen shows one generic line for every reason; the reason
+      // itself is what a field report needs (first seen on a cold-boot
+      // deep link, 2026-09-03).
+      E2ePersistentDiag.record('OWN_DEVICE_LIST_UNVERIFIED', {
+        'userId': userId,
+        'reason': result.reason,
+      });
+      if (_resignPending) {
+        // A staging that waited for this list cannot proceed: surface the
+        // chain reason instead of leaving the ceremony in `staging` forever.
+        _resignPending = false;
+        primaryError = 'list_unavailable';
+        primaryStep = PrimaryLinkStep.failed;
+      }
     } else {
       listState = DeviceListState.enrolled;
       verifiedList = result.deviceList;
@@ -474,6 +496,18 @@ class LinkCeremonyController extends ChangeNotifier
     final list = verifiedList;
     if (code == null || eph == null || deviceId == null) return;
     if (authorization == null || list == null) {
+      // The list is not in hand — on a cold boot the Keystore read can win
+      // the race against the list fetch, and a deep-linked code starts the
+      // flow the moment the screen mounts (observed live 2026-09-03 as
+      // `list_unavailable` at Approve). The stage is still valid: fetch the
+      // list and re-stage when it verifies, on the same retry budget the
+      // stale-version path uses. Only a list that never verifies fails.
+      if (_resignRetries < _kResignRetryCap) {
+        _resignRetries++;
+        _resignPending = true;
+        refreshDeviceList();
+        return;
+      }
       primaryError = 'list_unavailable';
       primaryStep = PrimaryLinkStep.failed;
       notifyListeners();

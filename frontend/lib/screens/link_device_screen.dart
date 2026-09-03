@@ -4,6 +4,7 @@ import '../l10n/app_localizations.dart';
 import '../services/device_link/link_ceremony_controller.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/glass/glass_top_bar.dart';
+import '../widgets/top_snackbar.dart';
 
 /// The PRIMARY side of the §5.1 link ceremony (Phase 2 T3).
 ///
@@ -12,9 +13,18 @@ import '../widgets/glass/glass_top_bar.dart';
 /// SAS is displayed large; the IK-bearing blob is built ONLY after Approve
 /// (secrets-last, I3).
 class LinkDeviceScreen extends StatefulWidget {
-  const LinkDeviceScreen({super.key, required this.controller});
+  const LinkDeviceScreen({
+    super.key,
+    required this.controller,
+    this.initialCode,
+  });
 
   final LinkCeremonyController controller;
+
+  /// A code that arrived by QR deep link: the ceremony starts at once, the
+  /// human skips straight to the SAS comparison. The field is still shown
+  /// (prefilled) if the start fails, so a bad scan can be corrected by hand.
+  final String? initialCode;
 
   @override
   State<LinkDeviceScreen> createState() => _LinkDeviceScreenState();
@@ -22,9 +32,38 @@ class LinkDeviceScreen extends StatefulWidget {
 
 class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
   final TextEditingController _code = TextEditingController();
+  bool _popped = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onStep);
+    final initial = widget.initialCode;
+    if (initial != null) {
+      _code.text = initial;
+      // The controller notifies synchronously; starting inside the first
+      // build would mark this route's AnimatedBuilder dirty mid-build.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.controller.startPrimaryFlow(initial);
+      });
+    }
+  }
+
+  /// The ceremony's end is the DEVICES screen, not a checkmark waiting for a
+  /// back tap: pop once on `done`, and let the devices screen confirm. The
+  /// pop's `cancelPrimary` is idempotent for a finished ceremony.
+  void _onStep() {
+    if (_popped || !mounted) return;
+    if (widget.controller.primaryStep != PrimaryLinkStep.done) return;
+    _popped = true;
+    // The toast lives on the root Overlay, which outlives this route.
+    showTopSnackBar(context, AppLocalizations.of(context).linkPrimaryDone);
+    Navigator.of(context).pop();
+  }
 
   @override
   void dispose() {
+    widget.controller.removeListener(_onStep);
     _code.dispose();
     super.dispose();
   }

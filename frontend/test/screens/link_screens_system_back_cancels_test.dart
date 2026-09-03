@@ -83,9 +83,9 @@ void main() {
           builder: (context) => Scaffold(
             key: _homeKey,
             body: TextButton(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => screen),
-              ),
+              onPressed: () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute<void>(builder: (_) => screen)),
               child: const Text('open'),
             ),
           ),
@@ -122,10 +122,7 @@ void main() {
       expect(controller.newDeviceStep, NewDeviceLinkStep.aborted);
       final cancel = emitted.where((e) => e.$1 == 'cancelProvisioning');
       expect(cancel, hasLength(1));
-      expect(
-        (cancel.single.$2 as Map)['provisioningId'],
-        'stage-1',
-      );
+      expect((cancel.single.$2 as Map)['provisioningId'], 'stage-1');
     },
   );
 
@@ -148,18 +145,23 @@ void main() {
     expect(controller.primarySas, isNull);
   });
 
-  testWidgets('primary screen: system back after done is a plain exit', (
+  // (lxx) clause 2: `done` pops the route by itself — the exit is no longer
+  // the user's back tap. The (lxvi) clause 3 contract this pins is
+  // unchanged: that exit is a plain one, resetting the flow and never
+  // telling the server "cancelled" about a stage it already consumed.
+  testWidgets('primary screen: done exits by itself, as a plain exit', (
     tester,
   ) async {
     await pumpPushed(tester, LinkDeviceScreen(controller: controller));
     controller.primaryStep = PrimaryLinkStep.done;
     controller.notifyListeners();
-    await tester.pump();
+    await pumpFrames(tester);
 
-    await systemBack(tester);
-
+    expect(find.byType(LinkDeviceScreen), findsNothing);
     expect(controller.primaryStep, PrimaryLinkStep.idle);
     // A consumed stage is never "cancelled" on the wire.
     expect(emitted.where((e) => e.$1 == 'cancelProvisioning'), isEmpty);
+    // Drain the confirmation toast's dismiss timer.
+    await tester.pump(const Duration(seconds: 3));
   });
 }
