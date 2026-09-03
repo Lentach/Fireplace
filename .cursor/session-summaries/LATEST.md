@@ -28,9 +28,29 @@ which holds the full account — **rotating an entry out of this file loses noth
 > 08-30b bounded-gate entry rotated out on 2026-09-03 (`2026-08-30-session-bounded-gate-lxiv.md`, spec (lxiv):
 > the revoked-device relogin CLOBBER — a `registrationId` may not change under an unchanged identity, the OTP
 > replenishment path bypasses `upsertKeyBundle` so BOTH uploads carry the guard; the own-device confirmation is
-> per-socket; residual 8 `_reenrollAfterReset` has no in-flight latch, recorded not fixed). For multi-device specifically the
+> per-socket; residual 8 `_reenrollAfterReset` has no in-flight latch, recorded not fixed), and the 09-02a
+> FCM/APK entry rotated out on 2026-09-03 (`2026-09-02-session-fcm-e2e.md`: prod FCM proven on the Pixel_7
+> emulator; **versionCode floor 10024**; `am force-stop` silently drops FCM; `FLAG_SECURE` blocks screencap;
+> verify an installed APK's dart-defines by byte-searching `kernel_blob.bin`; the signed 0.1.24 APK release
+> waits on the owner's passcode feature). For multi-device specifically the
 > permanent record is `.planning/multi-device/` (`FINISH-HERE.md`, `progress.md`, `task_plan.md`),
 > not this file.
+
+**Date:** 2026-09-03 (evening) — **0.2.2 IS LIVE (frontend `b73b7cd`, smoke 5/5; backend untouched 0.2.0): (lxxii)
+THE KEYLESS BANNER HAS A RESET DOOR, closing the gap (lxxi) opened** — the refused "start fresh" had been the only
+route from a plain keyless install to the §6.2 reset. The banner's disclosure now carries "Rozpocznij reset" (phrase
+asked first, hidden while a reset is pending) with the honest cost sentence. Also carried: two (lxxi) riders — the
+residue discard is PROVEN, never blind (failing enumeration OR a surviving row → `IDENTITY_RESIDUE_DISCARD_DEFERRED`,
+retry next boot). **QR + deep link RE-VERIFIED first-hand** on the local bundle: jsQR decode of the pixels =
+`/link#fp-link.v1.…`, cold-open on the primary → SAS in 12 s → one Approve → new device #6. Reset round trip live:
+door → prompt → 71 h pending on both devices → primary cancels → DB `cancelled` → door back.
+➡ **`2026-09-03-session-lxxii-reset-door.md`**.
+- Owner's thief-with-password matrix DELIVERED (actor × capability × today × proposed); he owes three answers
+  (keyless read-only?; notify on destructive actions; hostile password change → a/b/c, recommendation b delay+undo).
+  Then B composer gate → D collapse placeholders → E rename → F (explained, not started).
+- ⚠️ `deploy-web.ps1` overwrites `frontend/build/web` with the PROD bundle — rebuild locally before any 8093 check.
+  ⚠️ A mutation runner crashed with the mutant ON DISK once — `git diff` after every mutation script.
+- Browser contexts survive the harness; find the primary by `sig_dak_record_v1_<uid>`. Suite **1721/10sk**.
 
 **Date:** 2026-09-03 (later) — **0.2.1 IS LIVE (frontend `a9b477f`, smoke 5/5; backend untouched 0.2.0) —
 carries (lxix)+(lxx) from the morning AND (lxxi): "ZACZNIJ OD NOWA" IS GONE.** It was the ONLY path that
@@ -139,12 +159,5 @@ four UX observations left for the owner).
 - Left for the owner (recorded, not changed): keyless banner offers only "Zacznij od nowa"
   (never "link"); keyless Devices screen shows red chain-invalid; Devices screen stale until
   re-entry after a ceremony; linked device offered the primary flow (fails closed `linkNoDak`).
-
-**Date:** 2026-09-02a (early hours, before the two entries above) — **PROD FCM PROVEN END TO END ON THE PIXEL_7 EMULATOR (web → APK, app backgrounded AND process killed), APP-SHELL `Cache-Control: no-cache` LIVE on nginx `location /`, `.jks` BACKED UP OFF-PC + RESTORE-PROVEN, FIRST SIGNED RELEASE APK BUILT (0.1.24 / versionCode 10024, from `feat/video-messages` `1f9d96f` = what prod web runs) AND PRE-SMOKED. Release WAITS for the owner's PIN/passcode-to-enter-app feature.** ➡ **`2026-09-02-session-fcm-e2e.md`** (verification ledger + traps). Nothing here touches multi-device; the APK predates PR #144.
-- **⛔ Verify dart-defines of the INSTALLED apk** by byte-searching `assets/flutter_assets/kernel_blob.bin` — the AVD carried a LOCAL-DOCKER build (`BASE_URL=http://10.0.2.2:3000`) that "never worked on prod" because it never talked to prod. Emulator lag root-caused to `hw.ramSize=8192` on a 16 GB host → now `3072` + 4 cores (boot ~14 s, no ANRs).
-- **Push traps:** `POST_NOTIFICATIONS` denied+`USER_FIXED` makes `PushService.initialize` return early SILENTLY (`pm grant` before first login); **`am force-stop` puts the package in Android's stopped state and FCM is dropped silently** — "killed" for a smoke = swipe-away / `am kill` only; release `MainActivity` sets `FLAG_SECURE` so `screencap` fails while the app window is live (verify via logcat / prod DB / shade with the app dead); the backend FCM success line is `logger.debug`, never in prod logs.
-- **Release build facts:** `build-android.ps1` reads the Giphy key ONLY from `$env:GIPHY_API_KEY` (dot-source `deploy-web.config.ps1` first). SHA256 `7436…0ef1` (full hash in `docs/runbooks/android-release.md`). **versionCode floor is 10024** — master is `0.1.21` → `10021` is a refused downgrade; bump `pubspec.yaml` past 0.1.24 for every future install. Runbook user wording switched to **NEW ACCOUNTS ONLY** for this single-device APK (owner's call); once multi-device DEPLOYS, the link-device ceremony replaces that wording.
-- **Domain is NOT an APK blocker** (corrects 08-30): Android keys/session live in Keystore/SQLCipher, not origin-keyed; a later `BASE_URL` change is an app update with no logout. Web is the immovable side (old origin serves forever, only `/welcome/` redirects). Owner's pick pending.
-- Owner still owes: PIN feature → rebuild → real-phone smoke (runbook items 2/4/5/6 + tap opens the right chat) → GitHub Release; repo renames; iOS reinstall for the ember icon. Kaspersky stays off (owner's choice — exclusions are no longer a gate). Throwaway prod accounts ids 104–106 can be deleted anytime.
 
 - **Still binding, from the rolled-off 2026-08-21 T6 entry** (full text in `2026-08-21-session-t6-revocation.md`, closure in decision record §11, settlement spec §12 **(xxi)–(xxix)**): **a LOCKOUT lives in this area — login used to hardcode `deviceId = 1` (`auth.service.ts:74`), so the moment a reset revoked device 1 the correct password minted a token for a revoked device and both session gates correctly refused it.** Login resolves the LIVE PRIMARY (`DevicesService.resolveLoginDeviceId`); the regression test names the lockout. **The session gates deny only on an EXPLICIT `revokedAt` (xxii)** — a MISSING `devices` row must NEVER deny, or the whole pre-Phase-1 install base loses access; that is deliberately the inverse polarity of `DevicesService.isActive`, which gates key-material uploads and must fail closed on absence. **Both predicates stay; do not unify them.** **I6 silence is a separate rule from rejection (xxiii):** `getServedMessageIds` answers a revoked device with NOTHING — an empty list would mean "destroy all of them". **`account_authorizations` is REPLACED, never dropped (xxix)**, and the replacement is admitted only when the STORED enrollment no longer verifies under the account's CURRENT published identity — self-verifying, so no flag and no nullable state (this is the hook T10's (xlv) finally used). **The accept-side gate ((e)/(xxvii)) withholds on VERIFIED data only and its refusals are never terminal**; when the fetch itself FAILS, withholding applies to `originDeviceId >= 2` only, or one broken `getDeviceList` answer silences every conversation of a single-device account. **⚠️ THE APP-PROOF EARNED ITS KEEP:** the revoke button failed live with NOTHING in the server log — `revokeDevice` never armed its DAK from the Keystore, so `signList` threw before any emit, **and the unit suite was green because it pre-armed the engine — a test that could not fail.** Drive the production path.
