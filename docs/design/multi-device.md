@@ -2423,12 +2423,21 @@ that is the designed outcome).
     primary's bundle is absent in exactly two states: the account never published one, or a §6.2
     reset completed and its freshly allocated id awaits the upload that spends it — in both, minting
     is the designed outcome. A revoked device's purged bundle cannot produce `false` because a login
-    never resolves to a revoked id. Cost: a damaged-identity install now needs one server round trip
+    never resolves to a revoked id: `revokeDevice` refuses `cannot_revoke_primary`
+    (`chat-device-revocation.service.ts`) and a reset teardown keeps exactly one live id, so the
+    zero-live-devices fallback to device 1 is unreachable for an enrolled account. Cost: a
+    damaged-identity install now needs one server round trip (≤ 6 s, the shared-completer timeout)
     before the banner appears, instead of raising it offline — the banner's only action needs the
     server anyway.
+    Rider (review of the first cut): the discard is PROVEN, never attempted blind. `_wipeSignalMaterial`
+    reports whether enumeration succeeded; on failure the (lxxi) branch records
+    `IDENTITY_RESIDUE_DISCARD_DEFERRED` and throws `E2eIdentityCheckUnavailableException` — minting
+    over rows it could not see is the stranded-ratchet state the discard exists to prevent (§5.11 R1
+    doctrine: inconclusive reads as present). The (lxv) disposal keeps its best-effort semantics.
     Falsification: the discard removed → residue test fails on `e2e_9_session_49_1` still present;
     the server check removed from the residue branch → "residue + bundle exists" mints a key over
-    the enrolled identity.
+    the enrolled identity; enumeration failing + `false` → `E2eIdentityCheckUnavailableException`,
+    zero writes.
 
 
 

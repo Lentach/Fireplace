@@ -971,9 +971,17 @@ class EncryptionService {
       // Signal material without a published identity is leftover from an
       // install whose upload never landed. No peer holds a session against
       // it, so it protects nothing — and leaving it would strand the new
-      // identity against ratchets no peer can follow.
+      // identity against ratchets no peer can follow. Which is why the
+      // discard must be PROVEN, not attempted: if enumeration fails, nothing
+      // may be minted over rows we could not see. Defer to the next boot,
+      // exactly as an UNKNOWN server answer does (§5.11 R1).
+      if (!await _wipeSignalMaterial(p)) {
+        E2ePersistentDiag.record('IDENTITY_RESIDUE_DISCARD_DEFERRED', {
+          'userId': userId,
+        });
+        throw const E2eIdentityCheckUnavailableException();
+      }
       E2ePersistentDiag.record('IDENTITY_RESIDUE_DISCARDED', {'userId': userId});
-      await _wipeSignalMaterial(p);
       _buildStores(p);
       // Warnings about peers and rebuild intents were recorded against the
       // discarded material; both name nothing now.
@@ -1032,28 +1040,39 @@ class EncryptionService {
   /// Deletes every Signal-material key under [p] — identity, sessions,
   /// pre-keys, signed pre-keys, peer trust — leaving the content store and
   /// non-Signal records untouched. Shared by the (lxxi) never-published
-  /// residue discard and the (lxv) stale-material disposal; best-effort by
-  /// design (a partial wipe is strictly better than none, and both callers
-  /// immediately overwrite the identity slot).
-  Future<void> _wipeSignalMaterial(String p) async {
+  /// residue discard and the (lxv) stale-material disposal.
+  ///
+  /// Returns whether the ENUMERATION succeeded: `false` means the store could
+  /// not be listed and nothing was deleted. The (lxv) caller ignores that
+  /// (it immediately overwrites the identity slot; a partial wipe beats none);
+  /// the (lxxi) caller MUST NOT mint over rows it could not see.
+  Future<bool> _wipeSignalMaterial(String p) async {
+    final Map<String, String> all;
     try {
-      final all = await _storage.readAll();
-      for (final key in all.keys.toList()) {
-        if (!key.startsWith(p)) continue;
-        final suffix = key.substring(p.length);
-        final isSignalMaterial =
-            suffix.startsWith('session_') ||
-            suffix.startsWith('pre_key_') ||
-            suffix.startsWith('signed_pre_key_') ||
-            suffix.startsWith('trusted_identity_') ||
-            suffix.startsWith('identity_') ||
-            suffix == 'registration_id' ||
-            suffix == 'next_pre_key_id';
-        if (isSignalMaterial) {
+      all = await _storage.readAll();
+    } catch (_) {
+      return false;
+    }
+    for (final key in all.keys.toList()) {
+      if (!key.startsWith(p)) continue;
+      final suffix = key.substring(p.length);
+      final isSignalMaterial =
+          suffix.startsWith('session_') ||
+          suffix.startsWith('pre_key_') ||
+          suffix.startsWith('signed_pre_key_') ||
+          suffix.startsWith('trusted_identity_') ||
+          suffix.startsWith('identity_') ||
+          suffix == 'registration_id' ||
+          suffix == 'next_pre_key_id';
+      if (isSignalMaterial) {
+        try {
           await _storage.delete(key: key);
+        } catch (_) {
+          // Best-effort per row; the identity slot is overwritten regardless.
         }
       }
-    } catch (_) {}
+    }
+    return true;
   }
 
   /// §5.1 provisioning adopt (Phase 2 T3, spec §12 item (ii)): install the

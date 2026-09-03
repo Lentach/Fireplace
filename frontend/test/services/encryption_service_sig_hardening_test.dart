@@ -83,13 +83,24 @@ void main() {
   });
 
   test('identity absent + enumeration FAILING + server says no bundle '
-      'mints — an unpublished identity protects nothing', () async {
+      'DEFERS — the discard must be proven, never attempted blind', () async {
     storage.throwReadAll = true;
 
-    // The explicit "no bundle" is the authorization (lxxi); the failed scan
-    // only means the best-effort discard removes nothing.
-    await service.initialize(37, checkServerBundleExists: () async => false);
-    expect(storage.store.keys, contains('e2e_37_identity_record_v1'));
+    // The explicit "no bundle" authorizes the discard, but a discard that
+    // cannot enumerate could leave session rows under a freshly minted
+    // identity — exactly the stranded state (lxxi) exists to avoid. Same
+    // outcome as an UNKNOWN server answer: nothing written, retry next boot.
+    await expectLater(
+      service.initialize(37, checkServerBundleExists: () async => false),
+      throwsA(isA<E2eIdentityCheckUnavailableException>()),
+    );
+    expect(storage.writeCount, 0);
+    expect(service.identityIncomplete, isFalse);
+    expect(
+      E2ePersistentDiag.entries
+          .where((e) => e.contains('IDENTITY_RESIDUE_DISCARD_DEFERRED')),
+      hasLength(1),
+    );
   });
 
   test('identity absent + enumeration SUCCEEDING empty still regenerates '
