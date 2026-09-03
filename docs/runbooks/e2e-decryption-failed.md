@@ -175,23 +175,29 @@ Both behaviours are separately falsifiable (disable the pre-paint hydration →
 the placeholder-frame test goes red; ignore the prefetched batch → the
 pass-level read-count test goes red at 30 reads instead of 0).
 
-## Step 3E — "Encryption keys damaged" banner / E2E never comes up
+## Step 3E — "Encryption keys missing on this device" banner / E2E never comes up
 
-`E2eIdentityIncompleteException`. The stored identity is present but
-INCOMPLETE, and initialization refused to regenerate over it. This is
+`E2eIdentityIncompleteException`. This install holds no usable Signal identity
+(absent, or present but INCOMPLETE) while the server already has a bundle for
+the login's device, and initialization refused to mint over it. This is
 deliberate: regenerating silently is what destroys a user's history without
-telling them. Diag shows `IDENTITY_INCOMPLETE`.
+telling them. Diag shows `IDENTITY_INCOMPLETE` (local residue was found) or
+`IDENTITY_GUARD_SERVER_BUNDLE_EXISTS` (empty store, second-device shape).
 
 1. Do NOT tell the user to clear site data or reinstall — that converts
    recoverable damage into certain loss.
 2. Dump `E2ePersistentDiag`. `IDENTITY_RESIDUE_UNKNOWN` means the residue probe
-   itself failed twice and we treated it as a fresh install; that path can only
-   under-trigger, never over-trigger.
-3. The only way forward is the in-app consented action (`IdentityDamagedBanner`
-   → confirm → `regenerateIdentityAfterConfirmedLoss`). Set expectations
-   precisely: every message this device has NOT already decrypted is gone for
-   good and peers re-key; history already in the plaintext cache stays
-   readable.
+   itself failed twice and was treated as RESIDUE-PRESENT (fail closed); with
+   the server saying a bundle exists that changes nothing, and with the server
+   saying none exists the residue is discarded (`IDENTITY_RESIDUE_DISCARDED`)
+   and a fresh identity minted — there is nothing to recover on a
+   never-enrolled account.
+3. There is no "start fresh" (amendment (lxxi)). The way forward is the §5.1
+   link from a device that still holds the keys (the banner's only action), or
+   the §6.2 reset (72 h; 1 h with the recovery phrase) when no such device
+   exists. Set expectations precisely: after a reset, every message this device
+   has NOT already decrypted is gone for good and peers re-key; history already
+   in the plaintext cache stays readable.
 
 ## Step 3F — "security keys changed" warning in a chat
 

@@ -499,10 +499,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get identityDamagedBody =>
-      'Signed in on a new device or browser? Your account already has encryption keys on another device — link this one from there and nothing is lost. Only if this is your usual device and its stored keys are gone should you start fresh: that makes new keys and any message this device never decrypted can never be recovered. Nothing was regenerated automatically — doing that silently would destroy your ability to read your history.';
-
-  @override
-  String get identityDamagedAction => 'Start fresh';
+      'Signed in on a new device or browser? Your account already has encryption keys on another device — link this one from there and nothing is lost. Nothing was regenerated automatically: new keys made here would be trusted by no one, and doing that silently would destroy your ability to read your history.';
 
   @override
   String get messageRetrySend => 'Retry';
@@ -524,24 +521,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Something went wrong. Please try again.';
 
   @override
-  String get identityDamagedRecoveryFailed =>
-      'Could not create new encryption keys. Try again.';
-
-  @override
   String get identityAlertShowDetails => 'Details';
 
   @override
   String get identityAlertHideDetails => 'Hide details';
-
-  @override
-  String get identityDamagedConfirmTitle => 'Start with new keys?';
-
-  @override
-  String get identityDamagedConfirmBody =>
-      'A new identity will be created and your contacts will re-key automatically. Messages you have already opened on this device stay readable. Any message this device never decrypted can never be recovered.';
-
-  @override
-  String get identityDamagedConfirmAction => 'Create new keys';
 
   @override
   String get peerIdentityMarkVerifiedAction => 'Fingerprints match';

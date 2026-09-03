@@ -20,9 +20,10 @@ import 'encryption/session_cross_context_lock.dart';
 /// identity and make every peer's history permanently undecryptable, while
 /// refusing leaves the surviving bytes on disk where they may still be
 /// recoverable. Because that also means E2E never comes up, this is a distinct
-/// type — callers must surface it and offer
-/// [EncryptionService.regenerateIdentityAfterConfirmedLoss] as an explicit,
-/// user-consented way out, NOT treat it as a transient init failure.
+/// type — callers must surface it and offer the §5.1 link (or the §6.2 reset)
+/// as the way back in, NOT treat it as a transient init failure. There is no
+/// consented "start fresh" (amendment (lxxi)): a device that lost its keys
+/// re-enters the account through the primary, never by minting on its own.
 class E2eIdentityIncompleteException implements Exception {
   const E2eIdentityIncompleteException();
 
@@ -224,9 +225,10 @@ class EncryptionService {
   /// destroy key material (T3 review invariant lock).
   bool _provisionalIdentityAdopted = false;
 
-  /// True once [initialize] refused to start because identity material is
-  /// incomplete. The only way forward is
-  /// [regenerateIdentityAfterConfirmedLoss], which the USER must consent to.
+  /// True once [initialize] refused to start because the server already holds
+  /// a bundle for this login's device while local identity material is missing
+  /// or incomplete. The way forward is the §5.1 link or the §6.2 reset; nothing
+  /// in this service mints over an enrolled identity (amendment (lxxi)).
   bool identityIncomplete = false;
 
   /// Peers whose identity key changed under us, surfaced so the UI can warn
@@ -918,68 +920,78 @@ class EncryptionService {
     await _loadDeviceListPins(userId);
 
     // A THROWING read propagates: a storage error must never be read as "no
-    // keys". Only a definitive absence reaches the server-backed fresh-install
-    // guard.
-    var load = await _identityStore.loadFromStorage();
-    if (load == IdentityLoadResult.absent) {
-      if (await _hasPriorInstallResidue(p)) {
-        // No identity, yet sessions/prekeys from a previous install survive.
-        // That is partial storage loss, not a fresh install.
-        load = IdentityLoadResult.partial;
-      } else {
-        bool? serverBundleExists;
-        try {
-          serverBundleExists = await checkServerBundleExists?.call();
-        } catch (_) {
-          // A failed check is UNKNOWN, never evidence of a fresh install.
-        }
-
-        if (serverBundleExists == true) {
-          E2ePersistentDiag.record('IDENTITY_GUARD_SERVER_BUNDLE_EXISTS', {
-            'userId': userId,
-          });
-          identityIncomplete = true;
-          throw const E2eIdentityIncompleteException();
-        }
-        if (serverBundleExists != false) {
-          E2ePersistentDiag.record('IDENTITY_GUARD_UNKNOWN', {
-            'userId': userId,
-          });
-          throw const E2eIdentityCheckUnavailableException();
-        }
-      }
+    // keys". Only a definitive outcome reaches the server-backed guard.
+    final load = await _identityStore.loadFromStorage();
+    if (load == IdentityLoadResult.loaded) {
+      debugPrint('[EncryptionService] Loaded existing keys from storage');
+      // A non-null _keysForUpload means THIS process minted key material
+      // that may not have reached the server yet — above all the §5.1
+      // adopt path, whose init previously failed (keyless) so the
+      // provider re-enters here after the ceremony. Dropping the flag
+      // would strand the minted signed-prekey/OTPs unpublished until a
+      // preKeysLow bounce.
+      needsKeyUpload = _keysForUpload != null;
+      _initialized = true;
+      return;
     }
 
-    switch (load) {
-      case IdentityLoadResult.loaded:
-        debugPrint('[EncryptionService] Loaded existing keys from storage');
-        // A non-null _keysForUpload means THIS process minted key material
-        // that may not have reached the server yet — above all the §5.1
-        // adopt path, whose init previously failed (keyless) so the
-        // provider re-enters here after the ceremony. Dropping the flag
-        // would strand the minted signed-prekey/OTPs unpublished until a
-        // preKeysLow bounce.
-        needsKeyUpload = _keysForUpload != null;
-      case IdentityLoadResult.partial:
-        E2ePersistentDiag.record('IDENTITY_INCOMPLETE', {'userId': userId});
-        debugPrint(
-          '[EncryptionService] Identity incomplete — refusing to regenerate',
-        );
-        identityIncomplete = true;
-        throw const E2eIdentityIncompleteException();
-      case IdentityLoadResult.absent:
-        debugPrint('[EncryptionService] Generating new keys (fresh install)');
-        await _generateKeys();
-        needsKeyUpload = true;
+    // No usable identity: a damaged record, an identity gone while sessions
+    // or prekeys survive, or a truly empty store. None of these is evidence
+    // of a fresh install on its own — the same shapes come from a storage
+    // wipe and from a second-device login — so the server decides (lxxi).
+    // It answers for this login's device, which resolves to the live
+    // primary, so "no bundle" means the account never published an identity
+    // (or a completed §6.2 reset is waiting to be spent by our upload).
+    final residue =
+        load == IdentityLoadResult.partial || await _hasPriorInstallResidue(p);
+    bool? serverBundleExists;
+    try {
+      serverBundleExists = await checkServerBundleExists?.call();
+    } catch (_) {
+      // A failed check is UNKNOWN, never evidence of a fresh install.
     }
 
+    if (serverBundleExists == true) {
+      E2ePersistentDiag.record(
+        residue ? 'IDENTITY_INCOMPLETE' : 'IDENTITY_GUARD_SERVER_BUNDLE_EXISTS',
+        {'userId': userId},
+      );
+      debugPrint(
+        '[EncryptionService] Identity incomplete — refusing to regenerate',
+      );
+      identityIncomplete = true;
+      throw const E2eIdentityIncompleteException();
+    }
+    if (serverBundleExists != false) {
+      E2ePersistentDiag.record('IDENTITY_GUARD_UNKNOWN', {'userId': userId});
+      throw const E2eIdentityCheckUnavailableException();
+    }
+
+    if (residue) {
+      // Signal material without a published identity is leftover from an
+      // install whose upload never landed. No peer holds a session against
+      // it, so it protects nothing — and leaving it would strand the new
+      // identity against ratchets no peer can follow.
+      E2ePersistentDiag.record('IDENTITY_RESIDUE_DISCARDED', {'userId': userId});
+      await _wipeSignalMaterial(p);
+      _buildStores(p);
+      // Warnings about peers and rebuild intents were recorded against the
+      // discarded material; both name nothing now.
+      _peersWithChangedIdentity.clear();
+      await _persistIdentityChanged();
+      _pendingSessionRebuilds.clear();
+      await _persistSessionRebuilds();
+    }
+    debugPrint('[EncryptionService] Generating new keys (fresh install)');
+    await _generateKeys();
+    needsKeyUpload = true;
     _initialized = true;
   }
 
   /// True when storage still holds Signal material from a previous install of
   /// this account — sessions, prekeys, or the prekey counter. Identity absent
-  /// while these survive means partial loss, and regenerating would strand
-  /// every one of those sessions.
+  /// while these survive is partial loss, not a fresh install: whether the
+  /// residue protects anything is the server's call (lxxi), never inferred.
   ///
   /// Only consulted after [SecureIdentityKeyStore.loadFromStorage] returned
   /// `absent`. A throwing `readAll` is INCONCLUSIVE — and inconclusive now
@@ -1017,52 +1029,12 @@ class EncryptionService {
     return true;
   }
 
-  /// DESTRUCTIVE, USER-CONSENTED. Mint a brand-new identity after the user has
-  /// been told the stored one is damaged.
-  ///
-  /// What is actually lost: every existing Signal session, so NO ciphertext can
-  /// be decrypted from here on — any message whose plaintext was never cached
-  /// is gone for good, and peers must re-key. What survives: the decrypted
-  /// plaintext cache is deliberately NOT deleted, so history this device
-  /// already decrypted stays readable. Say exactly that in the consent dialog;
-  /// do not promise total loss.
-  ///
-  /// This is the escape hatch for [E2eIdentityIncompleteException]: the guard
-  /// in [initialize] deliberately refuses to do this on its own, because doing
-  /// it silently IS the data-loss bug. Old sessions and prekeys are cleared
-  /// first — leaving them would strand the new identity against ratchets no
-  /// peer can follow.
-  Future<void> regenerateIdentityAfterConfirmedLoss(int userId) async {
-    _userId = userId;
-    final p = 'e2e_${userId}_';
-    E2ePersistentDiag.record('IDENTITY_REGEN_CONSENTED', {'userId': userId});
-
-    await _wipeSignalMaterial(p);
-
-
-    _buildStores(p);
-    // Our own identity is new, so every peer will legitimately see a change and
-    // every stored warning about THEM is now noise. Clear the persisted copy
-    // too, or the banners outlive the event that explains them.
-    _peersWithChangedIdentity.clear();
-    await _persistIdentityChanged();
-    // A key regeneration invalidates every session anyway, so a rebuild intent
-    // recorded against the old ones names nothing.
-    _pendingSessionRebuilds.clear();
-    await _persistSessionRebuilds();
-
-    await _generateKeys();
-    needsKeyUpload = true;
-    identityIncomplete = false;
-    _initialized = true;
-  }
-
   /// Deletes every Signal-material key under [p] — identity, sessions,
   /// pre-keys, signed pre-keys, peer trust — leaving the content store and
-  /// non-Signal records untouched. Shared by the consented-loss regeneration
-  /// and the (lxv) stale-material disposal; best-effort by design (a partial
-  /// wipe is strictly better than none, and both callers immediately
-  /// overwrite the identity slot).
+  /// non-Signal records untouched. Shared by the (lxxi) never-published
+  /// residue discard and the (lxv) stale-material disposal; best-effort by
+  /// design (a partial wipe is strictly better than none, and both callers
+  /// immediately overwrite the identity slot).
   Future<void> _wipeSignalMaterial(String p) async {
     try {
       final all = await _storage.readAll();

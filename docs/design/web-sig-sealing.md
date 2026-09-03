@@ -145,7 +145,7 @@ byte-identical by construction.
   correctness lever, not a perf one). Every real caller consumes KEY NAMES only
   (`inventoryPeerIds` parses names; `clearAllKeys` enumerates-then-deletes;
   `_highestStoredPreKeyId` parses ids from names; `_hasPriorInstallResidue` and
-  `regenerateIdentityAfterConfirmedLoss` classify by suffix). An unsealable value is
+  `_wipeSignalMaterial` classify by suffix). An unsealable value is
   returned AS ITS RAW `fpsig1:` STRING — the key stays present, so residue/highest-id/
   inventory answers stay CORRECT under any crypto transient, and sealing adds ZERO new throw
   surface to enumeration (the underlying `getAll` can still fail exactly as it can today —

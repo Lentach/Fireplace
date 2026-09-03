@@ -971,14 +971,8 @@ abstract class AppLocalizations {
   /// No description provided for @identityDamagedBody.
   ///
   /// In pl, this message translates to:
-  /// **'Logujesz się na nowym urządzeniu lub w nowej przeglądarce? Twoje konto ma już klucze szyfrowania na innym urządzeniu — połącz to urządzenie stamtąd i nic nie przepadnie. Tylko jeśli to Twoje dotychczasowe urządzenie, a zapisane klucze zostały utracone, zacznij od nowa: powstaną nowe klucze, a wiadomości, których to urządzenie nigdy nie odszyfrowało, będą nie do odzyskania. Nic nie zostało odtworzone automatycznie — zrobienie tego po cichu zniszczyłoby możliwość odczytania historii.'**
+  /// **'Logujesz się na nowym urządzeniu lub w nowej przeglądarce? Twoje konto ma już klucze szyfrowania na innym urządzeniu — połącz to urządzenie stamtąd i nic nie przepadnie. Nic nie zostało odtworzone automatycznie: nowym kluczom utworzonym tutaj nikt by nie ufał, a zrobienie tego po cichu zniszczyłoby możliwość odczytania historii.'**
   String get identityDamagedBody;
-
-  /// No description provided for @identityDamagedAction.
-  ///
-  /// In pl, this message translates to:
-  /// **'Zacznij od nowa'**
-  String get identityDamagedAction;
 
   /// Re-sends a message whose delivery failed.
   ///
@@ -1010,12 +1004,6 @@ abstract class AppLocalizations {
   /// **'Coś poszło nie tak. Spróbuj ponownie.'**
   String get authStatusUnexpectedError;
 
-  /// Shown when regenerating a damaged Signal identity fails.
-  ///
-  /// In pl, this message translates to:
-  /// **'Nie udało się utworzyć nowych kluczy szyfrowania. Spróbuj ponownie.'**
-  String get identityDamagedRecoveryFailed;
-
   /// Reveals the full explanation on a collapsed identity banner.
   ///
   /// In pl, this message translates to:
@@ -1027,24 +1015,6 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Ukryj szczegóły'**
   String get identityAlertHideDetails;
-
-  /// No description provided for @identityDamagedConfirmTitle.
-  ///
-  /// In pl, this message translates to:
-  /// **'Utworzyć nowe klucze?'**
-  String get identityDamagedConfirmTitle;
-
-  /// No description provided for @identityDamagedConfirmBody.
-  ///
-  /// In pl, this message translates to:
-  /// **'Zostanie utworzona nowa tożsamość, a kontakty automatycznie wymienią klucze. Wiadomości już otwarte na tym urządzeniu pozostaną czytelne. Wiadomości, których to urządzenie nigdy nie odszyfrowało, będą nie do odzyskania.'**
-  String get identityDamagedConfirmBody;
-
-  /// No description provided for @identityDamagedConfirmAction.
-  ///
-  /// In pl, this message translates to:
-  /// **'Utwórz nowe klucze'**
-  String get identityDamagedConfirmAction;
 
   /// No description provided for @peerIdentityMarkVerifiedAction.
   ///

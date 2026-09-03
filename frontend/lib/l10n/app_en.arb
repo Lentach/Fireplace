@@ -171,8 +171,7 @@
   "devicesSyncingNote": "Syncing your devices…",
   "encryptionNotInitialized": "Encryption not initialized",
   "identityDamagedTitle": "Encryption keys missing on this device",
-  "identityDamagedBody": "Signed in on a new device or browser? Your account already has encryption keys on another device — link this one from there and nothing is lost. Only if this is your usual device and its stored keys are gone should you start fresh: that makes new keys and any message this device never decrypted can never be recovered. Nothing was regenerated automatically — doing that silently would destroy your ability to read your history.",
-  "identityDamagedAction": "Start fresh",
+  "identityDamagedBody": "Signed in on a new device or browser? Your account already has encryption keys on another device — link this one from there and nothing is lost. Nothing was regenerated automatically: new keys made here would be trusted by no one, and doing that silently would destroy your ability to read your history.",
 
 
 
@@ -187,15 +186,10 @@
   "@authStatusServerUnreachable": {"description": "Auth surface status, localized from an AuthStatusCode."},
   "authStatusUnexpectedError": "Something went wrong. Please try again.",
   "@authStatusUnexpectedError": {"description": "Auth surface status, localized from an AuthStatusCode."},
-  "identityDamagedRecoveryFailed": "Could not create new encryption keys. Try again.",
-  "@identityDamagedRecoveryFailed": {"description": "Shown when regenerating a damaged Signal identity fails."},
   "identityAlertShowDetails": "Details",
   "@identityAlertShowDetails": {"description": "Reveals the full explanation on a collapsed identity banner."},
   "identityAlertHideDetails": "Hide details",
   "@identityAlertHideDetails": {"description": "Collapses the explanation on an identity banner."},
-  "identityDamagedConfirmTitle": "Start with new keys?",
-  "identityDamagedConfirmBody": "A new identity will be created and your contacts will re-key automatically. Messages you have already opened on this device stay readable. Any message this device never decrypted can never be recovered.",
-  "identityDamagedConfirmAction": "Create new keys",
   "peerIdentityMarkVerifiedAction": "Fingerprints match",
   "peerIdentityVerifyMenuAction": "Verify security keys",
   "peerIdentityFingerprintDialogTitle": "Verify security keys",

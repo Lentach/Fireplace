@@ -65,8 +65,11 @@ void main() {
       'regenerate — inconclusive residue reads as residue-present', () async {
     storage.throwReadAll = true;
 
+    // (lxxi): the server decides. With a bundle published, an inconclusive
+    // scan must read as residue-present and refuse — the pre-(lxxi) `catch →
+    // false` would have minted over the enrolled identity.
     await expectLater(
-      service.initialize(37, checkServerBundleExists: () async => false),
+      service.initialize(37, checkServerBundleExists: () async => true),
       throwsA(isA<E2eIdentityIncompleteException>()),
     );
     expect(storage.writeCount, 0,
@@ -79,21 +82,46 @@ void main() {
     );
   });
 
+  test('identity absent + enumeration FAILING + server says no bundle '
+      'mints — an unpublished identity protects nothing', () async {
+    storage.throwReadAll = true;
+
+    // The explicit "no bundle" is the authorization (lxxi); the failed scan
+    // only means the best-effort discard removes nothing.
+    await service.initialize(37, checkServerBundleExists: () async => false);
+    expect(storage.store.keys, contains('e2e_37_identity_record_v1'));
+  });
+
   test('identity absent + enumeration SUCCEEDING empty still regenerates '
       '(fresh installs must keep working)', () async {
     await service.initialize(37, checkServerBundleExists: () async => false);
     expect(storage.store.keys, contains('e2e_37_identity_record_v1'));
   });
 
-  test('identity absent + surviving session rows refuse to regenerate '
-      '(the pre-existing residue guard, unchanged)', () async {
+  test('identity absent + surviving session rows + server bundle exists '
+      'refuses to regenerate and leaves the rows alone', () async {
     storage.store['e2e_37_session_2_1'] = 'ratchet';
 
     await expectLater(
-      service.initialize(37, checkServerBundleExists: () async => false),
+      service.initialize(37, checkServerBundleExists: () async => true),
       throwsA(isA<E2eIdentityIncompleteException>()),
     );
     expect(storage.store.keys, isNot(contains('e2e_37_identity_record_v1')));
+    expect(storage.store['e2e_37_session_2_1'], 'ratchet');
+  });
+
+  test('identity absent + surviving session rows + server says no bundle '
+      'discards the rows and mints (lxxi)', () async {
+    storage.store['e2e_37_session_2_1'] = 'ratchet';
+
+    await service.initialize(37, checkServerBundleExists: () async => false);
+    expect(storage.store.keys, contains('e2e_37_identity_record_v1'));
+    expect(storage.store.keys, isNot(contains('e2e_37_session_2_1')));
+    expect(
+      E2ePersistentDiag.entries
+          .where((e) => e.contains('IDENTITY_RESIDUE_DISCARDED')),
+      hasLength(1),
+    );
   });
 
   test('§5.12 R3: lost counter + enumeration FAILING skips the prekey mint '

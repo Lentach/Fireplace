@@ -2396,6 +2396,40 @@ that is the designed outcome).
     `BarcodeDetector`/jsQR on web, `mobile_scanner` on native). The OS camera + deep link covers the
     "scan and done" ask on every phone; the in-app scanner is a convenience for desktops with webcams.
 
+- **Amendment 2026-09-03 (D23, owner-directed from the post-launch review; client-only):**
+  - **(lxxi) — "Start fresh" is removed; a never-published identity is discarded without asking.**
+    Proven from source: a keyless install of an enrolled account cannot send (`_e2eInitialized`
+    stays false, `ensureSession` throws), and the ONLY path that manufactured an install able to
+    encrypt under an identity no peer trusts was `IdentityDamagedBanner` → "Zacznij od nowa" →
+    `recoverFromIncompleteIdentity`, which set `_e2eInitialized = true` and fired `onE2EReady` BEFORE
+    the `uploadKeyBundle` the registration lock then refused. Owner ruling: the button is useless —
+    "a fresh user gets new keys anyway" — and a device that lost its keys re-enters through the §5.1
+    link or the §6.2 reset, never by minting on its own.
+    Rule: `identityIncomplete` has no consented remedy. The banner offers the link (and, per the
+    next amendment, the reset door); the provider method, the service's `regenerateIdentityAfterConfirmedLoss`,
+    the confirm dialog, its five strings and the `RECOVERED_USER_ID` e2e probe are deleted.
+    `identityIncomplete` is raised ONLY when the server says the login's device already published a bundle.
+    Second half, which keeps the never-enrolled user's plain start WITHOUT the button: `initialize`
+    consults `checkServerBundleExists` on EVERY non-`loaded` outcome — `absent`, `absent` with
+    Signal residue (`session_`/`pre_key_`/`signed_pre_key_`/`next_pre_key_id`), and `partial` from
+    the store alike. An explicit `true` → `E2eIdentityIncompleteException` (enrolled; link or reset).
+    UNKNOWN → `E2eIdentityCheckUnavailableException` (deferred to the next connect, as before).
+    An explicit `false` → the residue is discarded by the same `_wipeSignalMaterial` the (lxv)
+    disposal uses, peer-identity warnings and rebuild intents are cleared, and a new identity is
+    minted exactly as on an empty store. Persisted diag `IDENTITY_RESIDUE_DISCARDED {userId}`
+    replaces `IDENTITY_REGEN_CONSENTED`.
+    Why `false` is safe to act on: `handleCheckOwnKeyBundle` answers for the session's device id, and
+    a password login resolves to the LIVE PRIMARY (`resolveLoginDeviceId`, amendment (xxii)). The
+    primary's bundle is absent in exactly two states: the account never published one, or a §6.2
+    reset completed and its freshly allocated id awaits the upload that spends it — in both, minting
+    is the designed outcome. A revoked device's purged bundle cannot produce `false` because a login
+    never resolves to a revoked id. Cost: a damaged-identity install now needs one server round trip
+    before the banner appears, instead of raising it offline — the banner's only action needs the
+    server anyway.
+    Falsification: the discard removed → residue test fails on `e2e_9_session_49_1` still present;
+    the server check removed from the residue branch → "residue + bundle exists" mints a key over
+    the enrolled identity.
+
 
 
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase

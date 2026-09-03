@@ -88,11 +88,13 @@ class EncryptionProvider extends ChangeNotifier {
   /// storage loss). All messages encrypted for the old identity are unrecoverable.
   bool get hadIdentityReset => _encryptionService.needsKeyUpload;
 
-  /// True when initialization REFUSED to start because the stored identity is
-  /// damaged (present but incomplete). E2E is down and stays down until the
-  /// user consents to [recoverFromIncompleteIdentity]. Distinct from a
-  /// transient init failure precisely so the UI can say so and offer the way
-  /// out instead of looping forever on `[encrypted]`.
+  /// True when initialization REFUSED to start because the server already
+  /// holds a bundle for this login's device while the stored identity is
+  /// missing or damaged. E2E is down and stays down until the device is linked
+  /// from the primary (§5.1) or a reset completes (§6.2) — there is no local
+  /// remedy (amendment (lxxi)). Distinct from a transient init failure
+  /// precisely so the UI can say so and offer the way out instead of looping
+  /// forever on `[encrypted]`.
   bool get identityIncomplete => _identityIncomplete;
   bool _identityIncomplete = false;
 
@@ -1416,10 +1418,11 @@ class EncryptionProvider extends ChangeNotifier {
       _e2eFlowLog('E2E_INIT_GUARD_UNKNOWN', {});
       _e2eInitialized = false;
     } on E2eIdentityIncompleteException catch (e) {
-      // NOT a transient failure and NOT recoverable by retrying: the stored
-      // identity is damaged and we refused to regenerate over it. Surface it
-      // so the UI can explain and offer recoverFromIncompleteIdentity(),
-      // instead of leaving the user staring at "[encrypted]" every boot.
+      // NOT a transient failure and NOT recoverable by retrying: the account
+      // already published an identity this install does not hold, and we
+      // refused to mint over it. Surface it so the UI can explain and offer
+      // the link, instead of leaving the user staring at "[encrypted]" every
+      // boot.
       debugPrint('[E2E] $e');
       _identityIncomplete = true;
       _e2eInitialized = false;
@@ -1436,69 +1439,6 @@ class EncryptionProvider extends ChangeNotifier {
         onE2EReady?.call();
       }
     }
-  }
-
-  /// DESTRUCTIVE, only after explicit user consent. The escape hatch from
-  /// [identityIncomplete]: wipe the damaged Signal material and start a new
-  /// identity so the app can send and receive again.
-  ///
-  /// Tell the user the truth first: no existing ciphertext will ever decrypt
-  /// again and peers must re-key, but history this device already decrypted
-  /// stays readable (the plaintext cache is not touched).
-  Future<void> recoverFromIncompleteIdentity() async {
-    final userId = _currentUserId;
-    if (userId == null || !_identityIncomplete) return;
-    // Set SYNCHRONOUSLY, before any await: key generation mints 100 prekeys and
-    // is far from instant, and `_identityIncomplete` only clears at the end. A
-    // second tap in that window would otherwise pass the guard above and run a
-    // concurrent identity write + prekey batch against the same counter.
-    if (_identityRecoveryInFlight) return;
-    _identityRecoveryInFlight = true;
-    notifyListeners();
-    try {
-      await _runIdentityRecovery(userId);
-    } finally {
-      _identityRecoveryInFlight = false;
-      notifyListeners();
-    }
-  }
-
-  /// True while [recoverFromIncompleteIdentity] is running, so the UI can
-  /// disable its own trigger instead of relying on the user not double-tapping.
-  bool get identityRecoveryInFlight => _identityRecoveryInFlight;
-  bool _identityRecoveryInFlight = false;
-
-  Future<void> _runIdentityRecovery(int userId) async {
-    _e2eFlowLog('E2E_IDENTITY_RECOVERY_START', {'userId': userId});
-    await _encryptionService.regenerateIdentityAfterConfirmedLoss(userId);
-    _identityIncomplete = false;
-    _e2eInitialized = true;
-    notifyListeners();
-    // Publish the new bundle; without it peers cannot start a session.
-    final keys = _encryptionService.getKeysForUpload();
-    if (keys != null) {
-      final keyBundle = keys['keyBundle'] as Map<String, dynamic>;
-      final identity = keyBundle['identityPublicKey'];
-      if (identity is String && identity.isNotEmpty) {
-        // Whether this replacement ends up watermarked is decided by the
-        // server's answer (`identityChanged`), not by a flag set here: under
-        // the registration lock this very upload is usually REFUSED, and the
-        // one that finally lands is a later reconnect re-upload.
-        // Keys follow the ack, never race it — and on this path the bundle is
-        // usually REFUSED by the lock, in which case the pre-keys must not
-        // land at all: they belong to an identity the account does not
-        // publish, and depositing them would overwrite the pool the still-live
-        // identity is serving from.
-        _stashOneTimePreKeyUpload(
-          (keys['oneTimePreKeys'] as List).cast<Map<String, dynamic>>(),
-          identity,
-          registrationId: keyBundle['registrationId'] as int?,
-        );
-        _emit?.call('uploadKeyBundle', keyBundle);
-      }
-    }
-    _e2eFlowLog('E2E_IDENTITY_RECOVERY_DONE', {'userId': userId});
-    onE2EReady?.call();
   }
 
   // ---------- Key Exchange Event Handlers ----------

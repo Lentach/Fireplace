@@ -14,11 +14,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-/// Both surfaces here are warnings about broken or suspicious cryptography,
-/// and one of them offers a DESTRUCTIVE action. Showing either when nothing is
-/// wrong is worse than not shipping them: a permanent red "your keys are
-/// damaged" bar with a "start fresh" button would push healthy users into
-/// wiping their own sessions. So the off-state is tested first and hardest.
+/// Every surface here is a warning about broken or suspicious cryptography.
+/// Showing one when nothing is wrong is worse than not shipping it: a
+/// permanent red "your keys are damaged" bar trains the dismissal reflex the
+/// surface exists to defeat. So the off-state is tested first and hardest.
+/// The damaged banner carries NO destructive action since amendment (lxxi) —
+/// that absence is asserted, not assumed.
 class _FakeEncryption extends EncryptionProvider {
   _FakeEncryption({
     this.damaged = false,
@@ -43,22 +44,17 @@ class _FakeEncryption extends EncryptionProvider {
   bool offeredWasServed;
 
   String? ownFingerprint;
-  int recoverCalls = 0;
   final List<int> acknowledged = <int>[];
 
   /// What each acknowledgement was asked to pin. The dialog MUST hand back the
   /// key it displayed ((xlvii) clause 2) — pinning anything else is the defect
   /// this records.
   final List<String?> adoptedKeys = <String?>[];
-  bool recovering = false;
   String? replacedAt;
   int dismissCalls = 0;
 
   @override
   bool get identityIncomplete => damaged;
-
-  @override
-  bool get identityRecoveryInFlight => recovering;
 
   @override
   Set<int> get peersWithChangedIdentity => changedPeers;
@@ -79,11 +75,6 @@ class _FakeEncryption extends EncryptionProvider {
 
   @override
   Future<String?> getIdentityFingerprint() async => ownFingerprint;
-
-  @override
-  Future<void> recoverFromIncompleteIdentity() async {
-    recoverCalls++;
-  }
 
   @override
   Future<PeerIdentityVerification> loadPeerIdentityVerification(
@@ -179,14 +170,14 @@ void main() {
 
       expect(find.byIcon(Icons.gpp_bad_outlined), findsOneWidget);
       // (lxvii) clause 1: a keyless install of an enrolled account is, first,
-      // a second device. The always-visible action is the non-destructive
-      // §5.1 link; "start fresh" is NOT the thing a thumb lands on.
+      // a second device. The only action is the non-destructive §5.1 link.
       expect(find.byKey(const Key('identity-damaged-link')), findsOneWidget);
       expect(find.text(l10n.devicesLinkThisDevice), findsOneWidget);
       expect(
         find.byKey(const Key('identity-damaged-start-fresh')),
         findsNothing,
-        reason: 'the destructive remedy lives in the disclosure',
+        reason: '(lxxi): there is no start-fresh; it minted an identity no '
+            'peer trusts',
       );
     });
 
@@ -226,7 +217,6 @@ void main() {
         isTrue,
         reason: 'the link action must push the §5.1 host screen',
       );
-      expect(encryption.recoverCalls, 0, reason: 'linking never wipes keys');
     });
 
     testWidgets('the explanation is one tap away and fully readable', (
@@ -283,59 +273,28 @@ void main() {
       );
     });
 
-    testWidgets('the destructive action is disabled while it runs', (
-      tester,
-    ) async {
-      final encryption = _FakeEncryption(damaged: true)..recovering = true;
-      await tester.pumpWidget(_host(encryption, const IdentityDamagedBanner()));
-      await tester.tap(find.byIcon(Icons.expand_more));
-      // Not pumpAndSettle: the in-flight spinner never settles.
-      await tester.pump(const Duration(milliseconds: 300));
-
-      final button = tester.widget<TextButton>(
-        find.byKey(const Key('identity-damaged-start-fresh')),
-      );
-      expect(
-        button.onPressed,
-        isNull,
-        reason:
-            'a second tap during key generation would race a concurrent '
-            'identity write against the same pre-key counter',
-      );
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    });
-
-    testWidgets('recovery is two taps away and only runs after confirmation', (
+    testWidgets('no destructive action exists, collapsed or expanded', (
       tester,
     ) async {
       final encryption = _FakeEncryption(damaged: true);
       await tester.pumpWidget(_host(encryption, const IdentityDamagedBanner()));
       final l10n = await AppLocalizations.delegate.load(const Locale('en'));
 
+      expect(find.byType(TextButton), findsOneWidget);
       await tester.tap(find.byIcon(Icons.expand_more));
       await tester.pumpAndSettle();
-      final startFresh = find.byKey(const Key('identity-damaged-start-fresh'));
-      expect(startFresh, findsOneWidget);
-      expect(find.text(l10n.identityDamagedAction), findsOneWidget);
 
-      await tester.tap(startFresh);
-      await tester.pumpAndSettle();
-      // The dialog is up; nothing destructive has happened yet.
-      expect(encryption.recoverCalls, 0);
-
-      await tester.tap(find.text(l10n.cancel));
-      await tester.pumpAndSettle();
+      // (lxxi): the disclosure used to hide "Start fresh". The only button on
+      // this banner, in either state, is the link; the copy no longer
+      // suggests making new keys either.
+      expect(find.byType(TextButton), findsOneWidget);
+      expect(find.byKey(const Key('identity-damaged-link')), findsOneWidget);
+      expect(find.byKey(const Key('identity-damaged-start-fresh')), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(
-        encryption.recoverCalls,
-        0,
-        reason: 'cancelling must never wipe keys',
+        l10n.identityDamagedBody.toLowerCase(),
+        isNot(contains('start fresh')),
       );
-
-      await tester.tap(startFresh);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text(l10n.identityDamagedConfirmAction));
-      await tester.pumpAndSettle();
-      expect(encryption.recoverCalls, 1);
     });
   });
 

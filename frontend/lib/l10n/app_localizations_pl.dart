@@ -502,10 +502,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get identityDamagedBody =>
-      'Logujesz się na nowym urządzeniu lub w nowej przeglądarce? Twoje konto ma już klucze szyfrowania na innym urządzeniu — połącz to urządzenie stamtąd i nic nie przepadnie. Tylko jeśli to Twoje dotychczasowe urządzenie, a zapisane klucze zostały utracone, zacznij od nowa: powstaną nowe klucze, a wiadomości, których to urządzenie nigdy nie odszyfrowało, będą nie do odzyskania. Nic nie zostało odtworzone automatycznie — zrobienie tego po cichu zniszczyłoby możliwość odczytania historii.';
-
-  @override
-  String get identityDamagedAction => 'Zacznij od nowa';
+      'Logujesz się na nowym urządzeniu lub w nowej przeglądarce? Twoje konto ma już klucze szyfrowania na innym urządzeniu — połącz to urządzenie stamtąd i nic nie przepadnie. Nic nie zostało odtworzone automatycznie: nowym kluczom utworzonym tutaj nikt by nie ufał, a zrobienie tego po cichu zniszczyłoby możliwość odczytania historii.';
 
   @override
   String get messageRetrySend => 'Ponów';
@@ -527,24 +524,10 @@ class AppLocalizationsPl extends AppLocalizations {
       'Coś poszło nie tak. Spróbuj ponownie.';
 
   @override
-  String get identityDamagedRecoveryFailed =>
-      'Nie udało się utworzyć nowych kluczy szyfrowania. Spróbuj ponownie.';
-
-  @override
   String get identityAlertShowDetails => 'Szczegóły';
 
   @override
   String get identityAlertHideDetails => 'Ukryj szczegóły';
-
-  @override
-  String get identityDamagedConfirmTitle => 'Utworzyć nowe klucze?';
-
-  @override
-  String get identityDamagedConfirmBody =>
-      'Zostanie utworzona nowa tożsamość, a kontakty automatycznie wymienią klucze. Wiadomości już otwarte na tym urządzeniu pozostaną czytelne. Wiadomości, których to urządzenie nigdy nie odszyfrowało, będą nie do odzyskania.';
-
-  @override
-  String get identityDamagedConfirmAction => 'Utwórz nowe klucze';
 
   @override
   String get peerIdentityMarkVerifiedAction => 'Odciski się zgadzają';

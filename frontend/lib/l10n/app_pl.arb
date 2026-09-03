@@ -171,8 +171,7 @@
   "devicesSyncingNote": "Synchronizowanie urządzeń…",
   "encryptionNotInitialized": "Szyfrowanie niezainicjowane",
   "identityDamagedTitle": "Brak kluczy szyfrowania na tym urządzeniu",
-  "identityDamagedBody": "Logujesz się na nowym urządzeniu lub w nowej przeglądarce? Twoje konto ma już klucze szyfrowania na innym urządzeniu — połącz to urządzenie stamtąd i nic nie przepadnie. Tylko jeśli to Twoje dotychczasowe urządzenie, a zapisane klucze zostały utracone, zacznij od nowa: powstaną nowe klucze, a wiadomości, których to urządzenie nigdy nie odszyfrowało, będą nie do odzyskania. Nic nie zostało odtworzone automatycznie — zrobienie tego po cichu zniszczyłoby możliwość odczytania historii.",
-  "identityDamagedAction": "Zacznij od nowa",
+  "identityDamagedBody": "Logujesz się na nowym urządzeniu lub w nowej przeglądarce? Twoje konto ma już klucze szyfrowania na innym urządzeniu — połącz to urządzenie stamtąd i nic nie przepadnie. Nic nie zostało odtworzone automatycznie: nowym kluczom utworzonym tutaj nikt by nie ufał, a zrobienie tego po cichu zniszczyłoby możliwość odczytania historii.",
 
 
 
@@ -187,15 +186,10 @@
   "@authStatusServerUnreachable": {"description": "Auth surface status, localized from an AuthStatusCode."},
   "authStatusUnexpectedError": "Coś poszło nie tak. Spróbuj ponownie.",
   "@authStatusUnexpectedError": {"description": "Auth surface status, localized from an AuthStatusCode."},
-  "identityDamagedRecoveryFailed": "Nie udało się utworzyć nowych kluczy szyfrowania. Spróbuj ponownie.",
-  "@identityDamagedRecoveryFailed": {"description": "Shown when regenerating a damaged Signal identity fails."},
   "identityAlertShowDetails": "Szczegóły",
   "@identityAlertShowDetails": {"description": "Reveals the full explanation on a collapsed identity banner."},
   "identityAlertHideDetails": "Ukryj szczegóły",
   "@identityAlertHideDetails": {"description": "Collapses the explanation on an identity banner."},
-  "identityDamagedConfirmTitle": "Utworzyć nowe klucze?",
-  "identityDamagedConfirmBody": "Zostanie utworzona nowa tożsamość, a kontakty automatycznie wymienią klucze. Wiadomości już otwarte na tym urządzeniu pozostaną czytelne. Wiadomości, których to urządzenie nigdy nie odszyfrowało, będą nie do odzyskania.",
-  "identityDamagedConfirmAction": "Utwórz nowe klucze",
   "peerIdentityMarkVerifiedAction": "Odciski się zgadzają",
   "peerIdentityVerifyMenuAction": "Zweryfikuj klucze bezpieczeństwa",
   "peerIdentityFingerprintDialogTitle": "Zweryfikuj klucze bezpieczeństwa",

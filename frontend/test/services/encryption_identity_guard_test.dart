@@ -17,8 +17,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 ///   1. the identity is now ONE atomic record;
 ///   2. the legacy two-key layout every existing install has still loads, and
 ///      is migrated without regenerating anything;
-///   3. anything that looks like partial loss fails CLOSED — no new identity,
-///      no writes — and offers an explicit, consented way out.
+///   3. anything that looks like partial loss is decided by the SERVER
+///      (amendment (lxxi)): an enrolled account fails CLOSED — no new identity,
+///      no writes, no consented remedy — while residue on a never-enrolled
+///      account is discarded and a fresh identity minted without asking.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -90,7 +92,7 @@ void main() {
     });
   });
 
-  group('partial loss fails closed', () {
+  group('partial loss on an ENROLLED account fails closed', () {
     /// Half the legacy pair survives. This is the shape that used to silently
     /// mint a new identity.
     test('only the key pair survives -> refuses, mints nothing', () async {
@@ -101,7 +103,7 @@ void main() {
 
       final svc = EncryptionService();
       await expectLater(
-        svc.initialize(2, checkServerBundleExists: () async => false),
+        svc.initialize(2, checkServerBundleExists: () async => true),
         throwsA(isA<E2eIdentityIncompleteException>()),
       );
       expect(svc.identityIncomplete, isTrue);
@@ -124,7 +126,7 @@ void main() {
 
       final svc = EncryptionService();
       await expectLater(
-        svc.initialize(3, checkServerBundleExists: () async => false),
+        svc.initialize(3, checkServerBundleExists: () async => true),
         throwsA(isA<E2eIdentityIncompleteException>()),
       );
     });
@@ -138,10 +140,15 @@ void main() {
 
       final svc = EncryptionService();
       await expectLater(
-        svc.initialize(4, checkServerBundleExists: () async => false),
+        svc.initialize(4, checkServerBundleExists: () async => true),
         throwsA(isA<E2eIdentityIncompleteException>()),
       );
       expect(await secure.read(key: 'e2e_4_identity_record_v1'), isNull);
+      expect(
+        await secure.read(key: 'e2e_4_session_49_1'),
+        'fake-record',
+        reason: 'residue on an enrolled account is never discarded',
+      );
     });
 
     test('a corrupt atomic record is damage, not absence', () async {
@@ -151,9 +158,27 @@ void main() {
 
       final svc = EncryptionService();
       await expectLater(
-        svc.initialize(6, checkServerBundleExists: () async => false),
+        svc.initialize(6, checkServerBundleExists: () async => true),
         throwsA(isA<E2eIdentityIncompleteException>()),
       );
+    });
+
+    /// (lxxi): partial loss is no longer decided offline. An UNKNOWN answer
+    /// defers exactly as it does on an empty store — it must neither mint nor
+    /// raise the link-or-reset surface on a flaky boot.
+    test('partial + UNKNOWN defers, is not damaged, writes nothing', () async {
+      FlutterSecureStorage.setMockInitialValues({
+        'e2e_5_session_49_1': 'fake-record',
+      });
+
+      final svc = EncryptionService();
+      await expectLater(
+        svc.initialize(5, checkServerBundleExists: () async => null),
+        throwsA(isA<E2eIdentityCheckUnavailableException>()),
+      );
+      expect(svc.identityIncomplete, isFalse);
+      expect(await secure.read(key: 'e2e_5_identity_record_v1'), isNull);
+      expect(await secure.read(key: 'e2e_5_session_49_1'), 'fake-record');
     });
 
     /// Fail-closed must protect users with data at risk, not brick users who
@@ -263,8 +288,13 @@ void main() {
     });
   });
 
-  group('consented recovery', () {
-    test('regeneration clears the damaged material and starts a new identity',
+  /// (lxxi). Signal material without a published identity is leftover from an
+  /// install whose upload never landed: no peer holds a session against it, so
+  /// it protects nothing, and keeping it would strand the new identity against
+  /// ratchets no peer can follow. The server's explicit "no bundle" is the
+  /// authorization; nothing is asked of the user.
+  group('residue on a NEVER-enrolled account is discarded', () {
+    test('server says no bundle -> residue wiped, new identity minted',
         () async {
       final pair = generateIdentityKeyPair();
       FlutterSecureStorage.setMockInitialValues({
@@ -275,12 +305,7 @@ void main() {
       });
 
       final svc = EncryptionService();
-      await expectLater(
-        svc.initialize(9, checkServerBundleExists: () async => false),
-        throwsA(isA<E2eIdentityIncompleteException>()),
-      );
-
-      await svc.regenerateIdentityAfterConfirmedLoss(9);
+      await svc.initialize(9, checkServerBundleExists: () async => false);
 
       expect(svc.identityIncomplete, isFalse);
       expect(
@@ -300,10 +325,34 @@ void main() {
         reason: 'the damaged legacy identity is replaced, not kept',
       );
 
-      // And the service is usable again.
+      // And the service is usable again without consulting anyone.
       final reloaded = EncryptionService();
-      await reloaded.initialize(9, checkServerBundleExists: () async => false);
+      var consulted = false;
+      await reloaded.initialize(
+        9,
+        checkServerBundleExists: () async {
+          consulted = true;
+          return true;
+        },
+      );
+      expect(consulted, isFalse);
       expect(reloaded.needsKeyUpload, isFalse);
+    });
+
+    test('the discard never runs on a bundle-exists answer', () async {
+      FlutterSecureStorage.setMockInitialValues({
+        'e2e_10_session_49_1': 'fake-record',
+        'e2e_10_next_pre_key_id': '120',
+      });
+
+      final svc = EncryptionService();
+      await expectLater(
+        svc.initialize(10, checkServerBundleExists: () async => true),
+        throwsA(isA<E2eIdentityIncompleteException>()),
+      );
+      expect(await secure.read(key: 'e2e_10_session_49_1'), 'fake-record');
+      expect(await secure.read(key: 'e2e_10_next_pre_key_id'), '120');
+      expect(await secure.read(key: 'e2e_10_identity_record_v1'), isNull);
     });
   });
 
