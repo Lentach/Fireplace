@@ -723,6 +723,7 @@
     "placeholders": { "seconds": { "type": "int" } }
   },
   "passcodeUnavailable": "Nie udało się zabezpieczyć kodu na tym urządzeniu.",
+  "passcodeCredentialLoading": "Odczytywanie zabezpieczeń urządzenia…",
   "passcodeForgot": "Nie pamiętasz kodu?",
   "passcodeNoRecovery": "Nie ma sposobu, aby odzyskać zapomniany kod. Nikt — ani my, ani hasło Twojego konta — go nie obejdzie.",
   "passcodeEraseWarning": "Jedyne wyjście to usunięcie danych tej aplikacji z tego urządzenia i ponowne zalogowanie. Wiadomości przechowywane tylko tutaj znikną na zawsze, a Twoje kontakty zobaczą nowy numer bezpieczeństwa.",

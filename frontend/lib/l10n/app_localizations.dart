@@ -3368,6 +3368,12 @@ abstract class AppLocalizations {
   /// **'Nie udało się zabezpieczyć kodu na tym urządzeniu.'**
   String get passcodeUnavailable;
 
+  /// No description provided for @passcodeCredentialLoading.
+  ///
+  /// In pl, this message translates to:
+  /// **'Odczytywanie zabezpieczeń urządzenia…'**
+  String get passcodeCredentialLoading;
+
   /// No description provided for @passcodeForgot.
   ///
   /// In pl, this message translates to:

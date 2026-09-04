@@ -41,6 +41,12 @@ class MemoryPasscodeStore implements PasscodeStore {
   @override
   Future<PasscodeRecord> load() async => record;
 
+  /// Mirrors `DevicePasscodeStore`: the flag lives in the non-secret store,
+  /// so it is readable even when the credential is not.
+  @override
+  Future<bool> readEnabledFlag() async =>
+      record.enabled || record.credentialDamaged || record.credentialUnavailable;
+
   @override
   Future<void> saveCredential({
     required PasscodeMode mode,

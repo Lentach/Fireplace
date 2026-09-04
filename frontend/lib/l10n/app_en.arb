@@ -738,6 +738,7 @@
   "passcodeTooShort": "Use at least 4 characters.",
   "passcodeBlocked": "Too many attempts. Try again in {seconds}s.",
   "passcodeUnavailable": "This device could not secure the passcode.",
+  "passcodeCredentialLoading": "Reading this device's secure storage…",
   "passcodeForgot": "Forgot your passcode?",
   "passcodeNoRecovery": "A forgotten passcode cannot be recovered. Nothing gets past it — not us, not your account password.",
   "passcodeEraseWarning": "The only way out is to erase this app's data on this device and sign in again. Messages stored only here are gone forever, and your contacts will see a new safety number.",

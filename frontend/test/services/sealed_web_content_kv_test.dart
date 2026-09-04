@@ -249,6 +249,56 @@ void main() {
         ),
       );
     });
+
+    test('revoke drops the keys AND the decrypted view, keeping rows PRESENT',
+        () async {
+      secure.store['fp_content_key_kidA'] = _hexA;
+      prefs.setString('e2e_7_decrypted_1', 'seed');
+      final kv = await openStore();
+      expect(await kv.setString('e2e_7_decrypted_1', 'hello'), isTrue);
+      expect(kv.getString('e2e_7_decrypted_1'), 'hello');
+
+      kv.revoke();
+
+      // The row is still PRESENT — served as its raw envelope, never null and
+      // never plaintext. A null here is what retires history permanently.
+      final held = kv.getString('e2e_7_decrypted_1');
+      expect(held, isNotNull);
+      expect(held, isNot('hello'));
+      expect(SealedWebEnvelope.isEnvelope(held!), isTrue);
+      // And the plaintext is gone from RAM, not merely unreachable through
+      // this getter: a reload cannot bring it back either.
+      await kv.reload();
+      expect(kv.getString('e2e_7_decrypted_1'), isNot('hello'));
+    });
+
+    test('a revoked store REFUSES sealed writes instead of sealing blind',
+        () async {
+      secure.store['fp_content_key_kidA'] = _hexA;
+      final kv = await openStore();
+      kv.revoke();
+
+      expect(await kv.setString('e2e_7_decrypted_9', 'after lock'), isFalse);
+      // Nothing was persisted, in any form.
+      expect(prefs.getString('e2e_7_decrypted_9'), isNull);
+      // Control records are not key material and must still be writable, or
+      // the retired set and the ledger freeze mid-session.
+      expect(await kv.setString('e2e_7_retired_v1', '[1]'), isTrue);
+    });
+
+    test('authoritativeSnapshot stays TOTAL after a revoke', () async {
+      secure.store['fp_content_key_kidA'] = _hexA;
+      final kv = await openStore();
+      await kv.setString('e2e_7_decrypted_1', 'hello');
+
+      kv.revoke();
+
+      final snapshot = await kv.authoritativeSnapshot();
+      // Present, undecodable — the tri-state `recordExists` depends on.
+      expect(snapshot, isNotNull);
+      expect(snapshot!.containsKey('e2e_7_decrypted_1'), isTrue);
+      expect(snapshot['e2e_7_decrypted_1'], isNot('hello'));
+    });
   });
 
   Future<String> envelopeOf(

@@ -1,12 +1,15 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../services/e2e_lock_revoker.dart';
 import '../services/encryption/content_key_manager.dart';
 import '../services/encryption/content_key_wrap.dart';
 import '../services/passcode_kdf.dart';
 import '../services/passcode_store.dart';
 import '../services/passcode_unlock_gate.dart';
+import '../utils/app_relaunch.dart';
 import '../utils/e2e_persistent_diag.dart';
 import '../utils/passcode_autolock.dart';
 
@@ -48,12 +51,16 @@ const int kPasscodeMinAlphanumericLength = 4;
 /// (rather than throws) would otherwise leave a blank surface with no way in
 /// and no error — the worst failure this feature can have.
 ///
-/// **It MUST stay above `DevicePasscodeStore.secretReadBudget` (1.05 s) plus
-/// the SharedPreferences read that precedes it.** If this fired first, the
-/// catch below would take the no-readable-flag branch and a flagged-but-slow
-/// store would silently unlock, re-opening the bypass `credentialDamaged`
-/// closes. `test/services/passcode_store_test.dart` asserts the ordering.
-const Duration kPasscodeStoreReadTimeout = Duration(milliseconds: 2500);
+/// **It MUST stay above `DevicePasscodeStore.secretReadBudget` (4.8 s) plus
+/// the SharedPreferences read that precedes it**, so that a slow-but-working
+/// Keystore resolves through the store's own retries rather than through this
+/// ceiling. `test/services/passcode_store_test.dart` asserts the ordering.
+///
+/// Firing it is no longer a bypass risk: the enabled flag is read separately
+/// and first ([PasscodeStore.readEnabledFlag]), so a flagged device answers
+/// LOCKED here whatever the secret half does. Before 2026-09-04 the flag came
+/// out of the timed read, and this timeout meant "no passcode" — i.e. unlock.
+const Duration kPasscodeStoreReadTimeout = Duration(milliseconds: 6000);
 
 /// Key families the passcode wrap covers: the payload keys that seal the
 /// Signal rows and the decrypted-content rows. Deliberately NOT the sealed
@@ -91,13 +98,22 @@ class PasscodeProvider extends ChangeNotifier {
     int Function()? nowMs,
     ContentKeyWrap? vault,
     PasscodeUnlockGate? gate,
+    E2eLockRevoker? revoker,
     bool? wrapKeys,
+    @visibleForTesting bool Function()? canRelaunch,
+    @visibleForTesting void Function()? relaunch,
   }) : _store = store ?? DevicePasscodeStore(),
        _kdf = kdf ?? const Pbkdf2PasscodeKdf(),
        _now = nowMs ?? _wallClock,
        _vault = vault ?? ContentKeyWrap.instance,
        _gate = gate ?? PasscodeUnlockGate.instance,
-       _wrapKeys = wrapKeys ?? kIsWeb;
+       _revoker = revoker ?? E2eLockRevoker.instance,
+       _wrapKeys = wrapKeys ?? kIsWeb,
+       // Never in a widget test: a real reload would take the test host with
+       // it. `canRelaunchApp()` is false off-web, which covers the unit
+       // suite; the explicit override covers a test that forces `wrapKeys`.
+       _canRelaunch = canRelaunch ?? canRelaunchApp,
+       _relaunch = relaunch ?? relaunchApp;
 
   static int _wallClock() => DateTime.now().millisecondsSinceEpoch;
 
@@ -110,6 +126,27 @@ class PasscodeProvider extends ChangeNotifier {
 
   /// Phase 2: holds the E2E boot until the vault is open.
   final PasscodeUnlockGate _gate;
+
+  /// Tears the LIVE E2E stack down on a re-lock, and brings it back on an
+  /// unlock that did not restart the process.
+  final E2eLockRevoker _revoker;
+
+  /// Web-only in-place process restart. See [_lock] step 3.
+  final bool Function() _canRelaunch;
+  final void Function() _relaunch;
+
+  /// Backoff for the credential re-read in [_retryCredentialRead]. Capped so
+  /// a device that never answers costs one read every 8 s and nothing more.
+  static const List<Duration> _credentialRetryDelays = [
+    Duration(milliseconds: 400),
+    Duration(seconds: 1),
+    Duration(seconds: 2),
+    Duration(seconds: 4),
+    Duration(seconds: 8),
+  ];
+
+  Timer? _credentialRetry;
+  int _credentialRetryAttempt = 0;
 
   /// Whether enabling the passcode should also wrap the local key material.
   /// Web only by owner ruling (2026-09-04): on Android the same material is
@@ -153,29 +190,50 @@ class PasscodeProvider extends ChangeNotifier {
   /// same event there, and a stricter rule would make the user's auto-lock
   /// choice meaningless on the primary platform.
   Future<void> initialize() async {
+    // The FLAG comes first, from the cheap non-secret store, because it is
+    // the one fact that decides whether failing OPEN below is allowed at all.
+    // Reading it inside the timed load made "a passcode exists but storage is
+    // slow" indistinguishable from "no passcode was ever set", and the second
+    // reading unlocks the app — a complete bypass off a slow Keystore.
+    final flagged = await _readFlagQuiet();
     try {
       _record = await _store.load().timeout(kPasscodeStoreReadTimeout);
     } catch (e) {
-      // A store that THROWS or HANGS gives us no flag at all, and inventing a
-      // lock for someone who may never have set one would let a storage
-      // hiccup lock a user out of their own app. Holding `unknown` forever is
-      // worse still: the gate would brick the app behind a blank surface with
-      // no way in. So: no readable flag ⇒ no passcode, recorded loudly.
       E2ePersistentDiag.record('PASSCODE_STORE_UNREADABLE', {
         'errorType': e.runtimeType.toString(),
+        'flagged': flagged,
       });
+      if (flagged) {
+        // A passcode EXISTS. Stay closed and keep trying; never unlock.
+        await _enterUnavailable();
+        return;
+      }
+      // Nothing readable at all, not even the flag. Inventing a lock for
+      // someone who may never have set one would let a storage hiccup lock a
+      // user out of their own app, and holding `unknown` forever would brick
+      // the app behind a blank surface with no way in.
       _record = PasscodeRecord.disabled;
+      _gate.open();
       _setState(PasscodeLockState.disabled);
       return;
     }
+    if (_record.credentialUnavailable) {
+      // The flag read TRUE and the credential read did not answer. Transient
+      // by nature (a first Keystore read on a cold, loaded device), so this
+      // locks and RETRIES — it does not tell the user their credential is
+      // broken and point them at the erase. That misdiagnosis was live on
+      // Android until 2026-09-04: every cold boot lost all three 250 ms
+      // attempts and refused the correct code.
+      await _enterUnavailable();
+      return;
+    }
     if (_record.credentialDamaged) {
-      // Opposite polarity, deliberately: the flag READ TRUE, so a passcode
-      // exists and its verifier is what we cannot read. Resolving that to
-      // "unlocked" is the error-as-absence inversion that `AuthTokenStore`
-      // was hardened against — a wiped or tampered Keystore entry would
-      // silently open the app. Fail CLOSED; the lock screen's erase action is
-      // the way through, and every code entry reports `unavailable` rather
-      // than "wrong".
+      // Opposite polarity, deliberately: the flag READ TRUE and the read
+      // ANSWERED that the verifier is gone. Resolving that to "unlocked" is
+      // the error-as-absence inversion that `AuthTokenStore` was hardened
+      // against — a wiped or tampered Keystore entry would silently open the
+      // app. Fail CLOSED; the lock screen's erase action is the way through,
+      // and every code entry reports `unavailable` rather than "wrong".
       E2ePersistentDiag.record('PASSCODE_CREDENTIAL_DAMAGED', const {});
       await _closeGateIfWrapping();
       _setState(PasscodeLockState.locked);
@@ -205,6 +263,84 @@ class PasscodeProvider extends ChangeNotifier {
       _gate.open();
     }
     _setState(lock ? PasscodeLockState.locked : PasscodeLockState.unlocked);
+  }
+
+  /// The flag alone, never throwing: a store that cannot even answer this is
+  /// the "nothing readable" case, and that one is allowed to fail open.
+  Future<bool> _readFlagQuiet() async {
+    try {
+      return await _store.readEnabledFlag().timeout(kPasscodeStoreReadTimeout);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// A passcode exists and its credential did not answer. Lock, and keep
+  /// asking until storage answers — a device whose Keystore wakes up on the
+  /// third try must end up with a working code, not with an erase prompt.
+  Future<void> _enterUnavailable() async {
+    E2ePersistentDiag.recordDeduped(
+      'PASSCODE_CREDENTIAL_UNAVAILABLE',
+      const {},
+      matchAll: const ['PASSCODE_CREDENTIAL_UNAVAILABLE'],
+    );
+    await _closeGateIfWrapping();
+    _setState(PasscodeLockState.locked);
+    notifyListeners(); // the screen re-reads `credentialResolved`
+    _scheduleCredentialRetry();
+  }
+
+  /// Whether a code entered right now can be checked at all. False only in
+  /// the retrying state above, which the lock screen shows as "still
+  /// loading" rather than as a failure the user must erase their way out of.
+  bool get credentialResolved =>
+      !_record.credentialUnavailable || _record.enabled;
+
+  void _scheduleCredentialRetry() {
+    if (_credentialRetry != null) return;
+    final delay = _credentialRetryDelays[_credentialRetryAttempt.clamp(
+      0,
+      _credentialRetryDelays.length - 1,
+    )];
+    _credentialRetry = Timer(delay, () {
+      _credentialRetry = null;
+      _credentialRetryAttempt++;
+      _retryCredentialRead();
+    });
+  }
+
+  /// Deliberately unbounded (with a capped delay): while this is failing the
+  /// app is locked and unusable anyway, so there is no state worth giving up
+  /// for. The lock screen keeps its erase action throughout, so a device
+  /// whose storage never recovers is not stuck without a way out.
+  Future<void> _retryCredentialRead() async {
+    PasscodeRecord next;
+    try {
+      next = await _store.load().timeout(kPasscodeStoreReadTimeout);
+    } catch (_) {
+      _scheduleCredentialRetry();
+      return;
+    }
+    if (next.credentialUnavailable) {
+      _scheduleCredentialRetry();
+      return;
+    }
+    _record = next;
+    if (next.credentialDamaged) {
+      // The read finally answered: the credential really is gone.
+      E2ePersistentDiag.record('PASSCODE_CREDENTIAL_DAMAGED', const {});
+      notifyListeners();
+      return;
+    }
+    if (!next.enabled) {
+      // Disabled underneath us (an erase, or another engine on the origin).
+      _gate.open();
+      _setState(PasscodeLockState.disabled);
+      return;
+    }
+    // The credential is readable now. Still LOCKED — the boot policy already
+    // said so — but the code the user types will be checked for real.
+    notifyListeners();
   }
 
   /// Holds the E2E boot only when there is something it could not read: with
@@ -336,6 +472,12 @@ class PasscodeProvider extends ChangeNotifier {
       }
       _gate.open();
       _setState(PasscodeLockState.unlocked);
+      // Bring the E2E stack back if a re-lock revoked it and the process
+      // survived (native, or a web reload the platform refused). A no-op on
+      // the boot path, where E2E was never up and is waiting on the gate this
+      // call just opened. NOT awaited: the UI must reveal itself now, and the
+      // revoker serializes this behind any teardown still in flight.
+      _revoker.restore().ignore();
       return PasscodeUnlockResult.ok;
     }
 
@@ -361,21 +503,51 @@ class PasscodeProvider extends ChangeNotifier {
   }
 
   /// Demand the code now (the Chats-header padlock).
-  void lockNow() {
-    if (_state != PasscodeLockState.unlocked) return;
-    _lock();
+  ///
+  /// Returns the future of the teardown so a caller (or a test) can await the
+  /// revocation; the UI does not, because [_lock] flips the state — and so
+  /// covers the app — before the first await.
+  Future<void> lockNow() {
+    if (_state != PasscodeLockState.unlocked) return Future<void>.value();
+    return _lock();
   }
 
-  /// Locking drops the KEK, so the NEXT process cannot read the key material
-  /// without the code. It deliberately does not tear down an E2E stack that
-  /// is already up: the open store holds its keys in RAM, and unmounting it
-  /// would drop the socket, the active conversation and any in-flight send
-  /// (the same reason the gate uses `Offstage`). Cold boot is where the
-  /// arithmetic guarantee lives; a mid-session re-lock is a UI barrier.
-  void _lock() {
+  /// Locking is a real revocation wherever the passcode is real key material,
+  /// and a UI barrier where it is only a verifier.
+  ///
+  /// Three steps, in this order:
+  ///
+  ///  1. drop the KEK and close the E2E gate, and flip the state so the lock
+  ///     screen covers the app in THIS frame — everything after is async;
+  ///  2. with wrapping on, revoke the live E2E stack ([E2eLockRevoker]): the
+  ///     open stores forget their keys and their decrypted rows, so nothing
+  ///     can be decrypted again until the code comes back. Without this the
+  ///     already-open stores keep serving plaintext from RAM and only a cold
+  ///     boot was arithmetic;
+  ///  3. on web, replace the process ([relaunchApp]). Step 2 cannot reach what
+  ///     it does not own — the message list, the conversation previews, the
+  ///     rendered text — and a hard reload takes the whole heap with it. This
+  ///     is the same replacement `page_lifecycle_web.dart` performs on every
+  ///     thaw of a frozen PWA, so it lands on this app's best-tested boot,
+  ///     which then demands the code (the KEK is RAM-only, so a wrapped device
+  ///     boots locked whatever the auto-lock window says).
+  ///
+  /// Step 2 stays useful even when step 3 is refused (a reload requested from
+  /// a `pagehide` handler can be ignored): the keys are gone either way, and
+  /// unlocking then re-initialises E2E in place through
+  /// `EncryptionProvider.restoreAfterPasscodeUnlock`.
+  ///
+  /// Where wrapping is off (Android, by owner ruling) neither step runs: the
+  /// same keys are readable again the instant the store re-opens, so a
+  /// teardown would cost an E2E re-init and buy nothing. That platform's lock
+  /// is a UI barrier and `frontend/CLAUDE.md` §10b says so out loud.
+  Future<void> _lock() async {
     _vault.lock();
     _gate.close();
     _setState(PasscodeLockState.locked);
+    if (!_wrapKeys || !await _vault.isWrappingOn()) return;
+    await _revoker.revoke();
+    if (_canRelaunch()) _relaunch();
   }
 
   /// The app left the foreground: stamp the clock, and lock immediately when
@@ -389,7 +561,9 @@ class PasscodeProvider extends ChangeNotifier {
     await _store.saveLastActiveAt(_now());
     _record = await _store.load();
     if (_record.autoLockSeconds <= 0) {
-      _lock();
+      // Awaited: on web this backgrounding IS the last code this process may
+      // ever run, so the revocation has to finish before we yield.
+      await _lock();
       return;
     }
     notifyListeners();
@@ -407,7 +581,7 @@ class PasscodeProvider extends ChangeNotifier {
       nowMs: _now(),
       autoLockSeconds: _record.autoLockSeconds,
     );
-    if (lock) _lock();
+    if (lock) await _lock();
   }
 
   /// Whether [mode] may be used on this device.
@@ -491,6 +665,13 @@ class PasscodeProvider extends ChangeNotifier {
     if (_state == next) return;
     _state = next;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _credentialRetry?.cancel();
+    _credentialRetry = null;
+    super.dispose();
   }
 }
 

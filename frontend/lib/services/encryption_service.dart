@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
 import 'encryption/content_kv.dart';
+import 'encryption/sealed_web_content_kv.dart';
 import 'encryption/sealed_web_envelope.dart';
 import 'encryption/content_kv_opener_stub.dart'
     if (dart.library.io) 'encryption/content_kv_opener_io.dart';
@@ -3891,6 +3892,45 @@ class EncryptionService {
     _prefsOpening = null;
     _storage.clearPrefsCache();
     debugPrint('[EncryptionService] All encryption keys cleared');
+  }
+
+  /// Mid-session passcode re-lock: drop every piece of key material and
+  /// plaintext this instance holds in RAM, WITHOUT touching storage.
+  ///
+  /// This is what makes a re-lock a real revocation rather than a UI barrier.
+  /// [clearAllKeys] is the destructive sibling (logout/account deletion) and
+  /// deliberately shares only the cache-dropping tail with this method.
+  ///
+  /// What it drops, and why each one matters:
+  ///
+  ///  * the open content store's keys AND its decrypted view — that view holds
+  ///    the plaintext of every sealed row read this session;
+  ///  * the web Signal store's keys, and both store memos, so the next open is
+  ///    re-decided from scratch (locked ⇒ it refuses, rather than degrading to
+  ///    a plaintext backend);
+  ///  * the in-RAM Signal identity;
+  ///  * `_initialized`, so `initialize` rebuilds the stores on the next
+  ///    unlock instead of taking the reconnect shortcut.
+  ///
+  /// Called only where wrapping is on (web), because with wrapping off the
+  /// same keys are readable again the moment the store re-opens, so a teardown
+  /// would cost an E2E re-init and buy nothing.
+  Future<void> revokeForPasscodeLock() async {
+    final prefs = _prefs;
+    if (prefs is SealedWebContentKv) prefs.revoke();
+    _prefs = null;
+    _prefsOpening = null;
+    await revokePlatformContentKv();
+    await _storage.revokeWebSession();
+    if (_initialized) _identityStore.forgetInMemoryIdentity();
+    _initialized = false;
+    _keysForUpload = null;
+    needsKeyUpload = false;
+    // Deliberately NOT cleared: `_peersWithChangedIdentity` (an unacknowledged
+    // identity warning must survive) and `_pendingLedgerIds` (dropping the
+    // buffer would lose the record that a plaintext was persisted). Both hold
+    // ids only — no key material, no message content.
+    E2eDiagLog.add('E2E_REVOKE_FOR_LOCK', const {});
   }
 
   String _decryptedContentPrefix(int userId) => 'e2e_${userId}_decrypted_';

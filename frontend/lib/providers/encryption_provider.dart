@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/message_model.dart';
 import '../services/audio_cache_store.dart';
+import '../services/e2e_lock_revoker.dart';
 import '../services/encryption_service.dart';
 import '../services/device_list/device_list_cache.dart';
 import '../services/device_list/device_list_canonical.dart';
@@ -19,7 +20,16 @@ import '../utils/boot_markers.dart';
 /// EncryptionProvider — owns all E2E encryption state, initialization,
 class EncryptionProvider extends ChangeNotifier {
   EncryptionProvider({EncryptionService? service})
-    : _encryptionService = service ?? EncryptionService();
+    : _encryptionService = service ?? EncryptionService() {
+    // Register on the process-wide lock seam. Last one built wins, which in
+    // production means the only one; [dispose] deregisters itself so a widget
+    // test cannot leave a torn-down provider wired to the next test's lock.
+    _revoker
+      ..onRevoke = revokeForPasscodeLock
+      ..onRestore = restoreAfterPasscodeUnlock;
+  }
+
+  final E2eLockRevoker _revoker = E2eLockRevoker.instance;
 
   static void _e2eFlowLog(String step, [Map<String, dynamic>? data]) {
     E2eDiagLog.add(step, data ?? {});
@@ -2231,6 +2241,46 @@ class EncryptionProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Mid-session passcode re-lock: give up the ability to decrypt.
+  ///
+  /// [clearAll] is the logout shape and nulls [_currentUserId]; this one keeps
+  /// it, because the same user is expected back in a few seconds and
+  /// [restoreAfterPasscodeUnlock] needs to know who to re-initialise for.
+  ///
+  /// Every cache dropped here holds message plaintext or the ability to
+  /// produce it. `_retiredIds` and `_decryptedLedger` are ids, kept dropped
+  /// anyway so a post-unlock init reloads them from storage in the one order
+  /// that is provably before any decrypt (see [_initializeE2EInner]).
+  ///
+  /// Nothing needs to guard the decrypt paths afterwards: they all gate on
+  /// [isE2EReady], and this clears it BEFORE the teardown — so no decrypt can
+  /// be attempted against a revoked store, which is what would otherwise risk
+  /// persisting a permanent `[Decryption failed]` over a readable row.
+  Future<void> revokeForPasscodeLock() async {
+    _e2eFlowLog('E2E_REVOKE_LOCK', {'wasInitialized': _e2eInitialized});
+    _e2eInitialized = false;
+    _generatingMoreKeys = false;
+    _decryptedContentCache.clear();
+    _retiredIds.clear();
+    _decryptedLedger.clear();
+    _forceSessionRebuild.clear();
+    _cancelPendingFetches();
+    await _encryptionService.revokeForPasscodeLock();
+    notifyListeners();
+  }
+
+  /// The passcode was accepted and the process did NOT restart (native, or a
+  /// web reload the platform refused). Brings E2E back for the same user.
+  ///
+  /// A no-op when E2E was never up this session: the boot path owns that case
+  /// and is already waiting on [PasscodeUnlockGate].
+  Future<void> restoreAfterPasscodeUnlock() async {
+    final userId = _currentUserId;
+    if (userId == null || _e2eInitialized) return;
+    _e2eFlowLog('E2E_RESTORE_UNLOCK', {'userId': userId});
+    await initializeE2E(userId);
+  }
+
   /// Identity key fingerprint for display in Privacy & Safety screen.
   Future<String?> getIdentityFingerprint() =>
       _encryptionService.getIdentityFingerprint();
@@ -2443,6 +2493,12 @@ class EncryptionProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    // Only if still ours: a later provider may already have taken the seam.
+    if (_revoker.onRevoke == revokeForPasscodeLock) {
+      _revoker
+        ..onRevoke = null
+        ..onRestore = null;
+    }
     _cancelPendingFetches();
     _identityResetAnswerTimeout?.cancel();
     _identityResetAnswerTimeout = null;

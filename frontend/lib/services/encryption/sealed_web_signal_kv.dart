@@ -89,8 +89,18 @@ class SealedWebSignalKv implements SigWebKv {
 
   Map<String, Uint8List> _knownKeys = <String, Uint8List>{};
   final Set<String> _refreshFailedKids = <String>{};
-  late String _activeKid;
-  late Uint8List _activeKey;
+
+  /// Nullable, not `late`: [revoke] must be able to DROP the reference. The
+  /// sealer memoizes its imported `AesGcmSecretKey` in an `Expando` keyed on
+  /// this exact object, so a surviving reference keeps a usable key alive in
+  /// RAM even after the bytes are zeroed.
+  String? _activeKid;
+  Uint8List? _activeKey;
+
+  /// Set by [revoke]. Separate from `_activeKey == null` so the refusal is
+  /// self-describing in diagnostics and cannot be confused with a store that
+  /// was never armed (impossible — [open] throws instead).
+  bool _revoked = false;
 
   /// Legacy plaintext rows of the sealed families awaiting the drain.
   final List<String> _legacyResidue = <String>[];
@@ -99,7 +109,38 @@ class SealedWebSignalKv implements SigWebKv {
   Future<void>? _drainFuture;
 
   @visibleForTesting
-  String get debugActiveKid => _activeKid;
+  String get debugActiveKid => _activeKid!;
+
+  @visibleForTesting
+  bool get debugRevoked => _revoked;
+
+  /// Forgets every key this store holds, so a mid-session passcode re-lock is
+  /// a real revocation rather than a UI barrier (`frontend/CLAUDE.md` §10a).
+  ///
+  /// NOT destructive to storage — the design rule that nothing here ever
+  /// deletes a row still holds. The sealed rows stay exactly as they are and
+  /// become present-but-unreadable, which is precisely their state on a locked
+  /// cold boot. Two consequences are deliberate:
+  ///
+  ///  * every sealed READ throws [SigStoreUnreadable] (never null — an absence
+  ///    here drives identity regeneration), and
+  ///  * every sealed WRITE throws rather than persisting plaintext or sealing
+  ///    under a zeroed key.
+  ///
+  /// The bytes are zeroed before the references drop so the material does not
+  /// linger in the heap until the next GC.
+  void revoke() {
+    if (_revoked) return;
+    _revoked = true;
+    for (final key in _knownKeys.values) {
+      key.fillRange(0, key.length, 0);
+    }
+    _knownKeys = <String, Uint8List>{};
+    _refreshFailedKids.clear();
+    _activeKey = null;
+    _activeKid = null;
+    _legacyResidue.clear();
+  }
 
   @visibleForTesting
   List<String> get debugLegacyResidue => List.unmodifiable(_legacyResidue);
@@ -194,8 +235,9 @@ class SealedWebSignalKv implements SigWebKv {
     } else {
       _knownKeys = inventory.keys;
       final marker = all?[activeKidMarker] ?? await _readMarkerQuiet();
+      String kid;
       if (marker != null && _knownKeys.containsKey(marker)) {
-        _activeKid = marker;
+        kid = marker;
       } else {
         // Fallback selection: deterministic "newest" (kids embed a mint
         // timestamp; length-then-lex orders the ms component correctly).
@@ -205,10 +247,11 @@ class SealedWebSignalKv implements SigWebKv {
                 ? a.length.compareTo(b.length)
                 : a.compareTo(b),
           );
-        _activeKid = kids.last;
-        await _writeMarker(_activeKid);
+        kid = kids.last;
+        await _writeMarker(kid);
       }
-      _activeKey = _knownKeys[_activeKid]!;
+      _activeKid = kid;
+      _activeKey = _knownKeys[kid]!;
     }
 
     if (all != null) {
@@ -250,6 +293,10 @@ class SealedWebSignalKv implements SigWebKv {
   }
 
   Future<Uint8List?> _keyForKid(String kid) async {
+    // Revoked: never pay an enumeration, and never resolve a key again. The
+    // inventory would answer `lockedKeyCount > 0` with an empty key map
+    // anyway, so this is the same verdict one round-trip cheaper.
+    if (_revoked) return null;
     final known = _knownKeys[kid];
     if (known != null) return known;
     if (_refreshFailedKids.contains(kid)) return null;
@@ -266,6 +313,12 @@ class SealedWebSignalKv implements SigWebKv {
 
   /// Unseal [raw] (which MUST be an envelope) or throw [SigStoreUnreadable].
   Future<String> _unsealOrThrow(String raw) async {
+    if (_revoked) {
+      // Explicit stage: a revoked read is a passcode re-lock, not corruption
+      // and not a lost kid, and the durable log has to say which.
+      _recordUnreadable('revoked');
+      throw const SigStoreUnreadable('revoked');
+    }
     final env = SealedSigEnvelope.tryParse(raw);
     if (env == null) {
       _recordUnreadable('parse');
@@ -291,8 +344,15 @@ class SealedWebSignalKv implements SigWebKv {
       await _inner.write(key, value);
       return;
     }
+    final activeKey = _activeKey;
+    final activeKid = _activeKid;
+    if (activeKey == null || activeKid == null) {
+      // Revoked mid-session. Persisting plaintext or sealing under a zeroed
+      // key would both be worse than failing the caller.
+      throw const SigStoreUnreadable('revoked');
+    }
     final sealed = await _sealer.seal(
-      _activeKey,
+      activeKey,
       Uint8List.fromList(utf8.encode(value)),
     );
     if (sealed == null) {
@@ -300,7 +360,7 @@ class SealedWebSignalKv implements SigWebKv {
       // instead would be a store that pretends to be sealed.
       throw const SigStoreUnreadable('seal');
     }
-    await _inner.write(key, SealedSigEnvelope.encode(_activeKid, sealed));
+    await _inner.write(key, SealedSigEnvelope.encode(activeKid, sealed));
   }
 
   @override
@@ -376,17 +436,22 @@ class SealedWebSignalKv implements SigWebKv {
   /// True when the row needs no further work (sealed, skipped, or gone);
   /// false aborts the drain for this session.
   Future<bool> _drainOne(String key) async {
+    final activeKey = _activeKey;
+    final activeKid = _activeKid;
+    // Revoked mid-drain: abort. Sealing under a zeroed key would replace the
+    // only copy of this row with an envelope nothing can ever open.
+    if (activeKey == null || activeKid == null) return false;
     final raw = await _inner.read(key);
     // Deleted or already sealed by a concurrent writer: nothing to do.
     if (raw == null || SealedSigEnvelope.isEnvelope(raw)) return true;
     final plainBytes = Uint8List.fromList(utf8.encode(raw));
-    final sealed = await _sealer.seal(_activeKey, plainBytes);
+    final sealed = await _sealer.seal(activeKey, plainBytes);
     if (sealed == null) return false;
     // RAM round-trip BEFORE the destructive in-place write (H1 class): the
     // value under this key is the ONLY copy of this key material.
-    final roundTrip = await _sealer.unseal(_activeKey, sealed);
+    final roundTrip = await _sealer.unseal(activeKey, sealed);
     if (roundTrip == null || utf8.decode(roundTrip) != raw) return false;
-    final envelope = SealedSigEnvelope.encode(_activeKid, sealed);
+    final envelope = SealedSigEnvelope.encode(activeKid, sealed);
     // Compare-and-set (D1 class): a row rewritten or deleted since the first
     // read is SKIPPED — seal-on-write already covered it; clobbering it with
     // the stale envelope would roll back a ratchet. Cross-engine session

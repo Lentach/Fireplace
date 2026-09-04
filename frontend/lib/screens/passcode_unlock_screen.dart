@@ -240,10 +240,18 @@ class _PasscodeUnlockScreenState extends State<PasscodeUnlockScreen> {
                 : PasscodeEntryView(
                     mode: passcode.mode,
                     title: l10n.passcodeEnterTitle,
-                    subtitle: warnAttempts
+                    // While the credential has not been read yet, no code can
+                    // be checked — so say "still reading" and refuse input
+                    // rather than accept a code and answer "this device could
+                    // not secure the passcode", which reads as terminal and
+                    // pushes the user toward the erase. The provider retries
+                    // in the background and this clears itself.
+                    subtitle: !passcode.credentialResolved
+                        ? l10n.passcodeCredentialLoading
+                        : warnAttempts
                         ? l10n.passcodeAttemptsLeft(attemptsLeft)
                         : null,
-                    enabled: cooldown == null,
+                    enabled: cooldown == null && passcode.credentialResolved,
                     errorText: cooldown != null
                         ? l10n.passcodeBlocked(cooldown.inSeconds + 1)
                         : _error,

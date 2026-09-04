@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fireplace/providers/passcode_provider.dart';
+import 'package:fireplace/services/e2e_lock_revoker.dart';
 import 'package:fireplace/services/encryption/content_key_wrap.dart';
 import 'package:fireplace/services/passcode_unlock_gate.dart';
 import 'package:fireplace/services/passcode_kdf.dart';
@@ -22,6 +23,10 @@ void main() {
   late MemorySecureKv vaultStore;
   late ContentKeyWrap vault;
   late PasscodeUnlockGate gate;
+  late E2eLockRevoker revoker;
+  late List<String> revokerCalls;
+  late int relaunches;
+  late bool canRelaunch;
 
   PasscodeProvider build({bool wrapKeys = false}) => PasscodeProvider(
     store: store,
@@ -29,7 +34,10 @@ void main() {
     nowMs: () => now,
     vault: vault,
     gate: gate,
+    revoker: revoker,
     wrapKeys: wrapKeys,
+    canRelaunch: () => canRelaunch,
+    relaunch: () => relaunches++,
   );
 
   setUp(() {
@@ -39,6 +47,16 @@ void main() {
     vaultStore = MemorySecureKv();
     vault = ContentKeyWrap(sealer: FakeContentSealer(), meta: vaultStore);
     gate = PasscodeUnlockGate();
+    revokerCalls = <String>[];
+    relaunches = 0;
+    canRelaunch = false;
+    revoker = E2eLockRevoker()
+      ..onRevoke = () async {
+        revokerCalls.add('revoke');
+      }
+      ..onRestore = () async {
+        revokerCalls.add('restore');
+      };
     passcode = build();
   });
 
@@ -104,16 +122,94 @@ void main() {
       expect(gate.isOpen, isTrue);
     });
 
-    test('locking drops the KEK and closes the gate for the next boot',
+    test('locking drops the KEK, closes the gate AND revokes the live stack',
         () async {
       final wrapping = build(wrapKeys: true);
       await wrapping.initialize();
       await wrapping.enable(passcode: '123456', mode: PasscodeMode.digits6);
 
-      wrapping.lockNow();
+      await wrapping.lockNow();
 
       expect(vault.isLocked, isTrue);
       expect(gate.isOpen, isFalse);
+      // Without this the already-open stores keep their content keys — and
+      // their decrypted rows — in RAM, and a re-lock is only a UI barrier.
+      expect(revokerCalls, ['revoke']);
+    });
+
+    test('the lock screen covers the app BEFORE the teardown finishes',
+        () async {
+      final held = Completer<void>();
+      revoker.onRevoke = () => held.future;
+      final wrapping = build(wrapKeys: true);
+      await wrapping.initialize();
+      await wrapping.enable(passcode: '123456', mode: PasscodeMode.digits6);
+
+      final locking = wrapping.lockNow();
+
+      // A teardown that takes a moment must never leave the shell visible.
+      expect(wrapping.state, PasscodeLockState.locked);
+      held.complete();
+      await locking;
+    });
+
+    test('web replaces the process after the teardown, so the heap goes too',
+        () async {
+      canRelaunch = true;
+      final wrapping = build(wrapKeys: true);
+      await wrapping.initialize();
+      await wrapping.enable(passcode: '123456', mode: PasscodeMode.digits6);
+
+      await wrapping.lockNow();
+
+      expect(revokerCalls, ['revoke']);
+      expect(relaunches, 1, reason: 'the message list lives outside the E2E '
+          'stack; only a reload clears it');
+    });
+
+    test('an unlock that did not restart the process brings E2E back',
+        () async {
+      final wrapping = build(wrapKeys: true);
+      await wrapping.initialize();
+      await wrapping.enable(passcode: '123456', mode: PasscodeMode.digits6);
+      await wrapping.lockNow();
+
+      expect(await wrapping.unlock('123456'), PasscodeUnlockResult.ok);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(revokerCalls, ['revoke', 'restore']);
+    });
+
+    test('a gate-only device neither revokes nor relaunches', () async {
+      // Android by owner ruling: the same keys are readable again the instant
+      // the store re-opens, so a teardown would cost an E2E re-init and buy
+      // nothing.
+      canRelaunch = true;
+      await passcode.initialize();
+      await passcode.enable(passcode: '1234', mode: PasscodeMode.digits4);
+
+      await passcode.lockNow();
+
+      expect(passcode.isLocked, isTrue);
+      expect(revokerCalls, isEmpty);
+      expect(relaunches, 0);
+    });
+
+    test('a passcode without wrapping does not revoke either', () async {
+      // Wrapping is on for the platform but was never turned on for this
+      // device (an enable that failed at the meta write). Revoking would tear
+      // down a stack whose keys are still raw on disk, for nothing.
+      canRelaunch = true;
+      final wrapping = build(wrapKeys: true);
+      await wrapping.initialize();
+      await wrapping.enable(passcode: '123456', mode: PasscodeMode.digits6);
+      await vault.unwrapAllKeys(kPasscodeWrappedKeyPrefixes);
+      await vault.disableWrapping();
+
+      await wrapping.lockNow();
+
+      expect(revokerCalls, isEmpty);
+      expect(relaunches, 0);
     });
 
     test('4-digit codes are refused wherever wrapping is on', () async {
@@ -261,6 +357,114 @@ void main() {
       await done;
 
       expect(hung.state, PasscodeLockState.disabled);
+    });
+    test('a FLAGGED device never fails open when the credential read dies',
+        () async {
+      // The bypass this closes: the flag lives in prefs and answers, only the
+      // Keystore half fails. Reading the flag inside the timed load made that
+      // indistinguishable from "no passcode was ever set" — and that branch
+      // UNLOCKS the app. A slow Keystore must never be a way in.
+      final broken = PasscodeProvider(
+        store: _ThrowingStore()..flag = true,
+        kdf: kdf,
+        nowMs: () => now,
+        vault: vault,
+        gate: gate,
+        revoker: revoker,
+      );
+
+      await broken.initialize();
+
+      expect(broken.state, PasscodeLockState.locked);
+      expect(await broken.unlock('1234'), PasscodeUnlockResult.unavailable);
+      broken.dispose();
+    });
+  });
+
+  group('an unavailable credential (device regression 2026-09-04)', () {
+    // Observed on the emulator: EVERY cold boot lost all three 250 ms
+    // Keystore attempts, the record came back `credentialDamaged`, and the
+    // correct 4-digit code was refused with "could not secure the code on
+    // this device" — pointing the user at the destructive erase to get back
+    // into an app whose credential was perfectly intact.
+    PasscodeRecord unavailableRecord() => PasscodeRecord(
+      enabled: false,
+      credentialUnavailable: true,
+      mode: PasscodeMode.digits4,
+      salt: null,
+      verifier: null,
+      iterations: 1,
+      autoLockSeconds: 3600,
+      lastActiveAtMs: now,
+      failedAttempts: 0,
+      lockoutUntilMs: null,
+    );
+
+    test('locks without claiming the credential is broken', () async {
+      store.record = unavailableRecord();
+      final slow = build();
+
+      await slow.initialize();
+
+      expect(slow.state, PasscodeLockState.locked);
+      // The distinction that matters to the user: "not yet readable" must not
+      // render as "unrecoverable, erase your history".
+      expect(slow.credentialResolved, isFalse);
+      slow.dispose();
+    });
+
+    testWidgets('retries until storage answers, then the real code works',
+        (tester) async {
+      store.record = unavailableRecord();
+      final slow = build();
+      await slow.initialize();
+      expect(slow.credentialResolved, isFalse);
+
+      // Storage wakes up (a Keystore that answered on the fourth try).
+      await store.saveCredential(
+        mode: PasscodeMode.digits4,
+        salt: Uint8List.fromList(List.filled(16, 7)),
+        verifier: await kdf.derive(
+          passcode: '1234',
+          salt: Uint8List.fromList(List.filled(16, 7)),
+          iterations: 1,
+        ),
+        iterations: 1,
+      );
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(Duration.zero);
+
+      expect(slow.credentialResolved, isTrue);
+      expect(slow.state, PasscodeLockState.locked, reason: 'still locked');
+      expect(await slow.unlock('1234'), PasscodeUnlockResult.ok);
+      slow.dispose();
+    });
+
+    testWidgets('a read that finally answers "gone" IS damaged',
+        (tester) async {
+      store.record = unavailableRecord();
+      final slow = build();
+      await slow.initialize();
+
+      store.record = PasscodeRecord(
+        enabled: false,
+        credentialDamaged: true,
+        mode: PasscodeMode.digits4,
+        salt: null,
+        verifier: null,
+        iterations: 1,
+        autoLockSeconds: 3600,
+        lastActiveAtMs: now,
+        failedAttempts: 0,
+        lockoutUntilMs: null,
+      );
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(Duration.zero);
+
+      expect(slow.state, PasscodeLockState.locked);
+      expect(slow.credentialResolved, isTrue);
+      expect(await slow.unlock('1234'), PasscodeUnlockResult.unavailable);
+      slow.dispose();
     });
   });
 
@@ -569,6 +773,13 @@ void main() {
 }
 
 class _ThrowingStore implements PasscodeStore {
+  /// What the cheap non-secret store answers. The secret half below is what
+  /// fails, which is the real-world shape: prefs answer, the Keystore does not.
+  bool flag = false;
+
+  @override
+  Future<bool> readEnabledFlag() async => flag;
+
   @override
   Future<PasscodeRecord> load() async => throw StateError('storage down');
 

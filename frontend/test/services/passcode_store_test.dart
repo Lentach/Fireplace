@@ -246,8 +246,13 @@ void main() {
     // On Android a Keystore fault throws far more often than it returns null,
     // and a throw used to escape load() into the provider's fail-OPEN branch
     // — i.e. a broken Keystore silently unlocked the app. The flag is now
-    // read first and the secret read is retried, then reported as damaged.
-    test('a flagged credential with unreadable secrets reads as damaged',
+    // read first and the secret read is retried, then reported as
+    // UNAVAILABLE: a read that never answered is retryable, unlike a read
+    // that answered and found nothing (`credentialDamaged`). Conflating the
+    // two refused the correct code on every cold boot of a loaded Android
+    // device and offered only the destructive erase (found on the emulator
+    // 2026-09-04).
+    test('a flagged credential whose secrets never answer is UNAVAILABLE',
         () async {
       final secure = _ThrowingSecureKv();
       SharedPreferences.setMockInitialValues({
@@ -260,7 +265,9 @@ void main() {
         useSecureStorage: true,
       ).load();
 
-      expect(record.credentialDamaged, isTrue);
+      expect(record.credentialUnavailable, isTrue);
+      expect(record.credentialDamaged, isFalse,
+          reason: 'nothing proves the credential is gone');
       expect(record.enabled, isFalse);
       expect(secure.reads, greaterThan(1), reason: 'must retry a hiccup');
     });
@@ -300,17 +307,17 @@ void main() {
 
   group('read budget', () {
     test('the secret budget stays inside the provider ceiling', () {
-      // If the retries could outlast the provider's timeout, the timeout wins,
-      // the provider takes its no-readable-flag branch, and a flagged-but-slow
-      // store UNLOCKS. This assertion is the guard on that ordering.
+      // The ordering has to hold so a slow-but-working Keystore resolves
+      // through the store's own retries rather than through the provider's
+      // ceiling — the difference between "your code works, one second later"
+      // and a lock screen that refuses it.
       expect(
         DevicePasscodeStore.secretReadBudget,
         lessThan(kPasscodeStoreReadTimeout),
       );
     });
 
-    test('a HANGING secret read still returns damaged, inside the budget',
-        () async {
+    test('a HANGING secret read is UNAVAILABLE, inside the budget', () async {
       SharedPreferences.setMockInitialValues({
         DevicePasscodeStore.enabledKey: true,
       });
@@ -323,14 +330,29 @@ void main() {
       final record = await store.load();
       final elapsed = DateTime.now().difference(started);
 
-      expect(record.credentialDamaged, isTrue,
-          reason: 'a hang must not read as "no passcode"');
+      expect(record.credentialUnavailable, isTrue,
+          reason: 'a hang must not read as "no passcode" NOR as damage');
+      expect(record.credentialDamaged, isFalse);
       expect(record.enabled, isFalse);
       expect(
         elapsed,
         lessThan(kPasscodeStoreReadTimeout),
         reason: 'must finish before the provider gives up on it',
       );
+    });
+
+    test('the flag reads WITHOUT touching the secret store', () async {
+      // The anti-bypass primitive: it has to answer even when the Keystore
+      // half is wedged, because it is what stops a slow device unlocking.
+      SharedPreferences.setMockInitialValues({
+        DevicePasscodeStore.enabledKey: true,
+      });
+      final store = DevicePasscodeStore(
+        secure: _HangingSecureKv(),
+        useSecureStorage: true,
+      );
+
+      expect(await store.readEnabledFlag(), isTrue);
     });
   });
 }

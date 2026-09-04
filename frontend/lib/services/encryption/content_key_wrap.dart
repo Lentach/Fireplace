@@ -273,7 +273,14 @@ class ContentKeyWrap {
 
   /// Drops the KEK. Called on lock and on logout; after this every content
   /// key on disk is ciphertext to this process.
+  ///
+  /// The bytes are ZEROED before the reference drops: the sealer memoizes its
+  /// imported `AesGcmSecretKey` in an `Expando` keyed on this exact object, so
+  /// a copy surviving anywhere would keep a usable KEK alive in the heap long
+  /// after the lock. Zeroing is what makes a mid-session re-lock cost the
+  /// attacker the same arithmetic a cold boot does.
   void lock() {
+    _kek?.fillRange(0, _kek!.length, 0);
     _kek = null;
     _kekId = null;
   }

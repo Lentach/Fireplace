@@ -29,6 +29,20 @@ Future<ContentKv> openPlatformContentKv() {
   return _memo ??= _open();
 }
 
+/// Native counterpart of the web revocation seam, required because both
+/// openers are behind one conditional import.
+///
+/// It only drops the memo. There is nothing to revoke: key wrapping is web
+/// only (owner ruling 2026-09-04 — on Android the same material is already
+/// Keystore-backed behind `FLAG_SECURE`, and wrapping it there would turn a
+/// Keystore fault into permanent history loss), so a native store's keys are
+/// readable again the instant it re-opens. Closing the SQLCipher handle here
+/// would therefore buy nothing and risk tearing a live write in half.
+/// `EncryptionService.revokeForPasscodeLock` never calls this off-web.
+Future<void> revokePlatformContentKv() async {
+  _memo = null;
+}
+
 Future<ContentKv> _open() async {
   var stage = 'unknown';
   try {

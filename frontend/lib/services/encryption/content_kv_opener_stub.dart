@@ -29,6 +29,23 @@ void debugResetPlatformContentKv() {
 /// read view.
 Future<ContentKv> openPlatformContentKv() => _memo ??= _open();
 
+/// Mid-session passcode re-lock: the open sealed store forgets its keys AND
+/// every decrypted row it is holding ([SealedWebContentKv.revoke]), and the
+/// memo is dropped so the next open is decided from scratch — which, while
+/// the vault is locked, rethrows `locked` rather than serving a plaintext
+/// fallback.
+Future<void> revokePlatformContentKv() async {
+  final open = _memo;
+  _memo = null;
+  if (open == null) return;
+  try {
+    final kv = await open;
+    if (kv is SealedWebContentKv) kv.revoke();
+  } catch (_) {
+    // A store that never opened has nothing to revoke.
+  }
+}
+
 Future<ContentKv> _open() async {
   try {
     final prefs = await SharedPreferences.getInstance();

@@ -1926,6 +1926,10 @@ class AppLocalizationsPl extends AppLocalizations {
       'Nie udało się zabezpieczyć kodu na tym urządzeniu.';
 
   @override
+  String get passcodeCredentialLoading =>
+      'Odczytywanie zabezpieczeń urządzenia…';
+
+  @override
   String get passcodeForgot => 'Nie pamiętasz kodu?';
 
   @override

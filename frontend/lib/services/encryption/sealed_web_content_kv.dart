@@ -90,8 +90,15 @@ class SealedWebContentKv implements ContentKv {
   /// mid-session).
   Map<String, Uint8List> _knownKeys = <String, Uint8List>{};
 
-  late String _activeKid;
-  late Uint8List _activeKey;
+  /// Nullable, not `late`: [revoke] must be able to DROP the reference. The
+  /// sealer memoizes its imported `AesGcmSecretKey` in an `Expando` keyed on
+  /// this exact object, so a surviving reference keeps a usable key alive in
+  /// RAM even after the bytes are zeroed.
+  String? _activeKid;
+  Uint8List? _activeKey;
+
+  /// Set by [revoke].
+  bool _revoked = false;
 
   /// Legacy plaintext rows of the sealed families awaiting the drain.
   final Set<String> _legacyResidue = <String>{};
@@ -118,6 +125,38 @@ class SealedWebContentKv implements ContentKv {
       unawaited(store._drainLegacy());
     }
     return store;
+  }
+
+  /// Forgets every key AND every decrypted row this store holds, so a
+  /// mid-session passcode re-lock is a real revocation rather than a UI
+  /// barrier (`frontend/CLAUDE.md` §10a).
+  ///
+  /// This store is the one that matters most: `_view` holds the PLAINTEXT of
+  /// every sealed row it has read this session, and `_unsealMemo` holds one
+  /// plaintext per envelope string. Dropping the keys without dropping those
+  /// two would leave the message bodies in RAM.
+  ///
+  /// Storage is untouched — the sealed rows become present-but-undecodable,
+  /// which is exactly the state the three rules above already define, so
+  /// `recordExists` still answers TRUE and nothing gets retired as lost. The
+  /// only behaviour change is that sealed WRITES are refused
+  /// ([setString] returns false) instead of sealing under a dropped key.
+  ///
+  /// One honest limit: rows still awaiting the legacy drain are cleartext ON
+  /// DISK, so revocation cannot make them unreadable. It stops the drain
+  /// rather than re-sealing them under a key that no longer exists.
+  void revoke() {
+    if (_revoked) return;
+    _revoked = true;
+    for (final key in _knownKeys.values) {
+      key.fillRange(0, key.length, 0);
+    }
+    _knownKeys = <String, Uint8List>{};
+    _activeKey = null;
+    _activeKid = null;
+    _view.clear();
+    _unsealMemo.clear();
+    _legacyResidue.clear();
   }
 
   Future<void> _openLocked() async {
@@ -320,6 +359,10 @@ class SealedWebContentKv implements ContentKv {
   /// this engine's open). A kid still unknown after the refresh is served
   /// present-but-unreadable — mid-session skew NEVER retires.
   Future<Uint8List?> _keyForKid(String kid, _InventoryRefresh refresh) async {
+    // Revoked: never resolve a key again, and never pay the enumeration to
+    // learn what the locked vault would answer anyway (`lockedKeyCount > 0`
+    // with an empty key map). Rows stay present-but-undecodable.
+    if (_revoked) return null;
     final known = _knownKeys[kid];
     if (known != null) return known;
     if (refresh.spent) return null;
@@ -451,6 +494,10 @@ class SealedWebContentKv implements ContentKv {
     // row with a key that did not encrypt it.
     final kid = _activeKid;
     final keyBytes = _activeKey;
+    // Revoked mid-session (passcode re-lock): a REFUSED write, exactly like a
+    // refused seal. Writing plaintext here would put the message body in
+    // cleartext localStorage while the app is locked.
+    if (kid == null || keyBytes == null) return false;
     final sealed = await _sealer.seal(
       keyBytes,
       Uint8List.fromList(utf8.encode(value)),
@@ -508,7 +555,10 @@ class SealedWebContentKv implements ContentKv {
   Future<void> debugDrainNow() => _drainFuture ?? _drainLegacy();
 
   @visibleForTesting
-  String get debugActiveKid => _activeKid;
+  String get debugActiveKid => _activeKid!;
+
+  @visibleForTesting
+  bool get debugRevoked => _revoked;
 
   @visibleForTesting
   Set<String> get debugLegacyResidue => Set.unmodifiable(_legacyResidue);
@@ -572,6 +622,9 @@ class SealedWebContentKv implements ContentKv {
     }
     final kid = _activeKid;
     final keyBytes = _activeKey;
+    // Revoked mid-drain: abort rather than replace the only copy of this row
+    // with an envelope no key can open.
+    if (kid == null || keyBytes == null) return null;
     final plainBytes = Uint8List.fromList(utf8.encode(raw));
     final sealed = await _sealer.seal(keyBytes, plainBytes);
     if (sealed == null) return null;

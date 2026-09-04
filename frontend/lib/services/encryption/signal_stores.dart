@@ -182,6 +182,29 @@ class DualStorage {
     _web = null;
     _webOpen = null;
   }
+
+  /// Drops the web session's key material for a mid-session passcode re-lock:
+  /// the open sealed store forgets its keys ([SealedWebSignalKv.revoke]) and
+  /// the memo is cleared so the NEXT op re-opens — which, while the vault is
+  /// locked, throws `SigSealOpenUnavailable('locked', fallbackLegal: false)`
+  /// and keeps E2E down instead of degrading to plaintext.
+  ///
+  /// This is the ONE sanctioned exception to the "never a mid-session backend
+  /// flip" rule on [_webKv]: the flip it guards against is sealed → plaintext
+  /// behind the user's back, whereas this drops to NO backend at all, and the
+  /// re-open decision is re-taken from scratch under the same rules.
+  Future<void> revokeWebSession() async {
+    final open = _webOpen;
+    _webOpen = null;
+    _web = null;
+    if (open == null) return;
+    try {
+      final kv = await open;
+      if (kv is SealedWebSignalKv) kv.revoke();
+    } catch (_) {
+      // A store that never opened has nothing to revoke.
+    }
+  }
 }
 
 /// Cache-free async key-value backend (reads straight through to the platform
@@ -382,6 +405,19 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
   String get _recordKey => '${_p}identity_record_v1';
   String get _legacyPairKey => '${_p}identity_key_pair';
   String get _legacyRegIdKey => '${_p}registration_id';
+
+  /// Drops the in-RAM identity for a mid-session passcode re-lock. Storage is
+  /// untouched; the next [loadFromStorage] re-reads it, which on a wrapped
+  /// device requires the passcode.
+  ///
+  /// [getIdentityKeyPair] asserts non-null on purpose: after this the store
+  /// must not be used until `EncryptionService.initialize` rebuilds it, and a
+  /// null-return would let a caller treat "revoked" as "no identity" — the
+  /// absence-as-truth inversion that mints a new identity.
+  void forgetInMemoryIdentity() {
+    _identityKeyPair = null;
+    _localRegistrationId = null;
+  }
 
   Future<void> initialize(
     IdentityKeyPair identityKeyPair,

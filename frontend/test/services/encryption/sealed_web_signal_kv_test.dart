@@ -254,6 +254,59 @@ void main() {
         ),
       );
     });
+
+    test('revoke makes sealed reads THROW — never null, never plaintext',
+        () async {
+      seedKey();
+      final kv = await openStore();
+      await kv.write(identityKey, 'identity-bytes');
+      expect(await kv.read(identityKey), 'identity-bytes');
+
+      kv.revoke();
+
+      // The absence-as-truth inversion is the one unforgivable failure here:
+      // a null identity read is what mints a new Signal identity.
+      await expectLater(
+        kv.read(identityKey),
+        throwsA(
+          isA<SigStoreUnreadable>().having((e) => e.stage, 'stage', 'revoked'),
+        ),
+      );
+      // Control records carry no key material and stay readable, so the
+      // store's own markers do not start reading as absent either.
+      expect(await kv.read('e2e_37_next_pre_key_id'), isNull);
+      await kv.write('e2e_37_next_pre_key_id', '42');
+      expect(await kv.read('e2e_37_next_pre_key_id'), '42');
+    });
+
+    test('a revoked store refuses sealed writes rather than sealing blind',
+        () async {
+      seedKey();
+      final kv = await openStore();
+      kv.revoke();
+
+      await expectLater(
+        kv.write(sessionKey, 'ratchet-advance'),
+        throwsA(isA<SigStoreUnreadable>()),
+      );
+      expect(await async.getString('sig_$sessionKey'), isNull);
+    });
+
+    test('revoke keeps readAll presence-preserving so residue still counts',
+        () async {
+      seedKey();
+      final kv = await openStore();
+      await kv.write(identityKey, 'identity-bytes');
+
+      kv.revoke();
+
+      // `_hasPriorInstallResidue` and the highest-prekey-id scan read NAMES
+      // out of this map. An enumeration that dropped unreadable rows would
+      // make a revoked device look like a fresh install.
+      final all = await kv.readAll();
+      expect(all.containsKey(identityKey), isTrue);
+      expect(all[identityKey], isNot('identity-bytes'));
+    });
   });
 
   group('seam', () {

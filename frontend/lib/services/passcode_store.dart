@@ -49,6 +49,7 @@ class PasscodeRecord {
     required this.failedAttempts,
     required this.lockoutUntilMs,
     this.credentialDamaged = false,
+    this.credentialUnavailable = false,
   });
 
   static const PasscodeRecord disabled = PasscodeRecord(
@@ -65,10 +66,21 @@ class PasscodeRecord {
 
   final bool enabled;
 
-  /// The enabled flag is set but the salt/verifier could not be read: a
-  /// passcode EXISTS and cannot be checked. The gate must stay closed and
-  /// route the user to recovery — never treat this as "no passcode".
+  /// The enabled flag is set and a SUCCESSFUL read found no salt/verifier: a
+  /// passcode exists and its credential is gone (a wiped or tampered Keystore
+  /// entry). Terminal — the gate stays closed and the only way through is the
+  /// erase. Never treat this as "no passcode".
   final bool credentialDamaged;
+
+  /// The enabled flag is set and the credential read did not ANSWER — every
+  /// attempt threw or timed out. Also a closed gate, but emphatically NOT
+  /// terminal: an Android Keystore's first read after a cold boot can take
+  /// seconds on a loaded device (observed on the emulator 2026-09-04: three
+  /// consecutive 250 ms attempts timing out on every launch), and branding
+  /// that as damaged pushed the user toward erasing their history to get back
+  /// into an app whose credential was fine. The caller must stay locked and
+  /// RETRY.
+  final bool credentialUnavailable;
 
   final PasscodeMode mode;
   final Uint8List? salt;
@@ -86,6 +98,15 @@ class PasscodeRecord {
 /// channel — the same reason `ContentSealer` and `SecureKv` are seams.
 abstract class PasscodeStore {
   Future<PasscodeRecord> load();
+
+  /// The enabled flag ALONE, from the cheap non-secret store.
+  ///
+  /// Exists so the caller can answer "does a passcode exist?" without waiting
+  /// on the secret half. Without it, a [load] that overruns the caller's
+  /// ceiling is indistinguishable from "no passcode was ever set", and the
+  /// caller's fail-open branch would silently unlock a flagged device — a
+  /// full bypass of the lock, reachable by nothing more than a slow Keystore.
+  Future<bool> readEnabledFlag();
 
   Future<void> saveCredential({
     required PasscodeMode mode,
@@ -146,12 +167,18 @@ class DevicePasscodeStore implements PasscodeStore {
   /// damaged credential, because that costs the user a lock screen no code
   /// can open.
   ///
-  /// **The budget is bounded on purpose and `kPasscodeStoreReadTimeout` is
-  /// derived from it.** If the retries could outlast that ceiling, the outer
-  /// timeout would fire, the provider would take its no-readable-flag branch,
-  /// and a flagged-but-slow store would silently UNLOCK — the very bypass the
-  /// damaged-credential verdict exists to close. Worst case here is
-  /// 3 × [_secretAttemptTimeout] + 300 ms of delays = 1.05 s.
+  /// **Raised 2026-09-04 from 3 × 250 ms after a device run.** On a loaded
+  /// Pixel emulator EVERY cold boot lost all three 250 ms attempts and landed
+  /// on `credentialDamaged` — a correct 4-digit code refused with "could not
+  /// secure the code on this device" and the destructive erase as the only way
+  /// forward. A first Keystore read after process start unwraps a key and is
+  /// simply not a 250 ms operation on a cold or busy device.
+  ///
+  /// The budget stays BOUNDED, and `kPasscodeStoreReadTimeout` stays above it,
+  /// because a read that never answers must not park the app on a blank
+  /// surface. It can no longer cause a bypass either way: the caller reads the
+  /// enabled flag separately ([readEnabledFlag]) and a flagged device can
+  /// never resolve to "no passcode".
   static const List<Duration> _secretRetryDelays = [
     Duration(milliseconds: 100),
     Duration(milliseconds: 200),
@@ -159,11 +186,18 @@ class DevicePasscodeStore implements PasscodeStore {
 
   /// Per-attempt ceiling, so a HANGING read (not just a throwing one) still
   /// consumes a bounded slice of the budget.
-  static const Duration _secretAttemptTimeout = Duration(milliseconds: 250);
+  static const Duration _secretAttemptTimeout = Duration(milliseconds: 1500);
 
-  /// Worst-case time [load]'s secret half can take. Kept public so the
+  /// Worst-case time [load]'s secret half can take
+  /// (3 × [_secretAttemptTimeout] + 300 ms of delays). Kept public so the
   /// provider's own ceiling can be asserted against it in a test.
-  static const Duration secretReadBudget = Duration(milliseconds: 1050);
+  static const Duration secretReadBudget = Duration(milliseconds: 4800);
+
+  @override
+  Future<bool> readEnabledFlag() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(enabledKey) ?? false;
+  }
 
   @override
   Future<PasscodeRecord> load() async {
@@ -179,15 +213,19 @@ class DevicePasscodeStore implements PasscodeStore {
 
     final secrets = await _readSecrets(prefs);
 
-    // Unreadable and MISSING are the same verdict here — both mean no code
-    // can be checked — but only because the read was retried first.
+    // Missing and UNANSWERED are different verdicts, and conflating them is
+    // what turned a slow Keystore into a data-destroying lockout: a read that
+    // completed and found nothing is terminal damage, a read that never
+    // answered is retryable. Both keep the gate closed.
     final enabled =
         flagged && secrets.salt != null && secrets.verifier != null;
-    final damaged = flagged && !enabled;
+    final unavailable = flagged && !enabled && secrets.readFailed;
+    final damaged = flagged && !enabled && !secrets.readFailed;
 
     return PasscodeRecord(
       enabled: enabled,
       credentialDamaged: damaged,
+      credentialUnavailable: unavailable,
       mode: PasscodeMode.fromStorage(prefs.getString(modeKey)),
       salt: enabled ? secrets.salt : null,
       verifier: enabled ? secrets.verifier : null,
@@ -200,24 +238,33 @@ class DevicePasscodeStore implements PasscodeStore {
   }
 
   /// Reads salt/verifier/iterations, retrying the whole triple on any error.
-  /// Returns nulls when storage still refuses — never throws, so the caller's
-  /// flag-based verdict always gets taken.
-  Future<({Uint8List? salt, Uint8List? verifier, int iterations})> _readSecrets(
-    SharedPreferences prefs,
-  ) async {
+  /// Never throws — the caller's flag-based verdict always gets taken — and
+  /// reports WHY the secrets are missing: `readFailed` means no attempt ever
+  /// answered, which is retryable; `readFailed == false` with null secrets
+  /// means storage answered and there is nothing there.
+  Future<
+    ({Uint8List? salt, Uint8List? verifier, int iterations, bool readFailed})
+  >
+  _readSecrets(SharedPreferences prefs) async {
     Object? lastError;
     for (var attempt = 0; attempt <= _secretRetryDelays.length; attempt++) {
       if (attempt > 0) {
         await Future<void>.delayed(_secretRetryDelays[attempt - 1]);
       }
       try {
-        return await (() async => (
+        final read = await (() async => (
               salt: _decode(await _readSecret(prefs, saltKey)),
               verifier: _decode(await _readSecret(prefs, verifierKey)),
               iterations:
                   int.tryParse(await _readSecret(prefs, iterationsKey) ?? '') ??
                       kPasscodeKdfIterations,
             ))().timeout(_secretAttemptTimeout);
+        return (
+          salt: read.salt,
+          verifier: read.verifier,
+          iterations: read.iterations,
+          readFailed: false,
+        );
       } catch (e) {
         lastError = e;
       }
@@ -225,7 +272,12 @@ class DevicePasscodeStore implements PasscodeStore {
     E2ePersistentDiag.record('PASSCODE_SECRET_UNREADABLE', {
       'errorType': lastError.runtimeType.toString(),
     });
-    return (salt: null, verifier: null, iterations: kPasscodeKdfIterations);
+    return (
+      salt: null,
+      verifier: null,
+      iterations: kPasscodeKdfIterations,
+      readFailed: true,
+    );
   }
 
   @override
