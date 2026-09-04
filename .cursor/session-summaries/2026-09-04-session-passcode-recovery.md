@@ -144,9 +144,59 @@ failures (they did, before the fix).
 
 `flutter analyze` clean; `flutter test` **1480 / 14 skipped**; count line and verifier updated.
 
-Not done: an Android device re-run after these changes (wrapping is off there by construction, but shared code
-paths moved), and a mid-session re-lock still leaves the already-open store's keys in RAM — cold boot is where the
-arithmetic guarantee lives, which is documented in `frontend/CLAUDE.md` §10a.
+## Phase 3 — the re-lock becomes real, and the device run finds a lockout
+
+Owner: *"deal with mid-session re-lock is a UI barrier and rerun android … i need passlock done 100%"*.
+
+**The re-lock now revokes.** It used to drop the KEK and close the gate for the NEXT boot while the already-open
+stores kept their content keys — and the content store kept the PLAINTEXT of every sealed row it had read — in
+RAM. `_lock()` now: drops the KEK **zeroing the bytes first** (the sealer memoizes its imported
+`AesGcmSecretKey` in an `Expando` keyed on that exact byte list, so a surviving reference keeps a usable key
+alive in the heap); then, with wrapping on, tears the live stack down through the new `E2eLockRevoker`
+(both sealed stores forget their keys, the content store also drops `_view` + `_unsealMemo`, `EncryptionService`
+drops the in-RAM Signal identity and both store memos, `EncryptionProvider` drops the decrypted-message cache);
+then on web **replaces the process**, because the message list, the conversation previews and the rendered text
+live outside the E2E stack and only a reload takes the whole heap. That reload is the same replacement
+`page_lifecycle_web.dart` already performs on every thaw of a frozen PWA.
+
+What keeps this from becoming the identity-loss bug in a new costume: a revoked store is never destructive and
+never answers "absent". Sealed sig reads THROW `SigStoreUnreadable('revoked')`, sealed content rows are served as
+their raw envelope so `recordExists` still answers true and nothing is retired as lost, `readAll` stays
+presence-preserving so the prior-install residue scan still sees the rows, and sealed writes are refused rather
+than sealed under a dropped key. `isE2EReady` is cleared BEFORE the teardown, so no decrypt can run against a
+revoked store — that is what stops a permanent `[Decryption failed]` being persisted over a readable row.
+Revoke/restore are serialized so an immediate unlock cannot overtake the teardown. Android keeps the UI-barrier
+shape on purpose: with wrapping off the keys are readable again the instant the store re-opens.
+
+Verified by killing the heap, not by reading code: a `window.__relockProbe` planted while unlocked came back
+**undefined** after the padlock; the fresh boot demanded the code; the KEK meta record and the 26 sealed rows were
+intact; the durable log held **0** `IDENTITY_MINTED` and **0** `SIG_STORE_FALLBACK`; the code brought the app
+back up.
+
+**Then the Android run found a lockout that destroys data.** With a 250 ms per-attempt budget, EVERY cold boot of
+the debug build on a loaded emulator lost all three Keystore attempts, so a device with a perfectly intact
+credential reported `PASSCODE_CREDENTIAL_DAMAGED`, refused the correct 4-digit code with *"Nie udało się
+zabezpieczyć kodu na tym urządzeniu"*, and offered only the destructive erase. A first Keystore read after
+process start unwraps a key and is simply not a 250 ms operation.
+
+Fix: the boot read has **three** verdicts. A read that ANSWERED and found nothing is terminal damage; a read that
+never answered is `credentialUnavailable` — still locked, but retried with backoff (400 ms → 8 s, capped,
+cancelled in `dispose`) until storage answers, and shown as "reading this device's secure storage" with the
+keypad disabled rather than as a failure the user must erase their way out of. Per-attempt budget 250 ms → 1.5 s.
+
+The same pass closed a **bypass** in the other direction: the enabled flag used to come out of the timed `load()`,
+so a load that overran the ceiling was indistinguishable from "no passcode was ever set" — and that branch
+UNLOCKS the app. A slow Keystore was a way in. The flag is now read separately and first
+(`PasscodeStore.readEnabledFlag`), so a flagged device can only ever answer LOCKED. Budgets stay ordered
+(4.8 s store worst case < 6 s provider ceiling) and a test asserts it.
+
+**Android re-verified end to end** (shots `relock-android-*.png`): fresh install → login → identity mint →
+4-digit code accepted; prefs held only flag+mode, `FlutterSecureStorage.xml` held the salt/verifier/iterations,
+**no** `fp_passcode_kek_meta_v1` and **zero** `fpwk1:` envelopes; cold boot locks and the code opens it with no
+`PASSCODE_SECRET_UNREADABLE`; mid-session lock/unlock leaves E2E up; erase took prefs 5 → 1, secure storage
+**33 → 0**, `files/fp_content.db{,-wal,-shm}` **3 → 0**, back at the login screen.
+
+`flutter analyze` clean; `flutter test` **1499 / 14 skipped**; count line and verifier updated.
 
 ## Still open
 
