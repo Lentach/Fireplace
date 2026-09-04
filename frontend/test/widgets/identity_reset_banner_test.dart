@@ -17,12 +17,10 @@ import 'package:provider/provider.dart';
 /// resetting your keys" bar would train users to ignore the real one), and
 /// when it does appear the cancel action must actually reach the server.
 class _FakeEncryption extends EncryptionProvider {
-  _FakeEncryption({this.deadline, this.locked = false});
+  _FakeEncryption({this.deadline});
 
   DateTime? deadline;
-  bool locked;
   int cancelCalls = 0;
-  int startCalls = 0;
   String? answer;
   int clearAnswerCalls = 0;
 
@@ -40,20 +38,12 @@ class _FakeEncryption extends EncryptionProvider {
   DateTime? get identityResetDeadline => deadline;
 
   @override
-  bool get identityUploadLocked => locked;
-
-  @override
   void cancelIdentityReset() {
     cancelCalls++;
     deadline = null;
     notifyListeners();
   }
 
-  @override
-  void requestIdentityReset({String? recoveryPhrase}) {
-    startCalls++;
-    notifyListeners();
-  }
 }
 
 class _FakeAuthProvider extends AuthProvider {
@@ -149,107 +139,23 @@ void main() {
     expect(find.byType(TextButton), findsOneWidget);
   });
 
-  // The most damaging 0b failure mode: a user who lost their keys re-mints
-  // them, the server refuses to publish because the account still holds the
-  // previous identity, and nothing tells them. Peers then keep encrypting to
-  // keys this device cannot read, behind a UI that claims recovery worked.
-  //
-  // (lxvii) clause 2: the visible way out is the LINK — the account's keys
-  // exist on another device, and the ceremony disposes the refused identity.
-  // The reset (which revokes every other device) is the rarer remedy and sits
-  // in the disclosure.
-  testWidgets('a refused key publication leads with the link', (tester) async {
-    final encryption = _FakeEncryption(locked: true);
-    await tester.pumpWidget(_host(encryption));
-    final l10n = await AppLocalizations.delegate.load(const Locale('en'));
-
-    expect(find.byIcon(Icons.key_off_outlined), findsOneWidget);
-    expect(find.textContaining('not published'), findsOneWidget);
-    expect(find.text(l10n.devicesLinkThisDevice), findsOneWidget);
-    expect(
-      find.byKey(const Key('identity-reset-banner-start-reset')),
-      findsNothing,
-      reason: 'the reset lives in the disclosure',
-    );
-
-    final navigator = tester.state<NavigatorState>(find.byType(Navigator));
-    await tester.tap(find.byKey(const Key('identity-reset-banner-action')));
-    await tester.pump();
-    expect(navigator.canPop(), isTrue, reason: 'routes to the §5.1 host');
-    expect(encryption.startCalls, 0);
-    expect(encryption.cancelCalls, 0);
-  });
-
-  testWidgets('the reset is two taps away and asks for the phrase first', (
-    tester,
-  ) async {
-    final encryption = _FakeEncryption(locked: true);
-    await tester.pumpWidget(_host(encryption));
-
-    await tester.tap(find.byIcon(Icons.expand_more));
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const Key('identity-reset-banner-start-reset')),
-    );
-    await tester.pumpAndSettle();
-
-    // The recovery key is asked for FIRST: it is the difference between
-    // waiting an hour and waiting three days, so the slow path must never be
-    // started silently on someone who holds a phrase.
-    expect(find.textContaining('recovery key'), findsWidgets);
-    expect(encryption.startCalls, 0);
-
-    await tester.tap(find.text("I don't have one"));
-    await tester.pumpAndSettle();
-
-    expect(
-      encryption.startCalls,
-      1,
-      reason: 'declining the phrase still leaves the 72 h route open',
-    );
-    expect(encryption.cancelCalls, 0);
-  });
-
-  testWidgets('dismissing the phrase prompt starts nothing at all', (
-    tester,
-  ) async {
-    final encryption = _FakeEncryption(locked: true);
-    await tester.pumpWidget(_host(encryption));
-
-    await tester.tap(find.byIcon(Icons.expand_more));
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const Key('identity-reset-banner-start-reset')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Cancel'));
-    await tester.pumpAndSettle();
-
-    expect(
-      encryption.startCalls,
-      0,
-      reason: 'backing out must not commit the account to a 72 h ceremony',
-    );
-  });
-
-  testWidgets('a running ceremony takes precedence over the locked notice', (
+  // The lock-refused notice this banner used to carry moved to the (lxxiii)
+  // DeviceLinkGateScreen: a keyless/lock-refused install never reaches the
+  // shell any more, and a healthy device watching someone ELSE's reset must
+  // not be offered a start-reset door — cancel is its only action.
+  testWidgets('a pending ceremony offers cancel and never start-reset', (
     tester,
   ) async {
     final encryption = _FakeEncryption(
       deadline: DateTime.now().add(const Duration(hours: 3)),
-      locked: true,
     );
     await tester.pumpWidget(_host(encryption));
 
-    // Already fixing it — offering "start reset" again would be nonsense.
-    expect(find.byIcon(Icons.lock_reset_outlined), findsOneWidget);
+    expect(
+      find.byKey(const Key('identity-reset-banner-start-reset')),
+      findsNothing,
+    );
     expect(find.byIcon(Icons.key_off_outlined), findsNothing);
-
-    await tester.tap(find.byType(TextButton));
-    await tester.pumpAndSettle();
-
-    expect(encryption.cancelCalls, 1);
-    expect(encryption.startCalls, 0);
   });
 
   testWidgets('a refused request is said out loud, not swallowed', (
@@ -258,7 +164,9 @@ void main() {
     // A genuine owner recovering lost keys meets every refusal: a mistyped
     // phrase, the lockout after five of those, the post-cancel cooldown. With
     // no message the button looks broken while the account stays unreachable.
-    final encryption = _FakeEncryption(locked: true)..answer = 'invalid_phrase';
+    // The answer surfaces even while the banner itself renders nothing — the
+    // request may have been sent from the (lxxiii) gate.
+    final encryption = _FakeEncryption()..answer = 'invalid_phrase';
     await tester.pumpWidget(_host(encryption));
     await tester.pumpAndSettle();
 
@@ -271,7 +179,7 @@ void main() {
   });
 
   testWidgets('the cooldown answer names the way out of it', (tester) async {
-    final encryption = _FakeEncryption(locked: true)..answer = 'cooldown';
+    final encryption = _FakeEncryption()..answer = 'cooldown';
     await tester.pumpWidget(_host(encryption));
     await tester.pumpAndSettle();
     final l10n = await AppLocalizations.delegate.load(const Locale('en'));

@@ -103,7 +103,7 @@ void main() {
     peerService = EncryptionService();
     await peerService.initialize(
       peerId,
-      checkServerBundleExists: () async => false,
+      checkServerIdentity: () async => const ServerIdentityGuard(exists: false),
     );
 
     enc = await freshProvider();
@@ -438,7 +438,7 @@ void main() {
     final revivedService = EncryptionService();
     await revivedService.initialize(
       ownUserId,
-      checkServerBundleExists: () async => true,
+      checkServerIdentity: () async => const ServerIdentityGuard(exists: true),
     );
     final revivedCache = DeviceListCache()
       ..seedPins(revivedService.deviceListPins);
@@ -492,7 +492,7 @@ void main() {
       await expectLater(
         revived.initialize(
           ownUserId,
-          checkServerBundleExists: () async => true,
+          checkServerIdentity: () async => const ServerIdentityGuard(exists: true),
         ),
         throwsA(anything),
         reason: 'silently continuing would reopen the (xix) rollback window',
@@ -509,7 +509,7 @@ void main() {
       await expectLater(
         revived.initialize(
           ownUserId,
-          checkServerBundleExists: () async => true,
+          checkServerIdentity: () async => const ServerIdentityGuard(exists: true),
         ),
         throwsA(isA<StateError>()),
       );
@@ -526,7 +526,7 @@ void main() {
       await expectLater(
         revived.initialize(
           ownUserId,
-          checkServerBundleExists: () async => true,
+          checkServerIdentity: () async => const ServerIdentityGuard(exists: true),
         ),
         completes,
       );
@@ -544,7 +544,7 @@ void main() {
       final revived = EncryptionService();
       await revived.initialize(
         ownUserId,
-        checkServerBundleExists: () async => true,
+        checkServerIdentity: () async => const ServerIdentityGuard(exists: true),
       );
 
       // One lost floor is not a lost store: peer 42 keeps its pin.

@@ -79,7 +79,7 @@ void main() {
     SharedPreferences.resetStatic();
     FlutterSecureStorage.setMockInitialValues({});
     service = EncryptionService();
-    await service.initialize(37, checkServerBundleExists: () async => false);
+    await service.initialize(37, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
   });
 
   test('a persisted decrypt is recorded once flushed', () async {
@@ -94,7 +94,7 @@ void main() {
     await service.flushDecryptedLedger();
 
     final reopened = EncryptionService();
-    await reopened.initialize(37, checkServerBundleExists: () async => false);
+    await reopened.initialize(37, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
 
     expect(await reopened.decryptedLedgerIds(), contains(18598));
   });
@@ -174,7 +174,7 @@ void main() {
     await service.flushDecryptedLedger();
 
     final reopened = EncryptionService();
-    await reopened.initialize(37, checkServerBundleExists: () async => false);
+    await reopened.initialize(37, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
     final ledger = await reopened.decryptedLedgerIds();
 
     expect(ledger.length, lessThanOrEqualTo(cap));
@@ -192,7 +192,7 @@ void main() {
 
       // A fresh service on the same store: no ledger key has ever been written.
       final upgraded = EncryptionService();
-      await upgraded.initialize(37, checkServerBundleExists: () async => false);
+      await upgraded.initialize(37, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
       await upgraded.backfillLedgerFromStore();
 
       expect(
@@ -213,7 +213,7 @@ void main() {
       store.refusePrefix = null;
 
       final upgraded = EncryptionService();
-      await upgraded.initialize(37, checkServerBundleExists: () async => false);
+      await upgraded.initialize(37, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
       await upgraded.backfillLedgerFromStore();
 
       final ledger = await upgraded.decryptedLedgerIds();
@@ -235,14 +235,14 @@ void main() {
       // disable the ledger for that account FOREVER, silently, while the docs
       // claim it is covered. An empty seed must therefore leave no marker.
       final fresh = EncryptionService();
-      await fresh.initialize(37, checkServerBundleExists: () async => false);
+      await fresh.initialize(37, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
       await fresh.backfillLedgerFromStore(); // store is empty: no marker
 
       // Records appear afterwards (or the earlier read was simply wrong).
       await fresh.saveDecryptedContent(18800, {'content': 'appeared later'});
 
       final next = EncryptionService();
-      await next.initialize(37, checkServerBundleExists: () async => false);
+      await next.initialize(37, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
       await next.backfillLedgerFromStore();
 
       expect(

@@ -39,7 +39,7 @@ void main() {
 
   Future<EncryptionService> serviceFor(int userId) async {
     final service = EncryptionService();
-    await service.initialize(userId, checkServerBundleExists: () async => false);
+    await service.initialize(userId, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
     return service;
   }
 

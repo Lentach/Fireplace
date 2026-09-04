@@ -648,6 +648,71 @@ class AppLocalizationsEn extends AppLocalizations {
   String get identityResetStartAction => 'Start reset';
 
   @override
+  String get linkGateTitle => 'Link this device';
+
+  @override
+  String get linkGateBody =>
+      'This device does not have your account\'s encryption keys. Your main device has them — scan this code with it, or type the code there. Nothing is lost.';
+
+  @override
+  String get linkGateWaiting => 'Waiting for your main device…';
+
+  @override
+  String get linkGateStaleBody =>
+      'The keys on this device are stale and will be replaced when it is linked. Saved messages stay.';
+
+  @override
+  String get linkGateNoPrimaryQuestion => 'No longer have your main device?';
+
+  @override
+  String get linkGateResetHint =>
+      'A reset gives the account new keys after 72 hours (1 hour with a recovery key), signs out every other device, and notifies everyone signed in. Messages this device never decrypted are lost.';
+
+  @override
+  String get linkGateResetPendingTitle => 'Key reset in progress';
+
+  @override
+  String linkGateResetPendingBody(String remaining) {
+    return 'In $remaining the account gets new keys and this device can continue. If you get your main device back in the meantime, tap Cancel first — the reset keeps running until you cancel it — then link this device from there.';
+  }
+
+  @override
+  String get linkGateResetPhraseTooNew =>
+      'The recovery key was created less than 3 days ago, so the full 72 hours apply.';
+
+  @override
+  String get linkGateCheckingTitle => 'Checking this device\'s keys…';
+
+  @override
+  String get linkGateCheckingBody =>
+      'A server connection is needed to check whether the account already has keys on another device.';
+
+  @override
+  String get linkGateRetryAction => 'Try again';
+
+  @override
+  String get linkGateLogoutAction => 'Sign out';
+
+  @override
+  String get devicesInstallFirst =>
+      'To enable linking in a browser, first install Umbra as an app (browser menu → \"Install\" or \"Add to Home Screen\"). A plain tab\'s data can be evicted by the browser without asking — and with it the main device\'s keys.';
+
+  @override
+  String get devicesInstallNudge =>
+      'This browser is your account\'s main device, but Umbra is not installed here as an app. Install it so the browser does not evict the keys along with its cache.';
+
+  @override
+  String get devicesEnableLinkingWebWarningTitle =>
+      'This browser becomes the main device';
+
+  @override
+  String get devicesEnableLinkingWebWarningBody =>
+      'Only the main device can add and remove other devices. If this browser\'s storage is cleared, getting that role back needs a reset: 72 hours, or 1 hour with a recovery key. We will offer to create one next.';
+
+  @override
+  String get devicesEnableLinkingConfirmAction => 'Enable';
+
+  @override
   String get recoveryKeyTitle => 'Recovery key';
 
   @override

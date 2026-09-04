@@ -360,7 +360,7 @@ class E2eClient {
   Future<Map<String, dynamic>> initializeKeys() async {
     await encryption.initialize(
       userId,
-      checkServerBundleExists: () async => false,
+      checkServerIdentity: () async => const ServerIdentityGuard(exists: false),
     );
     final keys = encryption.getKeysForUpload();
     if (keys == null) {
@@ -747,7 +747,7 @@ class E2eClient {
   Future<void> initializeAndUploadKeys() async {
     await encryption.initialize(
       userId,
-      checkServerBundleExists: () async => false,
+      checkServerIdentity: () async => const ServerIdentityGuard(exists: false),
     );
     final keys = encryption.getKeysForUpload();
     if (keys == null) {

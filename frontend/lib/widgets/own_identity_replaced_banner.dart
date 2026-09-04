@@ -33,7 +33,7 @@ class OwnIdentityReplacedBanner extends StatelessWidget {
       title: l10n.ownIdentityReplacedTitle,
       detail: l10n.ownIdentityReplacedBody,
       // Foreground pinned to onErrorContainer for the same contrast reason as
-      // IdentityDamagedBanner (theme primary is near invisible on the error
+      // the other identity banners (theme primary is near invisible on the
       // container).
       action: TextButton(
         onPressed: () =>

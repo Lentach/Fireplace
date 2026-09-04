@@ -73,7 +73,7 @@ void main() {
       SharedPreferences.resetStatic();
       FlutterSecureStorage.setMockInitialValues({});
       service = EncryptionService();
-      await service.initialize(77, checkServerBundleExists: () async => false);
+      await service.initialize(77, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
     });
 
     test('removeDecryptedContent reports failure rather than success', () async {

@@ -47,6 +47,19 @@ class E2eIdentityCheckUnavailableException implements Exception {
       'the missing identity is a fresh install';
 }
 
+/// The server's answer to the (lxxi)/(lxxiii) identity guard: whether the
+/// account already published a key bundle for this login's device, and
+/// whether the registration lock is armed (an `account_authorizations` row
+/// exists). `linkingEnabled` defaults to true because an ABSENT field (older
+/// server) must fail closed to the gating behaviour, never to a mint the
+/// server would refuse.
+class ServerIdentityGuard {
+  const ServerIdentityGuard({required this.exists, this.linkingEnabled = true});
+
+  final bool exists;
+  final bool linkingEnabled;
+}
+
 /// Thrown when a served pre-key bundle carries an identity key that is NOT the
 /// account's (spec §3, enforced per §12 amendment (xxxix)).
 ///
@@ -901,7 +914,7 @@ class EncryptionService {
   /// secure storage or generates new ones if this is a fresh install.
   Future<void> initialize(
     int userId, {
-    Future<bool?> Function()? checkServerBundleExists,
+    Future<ServerIdentityGuard?> Function()? checkServerIdentity,
   }) async {
     _userId = userId;
     final p = 'e2e_${userId}_'; // per-user storage key prefix
@@ -944,14 +957,18 @@ class EncryptionService {
     // (or a completed §6.2 reset is waiting to be spent by our upload).
     final residue =
         load == IdentityLoadResult.partial || await _hasPriorInstallResidue(p);
-    bool? serverBundleExists;
+    ServerIdentityGuard? guard;
     try {
-      serverBundleExists = await checkServerBundleExists?.call();
+      guard = await checkServerIdentity?.call();
     } catch (_) {
       // A failed check is UNKNOWN, never evidence of a fresh install.
     }
 
-    if (serverBundleExists == true) {
+    if (guard == null) {
+      E2ePersistentDiag.record('IDENTITY_GUARD_UNKNOWN', {'userId': userId});
+      throw const E2eIdentityCheckUnavailableException();
+    }
+    if (guard.exists && guard.linkingEnabled) {
       E2ePersistentDiag.record(
         residue ? 'IDENTITY_INCOMPLETE' : 'IDENTITY_GUARD_SERVER_BUNDLE_EXISTS',
         {'userId': userId},
@@ -961,10 +978,6 @@ class EncryptionService {
       );
       identityIncomplete = true;
       throw const E2eIdentityIncompleteException();
-    }
-    if (serverBundleExists != false) {
-      E2ePersistentDiag.record('IDENTITY_GUARD_UNKNOWN', {'userId': userId});
-      throw const E2eIdentityCheckUnavailableException();
     }
 
     if (residue) {
@@ -989,6 +1002,15 @@ class EncryptionService {
       await _persistIdentityChanged();
       _pendingSessionRebuilds.clear();
       await _persistSessionRebuilds();
+    }
+    if (guard.exists) {
+      // (lxxiii) clause 2: the account has a bundle but never enrolled a DAK,
+      // so the server accepts an 'unlocked' replacement — mint instead of
+      // gating. The residue (if any) was discarded PROVEN above; the previous
+      // identity's peers get the §6.0 "identity changed" alarm on upload.
+      E2ePersistentDiag.record('IDENTITY_GUARD_UNLOCKED_REMINT', {
+        'userId': userId,
+      });
     }
     debugPrint('[EncryptionService] Generating new keys (fresh install)');
     await _generateKeys();
@@ -1130,12 +1152,35 @@ class EncryptionService {
     );
     base64Decode(dakPubBase64); // validity gate only
 
-    if (holdsIdentity) {
-      // (lxv): every input parsed; the stale material may now go.
-      E2ePersistentDiag.record('LINK_STALE_MATERIAL_DISPOSED', {
-        'userId': userId,
-      });
-      await _wipeSignalMaterial(existingPrefix);
+    // (lxxiii) clause 4: the wipe runs whenever RESIDUE is present — a held
+    // identity OR surviving prekeys/sessions/next_pre_key_id with no identity
+    // — never only when an identity exists. A held identity is the (lxv)
+    // stale shape and requires the ceremony's disposal authorization (gated
+    // above); a NEVER-PUBLISHED residue needs no separate consent: no peer
+    // holds a ratchet against unpublished material, and the SAS plus the
+    // authenticated blob already authorized installing over this store. The
+    // wipe must be PROVEN before the first store write — installing the
+    // received identity over foreign prekeys and a stale prekey counter is
+    // the stranded-ratchet shape (lxxi)'s rider exists to prevent. Unproven
+    // → the ceremony fails (the controller's catch aborts 'adopt_failed')
+    // and the gate stays.
+    final residue =
+        holdsIdentity || await _hasPriorInstallResidue(existingPrefix);
+    if (residue) {
+      if (holdsIdentity) {
+        // (lxv): every input parsed; the stale material may now go.
+        E2ePersistentDiag.record('LINK_STALE_MATERIAL_DISPOSED', {
+          'userId': userId,
+        });
+      }
+      if (!await _wipeSignalMaterial(existingPrefix)) {
+        E2ePersistentDiag.record('LINK_RESIDUE_DISPOSAL_DEFERRED', {
+          'userId': userId,
+        });
+        throw StateError(
+          'adoptProvisionedIdentity: residue disposal not proven',
+        );
+      }
     }
 
     _userId = userId;

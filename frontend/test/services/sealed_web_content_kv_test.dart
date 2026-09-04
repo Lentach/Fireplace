@@ -442,7 +442,7 @@ void main() {
 
       FlutterSecureStorage.setMockInitialValues({});
       final service = EncryptionService();
-      await service.initialize(37, checkServerBundleExists: () async => false);
+      await service.initialize(37, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
       service.debugSetContentKv(kv);
 
       expect(await service.recordExists(32), isTrue);
@@ -460,7 +460,7 @@ void main() {
 
       FlutterSecureStorage.setMockInitialValues({});
       final service = EncryptionService();
-      await service.initialize(37, checkServerBundleExists: () async => false);
+      await service.initialize(37, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
       service.debugSetContentKv(kv);
 
       store.throwGetAll = true;
@@ -757,7 +757,7 @@ void main() {
       addTearDown(() => PrefsContentKv.debugForceAuthoritative = false);
       FlutterSecureStorage.setMockInitialValues({});
       service = EncryptionService();
-      await service.initialize(37, checkServerBundleExists: () async => false);
+      await service.initialize(37, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
       // A FALLBACK session: plain prefs backend over a store that already
       // holds sealed envelopes (the drain ran in a sealed session earlier).
       service.debugSetContentKv(PrefsContentKv(prefs));

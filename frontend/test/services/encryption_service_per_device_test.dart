@@ -51,15 +51,15 @@ void main() {
       bobDev2 = EncryptionService();
       await alice.initialize(
         aliceId,
-        checkServerBundleExists: () async => false,
+        checkServerIdentity: () async => const ServerIdentityGuard(exists: false),
       );
       // Distinct storage namespaces stand in for the two devices' disjoint
       // local stores (keys are `e2e_${userId}_`-prefixed).
       await bobDev1.initialize(
         bobId,
-        checkServerBundleExists: () async => false,
+        checkServerIdentity: () async => const ServerIdentityGuard(exists: false),
       );
-      await bobDev2.initialize(99, checkServerBundleExists: () async => false);
+      await bobDev2.initialize(99, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
     });
 
     test('sessions to (peer,1) and (peer,2) are independent: distinct '
@@ -119,7 +119,7 @@ void main() {
       );
       await locked.initialize(
         aliceId,
-        checkServerBundleExists: () async => false,
+        checkServerIdentity: () async => const ServerIdentityGuard(exists: false),
       );
       await locked.buildSession(bobId, flatBundleFrom(bobDev1), expectedIdentityBase64: null);
       await locked.buildSession(bobId, flatBundleFrom(bobDev2), deviceId: 2, expectedIdentityBase64: null);

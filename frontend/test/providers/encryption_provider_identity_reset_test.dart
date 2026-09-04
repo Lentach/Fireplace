@@ -243,7 +243,7 @@ void main() {
       // recovered device publishes an identity nobody can open a session to
       // with a one-time pre-key until the first peer fetch says `preKeysLow`.
       final service = EncryptionService();
-      await service.initialize(31, checkServerBundleExists: () async => false);
+      await service.initialize(31, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
       final recovered = EncryptionProvider(service: service);
       final sent = <({String event, dynamic data})>[];
       recovered.setEmitCallback((event, data) {
@@ -264,7 +264,7 @@ void main() {
 
     test('a routine same-identity re-upload mints nothing', () async {
       final service = EncryptionService();
-      await service.initialize(32, checkServerBundleExists: () async => false);
+      await service.initialize(32, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
       final steady = EncryptionProvider(service: service);
       final sent = <({String event, dynamic data})>[];
       steady.setEmitCallback((event, data) {

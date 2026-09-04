@@ -74,9 +74,9 @@ void main() {
     SharedPreferences.setMockInitialValues({});
 
     peer = EncryptionService();
-    await peer.initialize(peerId, checkServerBundleExists: () async => false);
+    await peer.initialize(peerId, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
     mallory = EncryptionService();
-    await mallory.initialize(99, checkServerBundleExists: () async => false);
+    await mallory.initialize(99, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
     served = peer;
     bundleFetches = 0;
     servedAuthorization = null;
@@ -438,7 +438,7 @@ void main() {
       // repeated with a rotating key, held the ceremony permanently
       // un-completable.
       final rotating = EncryptionService();
-      await rotating.initialize(77, checkServerBundleExists: () async => false);
+      await rotating.initialize(77, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
       served = rotating;
       enc.markSessionRebuild(peerId);
       await expectLater(

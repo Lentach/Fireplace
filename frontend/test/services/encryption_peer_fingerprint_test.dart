@@ -25,7 +25,7 @@ void main() {
     'formats a stored peer identity exactly like the own identity',
     () async {
       final service = EncryptionService();
-      await service.initialize(17, checkServerBundleExists: () async => false);
+      await service.initialize(17, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
 
       final ownFingerprint = await service.getIdentityFingerprint();
       final ownKeyBase64 = await service.currentIdentityPublicKeyBase64();
@@ -57,7 +57,7 @@ void main() {
   /// of a duplicated test formatter.
   test('follows the account anchor, not a stale device-1 row', () async {
     final service = EncryptionService();
-    await service.initialize(17, checkServerBundleExists: () async => false);
+    await service.initialize(17, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
     final store = SecureIdentityKeyStore(DualStorage(secure), 'e2e_17_');
 
     final oldKey = generateIdentityKeyPair().getPublicKey();
@@ -92,7 +92,7 @@ void main() {
   /// identity key" for a peer we were actively talking to.
   test('shows a fingerprint for a peer with no device 1 at all', () async {
     final service = EncryptionService();
-    await service.initialize(17, checkServerBundleExists: () async => false);
+    await service.initialize(17, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
     final store = SecureIdentityKeyStore(DualStorage(secure), 'e2e_17_');
 
     // Ids are never reused ((a)): a post-reset account is met on a high id.
@@ -114,7 +114,7 @@ void main() {
     'returns null when no trusted identity is stored for the peer',
     () async {
       final service = EncryptionService();
-      await service.initialize(17, checkServerBundleExists: () async => false);
+      await service.initialize(17, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
 
       expect(await service.getPeerIdentityFingerprint(42), isNull);
     },

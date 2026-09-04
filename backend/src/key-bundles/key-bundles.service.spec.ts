@@ -407,7 +407,10 @@ describe('KeyBundlesService', () => {
       keyBundleRepo.upsert.mockResolvedValue({ raw: [] });
     });
 
-    it('refuses an unauthorized identity replacement and writes NOTHING', async () => {
+    it('refuses an unauthorized identity replacement on an ENROLLED account and writes NOTHING', async () => {
+      // (lxxiii): the lock is armed by enrollment. The un-enrolled twin of
+      // this test lives in the (lxxiii) block below and is ACCEPTED there.
+      authorizationRepo.findOne.mockResolvedValue({ userId: SIGNED_USER_ID });
       const warnSpy = jest
         .spyOn(Logger.prototype, 'warn')
         .mockImplementation(() => undefined);
@@ -443,28 +446,28 @@ describe('KeyBundlesService', () => {
       expect(identityResetService.consumeCompletedReset).not.toHaveBeenCalled();
     });
 
-    it('refuses when the signature is valid but for a different account', async () => {
-      await expect(
-        service.upsertKeyBundle(
-          SIGNED_USER_ID + 1,
-          { ...mockKeyBundleData, identityPublicKey: REPLACEMENT },
-          { signature: SIGNATURE, nonce: NONCE },
-        ),
-      ).rejects.toThrow('identity_locked');
-      expect(keyBundleRepo.upsert).not.toHaveBeenCalled();
+    it('a signature for a different account does not authenticate — the change is admitted as unlocked, never as signature', async () => {
+      // Pre-(lxxiii) this was an identity_locked refusal. The un-enrolled
+      // account is now admitted regardless, so what the wrong-account proof
+      // must NOT buy is the 'signature' attribution.
+      const result = await service.upsertKeyBundle(
+        SIGNED_USER_ID + 1,
+        { ...mockKeyBundleData, identityPublicKey: REPLACEMENT },
+        { signature: SIGNATURE, nonce: NONCE },
+      );
+      expect(result.authorizedBy).toBe('unlocked');
     });
 
-    it('refuses when the nonce does not match the signed one', async () => {
-      await expect(
-        service.upsertKeyBundle(
-          SIGNED_USER_ID,
-          { ...mockKeyBundleData, identityPublicKey: REPLACEMENT },
-          {
-            signature: SIGNATURE,
-            nonce: Buffer.alloc(32, 1).toString('base64'),
-          },
-        ),
-      ).rejects.toThrow('identity_locked');
+    it('a mismatched nonce does not authenticate — unlocked, never signature', async () => {
+      const result = await service.upsertKeyBundle(
+        SIGNED_USER_ID,
+        { ...mockKeyBundleData, identityPublicKey: REPLACEMENT },
+        {
+          signature: SIGNATURE,
+          nonce: Buffer.alloc(32, 1).toString('base64'),
+        },
+      );
+      expect(result.authorizedBy).toBe('unlocked');
     });
 
     it('falls back to a completed reset ceremony when the signature is unusable', async () => {
@@ -581,6 +584,57 @@ describe('KeyBundlesService', () => {
         ).not.toHaveBeenCalled();
       });
     });
+
+    // Amendment (lxxiii) clause 1: the registration lock is OPT-IN — enabling
+    // linking (the account_authorizations row) is what arms it. Un-enrolled,
+    // an identity replacement with credentials alone is admitted as
+    // 'unlocked', and it is LOUD: same churn warn, same audit row, so §6.0's
+    // alarm fan-out fires unchanged.
+    describe('(lxxiii) the lock is opt-in — un-enrolled replacement is unlocked', () => {
+      it('admits a proof-less replacement on an UN-ENROLLED account as unlocked, loudly, with the audit row', async () => {
+        const warnSpy = jest
+          .spyOn(Logger.prototype, 'warn')
+          .mockImplementation(() => undefined);
+
+        const result = await service.upsertKeyBundle(SIGNED_USER_ID, {
+          ...mockKeyBundleData,
+          identityPublicKey: REPLACEMENT,
+        });
+
+        expect(result.identityChanged).toBe(true);
+        expect(result.authorizedBy).toBe('unlocked');
+        expect(result.previousIdentityPublicKey).toBe(STORED);
+        expect(keyBundleRepo.upsert).toHaveBeenCalledTimes(1);
+        // The SAME audit/notify path as a signature/reset churn: the durable
+        // §6.0 audit row is written, which is what makes the takeover LOUD.
+        expect(auditRepo.insert).toHaveBeenCalledWith({
+          userId: SIGNED_USER_ID,
+          previousIdentityPublicKey: STORED,
+          newIdentityPublicKey: REPLACEMENT,
+        });
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining('via=unlocked'),
+        );
+        // Never refused: no [identity-lock] REFUSED line for this shape.
+        expect(warnSpy).not.toHaveBeenCalledWith(
+          expect.stringContaining('[identity-lock] REFUSED'),
+        );
+        warnSpy.mockRestore();
+      });
+
+      it('a completed reset still wins over unlocked (it must be SPENT, and it tears the roster down)', async () => {
+        identityResetService.consumeCompletedReset.mockResolvedValue(true);
+
+        const result = await service.upsertKeyBundle(SIGNED_USER_ID, {
+          ...mockKeyBundleData,
+          identityPublicKey: REPLACEMENT,
+        });
+
+        // 'unlocked' must never mask a ceremony: the gateway keys the §6.2
+        // roster teardown on authorizedBy === 'reset'.
+        expect(result.authorizedBy).toBe('reset');
+      });
+    });
   });
 
   describe('uploadOneTimePreKeys', () => {
@@ -641,7 +695,9 @@ describe('KeyBundlesService', () => {
     // pins the published identity) but the victim's pool is emptied until a
     // peer fetch triggers preKeysLow. Publishing an identity is locked, so
     // depositing key material under one must be too (§5.1).
-    it('refuses one-time pre-keys tagged with an identity the account has not published', async () => {
+    it('refuses one-time pre-keys tagged with an identity an ENROLLED account has not published', async () => {
+      // (lxxiii): the refusal is armed by enrollment, like the bundle site.
+      authorizationRepo.findOne.mockResolvedValue({ userId: 5 });
       keyBundleRepo.findOne.mockResolvedValue({
         userId: 5,
         deviceId: 1,
@@ -656,6 +712,22 @@ describe('KeyBundlesService', () => {
       expect(otpRepo.upsert).not.toHaveBeenCalled();
       expect(otpRepo.delete).not.toHaveBeenCalled();
       expect(otpRepo.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('(lxxiii) accepts an UN-ENROLLED remint OTP batch under an unpublished identity', async () => {
+      // The client emits bundle + OTPs back to back and the keys can land
+      // first: refusing here would strand the un-enrolled remint without its
+      // OTP batch — the (lxiv) pool-loss shape for no gain.
+      keyBundleRepo.findOne.mockResolvedValue({
+        userId: 5,
+        deviceId: 1,
+        identityPublicKey: 'published-identity',
+      });
+      otpRepo.upsert.mockResolvedValue({ raw: [] });
+
+      await service.uploadOneTimePreKeys(5, keys, 'reminted-identity');
+
+      expect(otpRepo.upsert).toHaveBeenCalledTimes(1);
     });
 
     it('accepts a first upload that races its own key bundle (nothing published yet)', async () => {
@@ -696,9 +768,10 @@ describe('KeyBundlesService', () => {
       expect(identityResetService.consumeCompletedReset).not.toHaveBeenCalled();
     });
 
-    it('still refuses an unpublished tag while a ceremony is merely PENDING', async () => {
+    it('still refuses an ENROLLED unpublished tag while a ceremony is merely PENDING', async () => {
       // A pending ceremony is an alarm, not an authorization: the countdown
       // exists precisely so the owner can cancel it.
+      authorizationRepo.findOne.mockResolvedValue({ userId: 5 });
       keyBundleRepo.findOne.mockResolvedValue({
         userId: 5,
         deviceId: 1,

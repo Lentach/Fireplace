@@ -5,9 +5,9 @@ import 'package:provider/provider.dart';
 
 import '../l10n/app_localizations.dart';
 import '../providers/encryption_provider.dart';
-import '../screens/devices_screen.dart';
+import 'recovery_phrase_prompt.dart'
+    show identityResetAnswerIsRefusal, identityResetAnswerMessage;
 import 'identity_alert_banner.dart';
-import 'recovery_phrase_prompt.dart';
 import 'top_snackbar.dart';
 
 /// Phase 0b reset ceremony (multi-device spec §6.2): somebody asked the server
@@ -78,30 +78,10 @@ class _IdentityResetPendingBannerState
     });
   }
 
-  /// Coarse, human remaining time: hours while there is more than one left,
-  /// minutes below that. Deliberately never seconds — this is a 72 h window,
-  /// not a stopwatch.
-  String _remaining(AppLocalizations l10n, DateTime deadline) {
-    final left = deadline.difference(DateTime.now());
-    if (left.isNegative) return l10n.identityResetAnyMoment;
-    if (left.inHours >= 1) return l10n.identityResetHoursLeft(left.inHours);
-    return l10n.identityResetMinutesLeft(left.inMinutes);
-  }
-
   @override
   Widget build(BuildContext context) {
     final deadline = context.select<EncryptionProvider, DateTime?>(
       (e) => e.identityResetDeadline,
-    );
-    // The server refused to publish this device's new keys. Without a surface
-    // the user is left believing they recovered while peers keep encrypting to
-    // an identity they no longer hold, so this state is as loud as a pending
-    // ceremony. Two ways out, ordered by amendment (lxvii): link this install
-    // from the device that holds the published keys (non-destructive, the
-    // ceremony disposes the refused identity), or start the reset — which
-    // revokes every other device, and so lives in the disclosure.
-    final locked = context.select<EncryptionProvider, bool>(
-      (e) => e.identityUploadLocked,
     );
     // Watched here rather than in the dialog that sent the request: the answer
     // can land after that dialog is gone, and `existing` can arrive because
@@ -114,55 +94,48 @@ class _IdentityResetPendingBannerState
     } else {
       _reportedAnswer = null;
     }
-    if (deadline == null && !locked) return const SizedBox.shrink();
+    // (lxxiii) clause 3: this banner renders ONLY the pending countdown — for
+    // the account's OTHER, healthy sessions, which may want to cancel a reset
+    // somebody started. The lock-refused branch (and its start-reset door)
+    // moved to `DeviceLinkGateScreen`: a keyless install never reaches the
+    // shell any more, and a healthy device watching someone else's reset must
+    // not be offered to start one.
+    if (deadline == null) return const SizedBox.shrink();
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
-    final pending = deadline != null;
     return IdentityAlertBanner(
-      icon: pending ? Icons.lock_reset_outlined : Icons.key_off_outlined,
-      title: pending
-          ? l10n.identityResetPendingTitle
-          : l10n.identityUploadLockedTitle,
+      icon: Icons.lock_reset_outlined,
+      title: l10n.identityResetPendingTitle,
       // The countdown is STATUS, not prose, so it stays visible while the
       // explanation is collapsed — the whole point of the delay is that someone
       // sees it running.
-      summary: pending ? _remaining(l10n, deadline) : null,
-      detail: pending
-          ? l10n.identityResetPendingBody(_remaining(l10n, deadline))
-          : l10n.identityUploadLockedBody,
+      summary: identityResetRemainingLabel(l10n, deadline),
+      detail: l10n.identityResetPendingBody(
+        identityResetRemainingLabel(l10n, deadline),
+      ),
       // Foreground pinned to onErrorContainer: theme primary is nearly
       // invisible on the error container (same reason as the 0a banner).
       action: TextButton(
         key: const Key('identity-reset-banner-action'),
-        onPressed: () {
-          if (pending) {
-            context.read<EncryptionProvider>().cancelIdentityReset();
-          } else {
-            Navigator.of(
-              context,
-            ).push(MaterialPageRoute(builder: (_) => const DevicesScreen()));
-          }
-        },
+        onPressed: () =>
+            context.read<EncryptionProvider>().cancelIdentityReset(),
         style: TextButton.styleFrom(
           foregroundColor: colors.onErrorContainer,
           textStyle: const TextStyle(fontWeight: FontWeight.w700),
         ),
-        child: Text(
-          pending ? l10n.identityResetCancelAction : l10n.devicesLinkThisDevice,
-        ),
+        child: Text(l10n.identityResetCancelAction),
       ),
-      secondaryAction: pending
-          ? null
-          : TextButton(
-              key: const Key('identity-reset-banner-start-reset'),
-              // Ask for a recovery key first: it is the difference between
-              // waiting an hour and waiting three days.
-              onPressed: () => startIdentityResetFlow(context),
-              style: TextButton.styleFrom(
-                foregroundColor: colors.onErrorContainer,
-              ),
-              child: Text(l10n.identityResetStartAction),
-            ),
     );
   }
+}
+
+/// Coarse, human remaining time for a §6.2 countdown: hours while there is
+/// more than one left, minutes below that. Deliberately never seconds — this
+/// is a 72 h window, not a stopwatch. Shared with `DeviceLinkGateScreen`'s
+/// reset-pending state so the two countdowns cannot drift apart.
+String identityResetRemainingLabel(AppLocalizations l10n, DateTime deadline) {
+  final left = deadline.difference(DateTime.now());
+  if (left.isNegative) return l10n.identityResetAnyMoment;
+  if (left.inHours >= 1) return l10n.identityResetHoursLeft(left.inHours);
+  return l10n.identityResetMinutesLeft(left.inMinutes);
 }

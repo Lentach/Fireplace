@@ -554,12 +554,17 @@ export class ChatKeyExchangeService {
       );
       // Additive fields: an older client ignores them, and a newer client
       // treats a missing payload as UNKNOWN rather than as "nothing pending".
-      const [reset, identityReplacedAt] = await Promise.all([
+      const [reset, identityReplacedAt, linkingEnabled] = await Promise.all([
         this.identityResetService.getStatusForUser(userId),
         this.keyBundlesService.latestIdentityChangeAt(userId),
+        // (lxxiii) clause 2 — the client learns the lock state with the
+        // bundle answer. Additive; an absent field reads as `true` client-side
+        // (fail-closed to the pre-(lxxiii) gate, never to a refused mint).
+        this.keyBundlesService.isEnrolled(userId),
       ]);
       client.emit('ownKeyBundleStatus', {
         exists,
+        linkingEnabled,
         identityReset: reset
           ? {
               status: reset.status,

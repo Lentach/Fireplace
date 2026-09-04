@@ -1,20 +1,13 @@
-// Amendment (lxiv) clause 2 / (lxvii) clause 2 — the banner's promised recovery
-// must be REACHABLE.
+// Amendment (lxviii) clauses 2-3 / (lxix) — the devices screen's enrolled
+// branch: only the DAK holder is offered the primary flow, chain failures
+// render for a healthy install, and revoked tombstones collapse behind one
+// disclosure.
 //
-// Live QA (2026-08-31) found the dead end this file pins: a revoked device
-// that signs back in is NOT keyless (its stale Signal material survived), so
-// gating the device-side §5.1 CTA on `identityIncomplete` alone routed exactly
-// the mismatched install — the one the banner sends here — to the PRIMARY-side
-// "enter code" flow it can never complete (it holds no DAK). The 2026-09-02
-// probe found the third shape: a keyless install that took "start fresh" holds
-// an identity the registration lock refused, `identityIncomplete` clears, and
-// the CTA vanished — leaving a 72 h reset as the only door. The screen must
-// offer "link this device" for every shape of unusable material: none at all,
-// (lxiv) stamped-for-another-device, and (lxvii) lock-refused.
-//
-// The provider getters are faked HERE ONLY; the real state -> getter join is
-// covered by test/providers/device_material_mismatch_test.dart (same split as
-// device_mismatch_banner_test.dart).
+// The KEYLESS cases that used to live here ((lxiv)/(lxvii) — mismatch,
+// incomplete, lock-refused) are gone with the branch itself: (lxxiii)
+// clause 3's DeviceLinkGateScreen owns every keyless shape now, so this
+// screen never renders for such an install and the CTA it pinned no longer
+// exists.
 
 import 'package:fireplace/l10n/app_localizations.dart';
 import 'package:fireplace/models/user_model.dart';
@@ -53,26 +46,7 @@ class _FakeConnectionProvider extends ConnectionProvider {
   }
 }
 
-class _FakeEncryptionProvider extends EncryptionProvider {
-  _FakeEncryptionProvider({
-    required this.mismatch,
-    required this.incomplete,
-    this.locked = false,
-  });
-
-  final bool mismatch;
-  final bool incomplete;
-  final bool locked;
-
-  @override
-  bool get deviceMaterialMismatch => mismatch;
-
-  @override
-  bool get identityIncomplete => incomplete;
-
-  @override
-  bool get identityUploadLocked => locked;
-}
+class _FakeEncryptionProvider extends EncryptionProvider {}
 
 _FakeConnectionProvider _connection = _FakeConnectionProvider();
 
@@ -105,81 +79,10 @@ const _enrolledList = DeviceList(
 void main() {
   setUp(() => FlutterSecureStorage.setMockInitialValues({}));
 
-  testWidgets(
-    'device-material mismatch offers the device-side ceremony, not the '
-    'primary flow',
-    (tester) async {
-      await tester.pumpWidget(
-        _host(_FakeEncryptionProvider(mismatch: true, incomplete: false)),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('devices-link-this-device')), findsOneWidget);
-      expect(find.byKey(const Key('devices-link-a-device')), findsNothing);
-      expect(find.byKey(const Key('devices-enable-linking')), findsNothing);
-    },
-  );
-
-  testWidgets('keyless install still gets the device-side ceremony', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      _host(_FakeEncryptionProvider(mismatch: false, incomplete: true)),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(const Key('devices-link-this-device')), findsOneWidget);
-    expect(find.byKey(const Key('devices-link-a-device')), findsNothing);
-  });
-
-  testWidgets(
-    'a lock-refused identity offers the device-side ceremony, not the '
-    'primary flow',
-    (tester) async {
-      await tester.pumpWidget(
-        _host(
-          _FakeEncryptionProvider(
-            mismatch: false,
-            incomplete: false,
-            locked: true,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('devices-link-this-device')), findsOneWidget);
-      expect(find.byKey(const Key('devices-link-a-device')), findsNothing);
-      expect(find.byKey(const Key('devices-enable-linking')), findsNothing);
-    },
-  );
-
-  // Amendment (lxviii) clause 3 — a keyless install is not shown a chain
-  // failure above the CTA that is its whole message.
-  testWidgets('keyless: the chain-invalid line is NOT rendered', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      _host(_FakeEncryptionProvider(mismatch: false, incomplete: true)),
-    );
-    await tester.pumpAndSettle();
-    final controller = _connection.sink!;
-    controller.listState = DeviceListState.chainInvalid;
-    controller.listFailureReason = 'no_local_identity';
-    controller.notifyListeners();
-    await tester.pumpAndSettle();
-    final l10n = await AppLocalizations.delegate.load(const Locale('en'));
-
-    expect(find.text(l10n.devicesChainInvalid), findsNothing);
-    expect(find.text(l10n.devicesThisDeviceKeyless), findsOneWidget);
-    expect(find.byKey(const Key('devices-link-this-device')), findsOneWidget);
-  });
-
   testWidgets('healthy: a genuine chain failure IS still rendered', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      _host(_FakeEncryptionProvider(mismatch: false, incomplete: false)),
-    );
+    await tester.pumpWidget(_host(_FakeEncryptionProvider()));
     await tester.pumpAndSettle();
     final controller = _connection.sink!;
     controller.listState = DeviceListState.chainInvalid;
@@ -198,9 +101,7 @@ void main() {
       WidgetTester tester, {
       required bool? holdsDak,
     }) async {
-      await tester.pumpWidget(
-        _host(_FakeEncryptionProvider(mismatch: false, incomplete: false)),
-      );
+      await tester.pumpWidget(_host(_FakeEncryptionProvider()));
       await tester.pumpAndSettle();
       final controller = _connection.sink!;
       controller.listState = DeviceListState.enrolled;
@@ -265,9 +166,7 @@ void main() {
       );
 
       Future<void> pumpTombstones(WidgetTester tester) async {
-        await tester.pumpWidget(
-          _host(_FakeEncryptionProvider(mismatch: false, incomplete: false)),
-        );
+        await tester.pumpWidget(_host(_FakeEncryptionProvider()));
         await tester.pumpAndSettle();
         final controller = _connection.sink!;
         controller.listState = DeviceListState.enrolled;

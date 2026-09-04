@@ -33,6 +33,7 @@
 // so removing the filter reddens CI. Together: filter (unit spec) + purge +
 // tagging (this test) are each guarded.
 
+import 'package:fireplace/services/encryption_service.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -217,7 +218,7 @@ void main() {
         await alice.encryption.clearAllKeys();
         await alice.encryption.initialize(
           alice.userId,
-          checkServerBundleExists: () async => false,
+          checkServerIdentity: () async => const ServerIdentityGuard(exists: false),
         );
         final epoch2Identity =
             (alice.encryption.getKeysForUpload()!['keyBundle']

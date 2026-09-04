@@ -109,7 +109,7 @@ void main() {
       encryption = _RealStoreEncryption();
       await encryption.service.initialize(
         1,
-        checkServerBundleExists: () async => false,
+        checkServerIdentity: () async => const ServerIdentityGuard(exists: false),
       ); // "me" = user 1
       emitted = <Map<String, dynamic>>[];
 

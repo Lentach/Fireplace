@@ -655,6 +655,71 @@ class AppLocalizationsPl extends AppLocalizations {
   String get identityResetStartAction => 'Rozpocznij reset';
 
   @override
+  String get linkGateTitle => 'Połącz to urządzenie';
+
+  @override
+  String get linkGateBody =>
+      'To urządzenie nie ma kluczy szyfrowania Twojego konta. Ma je Twoje urządzenie główne — zeskanuj nim ten kod albo wpisz go tam ręcznie. Nic nie przepadnie.';
+
+  @override
+  String get linkGateWaiting => 'Czekam na urządzenie główne…';
+
+  @override
+  String get linkGateStaleBody =>
+      'Klucze na tym urządzeniu są nieaktualne i zostaną zastąpione po połączeniu. Zapisane wiadomości pozostaną.';
+
+  @override
+  String get linkGateNoPrimaryQuestion => 'Nie masz już urządzenia głównego?';
+
+  @override
+  String get linkGateResetHint =>
+      'Reset nadaje kontu nowe klucze po 72 godzinach (1 godzinie z kluczem odzyskiwania), wylogowuje pozostałe urządzenia i powiadamia wszystkie zalogowane sesje. Wiadomości, których to urządzenie nie odszyfrowało, przepadną.';
+
+  @override
+  String get linkGateResetPendingTitle => 'Reset kluczy w toku';
+
+  @override
+  String linkGateResetPendingBody(String remaining) {
+    return 'Za $remaining konto otrzyma nowe klucze i to urządzenie będzie mogło pisać dalej. Jeśli w międzyczasie odzyskasz urządzenie główne, najpierw dotknij „Anuluj” — reset trwa, dopóki go nie anulujesz — a potem połącz to urządzenie stamtąd.';
+  }
+
+  @override
+  String get linkGateResetPhraseTooNew =>
+      'Klucz odzyskiwania został utworzony mniej niż 3 dni temu, więc obowiązuje pełne 72 godziny.';
+
+  @override
+  String get linkGateCheckingTitle => 'Sprawdzam klucze tego urządzenia…';
+
+  @override
+  String get linkGateCheckingBody =>
+      'Potrzebuję połączenia z serwerem, żeby sprawdzić, czy konto ma już klucze na innym urządzeniu.';
+
+  @override
+  String get linkGateRetryAction => 'Spróbuj ponownie';
+
+  @override
+  String get linkGateLogoutAction => 'Wyloguj';
+
+  @override
+  String get devicesInstallFirst =>
+      'Aby włączyć łączenie w przeglądarce, najpierw zainstaluj Umbra jako aplikację (menu przeglądarki → „Zainstaluj” lub „Dodaj do ekranu początkowego”). Dane zwykłej karty przeglądarka może usunąć bez pytania, a razem z nimi klucze urządzenia głównego.';
+
+  @override
+  String get devicesInstallNudge =>
+      'Ta przeglądarka jest urządzeniem głównym Twojego konta, ale Umbra nie jest tu zainstalowana jako aplikacja. Zainstaluj ją, aby przeglądarka nie usunęła kluczy razem z pamięcią podręczną.';
+
+  @override
+  String get devicesEnableLinkingWebWarningTitle =>
+      'Ta przeglądarka stanie się urządzeniem głównym';
+
+  @override
+  String get devicesEnableLinkingWebWarningBody =>
+      'Tylko urządzenie główne może dodawać i usuwać inne urządzenia. Jeśli pamięć tej przeglądarki zostanie wyczyszczona, odzyskanie tej roli wymaga resetu: 72 godziny, albo 1 godzina z kluczem odzyskiwania. Za chwilę zaproponujemy jego utworzenie.';
+
+  @override
+  String get devicesEnableLinkingConfirmAction => 'Włącz';
+
+  @override
   String get recoveryKeyTitle => 'Klucz odzyskiwania';
 
   @override

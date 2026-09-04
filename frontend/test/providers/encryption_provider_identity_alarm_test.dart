@@ -75,7 +75,7 @@ void main() {
 
     // The peer's real engine, pre-reset.
     peer = EncryptionService();
-    await peer.initialize(peerId, checkServerBundleExists: () async => false);
+    await peer.initialize(peerId, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
 
     // The SAME account after a §6.2 identity reset: a genuinely different
     // identity key, served under the same user id at a fresh device id. A
@@ -84,7 +84,7 @@ void main() {
     peerAfterReset = EncryptionService();
     await peerAfterReset.initialize(
       9001,
-      checkServerBundleExists: () async => false,
+      checkServerIdentity: () async => const ServerIdentityGuard(exists: false),
     );
   });
 

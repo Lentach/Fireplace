@@ -30,33 +30,14 @@ class LinkThisDeviceScreen extends StatefulWidget {
 class _LinkThisDeviceScreenState extends State<LinkThisDeviceScreen> {
   bool _popped = false;
 
-  @override
-  void initState() {
-    super.initState();
-    widget.controller.addListener(_onStep);
-    widget.controller.startNewDeviceFlow(platform: linkPlatformLabel());
-  }
-
   /// Same exit as the primary side: `done` returns to the devices screen —
   /// which re-reads the list on the rebound socket ((lxviii) clause 1) — and
   /// the confirmation is a toast there. The pop is not an abort for `done`.
-  void _onStep() {
+  void _onDone() {
     if (_popped || !mounted) return;
-    if (widget.controller.newDeviceStep != NewDeviceLinkStep.done) return;
     _popped = true;
-    // Delivered from a controller notification, possibly mid-build: never
-    // navigate inside a build phase.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      showTopSnackBar(context, AppLocalizations.of(context).linkNewDone);
-      Navigator.of(context).pop();
-    });
-  }
-
-  @override
-  void dispose() {
-    widget.controller.removeListener(_onStep);
-    super.dispose();
+    showTopSnackBar(context, AppLocalizations.of(context).linkNewDone);
+    Navigator.of(context).pop();
   }
 
   @override
@@ -97,24 +78,87 @@ class _LinkThisDeviceScreenState extends State<LinkThisDeviceScreen> {
             ),
           ),
         ),
-        body: AnimatedBuilder(
-          animation: widget.controller,
-          builder: (context, _) => SingleChildScrollView(
-            padding: EdgeInsets.only(
-              top:
-                  MediaQuery.paddingOf(context).top +
-                  GlassTopBar.capsuleHeight +
-                  16,
-              bottom: MediaQuery.paddingOf(context).bottom + 24,
-              left: 24,
-              right: 24,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: _buildStep(context),
-            ),
+        body: SingleChildScrollView(
+          padding: EdgeInsets.only(
+            top:
+                MediaQuery.paddingOf(context).top +
+                GlassTopBar.capsuleHeight +
+                16,
+            bottom: MediaQuery.paddingOf(context).bottom + 24,
+            left: 24,
+            right: 24,
+          ),
+          child: LinkThisDeviceBody(
+            controller: widget.controller,
+            onDone: _onDone,
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The device-side ceremony body, reusable outside this route: mounted here
+/// under a poppable Scaffold, and inline by the (lxxiii) clause 3
+/// `DeviceLinkGateScreen`, which is provider-state, not navigation. Starts
+/// `startNewDeviceFlow` on mount and reports `done` through [onDone] exactly
+/// once (post-frame — the notification can land mid-build).
+class LinkThisDeviceBody extends StatefulWidget {
+  const LinkThisDeviceBody({
+    super.key,
+    required this.controller,
+    this.onDone,
+    this.waitingLabel,
+  });
+
+  final LinkCeremonyController controller;
+
+  /// Fired once when the ceremony reaches [NewDeviceLinkStep.done].
+  final VoidCallback? onDone;
+
+  /// Replaces the default "waiting for the primary" line — the gate says
+  /// "Czekam na urządzenie główne…" in its own words.
+  final String? waitingLabel;
+
+  @override
+  State<LinkThisDeviceBody> createState() => _LinkThisDeviceBodyState();
+}
+
+class _LinkThisDeviceBodyState extends State<LinkThisDeviceBody> {
+  bool _doneFired = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onStep);
+    widget.controller.startNewDeviceFlow(platform: linkPlatformLabel());
+  }
+
+  void _onStep() {
+    if (_doneFired || !mounted) return;
+    if (widget.controller.newDeviceStep != NewDeviceLinkStep.done) return;
+    _doneFired = true;
+    // Delivered from a controller notification, possibly mid-build: never
+    // navigate inside a build phase.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      widget.onDone?.call();
+    });
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onStep);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: widget.controller,
+      builder: (context, _) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: _buildStep(context),
       ),
     );
   }
@@ -217,7 +261,7 @@ class _LinkThisDeviceScreenState extends State<LinkThisDeviceScreen> {
           const SizedBox(height: 24),
           if (sas == null)
             Text(
-              l10n.linkNewWaitingHello,
+              widget.waitingLabel ?? l10n.linkNewWaitingHello,
               key: const Key('link-new-waiting-hello'),
               textAlign: TextAlign.center,
               style: theme.textTheme.bodySmall?.copyWith(

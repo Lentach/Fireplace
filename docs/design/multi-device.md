@@ -427,10 +427,14 @@ that is the designed outcome).
 ## 8. Compatibility and rollout
 
 - Existing accounts become `devices(userId, 1, isPrimary=true)` implicitly (migration backfill). No
-  DAK until the user enables linking; until then §6.1 governs.
-- **Only a Keystore-capable device may become primary** (I2) — in practice the Android APK. A
-  PWA-only account (today's iOS users) stays single-device until an iOS app exists; the web client
-  can be a *linked* device only. Stated to the user at enable time.
+  DAK until the user enables linking; until then the account is UN-ENROLLED and the §6.1 lock is
+  NOT armed — a wiped device re-mints (amendment (lxxiii)). Enabling linking arms §6.1/§6.2.
+- **Any platform may be primary** (rewritten by (lxxiv); the original "Keystore-capable only" rule
+  never matched the code). The DAK's custody is the same as the IK's on that platform: Android
+  Keystore, or the sealed `sig_` KV on web — I2's "Keystore" names the custody intent, not a
+  platform gate. A web primary is asked to INSTALL the PWA before enabling linking (eviction, not
+  theft, is its exposure); a browser tab sees the install instruction instead of the button.
+  "QR as login without password" is out of scope by I3: the QR is a link step, never a credential.
 - **Reconcile safety across the mixed model (I8):** "served" is row-existence based for every row
   shape — pre-migration rows, legacy-client sends (stored as a device-1 envelope), and new
   envelope-only rows reconcile identically. No first-launch mass-purge shape exists by
@@ -2454,7 +2458,112 @@ that is the designed outcome).
     Falsification: door removed → `Found 0 widgets with key identity-damaged-start-reset`; pending
     gate removed → the door renders beside a running countdown.
 
-
+- **Amendment 2026-09-04 (D24, owner-ratified in three yes/no answers: opt-in lock YES, web-primary
+  install rule YES, "QR as login" DROPPED; cross-tier — backend rule + client gate):**
+  - **(lxxiii) clause 1 — the registration lock is OPT-IN; enabling linking is what arms it.** Owner's
+    words: "when primary device is not linked then app works normally." Today §6.1 refuses every
+    identity replacement, so a routine PWA storage wipe on an account that never linked anything
+    costs the full §6.2 delay — the same price as a stolen password. Rule: the server refuses an
+    unauthorized identity replacement ONLY when the account is ENROLLED, i.e. an `account_authorizations`
+    row exists for `userId` (the DAK pin, one row per account, already read on every list mutation —
+    `device-list.service.ts` `getAuthorization`). Both refusal sites take the same predicate:
+    `upsertKeyBundle` (`key-bundles.service.ts:162-176`) and `uploadOneTimePreKeys` (`:464-486`) —
+    the OTP site MUST be exempted too, because the client emits bundle + OTPs back to back and the
+    keys can land first; a refused OTP batch on an un-enrolled account would be the (lxiv) pool-loss
+    shape for no gain. An un-enrolled replacement is logged `[identity-churn] via=unlocked` and
+    written to the same audit row as a `signature`/`reset` churn, so §6.0's alarm (push + WS +
+    peer timeline row) fires unchanged — the posture is Signal-without-PIN: password-only takeover
+    is POSSIBLE on an un-enrolled account, and it is LOUD. Once a DAK is enrolled the lock is exactly
+    §6.1/§6.2 as before; disenrollment does not exist (a reset re-enrolls or leaves the account
+    un-enrolled, per the (xlv)/(xlvi) teardown), so the lock never silently disarms.
+    Threat honesty for §2: **P** against an un-enrolled account gains the account identity (as
+    pre-programme), never a device list (there is none) and never silence. Owner accepts this; the
+    cure is one tap ("Włącz łączenie"), and clause 3 says so at the moment of choice.
+  - **(lxxiii) clause 2 — the client learns the lock state with the bundle answer, and a wipe on an
+    un-enrolled account mints without asking.** `ownKeyBundleStatus` gains the additive field
+    `linkingEnabled: boolean` (row exists). The (lxxi) guard's tri-state becomes a pair
+    `{exists, linkingEnabled}` (or UNKNOWN as before): `exists && linkingEnabled` →
+    `E2eIdentityIncompleteException` (gate); `exists && !linkingEnabled` → the residue is discarded by
+    the PROVEN `_wipeSignalMaterial` (rider of (lxxi), deferred if unproven), a new identity is
+    minted and uploaded, diag `IDENTITY_GUARD_UNLOCKED_REMINT {userId}`; `!exists` → mint as today;
+    field ABSENT (older server) → treated as `linkingEnabled: true` — fail-closed to the current
+    behaviour, never to a mint the server would refuse. Old history on the wiped device is
+    unreadable (no key exists to read it) and the previous identity's peers see §6.0's
+    "identity changed" row — exactly the pre-programme outcome, minus the silence.
+  - **(lxxiii) clause 3 — an enrolled account that lost its keys meets a GATE, not a banner.** Rule:
+    while `needsDeviceLink` (`identityIncomplete || deviceMaterialMismatch || identityUploadLocked`)
+    or the new `identityCheckUnavailable` (the UNKNOWN outcome of the guard, today flagless) is set,
+    `AuthGate`'s logged-in branch renders `DeviceLinkGateScreen` ABOVE `MainShell`, which stays
+    mounted but `Offstage` (the socket, the guard's own round trip and the reset hydration all live
+    under the shell — unmounting it would starve the gate of the very state that opens it). No
+    shell, no banners, no composer. The gate is ONE screen with four states, chosen by provider state,
+    never by navigation: (a) **link** — the device-side §5.1 ceremony inline (the `LinkThisDeviceScreen`
+    body: QR + text code, "Czekam na urządzenie główne…"), the always-visible action; (b) **reset
+    pending** (`identityResetDeadline != null`) — countdown (1 h when `shortened`, else 72 h; a
+    `phrase_too_new` answer is shown as the reason the wait is 72 h) + "Anuluj", the link stays
+    offered because the primary may reappear — and the copy says to cancel FIRST, because linking
+    does not cancel a ceremony (server `cancelReset` is reachable only via `resetIdentityCancel`);
+    (c) **unknown** (`identityCheckUnavailable`) — spinner
+    + "Spróbuj ponownie" that re-runs the E2E init, never a keyless shell; (d) **mismatch/locked**
+    (`linkDisposesStaleMaterial`) — state (a) with the (lxv)/(lxvii) disposal notice. Footer on every
+    state: "Nie masz już urządzenia głównego? → Rozpocznij reset" (`startIdentityResetFlow`, hidden in
+    (b) — (lxxii)'s two-buttons rule) and "Wyloguj" (`AuthProvider.logout`, keys and history untouched).
+    `IdentityDamagedBanner`, `DeviceMismatchBanner` and the lock-refused branch of
+    `IdentityResetPendingBanner` are DELETED from `main_shell.dart` — the gate owns those states and
+    a banner behind an `Offstage` shell is dead code; the pending-countdown branch of
+    `IdentityResetPendingBanner` stays for the OTHER sessions of the account (a healthy device
+    watching a reset it may want to cancel) and `OwnIdentityReplacedBanner` is untouched. The
+    devices screen's keyless branch ((lxvii) clause 1) becomes unreachable behind the gate and is
+    removed with it. Deep-link parking (`PendingLinkCode`) is a PRIMARY-side concern and is unchanged.
+    Cost, stated: the gate mounts when the verdict lands (one guard round trip, ≤ 6 s), so a keyless
+    install sees the shell's skeletons for that window; a healthy install (`loaded`) never touches the
+    server for this and never sees the gate.
+  - **(lxxiii) clause 4 — link approval on a `partial` install wipes the residue before adopting.**
+    `E2eIdentityIncompleteException` has two origins (`encryption_service.dart` `initialize`): a clean
+    store with a server bundle, and `partial`/residue (prekeys, sessions, `next_pre_key_id` survive,
+    identity gone). Both land on the gate. `adoptProvisionedIdentity` runs `_wipeSignalMaterial` only
+    when it HOLDS an identity (the (lxiv) stale shape); a residue install holds none, so today the
+    received identity is installed OVER foreign prekeys and a stale prekey counter — the stranded-
+    ratchet shape (lxxi)'s rider exists to prevent. Rule: the adopt path wipes whenever residue is
+    present (`_hasPriorInstallResidue` OR a stored identity), PROVEN, before the first store write;
+    unproven → the ceremony fails `rebind_failed`-style with `LINK_RESIDUE_DISPOSAL_DEFERRED` and the
+    gate stays. Consent is the SAS + authenticated blob, as in (lxv).
+    Falsification (each mutant printed, substitution count asserted, restored in `finally`):
+    (F1) backend exemption removed at the bundle site → un-enrolled replacement answers
+    `identity_locked`; (F2) exemption removed at the OTP site only → the OTP batch after an
+    un-enrolled remint is refused; (F3) exemption applied to an ENROLLED account → the §6.1 spec's
+    "different IK without signature is refused" case goes green-for-the-wrong-reason (asserted red);
+    (F4) client treats an absent `linkingEnabled` as `false` → the guard mints against an old server;
+    (F5) gate route removed → `Found 1 widget with type MainShell` visible on a keyless enrolled
+    install; (F6) reset-pending state removed → no countdown/`Anuluj` while `identityResetDeadline`
+    is set; (F7) UNKNOWN state removed → keyless shell on a null guard answer; (F8) residue wipe
+    skipped on adopt → `e2e_<uid>_pre_key_…` survives `LINK_IDENTITY_ADOPTED`.
+  - **(lxxiv) clause 1 — a web PRIMARY is asked to be INSTALLED first.** §8 said only a
+    Keystore-capable device may be primary; code disagreed since (li) — `enableLinking(platform:'web')`
+    mints and persists a DAK on web in the same sealed `sig_` KV as the IK
+    (`link_ceremony_controller.dart:352-372`, `dak_store.dart`), and every web primary in the field is
+    real. Code wins; §8 is rewritten below. The exposure is EVICTION, not theft: a browser-tab origin
+    is the first thing a storage-pressure sweep or a "clear browsing data" takes, and a wiped primary
+    is the one shape whose only exit is the §6.2 delay (I2 — the DAK exists nowhere else). Rule: on
+    web the not-enrolled branch of the devices screen offers "Włącz łączenie" ONLY when the app runs
+    installed — `matchMedia('(display-mode: standalone)')` OR `navigator.standalone` (new
+    `utils/web_display_mode.dart`, web + stub; `navigator.storage.persisted()` is NOT the signal:
+    WebKit ≤ 16 has no API and 17+ answers heuristically). A browser tab sees the same row with an
+    install instruction instead of the button. Enabling shows a plain one-paragraph warning (this
+    browser becomes the account's main device; if its storage is cleared, linking must be reset —
+    72 h, or 1 h with a recovery phrase) with "Włącz" / "Anuluj", and on success routes to
+    `RecoveryKeyScreen` (the phrase offer; skippable). Android and desktop native are unchanged.
+  - **(lxxiv) clause 2 — an already-enrolled web primary that is not installed is nudged.** The
+    enrolled + `holdsDak == true` branch on web, when not standalone, renders one line above the
+    "Połącz urządzenie" action: install this app so its keys are not evicted with the browser cache.
+    Informational only — no gate, no modal (the owner's local 697 is this shape).
+  - **(lxxiv) clause 3 — §8 rewritten.** Replace the "only Keystore-capable" bullet with: any
+    platform may be primary; the DAK lives in platform Keystore on Android and in the sealed `sig_`
+    KV on web (same custody as the IK — I2's "Keystore" is the custody INTENT, not a platform gate);
+    web primaries are asked to install first (clause 1). "QR as login without password" is
+    permanently out of scope: I3 requires a password login on the new device; the QR is a LINK step.
+    Falsification: (F9) standalone check inverted → the button renders in a plain tab; (F10) nudge
+    removed → no install line for an enrolled non-standalone web primary.
 
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the

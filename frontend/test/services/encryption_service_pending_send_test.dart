@@ -30,7 +30,7 @@ void main() {
       FlutterSecureStorage.setMockInitialValues({});
       SharedPreferences.setMockInitialValues({});
       service = EncryptionService();
-      await service.initialize(uid, checkServerBundleExists: () async => false);
+      await service.initialize(uid, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
     });
 
     // Contract 1: save persists, peek returns the exact payload and does NOT
@@ -161,7 +161,7 @@ void main() {
       await service.savePendingSendRecord('2:userA', {'content': 'A only'});
 
       final other = EncryptionService();
-      await other.initialize(99, checkServerBundleExists: () async => false);
+      await other.initialize(99, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
       expect(await other.peekPendingSendRecord('2:userA'), isNull);
       expect(await other.takePendingSendRecord('2:userA'), isNull);
 
@@ -178,7 +178,7 @@ void main() {
       await service.savePendingSendRecord('2:c2', {'content': 'two'});
 
       await service.clearAllKeys();
-      await service.initialize(uid, checkServerBundleExists: () async => false);
+      await service.initialize(uid, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
 
       expect(await service.peekPendingSendRecord('2:c1'), isNull);
       expect(await service.peekPendingSendRecord('2:c2'), isNull);

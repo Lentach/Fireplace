@@ -53,9 +53,9 @@ void main() {
     alice = EncryptionService();
     bob = EncryptionService();
     mallory = EncryptionService();
-    await alice.initialize(aliceId, checkServerBundleExists: () async => false);
-    await bob.initialize(bobId, checkServerBundleExists: () async => false);
-    await mallory.initialize(malloryId, checkServerBundleExists: () async => false);
+    await alice.initialize(aliceId, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
+    await bob.initialize(bobId, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
+    await mallory.initialize(malloryId, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
   });
 
   group('peer identity substitution', () {
@@ -95,7 +95,7 @@ void main() {
       // Same user, fresh process: the persisted warning must come back, or a
       // user who was not looking at that chat never learns it happened.
       final restarted = EncryptionService();
-      await restarted.initialize(aliceId, checkServerBundleExists: () async => false);
+      await restarted.initialize(aliceId, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
 
       expect(restarted.peersWithChangedIdentity, contains(bobId));
     });
@@ -110,7 +110,7 @@ void main() {
       expect(alice.peersWithChangedIdentity, isEmpty);
 
       final restarted = EncryptionService();
-      await restarted.initialize(aliceId, checkServerBundleExists: () async => false);
+      await restarted.initialize(aliceId, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
       expect(restarted.peersWithChangedIdentity, isEmpty);
     });
 
@@ -118,7 +118,7 @@ void main() {
         () async {
       const carolId = 4;
       final carol = EncryptionService();
-      await carol.initialize(carolId, checkServerBundleExists: () async => false);
+      await carol.initialize(carolId, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
 
       await alice.buildSession(bobId, flatBundleFrom(bob), expectedIdentityBase64: null);
       await alice.buildSession(carolId, flatBundleFrom(carol), expectedIdentityBase64: null);

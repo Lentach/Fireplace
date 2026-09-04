@@ -54,8 +54,18 @@ export interface PreKeyBundleResponse {
  * RESET is the moment the §6.2 roster teardown runs (spec §12 amendment
  * (xxviii)), and a signed rotation deliberately does NOT tear the roster down
  * — the account still holds its other devices.
+ *
+ * `'unlocked'` is amendment (lxxiii) clause 1: the account is NOT ENROLLED
+ * (no `account_authorizations` row), so the registration lock is not armed
+ * and the replacement is admitted with credentials alone — loudly, through
+ * the same audit/notification path as the other two, and never tearing any
+ * roster down (there is none).
  */
-export type IdentityChangeAuthorization = 'signature' | 'reset' | null;
+export type IdentityChangeAuthorization =
+  | 'signature'
+  | 'reset'
+  | 'unlocked'
+  | null;
 
 export interface UpsertKeyBundleResult {
   /** True when the upload REPLACED a stored bundle with a different identity. */
@@ -160,19 +170,29 @@ export class KeyBundlesService {
       existingBundle.identityPublicKey !== data.identityPublicKey;
     let authorizedBy: IdentityChangeAuthorization = null;
     if (identityChanged) {
+      const enrolled = await this.isEnrolled(userId);
       authorizedBy = await this.authorizeIdentityChange(
         userId,
         existingBundle.identityPublicKey,
         data.identityPublicKey,
+        enrolled,
         proof,
       );
       if (authorizedBy === null) {
-        // Loud, and deliberately before any write: an unauthorized replacement
-        // attempt is exactly the event this lock exists to stop.
-        this.logger.warn(
-          `[identity-lock] REFUSED unauthorized identity replacement userId=${userId} deviceId=${deviceId} storedPrefix=${existingBundle.identityPublicKey.slice(0, 12)} attemptedPrefix=${data.identityPublicKey.slice(0, 12)}`,
-        );
-        throw new IdentityLockedError();
+        if (enrolled) {
+          // Loud, and deliberately before any write: an unauthorized
+          // replacement attempt on an ENROLLED account is exactly the event
+          // this lock exists to stop.
+          this.logger.warn(
+            `[identity-lock] REFUSED unauthorized identity replacement userId=${userId} deviceId=${deviceId} storedPrefix=${existingBundle.identityPublicKey.slice(0, 12)} attemptedPrefix=${data.identityPublicKey.slice(0, 12)}`,
+          );
+          throw new IdentityLockedError();
+        }
+        // (lxxiii) clause 1: the registration lock is OPT-IN — enabling
+        // linking (enrolling a DAK) is what arms it. An un-enrolled account
+        // replaces its identity with credentials alone, and the churn stays
+        // LOUD: same warn line, same audit row, same §6.0 alarm fan-out.
+        authorizedBy = 'unlocked';
       }
       this.logger.warn(
         `[identity-churn] userId=${userId} deviceId=${deviceId} via=${authorizedBy} oldIdentityPrefix=${existingBundle.identityPublicKey.slice(0, 12)} newIdentityPrefix=${data.identityPublicKey.slice(0, 12)}`,
@@ -369,13 +389,9 @@ export class KeyBundlesService {
     userId: number,
     storedIdentityPublicKey: string,
     newIdentityPublicKey: string,
+    enrolled: boolean,
     proof?: IdentityChangeProof,
   ): Promise<IdentityChangeAuthorization> {
-    const enrolled =
-      (await this.authorizationRepo.findOne({
-        where: { userId },
-        select: { userId: true },
-      })) !== null;
     if (enrolled && proof?.signature && proof?.nonce) {
       this.logger.warn(
         `[identity-lock] (liv) signature path REFUSED for an enrolled account userId=${userId} — a linked device holds ikPriv, so only a §6.2 ceremony authorizes an identity change`,
@@ -396,6 +412,25 @@ export class KeyBundlesService {
     return (await this.identityResetService.consumeCompletedReset(userId))
       ? 'reset'
       : null;
+  }
+
+  /**
+   * Whether the account is ENROLLED — an `account_authorizations` row (the
+   * DAK pin, one per account) exists for this userId.
+   *
+   * Amendment (lxxiii) clause 1 hangs the registration lock off this answer:
+   * enrolled means §6.1/§6.2 exactly as before; un-enrolled means the lock is
+   * not armed. Also served to the client as `linkingEnabled` on
+   * `ownKeyBundleStatus` (clause 2). Existence only — never load the row's
+   * key material for a boolean.
+   */
+  async isEnrolled(userId: number): Promise<boolean> {
+    return (
+      (await this.authorizationRepo.findOne({
+        where: { userId },
+        select: { userId: true },
+      })) !== null
+    );
   }
 
   /**
@@ -478,7 +513,11 @@ export class KeyBundlesService {
       // does). A merely PENDING ceremony authorizes nothing — the countdown
       // exists so the owner can cancel it.
       const reset = await this.identityResetService.getStatusForUser(userId);
-      if (reset?.status !== 'completed') {
+      // (lxxiii) clause 1 — the OTP site is exempted for an UN-ENROLLED
+      // account too: the client emits bundle + OTPs back to back and the keys
+      // can land first, so refusing here would strand an un-enrolled remint
+      // without its OTP batch — the (lxiv) pool-loss shape for no gain.
+      if (reset?.status !== 'completed' && (await this.isEnrolled(userId))) {
         this.logger.warn(
           `[identity-lock] REFUSED one-time pre-keys under an unpublished identity userId=${userId} deviceId=${deviceId} publishedPrefix=${published.identityPublicKey.slice(0, 12)} attemptedPrefix=${identityPublicKey.slice(0, 12)}`,
         );

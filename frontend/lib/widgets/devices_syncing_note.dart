@@ -12,7 +12,7 @@ import '../theme/rpg_theme.dart';
 /// claiming a newer version cannot pin this note on.
 ///
 /// It deliberately borrows NOTHING from the identity/takeover surface
-/// ([IdentityDamagedBanner], [OwnIdentityReplacedBanner],
+/// ([OwnIdentityReplacedBanner],
 /// [PeerIdentityChangedRow], all of which sit on `colorScheme.errorContainer`
 /// behind a security glyph): **no security colour, no icon, no sound.**
 /// Conflating a benign sync with an attack is how users learn to ignore real

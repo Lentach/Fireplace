@@ -75,7 +75,7 @@ void main() {
     FlutterSecureStorage.setMockInitialValues({});
     EncryptionService.debugDupTermBootNonce = 'boot-1';
     service = EncryptionService();
-    await service.initialize(uid, checkServerBundleExists: () async => false);
+    await service.initialize(uid, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
   });
 
   test('same boot never counts twice — repeated chat entries are ONE '
@@ -100,7 +100,7 @@ void main() {
     // Simulates in-SPA logout→login: a NEW service instance, same process.
     expect(await service.noteTerminalDuplicate(msgId), 1);
     final second = EncryptionService();
-    await second.initialize(uid, checkServerBundleExists: () async => false);
+    await second.initialize(uid, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
     expect(
       await second.noteTerminalDuplicate(msgId),
       1,

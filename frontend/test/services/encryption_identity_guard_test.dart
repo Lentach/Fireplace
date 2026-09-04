@@ -36,7 +36,7 @@ void main() {
   group('identity load', () {
     test('fresh install with nothing stored generates an identity', () async {
       final svc = EncryptionService();
-      await svc.initialize(1, checkServerBundleExists: () async => false);
+      await svc.initialize(1, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
 
       expect(svc.needsKeyUpload, isTrue);
       expect(svc.identityIncomplete, isFalse);
@@ -60,7 +60,7 @@ void main() {
       });
 
       final svc = EncryptionService();
-      await svc.initialize(5, checkServerBundleExists: () async => false);
+      await svc.initialize(5, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
 
       expect(
         svc.needsKeyUpload,
@@ -81,11 +81,11 @@ void main() {
 
     test('an identity written today survives a reload', () async {
       final first = EncryptionService();
-      await first.initialize(11, checkServerBundleExists: () async => false);
+      await first.initialize(11, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
       final record = await secure.read(key: 'e2e_11_identity_record_v1');
 
       final second = EncryptionService();
-      await second.initialize(11, checkServerBundleExists: () async => false);
+      await second.initialize(11, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
 
       expect(second.needsKeyUpload, isFalse);
       expect(await secure.read(key: 'e2e_11_identity_record_v1'), record);
@@ -103,7 +103,7 @@ void main() {
 
       final svc = EncryptionService();
       await expectLater(
-        svc.initialize(2, checkServerBundleExists: () async => true),
+        svc.initialize(2, checkServerIdentity: () async => const ServerIdentityGuard(exists: true)),
         throwsA(isA<E2eIdentityIncompleteException>()),
       );
       expect(svc.identityIncomplete, isTrue);
@@ -126,7 +126,7 @@ void main() {
 
       final svc = EncryptionService();
       await expectLater(
-        svc.initialize(3, checkServerBundleExists: () async => true),
+        svc.initialize(3, checkServerIdentity: () async => const ServerIdentityGuard(exists: true)),
         throwsA(isA<E2eIdentityIncompleteException>()),
       );
     });
@@ -140,7 +140,7 @@ void main() {
 
       final svc = EncryptionService();
       await expectLater(
-        svc.initialize(4, checkServerBundleExists: () async => true),
+        svc.initialize(4, checkServerIdentity: () async => const ServerIdentityGuard(exists: true)),
         throwsA(isA<E2eIdentityIncompleteException>()),
       );
       expect(await secure.read(key: 'e2e_4_identity_record_v1'), isNull);
@@ -158,7 +158,7 @@ void main() {
 
       final svc = EncryptionService();
       await expectLater(
-        svc.initialize(6, checkServerBundleExists: () async => true),
+        svc.initialize(6, checkServerIdentity: () async => const ServerIdentityGuard(exists: true)),
         throwsA(isA<E2eIdentityIncompleteException>()),
       );
     });
@@ -173,7 +173,7 @@ void main() {
 
       final svc = EncryptionService();
       await expectLater(
-        svc.initialize(5, checkServerBundleExists: () async => null),
+        svc.initialize(5, checkServerIdentity: () async => null),
         throwsA(isA<E2eIdentityCheckUnavailableException>()),
       );
       expect(svc.identityIncomplete, isFalse);
@@ -190,7 +190,7 @@ void main() {
       });
 
       final svc = EncryptionService();
-      await svc.initialize(8, checkServerBundleExists: () async => false);
+      await svc.initialize(8, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
 
       expect(svc.needsKeyUpload, isTrue);
       expect(svc.identityIncomplete, isFalse);
@@ -207,7 +207,7 @@ void main() {
         () async {
       final svc = EncryptionService();
       await expectLater(
-        svc.initialize(21, checkServerBundleExists: () async => true),
+        svc.initialize(21, checkServerIdentity: () async => const ServerIdentityGuard(exists: true)),
         throwsA(isA<E2eIdentityIncompleteException>()),
       );
       expect(svc.identityIncomplete, isTrue);
@@ -221,7 +221,7 @@ void main() {
     test('empty store + server says no bundle -> genuine fresh install',
         () async {
       final svc = EncryptionService();
-      await svc.initialize(22, checkServerBundleExists: () async => false);
+      await svc.initialize(22, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
 
       expect(svc.needsKeyUpload, isTrue);
       expect(svc.identityIncomplete, isFalse);
@@ -231,7 +231,7 @@ void main() {
     test('UNKNOWN (null) defers: no keys, not damaged, retryable', () async {
       final svc = EncryptionService();
       await expectLater(
-        svc.initialize(23, checkServerBundleExists: () async => null),
+        svc.initialize(23, checkServerIdentity: () async => null),
         throwsA(isA<E2eIdentityCheckUnavailableException>()),
       );
       expect(
@@ -248,7 +248,7 @@ void main() {
       await expectLater(
         svc.initialize(
           24,
-          checkServerBundleExists: () async => throw StateError('offline'),
+          checkServerIdentity: () async => throw StateError('offline'),
         ),
         throwsA(isA<E2eIdentityCheckUnavailableException>()),
       );
@@ -266,15 +266,15 @@ void main() {
 
     test('an existing identity never consults the server', () async {
       final svc = EncryptionService();
-      await svc.initialize(26, checkServerBundleExists: () async => false);
+      await svc.initialize(26, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
 
       final reloaded = EncryptionService();
       var consulted = false;
       await reloaded.initialize(
         26,
-        checkServerBundleExists: () async {
+        checkServerIdentity: () async {
           consulted = true;
-          return true;
+          return const ServerIdentityGuard(exists: true);
         },
       );
 
@@ -305,7 +305,7 @@ void main() {
       });
 
       final svc = EncryptionService();
-      await svc.initialize(9, checkServerBundleExists: () async => false);
+      await svc.initialize(9, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
 
       expect(svc.identityIncomplete, isFalse);
       expect(
@@ -330,9 +330,9 @@ void main() {
       var consulted = false;
       await reloaded.initialize(
         9,
-        checkServerBundleExists: () async {
+        checkServerIdentity: () async {
           consulted = true;
-          return true;
+          return const ServerIdentityGuard(exists: true);
         },
       );
       expect(consulted, isFalse);
@@ -347,7 +347,7 @@ void main() {
 
       final svc = EncryptionService();
       await expectLater(
-        svc.initialize(10, checkServerBundleExists: () async => true),
+        svc.initialize(10, checkServerIdentity: () async => const ServerIdentityGuard(exists: true)),
         throwsA(isA<E2eIdentityIncompleteException>()),
       );
       expect(await secure.read(key: 'e2e_10_session_49_1'), 'fake-record');

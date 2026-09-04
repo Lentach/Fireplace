@@ -23,6 +23,7 @@ import 'providers/friends_provider.dart';
 import 'providers/messaging_provider.dart';
 import 'providers/settings_provider.dart';
 import 'screens/auth_screen.dart';
+import 'screens/device_link_gate_screen.dart';
 import 'screens/main_shell.dart';
 import 'services/content_key_canary.dart';
 import 'services/portrait_lock_service.dart';
@@ -198,6 +199,7 @@ class AuthGate extends StatefulWidget {
 
 class _AuthGateState extends State<AuthGate> {
   bool _previousLoggedInState = false;
+  bool _previousGated = false;
 
   @override
   Widget build(BuildContext context) {
@@ -240,8 +242,37 @@ class _AuthGateState extends State<AuthGate> {
     }
 
     if (auth.isLoggedIn) {
-      return const MainShell();
+      // (lxxiii) clause 3: an enrolled account that lost its keys (or whose
+      // guard could not be asked) meets a GATE, not a banner. MainShell stays
+      // MOUNTED but Offstage — the socket, the guard's own round trip and the
+      // reset hydration all live under the shell; unmounting it would starve
+      // the gate of the very state that opens it. The gate is not a pushed
+      // route, so the (lxvi) clause-1 popUntil on logout is unaffected.
+      final gated = context.select<EncryptionProvider, bool>(
+        (e) => e.needsDeviceLink || e.identityCheckUnavailable,
+      );
+      // The gate lives in THIS subtree, under any route pushed on the root
+      // navigator. A verdict that lands while the user is inside a chat or the
+      // devices screen (a reconnect init after a mid-session wipe) would
+      // otherwise render the gate BEHIND that route — same shape as (lxvi)
+      // clause 1, same cure. Popping the devices screen also disposes its
+      // ceremony controller, so the gate's own controller is the only
+      // provisioning sink registered.
+      if (gated && !_previousGated) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        });
+      }
+      _previousGated = gated;
+      return Stack(
+        children: [
+          Offstage(offstage: gated, child: const MainShell()),
+          if (gated) const DeviceLinkGateScreen(),
+        ],
+      );
     }
+    _previousGated = false;
     return const AuthScreen();
   }
 }

@@ -54,7 +54,7 @@ void main() {
   test('pre-key generation is taken under its own origin-wide lock', () async {
     final lock = _InMemoryCrossContextLock();
     final svc = EncryptionService(sessionCrossContextLock: lock.run);
-    await svc.initialize(uid, checkServerBundleExists: () async => false);
+    await svc.initialize(uid, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
 
     await svc.generateMorePreKeys();
 
@@ -77,9 +77,9 @@ void main() {
     final lock = _InMemoryCrossContextLock();
     final engineA = EncryptionService(sessionCrossContextLock: lock.run);
     final engineB = EncryptionService(sessionCrossContextLock: lock.run);
-    await engineA.initialize(uid, checkServerBundleExists: () async => false);
+    await engineA.initialize(uid, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
     // Second engine, same account, same persisted storage — a second PWA tab.
-    await engineB.initialize(uid, checkServerBundleExists: () async => false);
+    await engineB.initialize(uid, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
 
     final results = await Future.wait([
       engineA.generateMorePreKeys(),
@@ -113,8 +113,8 @@ void main() {
       () async {
     final engineA = EncryptionService(sessionCrossContextLock: _unserialized);
     final engineB = EncryptionService(sessionCrossContextLock: _unserialized);
-    await engineA.initialize(uid, checkServerBundleExists: () async => false);
-    await engineB.initialize(uid, checkServerBundleExists: () async => false);
+    await engineA.initialize(uid, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
+    await engineB.initialize(uid, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
 
     final results = await Future.wait([
       engineA.generateMorePreKeys(),
@@ -134,8 +134,8 @@ void main() {
     final lock = _InMemoryCrossContextLock();
     final engineA = EncryptionService(sessionCrossContextLock: lock.run);
     final engineB = EncryptionService(sessionCrossContextLock: lock.run);
-    await engineA.initialize(uid, checkServerBundleExists: () async => false);
-    await engineB.initialize(uid, checkServerBundleExists: () async => false);
+    await engineA.initialize(uid, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
+    await engineB.initialize(uid, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
 
     final before = int.parse(
       (await secure.read(key: 'e2e_${uid}_next_pre_key_id'))!,
@@ -160,7 +160,7 @@ void main() {
       () async {
     final lock = _InMemoryCrossContextLock();
     final svc = EncryptionService(sessionCrossContextLock: lock.run);
-    await svc.initialize(uid, checkServerBundleExists: () async => false);
+    await svc.initialize(uid, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
 
     final keys = await svc.generateMorePreKeys();
 

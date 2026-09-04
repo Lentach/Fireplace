@@ -55,8 +55,8 @@ void main() {
     crossContextLock = _InMemoryCrossContextLock();
     alice = EncryptionService(sessionCrossContextLock: crossContextLock.run);
     bob = EncryptionService(sessionCrossContextLock: crossContextLock.run);
-    await alice.initialize(aliceId, checkServerBundleExists: () async => false);
-    await bob.initialize(bobId, checkServerBundleExists: () async => false);
+    await alice.initialize(aliceId, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
+    await bob.initialize(bobId, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
   });
 
   Future<void> settleHandshake() async {
@@ -217,7 +217,7 @@ void main() {
       final aliceTwin = EncryptionService(
         sessionCrossContextLock: crossContextLock.run,
       );
-      await aliceTwin.initialize(aliceId, checkServerBundleExists: () async => false);
+      await aliceTwin.initialize(aliceId, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
 
       final gate = _GatedSessionStore.install(alice);
       final inbound = await bob.encrypt(
@@ -271,7 +271,7 @@ void main() {
       final aliceTwin = EncryptionService(
         sessionCrossContextLock: crossContextLock.run,
       );
-      await aliceTwin.initialize(aliceId, checkServerBundleExists: () async => false);
+      await aliceTwin.initialize(aliceId, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
 
       final wire = await bob.encrypt(aliceId, 'one socket event, two engines');
       expect(
@@ -299,7 +299,7 @@ void main() {
       final aliceThird = EncryptionService(
         sessionCrossContextLock: crossContextLock.run,
       );
-      await aliceThird.initialize(aliceId, checkServerBundleExists: () async => false);
+      await aliceThird.initialize(aliceId, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
       await expectLater(
         aliceThird.decrypt(bobId, editedWire, messageId: 7001),
         throwsA(isA<DuplicateMessageException>()),
@@ -322,7 +322,7 @@ void main() {
     final aliceTwin = EncryptionService(
       sessionCrossContextLock: crossContextLock.run,
     );
-    await aliceTwin.initialize(aliceId, checkServerBundleExists: () async => false);
+    await aliceTwin.initialize(aliceId, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
     await expectLater(
       aliceTwin.decrypt(bobId, wires.first, messageId: 8000),
       throwsA(isA<DuplicateMessageException>()),

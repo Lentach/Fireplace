@@ -203,7 +203,7 @@ void main() {
       );
       await encryption.service.initialize(
         1,
-        checkServerBundleExists: () async => false,
+        checkServerIdentity: () async => const ServerIdentityGuard(exists: false),
       );
       emitted = <Map<String, dynamic>>[];
 

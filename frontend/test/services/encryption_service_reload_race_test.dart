@@ -110,7 +110,7 @@ void main() {
     SharedPreferences.resetStatic();
     FlutterSecureStorage.setMockInitialValues({});
     service = EncryptionService();
-    await service.initialize(37, checkServerBundleExists: () async => false);
+    await service.initialize(37, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
     prefs = await SharedPreferences.getInstance();
   });
 

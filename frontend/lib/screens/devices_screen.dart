@@ -11,8 +11,9 @@ import '../services/device_link/pending_link_code.dart';
 import '../services/device_list/device_list_canonical.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/glass/glass_top_bar.dart';
+import '../utils/web_display_mode.dart';
 import 'link_device_screen.dart';
-import 'link_this_device_screen.dart';
+import 'recovery_key_screen.dart';
 
 /// The account's devices (multi-device spec §4/§5.1 — Phase 2 T3).
 ///
@@ -69,6 +70,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
     _connection = connection;
     connection.registerProvisioningSink(controller);
     controller.addListener(_maybeOpenPendingLink);
+    controller.addListener(_maybeOfferRecoveryKey);
     controller.refreshDeviceList();
   }
 
@@ -102,11 +104,34 @@ class _DevicesScreenState extends State<DevicesScreen> {
     });
   }
 
+  /// (lxxiv) clause 1: after a WEB enable-linking confirm, the recovery-key
+  /// offer is pushed once the controller reports the enrollment took —
+  /// `listState` flips to `enrolled` via the post-ack list refresh. Armed
+  /// ONLY by the web confirm dialog; native enabling never routes here, and
+  /// the push is a plain route (skippable by back).
+  bool _awaitingEnrollRecoveryOffer = false;
+  void _maybeOfferRecoveryKey() {
+    final controller = _controller;
+    if (!_awaitingEnrollRecoveryOffer || controller == null || !mounted) {
+      return;
+    }
+    if (controller.listState != DeviceListState.enrolled) return;
+    _awaitingEnrollRecoveryOffer = false;
+    // Delivered from a controller notification, possibly mid-build.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const RecoveryKeyScreen()),
+      );
+    });
+  }
+
   @override
   void dispose() {
     final controller = _controller;
     if (controller != null) {
       controller.removeListener(_maybeOpenPendingLink);
+      controller.removeListener(_maybeOfferRecoveryKey);
       _connection?.unregisterProvisioningSink(controller);
       controller.dispose();
     }
@@ -119,14 +144,6 @@ class _DevicesScreenState extends State<DevicesScreen> {
     final colors = theme.colorScheme;
     final l10n = AppLocalizations.of(context);
     final controller = _controller;
-    final encryption = context.watch<EncryptionProvider>();
-    // The device-side (§5.1 N) CTA is the way out for EVERY shape of "this
-    // install cannot do E2E duty here": no identity at all, (lxiv) stale
-    // material stamped for a different device id, and (lxvii) an identity the
-    // registration lock refused. None of these is served by the primary-side
-    // flow, which such a device can never complete (it holds no DAK), so
-    // offering it would dead-end the banner's promised recovery.
-    final keyless = encryption.needsDeviceLink;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -150,17 +167,12 @@ class _DevicesScreenState extends State<DevicesScreen> {
           ? const SizedBox.shrink()
           : AnimatedBuilder(
               animation: controller,
-              builder: (context, _) =>
-                  _buildBody(context, controller, keyless: keyless),
+              builder: (context, _) => _buildBody(context, controller),
             ),
     );
   }
 
-  Widget _buildBody(
-    BuildContext context,
-    LinkCeremonyController controller, {
-    required bool keyless,
-  }) {
+  Widget _buildBody(BuildContext context, LinkCeremonyController controller) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final l10n = AppLocalizations.of(context);
@@ -180,30 +192,20 @@ class _DevicesScreenState extends State<DevicesScreen> {
           ),
         ),
         const SizedBox(height: 20),
-        ..._buildListSection(context, controller, keyless: keyless),
+        ..._buildListSection(context, controller),
         const SizedBox(height: 24),
-        ..._buildActions(context, controller, keyless: keyless),
+        ..._buildActions(context, controller),
       ],
     );
   }
 
   List<Widget> _buildListSection(
     BuildContext context,
-    LinkCeremonyController controller, {
-    required bool keyless,
-  }) {
+    LinkCeremonyController controller,
+  ) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final l10n = AppLocalizations.of(context);
-
-    // (lxviii) clause 3: the list verifies against this install's own
-    // identity, so a keyless (or lock-refused) install cannot verify it and
-    // the answer is `chainInvalid` by construction. Rendering that in red
-    // directly above "this device holds no keys yet — link it" is two
-    // explanations for one state, one of them alarming. The CTA is the whole
-    // message; the list appears once the ceremony gives this install an
-    // identity (clause 1's refresh).
-    if (keyless) return const [];
 
     switch (controller.listState) {
       case DeviceListState.loading:
@@ -351,64 +353,56 @@ class _DevicesScreenState extends State<DevicesScreen> {
 
   List<Widget> _buildActions(
     BuildContext context,
-    LinkCeremonyController controller, {
-    required bool keyless,
-  }) {
+    LinkCeremonyController controller,
+  ) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final l10n = AppLocalizations.of(context);
     final actions = <Widget>[];
 
-    if (keyless) {
-      // The new-device flow (N): this install holds no identity — the ONLY
-      // way it gets one is the §5.1 ceremony.
-      actions.addAll([
-        Text(
-          l10n.devicesThisDeviceKeyless,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: colors.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: 12),
-        Semantics(
-          label: l10n.devicesLinkThisDevice,
-          button: true,
-          child: FilledButton(
-            key: const Key('devices-link-this-device'),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => LinkThisDeviceScreen(controller: controller),
-                ),
-              );
-            },
-            child: Text(l10n.devicesLinkThisDevice),
-          ),
-        ),
-      ]);
-      return actions;
-    }
-
     if (controller.listState == DeviceListState.notEnrolled) {
-      actions.add(
-        Semantics(
-          label: l10n.devicesEnableLinking,
-          button: true,
-          child: FilledButton(
-            key: const Key('devices-enable-linking'),
-            onPressed: controller.enrolling
-                ? null
-                : () => controller.enableLinking(platform: linkPlatformLabel()),
-            child: controller.enrolling
-                ? const SizedBox(
-                    height: 18,
-                    width: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Text(l10n.devicesEnableLinking),
+      // (lxxiv) clause 1: a web primary is asked to be INSTALLED first. A
+      // browser tab's origin storage is the first thing a storage-pressure
+      // sweep or "clear browsing data" takes, and a wiped primary's only
+      // exit is the §6.2 delay (the DAK exists nowhere else, I2) — so a
+      // plain tab sees an install instruction instead of the button, and an
+      // installed web app gets a one-paragraph warning before enabling.
+      // Android and desktop native are unchanged.
+      final web = isWebPlatformForInstallRules();
+      if (web && !isInstalledDisplayMode()) {
+        actions.add(
+          Text(
+            l10n.devicesInstallFirst,
+            key: const Key('devices-install-first'),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: colors.onSurfaceVariant,
+            ),
           ),
-        ),
-      );
+        );
+      } else {
+        actions.add(
+          Semantics(
+            label: l10n.devicesEnableLinking,
+            button: true,
+            child: FilledButton(
+              key: const Key('devices-enable-linking'),
+              onPressed: controller.enrolling
+                  ? null
+                  : web
+                  ? () => _confirmEnableLinkingWeb(context, controller, l10n)
+                  : () =>
+                        controller.enableLinking(platform: linkPlatformLabel()),
+              child: controller.enrolling
+                  ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(l10n.devicesEnableLinking),
+            ),
+          ),
+        );
+      }
     } else if (controller.listState == DeviceListState.enrolled) {
       // (lxviii) clause 2: the primary-side flow needs the DAK, and only the
       // primary holds it (§5.5). A linked device is told where linking
@@ -416,6 +410,20 @@ class _DevicesScreenState extends State<DevicesScreen> {
       // `null` = not resolved yet: offer nothing rather than the wrong thing.
       switch (controller.holdsDak) {
         case true:
+          // (lxxiv) clause 2: an enrolled web primary running in a plain tab
+          // is NUDGED to install — informational only, no gate, no modal.
+          if (isWebPlatformForInstallRules() && !isInstalledDisplayMode()) {
+            actions.addAll([
+              Text(
+                l10n.devicesInstallNudge,
+                key: const Key('devices-install-nudge'),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 12),
+            ]);
+          }
           actions.add(
             Semantics(
               label: l10n.devicesLinkADevice,
@@ -467,6 +475,40 @@ class _DevicesScreenState extends State<DevicesScreen> {
       ]);
     }
     return actions;
+  }
+
+  /// (lxxiv) clause 1: enabling linking on web mints the DAK into the sealed
+  /// `sig_` KV — evictable with the browser's storage — so the choice is
+  /// stated plainly first. Confirm arms the one-shot recovery-key offer
+  /// ([_maybeOfferRecoveryKey]); cancel changes nothing.
+  Future<void> _confirmEnableLinkingWeb(
+    BuildContext context,
+    LinkCeremonyController controller,
+    AppLocalizations l10n,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l10n.devicesEnableLinkingWebWarningTitle),
+        content: Text(l10n.devicesEnableLinkingWebWarningBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(
+              MaterialLocalizations.of(dialogContext).cancelButtonLabel,
+            ),
+          ),
+          TextButton(
+            key: const Key('devices-enable-linking-confirm'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(l10n.devicesEnableLinkingConfirmAction),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    _awaitingEnrollRecoveryOffer = true;
+    await controller.enableLinking(platform: linkPlatformLabel());
   }
 }
 

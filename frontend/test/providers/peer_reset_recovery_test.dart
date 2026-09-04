@@ -189,7 +189,7 @@ void main() {
     peerBeforeReset = EncryptionService();
     await peerBeforeReset.initialize(
       peerId,
-      checkServerBundleExists: () async => false,
+      checkServerIdentity: () async => const ServerIdentityGuard(exists: false),
     );
     await enc.encryptionService.buildSession(
       peerId,
@@ -203,7 +203,7 @@ void main() {
     peerAfterReset = EncryptionService();
     await peerAfterReset.initialize(
       9001,
-      checkServerBundleExists: () async => false,
+      checkServerIdentity: () async => const ServerIdentityGuard(exists: false),
     );
     peerEngine = DeviceAuthorityEngine();
     peerNewIdentity = generateIdentityKeyPair();

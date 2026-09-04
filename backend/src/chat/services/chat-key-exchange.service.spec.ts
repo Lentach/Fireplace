@@ -171,6 +171,8 @@ describe('ChatKeyExchangeService', () => {
             countUnusedPreKeys: jest.fn(),
             hasKeyBundle: jest.fn(),
             latestIdentityChangeAt: jest.fn().mockResolvedValue(null),
+            // (lxxiii) default: the ordinary pre-linking account, not enrolled.
+            isEnrolled: jest.fn().mockResolvedValue(false),
           },
         },
         { provide: ConversationsService, useValue: conversationsService },
@@ -804,6 +806,8 @@ describe('ChatKeyExchangeService', () => {
         expect(mockClient.emit).toHaveBeenCalledTimes(1);
         expect(mockClient.emit).toHaveBeenCalledWith('ownKeyBundleStatus', {
           exists,
+          // (lxxiii) clause 2: the lock state rides the bundle answer.
+          linkingEnabled: false,
           // 0b additions: additive, and null when the account is quiet.
           identityReset: null,
           identityReplacedAt: null,
@@ -1610,6 +1614,7 @@ describe('ChatKeyExchangeService', () => {
 
       expect(mockClient.emit).toHaveBeenCalledWith('ownKeyBundleStatus', {
         exists: true,
+        linkingEnabled: false,
         identityReset: {
           status: 'pending',
           deadlineAt: deadlineAt.toISOString(),
@@ -1624,11 +1629,14 @@ describe('ChatKeyExchangeService', () => {
 
     it('reports nulls when there is no ceremony and no replacement', async () => {
       keyBundlesService.hasKeyBundle.mockResolvedValue(false);
+      // (lxxiii): an ENROLLED account with no ceremony still reports its lock.
+      keyBundlesService.isEnrolled.mockResolvedValue(true);
 
       await service.handleCheckOwnKeyBundle(mockClient as Socket);
 
       expect(mockClient.emit).toHaveBeenCalledWith('ownKeyBundleStatus', {
         exists: false,
+        linkingEnabled: true,
         identityReset: null,
         identityReplacedAt: null,
       });

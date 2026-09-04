@@ -33,7 +33,7 @@ void main() {
     E2eDiagLog.clear();
     ServerClock.instance.resetForTest();
     service = EncryptionService();
-    await service.initialize(42, checkServerBundleExists: () async => false);
+    await service.initialize(42, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
     provider = EncryptionProvider(service: service);
   });
 

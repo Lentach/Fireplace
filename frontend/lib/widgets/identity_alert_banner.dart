@@ -4,7 +4,7 @@ import '../l10n/app_localizations.dart';
 
 /// The ONE shell every identity/security banner in the app shell uses.
 ///
-/// Three banners ([IdentityDamagedBanner], [OwnIdentityReplacedBanner],
+/// Banners ([OwnIdentityReplacedBanner],
 /// [IdentityResetPendingBanner]) previously each carried their own copy of the
 /// same skeleton — `Material(errorContainer)` → `SafeArea` → `Padding(16,12,8,12)`
 /// → `Row` → 20px glyph → title `titleSmall/w700` → 4px → body `bodySmall` →

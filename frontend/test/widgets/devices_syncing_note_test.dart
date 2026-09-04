@@ -1,7 +1,6 @@
 import 'package:fireplace/l10n/app_localizations.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/devices_syncing_note.dart';
-import 'package:fireplace/widgets/identity_damaged_banner.dart';
 import 'package:fireplace/widgets/own_identity_replaced_banner.dart';
 import 'package:fireplace/widgets/peer_identity_changed_row.dart';
 import 'package:flutter/material.dart';
@@ -13,10 +12,9 @@ import 'package:flutter_test/flutter_test.dart';
 /// The reason that is a rule and not a preference: this state fires when the
 /// account's own devices have not finished syncing, which is benign and
 /// COMMON. Dressing it as an attack teaches users that the red bar means
-/// nothing, and the red bar is where [IdentityDamagedBanner] offers to wipe
-/// their keys.
+/// nothing, and the red bar is where real key alarms (takeover, reset) live.
 ///
-/// WHAT THIS TEST IS *NOT*. Asserting `find.byType(IdentityDamagedBanner)` is
+/// WHAT THIS TEST IS *NOT*. Asserting an alarm widget's type is
 /// `findsNothing` proves nothing at all here — the note never constructs those
 /// widgets, so that assertion stays green even if the note were painted on the
 /// error palette behind a lock icon. The load-bearing assertions are the ones
@@ -115,14 +113,13 @@ void main() {
       expect(find.text(l10n.identityDamagedTitle), findsNothing);
     });
 
-    testWidgets('renders none of the three identity/takeover surfaces', (
+    testWidgets('renders none of the identity/takeover surfaces', (
       tester,
     ) async {
       await tester.pumpWidget(_host(const DevicesSyncingNote()));
 
       // Cheap backstop only — see the file comment. These cannot catch a
       // styling regression, which is why they are last and not the point.
-      expect(find.byType(IdentityDamagedBanner), findsNothing);
       expect(find.byType(OwnIdentityReplacedBanner), findsNothing);
       expect(find.byType(PeerIdentityChangedRow), findsNothing);
     });

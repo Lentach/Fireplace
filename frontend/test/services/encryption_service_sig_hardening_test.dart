@@ -71,7 +71,7 @@ void main() {
     // scan must read as residue-present and refuse — the pre-(lxxi) `catch →
     // false` would have minted over the enrolled identity.
     await expectLater(
-      service.initialize(37, checkServerBundleExists: () async => true),
+      service.initialize(37, checkServerIdentity: () async => const ServerIdentityGuard(exists: true)),
       throwsA(isA<E2eIdentityIncompleteException>()),
     );
     expect(storage.writeCount, 0,
@@ -93,7 +93,7 @@ void main() {
     // identity — exactly the stranded state (lxxi) exists to avoid. Same
     // outcome as an UNKNOWN server answer: nothing written, retry next boot.
     await expectLater(
-      service.initialize(37, checkServerBundleExists: () async => false),
+      service.initialize(37, checkServerIdentity: () async => const ServerIdentityGuard(exists: false)),
       throwsA(isA<E2eIdentityCheckUnavailableException>()),
     );
     expect(storage.writeCount, 0);
@@ -112,7 +112,7 @@ void main() {
     storage.throwDelete = true;
 
     await expectLater(
-      service.initialize(37, checkServerBundleExists: () async => false),
+      service.initialize(37, checkServerIdentity: () async => const ServerIdentityGuard(exists: false)),
       throwsA(isA<E2eIdentityCheckUnavailableException>()),
     );
     expect(storage.writeCount, 0);
@@ -127,7 +127,7 @@ void main() {
 
   test('identity absent + enumeration SUCCEEDING empty still regenerates '
       '(fresh installs must keep working)', () async {
-    await service.initialize(37, checkServerBundleExists: () async => false);
+    await service.initialize(37, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
     expect(storage.store.keys, contains('e2e_37_identity_record_v1'));
   });
 
@@ -136,7 +136,7 @@ void main() {
     storage.store['e2e_37_session_2_1'] = 'ratchet';
 
     await expectLater(
-      service.initialize(37, checkServerBundleExists: () async => true),
+      service.initialize(37, checkServerIdentity: () async => const ServerIdentityGuard(exists: true)),
       throwsA(isA<E2eIdentityIncompleteException>()),
     );
     expect(storage.store.keys, isNot(contains('e2e_37_identity_record_v1')));
@@ -147,7 +147,7 @@ void main() {
       'discards the rows and mints (lxxi)', () async {
     storage.store['e2e_37_session_2_1'] = 'ratchet';
 
-    await service.initialize(37, checkServerBundleExists: () async => false);
+    await service.initialize(37, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
     expect(storage.store.keys, contains('e2e_37_identity_record_v1'));
     expect(storage.store.keys, isNot(contains('e2e_37_session_2_1')));
     expect(
@@ -159,7 +159,7 @@ void main() {
 
   test('§5.12 R3: lost counter + enumeration FAILING skips the prekey mint '
       'instead of defaulting into id reuse', () async {
-    await service.initialize(37, checkServerBundleExists: () async => false); // fresh install; writes keys + counter
+    await service.initialize(37, checkServerIdentity: () async => const ServerIdentityGuard(exists: false)); // fresh install; writes keys + counter
     final writesAfterInit = storage.writeCount;
 
     storage.store.remove('e2e_37_next_pre_key_id'); // the lost-counter case
@@ -180,7 +180,7 @@ void main() {
   test('lost counter + enumeration SUCCEEDING derives from the highest '
       'stored id (the fallback keeps working when it can be trusted)',
       () async {
-    await service.initialize(37, checkServerBundleExists: () async => false);
+    await service.initialize(37, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
     storage.store.remove('e2e_37_next_pre_key_id');
 
     final minted = await service.generateMorePreKeys();

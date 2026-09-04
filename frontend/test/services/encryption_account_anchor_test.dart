@@ -36,7 +36,7 @@ void main() {
     FlutterSecureStorage.setMockInitialValues({});
     SharedPreferences.setMockInitialValues({});
     service = EncryptionService();
-    await service.initialize(17, checkServerBundleExists: () async => false);
+    await service.initialize(17, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
     peerStore = SecureIdentityKeyStore(DualStorage(secure), 'e2e_17_');
   });
 

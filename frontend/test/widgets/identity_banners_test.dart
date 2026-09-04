@@ -6,7 +6,6 @@ import 'package:fireplace/providers/encryption_provider.dart';
 import 'package:fireplace/services/encryption_service.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/glass/glass_dialog.dart';
-import 'package:fireplace/widgets/identity_damaged_banner.dart';
 import 'package:fireplace/widgets/own_identity_replaced_banner.dart';
 import 'package:fireplace/widgets/peer_identity_changed_row.dart';
 import 'package:fireplace/widgets/peer_identity_fingerprint_dialog.dart';
@@ -16,13 +15,12 @@ import 'package:provider/provider.dart';
 
 /// Every surface here is a warning about broken or suspicious cryptography.
 /// Showing one when nothing is wrong is worse than not shipping it: a
-/// permanent red "your keys are damaged" bar trains the dismissal reflex the
-/// surface exists to defeat. So the off-state is tested first and hardest.
-/// The damaged banner carries NO destructive action since amendment (lxxi) —
-/// that absence is asserted, not assumed.
+/// permanent red warning bar trains the dismissal reflex the surface exists
+/// to defeat. So the off-state is tested first and hardest. (The keyless and
+/// mismatch states now open the (lxxiii) DeviceLinkGateScreen, tested in
+/// test/screens/device_link_gate_screen_test.dart.)
 class _FakeEncryption extends EncryptionProvider {
   _FakeEncryption({
-    this.damaged = false,
     this.changedPeers = const <int>{},
     this.peerFingerprint,
     this.offeredFingerprint,
@@ -32,7 +30,6 @@ class _FakeEncryption extends EncryptionProvider {
     this.replacedAt,
   });
 
-  bool damaged;
   Set<int> changedPeers;
   String? peerFingerprint;
 
@@ -52,20 +49,6 @@ class _FakeEncryption extends EncryptionProvider {
   final List<String?> adoptedKeys = <String?>[];
   String? replacedAt;
   int dismissCalls = 0;
-  DateTime? resetDeadline;
-  int resetStartCalls = 0;
-
-  @override
-  DateTime? get identityResetDeadline => resetDeadline;
-
-  @override
-  void requestIdentityReset({String? recoveryPhrase}) {
-    resetStartCalls++;
-    notifyListeners();
-  }
-
-  @override
-  bool get identityIncomplete => damaged;
 
   @override
   Set<int> get peersWithChangedIdentity => changedPeers;
@@ -152,207 +135,6 @@ Widget _host(EncryptionProvider encryption, Widget child) {
 }
 
 void main() {
-  group('IdentityDamagedBanner', () {
-    testWidgets('renders NOTHING when the identity is healthy', (tester) async {
-      final encryption = _FakeEncryption();
-      await tester.pumpWidget(_host(encryption, const IdentityDamagedBanner()));
-
-      expect(find.byType(Material), findsOneWidget); // the Scaffold's own
-      expect(find.byIcon(Icons.gpp_bad_outlined), findsNothing);
-      expect(find.byType(TextButton), findsNothing);
-      expect(
-        tester.widget<SizedBox>(
-          find.descendant(
-            of: find.byType(IdentityDamagedBanner),
-            matching: find.byType(SizedBox),
-          ),
-        ),
-        isA<SizedBox>(),
-        reason: 'a healthy device must never see a destructive key action',
-      );
-    });
-
-    testWidgets('warns and leads with the LINK when the identity is damaged', (
-      tester,
-    ) async {
-      final encryption = _FakeEncryption(damaged: true);
-      await tester.pumpWidget(_host(encryption, const IdentityDamagedBanner()));
-      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
-
-      expect(find.byIcon(Icons.gpp_bad_outlined), findsOneWidget);
-      // (lxvii) clause 1: a keyless install of an enrolled account is, first,
-      // a second device. The only action is the non-destructive §5.1 link.
-      expect(find.byKey(const Key('identity-damaged-link')), findsOneWidget);
-      expect(find.text(l10n.devicesLinkThisDevice), findsOneWidget);
-      expect(
-        find.byKey(const Key('identity-damaged-start-fresh')),
-        findsNothing,
-        reason: '(lxxi): there is no start-fresh; it minted an identity no '
-            'peer trusts',
-      );
-    });
-
-    testWidgets('the paragraph is COLLAPSED, while the action stays visible', (
-      tester,
-    ) async {
-      final encryption = _FakeEncryption(damaged: true);
-      await tester.pumpWidget(_host(encryption, const IdentityDamagedBanner()));
-      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
-
-      // The title says what happened; the four-sentence explanation does not
-      // occupy persistent chrome. A warning nobody finishes reading trains the
-      // dismissal reflex this whole surface exists to avoid.
-      expect(find.text(l10n.identityDamagedTitle), findsOneWidget);
-      expect(
-        find.text(l10n.identityDamagedBody),
-        findsNothing,
-        reason: 'the body must not be rendered until asked for',
-      );
-      // The safe way out of a damaged identity must never hide behind a
-      // disclosure control.
-      expect(find.byKey(const Key('identity-damaged-link')), findsOneWidget);
-    });
-
-    testWidgets('the link action routes to the devices screen', (tester) async {
-      final encryption = _FakeEncryption(damaged: true);
-      await tester.pumpWidget(_host(encryption, const IdentityDamagedBanner()));
-
-      // The push is what matters; DevicesScreen itself needs the connection
-      // and auth providers, so it is asserted by route, not by build.
-      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
-      expect(navigator.canPop(), isFalse);
-      await tester.tap(find.byKey(const Key('identity-damaged-link')));
-      await tester.pump();
-      expect(
-        navigator.canPop(),
-        isTrue,
-        reason: 'the link action must push the §5.1 host screen',
-      );
-    });
-
-    testWidgets('the explanation is one tap away and fully readable', (
-      tester,
-    ) async {
-      final encryption = _FakeEncryption(damaged: true);
-      await tester.pumpWidget(_host(encryption, const IdentityDamagedBanner()));
-      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
-
-      await tester.tap(find.byIcon(Icons.expand_more));
-      await tester.pumpAndSettle();
-
-      expect(find.text(l10n.identityDamagedBody), findsOneWidget);
-      expect(find.byIcon(Icons.expand_less), findsOneWidget);
-
-      // And it collapses again.
-      await tester.tap(find.byIcon(Icons.expand_less));
-      await tester.pumpAndSettle();
-      expect(find.text(l10n.identityDamagedBody), findsNothing);
-    });
-
-    testWidgets('a screen reader gets the detail even while collapsed', (
-      tester,
-    ) async {
-      final handle = tester.ensureSemantics();
-      final encryption = _FakeEncryption(damaged: true);
-      await tester.pumpWidget(_host(encryption, const IdentityDamagedBanner()));
-      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
-
-      // Collapsing is a DENSITY decision, never a way to hide a warning from
-      // someone who cannot see the chevron.
-      expect(
-        find.bySemanticsLabel(RegExp(RegExp.escape(l10n.identityDamagedBody))),
-        findsOneWidget,
-      );
-      handle.dispose();
-    });
-
-    testWidgets('the banner carries no SafeArea of its own', (tester) async {
-      final encryption = _FakeEncryption(damaged: true);
-      await tester.pumpWidget(_host(encryption, const IdentityDamagedBanner()));
-
-      // These banners are SIBLINGS in the shell's Column, and a sibling
-      // SafeArea does not consume the inset for its neighbours — each one
-      // applies the FULL top inset. Three self-wrapping banners produced two
-      // phantom status-bar gaps between the red blocks. The shell wraps the
-      // stack once instead, so a SafeArea reappearing here is a regression.
-      expect(
-        find.descendant(
-          of: find.byType(IdentityDamagedBanner),
-          matching: find.byType(SafeArea),
-        ),
-        findsNothing,
-      );
-    });
-
-    testWidgets('start-fresh is gone; the reset door lives in the disclosure', (
-      tester,
-    ) async {
-      final encryption = _FakeEncryption(damaged: true);
-      await tester.pumpWidget(_host(encryption, const IdentityDamagedBanner()));
-      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
-
-      // Collapsed: the link is the only thing a thumb lands on.
-      expect(find.byType(TextButton), findsOneWidget);
-      expect(find.byKey(const Key('identity-damaged-start-reset')), findsNothing);
-      await tester.tap(find.byIcon(Icons.expand_more));
-      await tester.pumpAndSettle();
-
-      // (lxxi): no start-fresh, no spinner, no copy suggesting new keys.
-      expect(find.byKey(const Key('identity-damaged-start-fresh')), findsNothing);
-      expect(find.byType(CircularProgressIndicator), findsNothing);
-      expect(
-        l10n.identityDamagedBody.toLowerCase(),
-        isNot(contains('start fresh')),
-      );
-      // (lxxii): the reset door, next to the sentence that names its cost.
-      expect(find.byKey(const Key('identity-damaged-start-reset')), findsOneWidget);
-      expect(find.text(l10n.identityResetStartAction), findsOneWidget);
-      expect(l10n.identityDamagedBody, contains('72 hours'));
-    });
-
-    testWidgets('the reset door asks for the phrase first and backs out clean', (
-      tester,
-    ) async {
-      final encryption = _FakeEncryption(damaged: true);
-      await tester.pumpWidget(_host(encryption, const IdentityDamagedBanner()));
-
-      await tester.tap(find.byIcon(Icons.expand_more));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('identity-damaged-start-reset')));
-      await tester.pumpAndSettle();
-
-      // Same flow as the lock-refused banner: nobody lands in the 72 h path
-      // just because this was the button they found.
-      expect(find.textContaining('recovery key'), findsWidgets);
-      expect(encryption.resetStartCalls, 0);
-
-      await tester.tap(find.text('Cancel'));
-      await tester.pumpAndSettle();
-      expect(encryption.resetStartCalls, 0, reason: 'dismiss starts nothing');
-
-      await tester.tap(find.byKey(const Key('identity-damaged-start-reset')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text("I don't have one"));
-      await tester.pumpAndSettle();
-      expect(encryption.resetStartCalls, 1);
-    });
-
-    testWidgets('the reset door hides while a ceremony is already running', (
-      tester,
-    ) async {
-      final encryption = _FakeEncryption(damaged: true)
-        ..resetDeadline = DateTime.now().add(const Duration(hours: 3));
-      await tester.pumpWidget(_host(encryption, const IdentityDamagedBanner()));
-
-      await tester.tap(find.byIcon(Icons.expand_more));
-      await tester.pumpAndSettle();
-
-      // The pending banner owns that state (countdown + cancel); a second
-      // "start" would only answer `existing`.
-      expect(find.byKey(const Key('identity-damaged-start-reset')), findsNothing);
-      expect(find.byKey(const Key('identity-damaged-link')), findsOneWidget);
-    });
-  });
 
   group('OwnIdentityReplacedBanner', () {
     testWidgets('renders NOTHING when no replacement is pending', (

@@ -1172,6 +1172,114 @@ abstract class AppLocalizations {
   /// **'Rozpocznij reset'**
   String get identityResetStartAction;
 
+  /// No description provided for @linkGateTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Połącz to urządzenie'**
+  String get linkGateTitle;
+
+  /// No description provided for @linkGateBody.
+  ///
+  /// In pl, this message translates to:
+  /// **'To urządzenie nie ma kluczy szyfrowania Twojego konta. Ma je Twoje urządzenie główne — zeskanuj nim ten kod albo wpisz go tam ręcznie. Nic nie przepadnie.'**
+  String get linkGateBody;
+
+  /// No description provided for @linkGateWaiting.
+  ///
+  /// In pl, this message translates to:
+  /// **'Czekam na urządzenie główne…'**
+  String get linkGateWaiting;
+
+  /// No description provided for @linkGateStaleBody.
+  ///
+  /// In pl, this message translates to:
+  /// **'Klucze na tym urządzeniu są nieaktualne i zostaną zastąpione po połączeniu. Zapisane wiadomości pozostaną.'**
+  String get linkGateStaleBody;
+
+  /// No description provided for @linkGateNoPrimaryQuestion.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie masz już urządzenia głównego?'**
+  String get linkGateNoPrimaryQuestion;
+
+  /// No description provided for @linkGateResetHint.
+  ///
+  /// In pl, this message translates to:
+  /// **'Reset nadaje kontu nowe klucze po 72 godzinach (1 godzinie z kluczem odzyskiwania), wylogowuje pozostałe urządzenia i powiadamia wszystkie zalogowane sesje. Wiadomości, których to urządzenie nie odszyfrowało, przepadną.'**
+  String get linkGateResetHint;
+
+  /// No description provided for @linkGateResetPendingTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Reset kluczy w toku'**
+  String get linkGateResetPendingTitle;
+
+  /// No description provided for @linkGateResetPendingBody.
+  ///
+  /// In pl, this message translates to:
+  /// **'Za {remaining} konto otrzyma nowe klucze i to urządzenie będzie mogło pisać dalej. Jeśli w międzyczasie odzyskasz urządzenie główne, najpierw dotknij „Anuluj” — reset trwa, dopóki go nie anulujesz — a potem połącz to urządzenie stamtąd.'**
+  String linkGateResetPendingBody(String remaining);
+
+  /// No description provided for @linkGateResetPhraseTooNew.
+  ///
+  /// In pl, this message translates to:
+  /// **'Klucz odzyskiwania został utworzony mniej niż 3 dni temu, więc obowiązuje pełne 72 godziny.'**
+  String get linkGateResetPhraseTooNew;
+
+  /// No description provided for @linkGateCheckingTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Sprawdzam klucze tego urządzenia…'**
+  String get linkGateCheckingTitle;
+
+  /// No description provided for @linkGateCheckingBody.
+  ///
+  /// In pl, this message translates to:
+  /// **'Potrzebuję połączenia z serwerem, żeby sprawdzić, czy konto ma już klucze na innym urządzeniu.'**
+  String get linkGateCheckingBody;
+
+  /// No description provided for @linkGateRetryAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Spróbuj ponownie'**
+  String get linkGateRetryAction;
+
+  /// No description provided for @linkGateLogoutAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wyloguj'**
+  String get linkGateLogoutAction;
+
+  /// No description provided for @devicesInstallFirst.
+  ///
+  /// In pl, this message translates to:
+  /// **'Aby włączyć łączenie w przeglądarce, najpierw zainstaluj Umbra jako aplikację (menu przeglądarki → „Zainstaluj” lub „Dodaj do ekranu początkowego”). Dane zwykłej karty przeglądarka może usunąć bez pytania, a razem z nimi klucze urządzenia głównego.'**
+  String get devicesInstallFirst;
+
+  /// No description provided for @devicesInstallNudge.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ta przeglądarka jest urządzeniem głównym Twojego konta, ale Umbra nie jest tu zainstalowana jako aplikacja. Zainstaluj ją, aby przeglądarka nie usunęła kluczy razem z pamięcią podręczną.'**
+  String get devicesInstallNudge;
+
+  /// No description provided for @devicesEnableLinkingWebWarningTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ta przeglądarka stanie się urządzeniem głównym'**
+  String get devicesEnableLinkingWebWarningTitle;
+
+  /// No description provided for @devicesEnableLinkingWebWarningBody.
+  ///
+  /// In pl, this message translates to:
+  /// **'Tylko urządzenie główne może dodawać i usuwać inne urządzenia. Jeśli pamięć tej przeglądarki zostanie wyczyszczona, odzyskanie tej roli wymaga resetu: 72 godziny, albo 1 godzina z kluczem odzyskiwania. Za chwilę zaproponujemy jego utworzenie.'**
+  String get devicesEnableLinkingWebWarningBody;
+
+  /// No description provided for @devicesEnableLinkingConfirmAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Włącz'**
+  String get devicesEnableLinkingConfirmAction;
+
   /// No description provided for @recoveryKeyTitle.
   ///
   /// In pl, this message translates to:

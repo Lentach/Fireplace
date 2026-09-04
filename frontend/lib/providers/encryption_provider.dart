@@ -98,6 +98,29 @@ class EncryptionProvider extends ChangeNotifier {
   bool get identityIncomplete => _identityIncomplete;
   bool _identityIncomplete = false;
 
+  /// (lxxiii) clause 3: the guard's UNKNOWN outcome, previously flagless. The
+  /// server could not be asked whether this account already has keys, so
+  /// neither minting nor declaring the identity damaged is safe — the gate
+  /// renders its "checking" state instead of a keyless shell. Set in the
+  /// UNKNOWN catch of the E2E init, cleared by any other init outcome and by
+  /// a disconnect (the next connect re-runs the init anyway).
+  bool get identityCheckUnavailable => _identityCheckUnavailable;
+  bool _identityCheckUnavailable = false;
+  void _setIdentityCheckUnavailable(bool value) {
+    if (_identityCheckUnavailable == value) return;
+    _identityCheckUnavailable = value;
+    notifyListeners();
+  }
+
+  /// Re-runs the E2E init the connect path runs — the gate's "Try again"
+  /// for the UNKNOWN state. Same serialized entry as a reconnect, so a retry
+  /// racing a connect simply waits its turn.
+  Future<void> retryE2EInit() async {
+    final userId = _currentUserId;
+    if (userId == null) return;
+    await initializeE2E(userId);
+  }
+
   /// Peers whose Signal identity key changed under us. A reinstall looks
   /// identical to a server swapping the bundle, so the user is told rather
   /// than silently re-trusted.
@@ -1293,9 +1316,10 @@ class EncryptionProvider extends ChangeNotifier {
         // Fresh session: load keys from storage (or generate on first install).
         await _encryptionService.initialize(
           userId,
-          checkServerBundleExists: _checkServerBundleExists,
+          checkServerIdentity: _checkServerIdentity,
         );
         _identityIncomplete = false;
+        _setIdentityCheckUnavailable(false);
         // Load the retired-id set BEFORE flipping the ready flag. This is the
         // only point that provably precedes any decrypt attempt: decrypting
         // requires E2E to be ready, so nothing can start while this await is
@@ -1341,6 +1365,7 @@ class EncryptionProvider extends ChangeNotifier {
         // a transient storage error from incorrectly setting _e2eInitialized = false.
         debugPrint('[E2E] Reconnect: skipping re-init, E2E already active');
         _e2eFlowLog('E2E_RECONNECT_SKIP_INIT', {});
+        _setIdentityCheckUnavailable(false);
       }
 
       // TEMP storage-durability probe — snapshot which sessions survived to
@@ -1417,6 +1442,9 @@ class EncryptionProvider extends ChangeNotifier {
       debugPrint('[E2E] Identity check unavailable — deferring E2E init');
       _e2eFlowLog('E2E_INIT_GUARD_UNKNOWN', {});
       _e2eInitialized = false;
+      // (lxxiii) clause 3: today's flagless UNKNOWN gets a surface — the gate
+      // shows a spinner + retry instead of a keyless shell.
+      _setIdentityCheckUnavailable(true);
     } on E2eIdentityIncompleteException catch (e) {
       // NOT a transient failure and NOT recoverable by retrying: the account
       // already published an identity this install does not hold, and we
@@ -1425,6 +1453,7 @@ class EncryptionProvider extends ChangeNotifier {
       // boot.
       debugPrint('[E2E] $e');
       _identityIncomplete = true;
+      _setIdentityCheckUnavailable(false);
       _e2eInitialized = false;
       _e2eFlowLog('E2E_INIT_IDENTITY_INCOMPLETE', {});
       notifyListeners();
@@ -1433,6 +1462,7 @@ class EncryptionProvider extends ChangeNotifier {
       // Only clear the flag if we hadn't initialized yet; don't undo a working
       // reconnect just because the re-upload attempt threw.
       if (!_e2eInitialized) _e2eInitialized = false;
+      _setIdentityCheckUnavailable(false);
       _e2eFlowLog('E2E_INIT_FAIL', {'error': e.toString()});
     } finally {
       if (_e2eInitialized) {
@@ -1895,8 +1925,13 @@ class EncryptionProvider extends ChangeNotifier {
 
   /// Handler for `ownKeyBundleStatus` server event — the answer to
   /// `checkOwnKeyBundle`. A malformed payload completes as null (UNKNOWN),
-  /// never as false: only an explicit server "no bundle" may authorize key
+  /// never as "no bundle": only an explicit server answer may authorize key
   /// generation.
+  ///
+  /// (lxxiii) clause 2: the payload additionally carries `linkingEnabled`
+  /// (an `account_authorizations` row exists — the registration lock is
+  /// armed). ABSENT or malformed reads as TRUE: fail closed to the gating
+  /// behaviour, never to a mint an enrolled server would refuse.
   ///
   /// Phase 0b also carries the account-protection state, which is how a
   /// session that was offline at the time still learns about a pending reset
@@ -1905,7 +1940,13 @@ class EncryptionProvider extends ChangeNotifier {
     final exists = data is Map && data['exists'] is bool
         ? data['exists'] as bool
         : null;
-    _e2eFlowLog('OWN_BUNDLE_STATUS', {'exists': exists});
+    final linkingEnabled = data is Map && data['linkingEnabled'] is bool
+        ? data['linkingEnabled'] as bool
+        : true;
+    _e2eFlowLog('OWN_BUNDLE_STATUS', {
+      'exists': exists,
+      'linkingEnabled': linkingEnabled,
+    });
     if (data is Map) {
       _hydrateIdentityResetState(data);
       final replacedAt = data['identityReplacedAt'];
@@ -1920,7 +1961,11 @@ class EncryptionProvider extends ChangeNotifier {
     }
     final completer = _pendingOwnBundleCheck;
     if (completer == null || completer.isCompleted) return;
-    completer.complete(exists);
+    completer.complete(
+      exists == null
+          ? null
+          : ServerIdentityGuard(exists: exists, linkingEnabled: linkingEnabled),
+    );
   }
 
   /// Applies the server's view of the ceremony. Absent field (older server)
@@ -1964,18 +2009,18 @@ class EncryptionProvider extends ChangeNotifier {
     }
   }
 
-  Completer<bool?>? _pendingOwnBundleCheck;
+  Completer<ServerIdentityGuard?>? _pendingOwnBundleCheck;
 
-  /// Tri-state server check backing the identity guard in
-  /// [EncryptionService.initialize]: true/false only on an explicit server
-  /// answer; null (UNKNOWN) on no socket, timeout, or any error. Callers MUST
-  /// treat null as "do not decide".
-  Future<bool?> _checkServerBundleExists() async {
+  /// Server check backing the identity guard in
+  /// [EncryptionService.initialize]: a [ServerIdentityGuard] pair only on an
+  /// explicit server answer; null (UNKNOWN) on no socket, timeout, or any
+  /// error. Callers MUST treat null as "do not decide".
+  Future<ServerIdentityGuard?> _checkServerIdentity() async {
     final emit = _emit;
     if (emit == null) return null;
     final existing = _pendingOwnBundleCheck;
     if (existing != null) return existing.future;
-    final completer = Completer<bool?>();
+    final completer = Completer<ServerIdentityGuard?>();
     _pendingOwnBundleCheck = completer;
     // The timeout completes the SHARED completer, not a per-caller wrapper:
     // a per-caller `.timeout()` resolves only the first awaiter and orphans
@@ -2113,6 +2158,11 @@ class EncryptionProvider extends ChangeNotifier {
   /// (CLAUDE.md: "Keys NOT cleared on logout").
   void onDisconnect() {
     _cancelPendingFetches();
+    // (lxxiii) clause 3: UNKNOWN is deliberately NOT cleared here. A dropped
+    // socket does not answer the question the guard asked; clearing would
+    // drop the gate and show a keyless shell for exactly the offline window
+    // the gate's "checking" state exists for. The next connect re-runs the
+    // init and re-decides — that is the only thing that clears it.
   }
 
   /// Sets [_e2eInitialized] to true. Called after successful E2E initialization.
@@ -2145,6 +2195,7 @@ class EncryptionProvider extends ChangeNotifier {
     // a disposal authorization. It must not outlive the account it was
     // answered for.
     _identityUploadLocked = false;
+    _identityCheckUnavailable = false;
     _deviceListCache.clear();
     // The §6.2 ceremony belongs to the ACCOUNT, and this provider is a process
     // singleton reused across logins. Left standing, user A's countdown renders
