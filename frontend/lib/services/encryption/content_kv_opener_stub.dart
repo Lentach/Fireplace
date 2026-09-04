@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../utils/e2e_persistent_diag.dart';
 import '../secure_kv.dart';
 import 'content_key_manager.dart';
+import 'content_key_wrap.dart';
 import 'content_kv.dart';
 import 'content_sealer.dart';
 import 'sealed_web_content_kv.dart';
@@ -38,6 +39,7 @@ Future<ContentKv> _open() async {
       const FlutterSecureStorageKv(
         FlutterSecureStorage(webOptions: WebOptions(dbName: 'FireplaceE2E')),
       ),
+      wrap: ContentKeyWrap.instance,
     );
     return await SealedWebContentKv.open(
       prefs: prefs,

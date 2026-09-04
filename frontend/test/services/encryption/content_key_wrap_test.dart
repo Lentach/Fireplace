@@ -26,6 +26,17 @@ class _FakeSealer implements ContentSealer {
   }
 }
 
+/// Seals but never opens: the shape of a cipher that "succeeds" while
+/// producing bytes nothing can read back. The arm step exists for this.
+class _OneWaySealer implements ContentSealer {
+  @override
+  Future<Uint8List?> seal(Uint8List key, Uint8List plaintext) async =>
+      Uint8List.fromList([9, 9, 9, 9, ...plaintext]);
+
+  @override
+  Future<Uint8List?> unseal(Uint8List key, Uint8List sealed) async => null;
+}
+
 class _FakeSecureKv implements SecureKv {
   final Map<String, String> store = {};
   bool throwOnReadAll = false;
@@ -58,7 +69,7 @@ void main() {
 
   setUp(() {
     secure = _FakeSecureKv();
-    wrap = ContentKeyWrap(sealer: _FakeSealer());
+    wrap = ContentKeyWrap(sealer: _FakeSealer(), meta: secure);
   });
 
   group('WrappedContentKey envelope', () {
@@ -167,8 +178,17 @@ void main() {
   });
 
   group('minting under wrapping', () {
+    Future<void> turnWrappingOn() => wrap
+        .enableWrapping(
+          kek: _kek(1),
+          kekId: 'kek1',
+          iterations: 600000,
+          saltB64: 'AAAA',
+        )
+        .then((ok) => expect(ok, isTrue));
+
     test('mints WRAPPED keys while unlocked, and they read back', () async {
-      wrap.unlock(kek: _kek(1), kekId: 'kek1');
+      await turnWrappingOn();
       final manager = ContentKeyManager(secure, wrap: wrap);
 
       final kid = await manager.mintContentKey();
@@ -182,15 +202,183 @@ void main() {
     });
 
     test('refuses to mint while locked instead of minting a bypass', () async {
+      await turnWrappingOn();
+      wrap.lock();
       final manager = ContentKeyManager(secure, wrap: wrap);
 
       expect(await manager.mintContentKey(), isNull);
-      expect(secure.store, isEmpty,
-          reason: 'a key minted while locked would be readable without the '
-              'passcode — exactly the door Phase 2 closes');
+      expect(
+        secure.store.keys.where((k) => k.startsWith('fp_content_key_')),
+        isEmpty,
+        reason: 'a key minted while locked would be readable without the '
+            'passcode — exactly the door Phase 2 closes',
+      );
     });
   });
 
+
+  // Wrapping OFF is not the same as wrapping ON but locked, and conflating
+  // them would brick every web user who never sets a passcode: the vault is
+  // "locked" for them forever, so a mint refusal would take the store into
+  // its plaintext fallback on a normal fresh install.
+  group('wrapping enabled vs merely locked', () {
+    test('a vault with no meta record reports wrapping OFF', () async {
+      final off = ContentKeyWrap(sealer: _FakeSealer(), meta: secure);
+
+      expect(await off.isWrappingOn(), isFalse);
+      expect(off.isLocked, isTrue);
+    });
+
+    test('mints RAW keys while wrapping is off, even though it is locked',
+        () async {
+      final manager = ContentKeyManager(
+        secure,
+        wrap: ContentKeyWrap(sealer: _FakeSealer(), meta: secure),
+      );
+
+      final kid = await manager.mintContentKey();
+
+      expect(kid, isNotNull);
+      expect(
+        WrappedContentKey.isEnvelope(secure.store['fp_content_key_$kid']!),
+        isFalse,
+      );
+    });
+
+    test('enable writes the meta record, disable removes it', () async {
+      final vault = ContentKeyWrap(sealer: _FakeSealer(), meta: secure);
+
+      await vault.enableWrapping(
+        kek: _kek(1),
+        kekId: 'kek1',
+        iterations: 600000,
+        saltB64: 'AAAA',
+      );
+      expect(await vault.isWrappingOn(), isTrue);
+      expect(vault.isLocked, isFalse, reason: 'enabling also unlocks');
+      expect(secure.store[PasscodeKekMeta.storageKey], isNotNull);
+
+      await vault.disableWrapping();
+      expect(await vault.isWrappingOn(), isFalse);
+      expect(vault.isLocked, isTrue);
+      expect(secure.store.containsKey(PasscodeKekMeta.storageKey), isFalse);
+    });
+    test('refuses to mint once wrapping is on and the vault is locked',
+        () async {
+      final vault = ContentKeyWrap(sealer: _FakeSealer(), meta: secure);
+      await vault.enableWrapping(
+        kek: _kek(1),
+        kekId: 'kek1',
+        iterations: 600000,
+        saltB64: 'AAAA',
+      );
+      vault.lock();
+      final manager = ContentKeyManager(secure, wrap: vault);
+
+      expect(await manager.mintContentKey(), isNull);
+    });
+  });
+
+
+  group('migration', () {
+    const prefixes = ['fp_content_key_', 'fp_sig_key_'];
+
+    Future<void> turnOn(ContentKeyWrap v, {int seed = 1, String id = 'kek1'}) =>
+        v.enableWrapping(
+          kek: _kek(seed),
+          kekId: id,
+          iterations: 600000,
+          saltB64: 'AAAA',
+        ).then((ok) => expect(ok, isTrue));
+
+    test('wraps existing raw keys in place, and is idempotent', () async {
+      secure.store['fp_content_key_kidA'] = _hex(_kek(9));
+      secure.store['fp_sig_key_kidB'] = _hex(_kek(10));
+      secure.store['unrelated'] = 'leave-me';
+      await turnOn(wrap);
+
+      expect(await wrap.wrapRawKeys(prefixes), 2);
+      expect(
+        WrappedContentKey.isEnvelope(secure.store['fp_content_key_kidA']!),
+        isTrue,
+      );
+      expect(secure.store['unrelated'], 'leave-me');
+      // A second pass has nothing left to do — this is what makes an
+      // interrupted migration safe to resume on every unlock.
+      expect(await wrap.wrapRawKeys(prefixes), 0);
+
+      final inv = await ContentKeyManager(secure, wrap: wrap).inventory();
+      expect(inv!.keys['kidA'], _kek(9));
+      expect(inv.lockedKeyCount, 0);
+    });
+
+    test('a key that cannot be proven readable is rolled back to raw',
+        () async {
+      // Sealer that seals but refuses to open: the arm step must catch it.
+      final oneWay = ContentKeyWrap(
+        sealer: _OneWaySealer(),
+        meta: secure,
+      );
+      secure.store['fp_content_key_kidA'] = _hex(_kek(9));
+      await turnOn(oneWay);
+
+      expect(await oneWay.wrapRawKeys(prefixes), 0);
+      expect(secure.store['fp_content_key_kidA'], _hex(_kek(9)),
+          reason: 'an envelope the vault cannot open would brick the store');
+    });
+
+    test('unwraps everything back to raw before wrapping is turned off',
+        () async {
+      secure.store['fp_content_key_kidA'] = _hex(_kek(9));
+      await turnOn(wrap);
+      await wrap.wrapRawKeys(prefixes);
+
+      expect(await wrap.unwrapAllKeys(prefixes), isTrue);
+      expect(secure.store['fp_content_key_kidA'], _hex(_kek(9)));
+
+      await wrap.disableWrapping();
+      final inv = await ContentKeyManager(secure, wrap: wrap).inventory();
+      expect(inv!.keys['kidA'], _kek(9),
+          reason: 'a disabled device must read its keys with no passcode');
+    });
+
+    test('rekey moves every key to a new KEK (a passcode change)', () async {
+      secure.store['fp_content_key_kidA'] = _hex(_kek(9));
+      await turnOn(wrap);
+      await wrap.wrapRawKeys(prefixes);
+
+      final ok = await wrap.rekey(
+        newKek: _kek(42),
+        newKekId: 'kek2',
+        iterations: 600000,
+        saltB64: 'BBBB',
+        prefixes: prefixes,
+      );
+
+      expect(ok, isTrue);
+      expect(WrappedContentKey.kekIdOf(secure.store['fp_content_key_kidA']!),
+          'kek2');
+      // The OLD KEK must no longer open it.
+      final old = ContentKeyWrap(sealer: _FakeSealer(), meta: secure)
+        ..unlock(kek: _kek(1), kekId: 'kek1');
+      expect(
+        await old.unwrapKey(secure.store['fp_content_key_kidA']!),
+        isNull,
+      );
+      // The new one does.
+      final inv = await ContentKeyManager(secure, wrap: wrap).inventory();
+      expect(inv!.keys['kidA'], _kek(9));
+    });
+
+    test('migration refuses to run while locked', () async {
+      secure.store['fp_content_key_kidA'] = _hex(_kek(9));
+      await turnOn(wrap);
+      wrap.lock();
+
+      expect(await wrap.wrapRawKeys(prefixes), isNull);
+      expect(await wrap.unwrapAllKeys(prefixes), isFalse);
+    });
+  });
   group('PasscodeKekMeta', () {
     test('carries its own cost factor so it can be raised later', () {
       const meta = PasscodeKekMeta(

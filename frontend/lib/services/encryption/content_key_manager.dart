@@ -174,13 +174,18 @@ class ContentKeyManager {
   /// parses it.
   Future<String?> mintContentKey() async {
     final wrap = _wrap;
-    if (wrap != null && wrap.isLocked) return null;
+    // Wrapping ON but locked ⇒ refuse: a key minted now would be readable
+    // without the passcode, which is the door Phase 2 closes. Wrapping OFF
+    // ⇒ mint raw exactly as before, because every device that never sets a
+    // passcode has a permanently locked vault and must keep working.
+    final wrappingOn = wrap != null && await wrap.isWrappingOn();
+    if (wrappingOn && wrap.isLocked) return null;
 
     final kid =
         'k${DateTime.now().toUtc().millisecondsSinceEpoch}${_rng.nextInt(0xffff)}';
     final name = '$_keyPrefix$kid';
     final raw = _randomBytes(32);
-    final stored = wrap == null ? _toHex(raw) : await wrap.wrapKey(raw);
+    final stored = wrappingOn ? await wrap.wrapKey(raw) : _toHex(raw);
     if (stored == null) return null;
     try {
       await _secure.write(name, stored);

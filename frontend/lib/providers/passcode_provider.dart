@@ -1,7 +1,12 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
+import '../services/encryption/content_key_manager.dart';
+import '../services/encryption/content_key_wrap.dart';
 import '../services/passcode_kdf.dart';
 import '../services/passcode_store.dart';
+import '../services/passcode_unlock_gate.dart';
 import '../utils/e2e_persistent_diag.dart';
 import '../utils/passcode_autolock.dart';
 
@@ -50,6 +55,16 @@ const int kPasscodeMinAlphanumericLength = 4;
 /// closes. `test/services/passcode_store_test.dart` asserts the ordering.
 const Duration kPasscodeStoreReadTimeout = Duration(milliseconds: 2500);
 
+/// Key families the passcode wrap covers: the payload keys that seal the
+/// Signal rows and the decrypted-content rows. Deliberately NOT the sealed
+/// rows themselves and NOT the SQLCipher DB key (native only) — see
+/// `services/encryption/content_key_wrap.dart` for why encrypting a row's
+/// cleartext envelope prefix would re-trigger the 0.1.10 identity loss.
+const List<String> kPasscodeWrappedKeyPrefixes = <String>[
+  ContentKeyManager.contentKeyPrefix,
+  ContentKeyManager.sigKeyPrefix,
+];
+
 /// The app-level passcode: a device-local gate in front of the whole logged-in
 /// shell, in the shape Zangi ships and the owner approved on 2026-09-03.
 ///
@@ -74,15 +89,37 @@ class PasscodeProvider extends ChangeNotifier {
     PasscodeStore? store,
     PasscodeKdf? kdf,
     int Function()? nowMs,
+    ContentKeyWrap? vault,
+    PasscodeUnlockGate? gate,
+    bool? wrapKeys,
   }) : _store = store ?? DevicePasscodeStore(),
        _kdf = kdf ?? const Pbkdf2PasscodeKdf(),
-       _now = nowMs ?? _wallClock;
+       _now = nowMs ?? _wallClock,
+       _vault = vault ?? ContentKeyWrap.instance,
+       _gate = gate ?? PasscodeUnlockGate.instance,
+       _wrapKeys = wrapKeys ?? kIsWeb;
 
   static int _wallClock() => DateTime.now().millisecondsSinceEpoch;
 
   final PasscodeStore _store;
   final PasscodeKdf _kdf;
   final int Function() _now;
+
+  /// Phase 2: the passcode-derived wrap around the local content keys.
+  final ContentKeyWrap _vault;
+
+  /// Phase 2: holds the E2E boot until the vault is open.
+  final PasscodeUnlockGate _gate;
+
+  /// Whether enabling the passcode should also wrap the local key material.
+  /// Web only by owner ruling (2026-09-04): on Android the same material is
+  /// already Keystore-backed behind `FLAG_SECURE`, and wrapping it there would
+  /// turn every Keystore fault into permanent history loss on the platform
+  /// where a forgotten code is currently survivable. Injectable so the
+  /// behaviour is testable off-web.
+  final bool _wrapKeys;
+
+  bool get wrapsKeys => _wrapKeys;
 
   PasscodeRecord _record = PasscodeRecord.disabled;
   PasscodeLockState _state = PasscodeLockState.unknown;
@@ -136,33 +173,55 @@ class PasscodeProvider extends ChangeNotifier {
       // exists and its verifier is what we cannot read. Resolving that to
       // "unlocked" is the error-as-absence inversion that `AuthTokenStore`
       // was hardened against — a wiped or tampered Keystore entry would
-      // silently open the app. Fail CLOSED; the lock screen's recovery door
-      // (logout, keys intact) is the way through, and every code entry
-      // reports `unavailable` rather than "wrong".
+      // silently open the app. Fail CLOSED; the lock screen's erase action is
+      // the way through, and every code entry reports `unavailable` rather
+      // than "wrong".
       E2ePersistentDiag.record('PASSCODE_CREDENTIAL_DAMAGED', const {});
+      await _closeGateIfWrapping();
       _setState(PasscodeLockState.locked);
       return;
     }
     if (!_record.enabled) {
+      _gate.open();
       _setState(PasscodeLockState.disabled);
       return;
     }
-    final lock = shouldLockOnForeground(
+    var lock = shouldLockOnForeground(
       enabled: true,
       lastActiveAtMs: _record.lastActiveAtMs,
       nowMs: _now(),
       autoLockSeconds: _record.autoLockSeconds,
     );
+    // With wrapping on, the KEK lives only in RAM, so a process that starts
+    // with a locked vault CANNOT read the key material no matter what the
+    // auto-lock window says. Demanding the code is then not a policy choice
+    // but arithmetic: without it there is nothing to show.
+    if (!lock && await _vault.isWrappingOn() && _vault.isLocked) {
+      lock = true;
+    }
+    if (lock) {
+      await _closeGateIfWrapping();
+    } else {
+      _gate.open();
+    }
     _setState(lock ? PasscodeLockState.locked : PasscodeLockState.unlocked);
   }
 
+  /// Holds the E2E boot only when there is something it could not read: with
+  /// wrapping off, a locked UI must never stall the encryption stack.
+  Future<void> _closeGateIfWrapping() async {
+    if (await _vault.isWrappingOn()) _gate.close();
+  }
+
   /// Turns the lock on. Returns false — changing nothing — when the code does
-  /// not fit its mode or the KDF is unavailable.
+  /// not fit its mode, when the mode is not allowed under wrapping, or when
+  /// the KDF is unavailable.
   Future<bool> enable({
     required String passcode,
     required PasscodeMode mode,
   }) async {
     if (!isValidPasscode(passcode, mode)) return false;
+    if (!_modeAllowed(mode)) return false;
     final salt = generatePasscodeSalt();
     final verifier = await _derive(passcode, salt, kPasscodeKdfIterations);
     if (verifier == null) return false;
@@ -174,16 +233,30 @@ class PasscodeProvider extends ChangeNotifier {
       iterations: kPasscodeKdfIterations,
     );
     _record = await _store.load();
+    if (_wrapKeys) await _turnWrappingOn(passcode);
+    _gate.open();
     _setState(PasscodeLockState.unlocked);
     return true;
   }
 
   /// Turns the lock off. Requires the current code.
+  ///
+  /// Unwrapping comes FIRST and must succeed: dropping the credential while
+  /// keys are still wrapped would leave envelopes whose KEK can never be
+  /// re-derived — unreadable history with no passcode to blame.
   Future<bool> disable({required String passcode}) async {
     if (!isEnabled) return false;
     if (await _matches(passcode) != true) return false;
+    if (await _vault.isWrappingOn()) {
+      if (_vault.isLocked && !await _openVault(passcode)) return false;
+      if (!await _vault.unwrapAllKeys(kPasscodeWrappedKeyPrefixes)) {
+        return false;
+      }
+      await _vault.disableWrapping();
+    }
     await _store.clearCredential();
     _record = await _store.load();
+    _gate.open();
     _setState(PasscodeLockState.disabled);
     return true;
   }
@@ -205,11 +278,30 @@ class PasscodeProvider extends ChangeNotifier {
   }) async {
     if (!isEnabled) return false;
     if (!isValidPasscode(next, mode)) return false;
+    if (!_modeAllowed(mode)) return false;
     if (await _matches(current) != true) return false;
 
     final salt = generatePasscodeSalt();
     final verifier = await _derive(next, salt, kPasscodeKdfIterations);
     if (verifier == null) return false;
+
+    // Re-wrap BEFORE the credential moves: if the rekey fails, the old code
+    // still opens both the verifier and the vault, so the device stays
+    // consistent rather than half-migrated.
+    if (await _vault.isWrappingOn()) {
+      final kekSalt = generatePasscodeSalt();
+      final kek = await _derive(next, kekSalt, kPasscodeKdfIterations);
+      if (kek == null) return false;
+      final ok = await _vault.rekey(
+        newKek: kek,
+        newKekId: _newKekId(),
+        iterations: kPasscodeKdfIterations,
+        saltB64: base64Encode(kekSalt),
+        prefixes: kPasscodeWrappedKeyPrefixes,
+      );
+      if (!ok) return false;
+    }
+
     await _store.saveCredential(
       mode: mode,
       salt: salt,
@@ -231,10 +323,18 @@ class PasscodeProvider extends ChangeNotifier {
     if (matched == null) return PasscodeUnlockResult.unavailable;
 
     if (matched) {
+      // The verifier said yes, but on a wrapped device the code must also
+      // OPEN the vault, and a code that verifies while the KEK cannot be
+      // rebuilt must not unlock the UI: the app would come up with every
+      // local key unreadable and no explanation.
+      if (!await _openVault(passcode)) {
+        return PasscodeUnlockResult.unavailable;
+      }
       if (_record.failedAttempts != 0 || _record.lockoutUntilMs != null) {
         await _store.saveAttemptState(failedAttempts: 0, lockoutUntilMs: null);
         _record = await _store.load();
       }
+      _gate.open();
       _setState(PasscodeLockState.unlocked);
       return PasscodeUnlockResult.ok;
     }
@@ -263,6 +363,18 @@ class PasscodeProvider extends ChangeNotifier {
   /// Demand the code now (the Chats-header padlock).
   void lockNow() {
     if (_state != PasscodeLockState.unlocked) return;
+    _lock();
+  }
+
+  /// Locking drops the KEK, so the NEXT process cannot read the key material
+  /// without the code. It deliberately does not tear down an E2E stack that
+  /// is already up: the open store holds its keys in RAM, and unmounting it
+  /// would drop the socket, the active conversation and any in-flight send
+  /// (the same reason the gate uses `Offstage`). Cold boot is where the
+  /// arithmetic guarantee lives; a mid-session re-lock is a UI barrier.
+  void _lock() {
+    _vault.lock();
+    _gate.close();
     _setState(PasscodeLockState.locked);
   }
 
@@ -277,7 +389,7 @@ class PasscodeProvider extends ChangeNotifier {
     await _store.saveLastActiveAt(_now());
     _record = await _store.load();
     if (_record.autoLockSeconds <= 0) {
-      _setState(PasscodeLockState.locked);
+      _lock();
       return;
     }
     notifyListeners();
@@ -295,8 +407,66 @@ class PasscodeProvider extends ChangeNotifier {
       nowMs: _now(),
       autoLockSeconds: _record.autoLockSeconds,
     );
-    if (lock) _setState(PasscodeLockState.locked);
+    if (lock) _lock();
   }
+
+  /// Whether [mode] may be used on this device.
+  ///
+  /// A 4-digit code is 10 000 candidates, and once it is the key rather than
+  /// a verifier those candidates can be tried OFFLINE against the wrapped
+  /// keys — the published Bitwarden PIN exploit is exactly this. So the shape
+  /// stays available while the passcode is only a gate (owner ruling
+  /// 2026-09-04) and is refused wherever wrapping is on.
+  bool _modeAllowed(PasscodeMode mode) =>
+      !(_wrapKeys && mode == PasscodeMode.digits4);
+
+  /// Re-derives the KEK from [passcode] and opens the vault. True when there
+  /// is nothing to open (wrapping off) or the vault is now open.
+  ///
+  /// Also finishes any interrupted migration: `wrapRawKeys` is idempotent, so
+  /// every unlock is a resume point and a device interrupted mid-enable
+  /// converges instead of staying half-wrapped.
+  Future<bool> _openVault(String passcode) async {
+    if (!await _vault.isWrappingOn()) return true;
+    final meta = await _vault.readMeta();
+    if (meta == null) return false;
+    final kek = await _derive(passcode, meta.salt, meta.iterations);
+    if (kek == null) return false;
+    _vault.unlock(kek: kek, kekId: meta.kekId);
+    await _vault.wrapRawKeys(kPasscodeWrappedKeyPrefixes);
+    return true;
+  }
+
+  /// Turns wrapping on for a code that was just accepted. Best-effort by
+  /// design: if it fails the user still has the Phase 1 gate, which is
+  /// strictly better than refusing to set a passcode at all — and the failure
+  /// is recorded rather than guessed at later.
+  Future<void> _turnWrappingOn(String passcode) async {
+    final kekSalt = generatePasscodeSalt();
+    final kek = await _derive(passcode, kekSalt, kPasscodeKdfIterations);
+    if (kek == null) {
+      E2ePersistentDiag.record('PASSCODE_WRAP_ENABLE_FAILED', {
+        'stage': 'derive',
+      });
+      return;
+    }
+    final on = await _vault.enableWrapping(
+      kek: kek,
+      kekId: _newKekId(),
+      iterations: kPasscodeKdfIterations,
+      saltB64: base64Encode(kekSalt),
+    );
+    if (!on) {
+      E2ePersistentDiag.record('PASSCODE_WRAP_ENABLE_FAILED', {
+        'stage': 'meta',
+      });
+      return;
+    }
+    final wrapped = await _vault.wrapRawKeys(kPasscodeWrappedKeyPrefixes);
+    E2ePersistentDiag.record('PASSCODE_WRAP_ENABLED', {'keys': wrapped ?? -1});
+  }
+
+  String _newKekId() => 'kek${_now()}';
 
   Future<bool?> _matches(String passcode) async {
     final salt = _record.salt;

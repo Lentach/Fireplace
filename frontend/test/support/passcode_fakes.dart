@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:fireplace/services/local_data_eraser.dart';
+import 'package:fireplace/services/encryption/content_sealer.dart';
+import 'package:fireplace/services/secure_kv.dart';
 import 'package:fireplace/services/passcode_kdf.dart';
 import 'package:fireplace/services/passcode_store.dart';
 
@@ -132,5 +134,40 @@ class FakeLocalDataEraser implements LocalDataEraser {
   Future<LocalDataEraseReport> eraseEverything() async {
     calls++;
     return LocalDataEraseReport(failed: failed);
+  }
+}
+
+/// In-memory secure storage for the passcode vault's meta record and the
+/// wrapped content keys.
+class MemorySecureKv implements SecureKv {
+  final Map<String, String> store = {};
+
+  @override
+  Future<String?> read(String key) async => store[key];
+
+  @override
+  Future<void> write(String key, String value) async => store[key] = value;
+
+  @override
+  Future<void> delete(String key) async => store.remove(key);
+
+  @override
+  Future<Map<String, String>> readAll() async => Map.of(store);
+}
+
+/// Reversible keyed stand-in for AES-GCM: enough to prove that a wrong KEK
+/// fails to open, without needing the native webcrypto library.
+class FakeContentSealer implements ContentSealer {
+  @override
+  Future<Uint8List?> seal(Uint8List key, Uint8List plaintext) async =>
+      Uint8List.fromList([...key.take(4), ...plaintext]);
+
+  @override
+  Future<Uint8List?> unseal(Uint8List key, Uint8List sealed) async {
+    if (sealed.length < 4) return null;
+    for (var i = 0; i < 4; i++) {
+      if (sealed[i] != key[i]) return null;
+    }
+    return Uint8List.fromList(sealed.sublist(4));
   }
 }

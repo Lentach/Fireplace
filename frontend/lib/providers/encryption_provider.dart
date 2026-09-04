@@ -8,6 +8,7 @@ import '../services/audio_cache_store.dart';
 import '../services/encryption_service.dart';
 import '../services/device_list/device_list_cache.dart';
 import '../services/device_list/device_list_canonical.dart';
+import '../services/passcode_unlock_gate.dart';
 import '../services/server_clock.dart';
 import '../utils/e2e_diag_log.dart';
 import '../utils/e2e_persistent_diag.dart';
@@ -1307,6 +1308,18 @@ class EncryptionProvider extends ChangeNotifier {
       // unverifiable in the field. Both are once-per-run.
       await _recordBootMarkersOnce();
       await _probeStoragePersistenceOnce();
+      // Phase 2: wait for the passcode unlock before the FIRST key read. The
+      // markers and the persistence probe above are safe while locked (they
+      // touch no key material), but `initialize` reads the identity, and on a
+      // wrapped device that read is undecryptable until the vault opens. The
+      // valve is open by default, so a device without a passcode is
+      // unchanged, and an already-initialised session never waits — a
+      // reconnect while the UI is locked must still do its housekeeping
+      // instead of parking on a user who may be away for hours.
+      if (!_e2eInitialized && !PasscodeUnlockGate.instance.isOpen) {
+        _e2eFlowLog('E2E_INIT_AWAIT_UNLOCK', const {});
+        await PasscodeUnlockGate.instance.waitUntilOpen();
+      }
       if (!_e2eInitialized) {
         // Rebuild the UI when a peer's identity key changes so the warning can
         // appear without waiting for the next message.

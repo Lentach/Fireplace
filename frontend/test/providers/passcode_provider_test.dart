@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fireplace/providers/passcode_provider.dart';
+import 'package:fireplace/services/encryption/content_key_wrap.dart';
+import 'package:fireplace/services/passcode_unlock_gate.dart';
 import 'package:fireplace/services/passcode_kdf.dart';
 import 'package:fireplace/services/passcode_store.dart';
 import 'package:fireplace/utils/passcode_autolock.dart';
@@ -17,17 +19,162 @@ void main() {
   late int now;
   late PasscodeProvider passcode;
 
-  PasscodeProvider build() => PasscodeProvider(
+  late MemorySecureKv vaultStore;
+  late ContentKeyWrap vault;
+  late PasscodeUnlockGate gate;
+
+  PasscodeProvider build({bool wrapKeys = false}) => PasscodeProvider(
     store: store,
     kdf: kdf,
     nowMs: () => now,
+    vault: vault,
+    gate: gate,
+    wrapKeys: wrapKeys,
   );
 
   setUp(() {
     store = MemoryPasscodeStore();
     kdf = FakePasscodeKdf();
     now = t0;
+    vaultStore = MemorySecureKv();
+    vault = ContentKeyWrap(sealer: FakeContentSealer(), meta: vaultStore);
+    gate = PasscodeUnlockGate();
     passcode = build();
+  });
+
+  String hex(int seed) => List<int>.generate(32, (i) => (seed + i) & 0xff)
+      .map((b) => b.toRadixString(16).padLeft(2, '0'))
+      .join();
+
+  group('key wrapping (Phase 2)', () {
+    test('enabling wraps the existing content keys and opens the E2E gate',
+        () async {
+      vaultStore.store['fp_sig_key_kidA'] = hex(9);
+      vaultStore.store['fp_content_key_kidB'] = hex(20);
+      await passcode.initialize();
+      final wrapping = build(wrapKeys: true);
+      await wrapping.initialize();
+
+      final ok = await wrapping.enable(
+        passcode: '123456',
+        mode: PasscodeMode.digits6,
+      );
+
+      expect(ok, isTrue);
+      expect(await vault.isWrappingOn(), isTrue);
+      expect(vault.isLocked, isFalse);
+      expect(
+        WrappedContentKey.isEnvelope(vaultStore.store['fp_sig_key_kidA']!),
+        isTrue,
+      );
+      expect(gate.isOpen, isTrue);
+    });
+
+    test('a wrapped device boots LOCKED even inside the auto-lock window',
+        () async {
+      // The KEK exists only in RAM, so a fresh process cannot read the key
+      // material however recently the app was used. Demanding the code is
+      // arithmetic here, not policy.
+      final wrapping = build(wrapKeys: true);
+      await wrapping.initialize();
+      await wrapping.enable(passcode: '123456', mode: PasscodeMode.digits6);
+      await wrapping.noteBackgrounded();
+      now += 1000; // well inside the 60 s window
+      // A real process restart loses the RAM-only KEK; the vault object is
+      // shared in this test, so lock it to model the reboot honestly.
+      vault.lock();
+
+      final rebooted = build(wrapKeys: true);
+      await rebooted.initialize();
+
+      expect(rebooted.state, PasscodeLockState.locked);
+      expect(gate.isOpen, isFalse, reason: 'E2E must wait for the unlock');
+    });
+
+    test('the right code reopens the vault and the gate', () async {
+      final wrapping = build(wrapKeys: true);
+      await wrapping.initialize();
+      await wrapping.enable(passcode: '123456', mode: PasscodeMode.digits6);
+      vault.lock();
+      gate.close();
+      wrapping.lockNow();
+
+      expect(await wrapping.unlock('123456'), PasscodeUnlockResult.ok);
+      expect(vault.isLocked, isFalse);
+      expect(gate.isOpen, isTrue);
+    });
+
+    test('locking drops the KEK and closes the gate for the next boot',
+        () async {
+      final wrapping = build(wrapKeys: true);
+      await wrapping.initialize();
+      await wrapping.enable(passcode: '123456', mode: PasscodeMode.digits6);
+
+      wrapping.lockNow();
+
+      expect(vault.isLocked, isTrue);
+      expect(gate.isOpen, isFalse);
+    });
+
+    test('4-digit codes are refused wherever wrapping is on', () async {
+      final wrapping = build(wrapKeys: true);
+      await wrapping.initialize();
+
+      expect(
+        await wrapping.enable(passcode: '1234', mode: PasscodeMode.digits4),
+        isFalse,
+        reason: '10k candidates are minutes offline once the code IS the key',
+      );
+      expect(await vault.isWrappingOn(), isFalse);
+      // Still fine while the passcode is only a gate.
+      expect(
+        await passcode.enable(passcode: '1234', mode: PasscodeMode.digits4),
+        isTrue,
+      );
+    });
+
+    test('disabling unwraps every key first, so nothing is orphaned',
+        () async {
+      vaultStore.store['fp_content_key_kidB'] = hex(20);
+      final wrapping = build(wrapKeys: true);
+      await wrapping.initialize();
+      await wrapping.enable(passcode: '123456', mode: PasscodeMode.digits6);
+
+      expect(await wrapping.disable(passcode: '123456'), isTrue);
+
+      expect(await vault.isWrappingOn(), isFalse);
+      expect(vaultStore.store['fp_content_key_kidB'], hex(20));
+      expect(wrapping.state, PasscodeLockState.disabled);
+    });
+
+    test('changing the code re-wraps the keys under the new KEK', () async {
+      vaultStore.store['fp_content_key_kidB'] = hex(20);
+      final wrapping = build(wrapKeys: true);
+      await wrapping.initialize();
+      await wrapping.enable(passcode: '123456', mode: PasscodeMode.digits6);
+      final firstKekId = WrappedContentKey.kekIdOf(
+        vaultStore.store['fp_content_key_kidB']!,
+      );
+      now += 5000;
+
+      final ok = await wrapping.change(
+        current: '123456',
+        next: '654321',
+        mode: PasscodeMode.digits6,
+      );
+
+      expect(ok, isTrue);
+      final secondKekId = WrappedContentKey.kekIdOf(
+        vaultStore.store['fp_content_key_kidB']!,
+      );
+      expect(secondKekId, isNot(firstKekId));
+      // And the new code opens it on a fresh process.
+      vault.lock();
+      final rebooted = build(wrapKeys: true);
+      await rebooted.initialize();
+      expect(await rebooted.unlock('654321'), PasscodeUnlockResult.ok);
+      expect(vault.isLocked, isFalse);
+    });
   });
 
   group('initialize', () {

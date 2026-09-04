@@ -8,6 +8,7 @@ import '../../utils/e2e_diag_log.dart';
 import '../../utils/e2e_persistent_diag.dart';
 import '../secure_kv.dart';
 import 'content_key_manager.dart';
+import 'content_key_wrap.dart';
 import 'content_sealer.dart';
 import 'sealed_sig_envelope.dart';
 import 'sealed_web_signal_kv.dart';
@@ -116,6 +117,10 @@ class DualStorage {
           ContentKeyManager(
             FlutterSecureStorageKv(_secure),
             keyPrefix: ContentKeyManager.sigKeyPrefix,
+            // Phase 2: the process-wide passcode vault. Null-safe by design —
+            // with wrapping off it mints and reads raw keys exactly as before
+            // (`ContentKeyWrap.isWrappingOn`).
+            wrap: ContentKeyWrap.instance,
           );
       return await SealedWebSignalKv.open(
         inner: raw,

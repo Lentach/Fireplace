@@ -95,11 +95,62 @@ whether "no other way in" is true.
 - `adb shell input tap` on a text field opens the IME and shifts the layout — a follow-up tap aimed at a button
   hits a key instead (it typed `USUN6` and correctly re-disabled the button). Re-screenshot after every focus change.
 
-## Next
+## Phase 2 — the passcode becomes key material (web only)
 
-Phase 2 (owner-approved, same branch): passcode-derived KEK wrapping the web sealed-store keys
-(`{v, alg, iters, salt, iv, ct}`, MetaMask's `keyMetadata` pattern), no `enabled` boolean in the trust path,
-4-digit blocked once wrapping is on, session key held as a non-extractable `CryptoKey`, and the hard prerequisite
-that an encrypted-but-unreadable keystore classifies as **UNKNOWN, never "empty"** in `encryption_provider.dart`
-or it re-triggers the identity re-mint 0.1.10/0.1.11 exist to prevent. Design and rejected alternatives:
-`.planning/passcode-lock/comparison-and-solution.md` §4–§5.
+Owner decisions: **web only** (Android keeps the gate; wrapping there would turn a Keystore fault into permanent
+history loss on the platform where a forgotten code is survivable), and **strict locked behaviour first** —
+nothing decrypts until the code is entered, to be revisited after using it.
+
+Two read-only scouts mapped the terrain first (`.planning/passcode-lock/phase2-design.md`), and they found the
+landmine before a line was written: the sealed-store open probe counts rows by their **cleartext `fpsig1:`
+prefix**, so encrypting that prefix alone makes the store declare a plaintext fallback legal, the identity read
+`absent`, and `encryption_service.dart:347` mint a new Signal identity. Encrypting five characters would have
+reproduced the 0.1.10/0.1.11 catastrophe.
+
+So only the 32-byte content keys are wrapped — `fpwk1:<kekId>:<b64 sealed>` under a PBKDF2-derived KEK with its
+**own salt** (never the verifier's, so the stored verifier is not a crib) — while the row envelopes and every key
+NAME stay in clear.
+
+Three holes closed, each with the test that fails without it:
+
+- `ContentKeyManager.inventory()` silently DROPPED any value that was not 32 raw bytes, so a locked device looked
+  like a device with **no keys** — and no keys + no sealed rows mints a fresh key or falls back to plaintext. It
+  now reports `lockedKeyCount`.
+- `SealedWebSignalKv` open now treats locked as outranking the sealed-row probe
+  (`fallbackLegal: false`); the test pins the zero-sealed-rows case, the one that used to mint.
+- `SealedWebContentKv` throws `locked: true` and the web opener **rethrows** instead of degrading to
+  `PrefsContentKv` — that fallback would write the decrypted-message cache in cleartext while the app is locked.
+
+Lifecycle: `PasscodeUnlockGate` holds `_initializeE2EInner` after the boot markers and before
+`_encryptionService.initialize` (open by default, and an already-initialised session never waits, so a reconnect
+while the UI is locked still does its housekeeping). A wrapped device boots **LOCKED regardless of the auto-lock
+window**, because the KEK is RAM-only. Enable wraps existing keys (armed, idempotent, resumable — meta record
+written FIRST so an interruption leaves the device *less protected*, never unreadable); disable unwraps before
+dropping the meta; a passcode change rekeys wrapped → raw → wrapped. **4-digit is refused wherever wrapping is
+on** — 10 000 candidates are minutes offline once the code is the key.
+
+Also: the one identity-mint branch finally emits a **durable** `IDENTITY_MINTED`; it previously left only a
+`debugPrint`, so a misclassification was inferable in the field only from the peer identity-change cascade hours
+later.
+
+**Live web pass:** enabling a 6-digit code wrote the meta record and wrapped both key families; a reload with a
+FRESH `passcode_last_active_at` still demanded the code; while locked the durable log showed **0**
+`IDENTITY_MINTED`, **0** `SIG_STORE_FALLBACK` and all **26** sealed `sig_e2e_*` rows untouched; the right code
+brought the app up with no identity-incomplete banner.
+
+Trap worth remembering: the default vault must have **no meta store off-web**. Otherwise every "is wrapping on?"
+call hits a platform channel that never answers under the widget-test binding, and two screen tests hung into
+failures (they did, before the fix).
+
+`flutter analyze` clean; `flutter test` **1480 / 14 skipped**; count line and verifier updated.
+
+Not done: an Android device re-run after these changes (wrapping is off there by construction, but shared code
+paths moved), and a mid-session re-lock still leaves the already-open store's keys in RAM — cold boot is where the
+arithmetic guarantee lives, which is documented in `frontend/CLAUDE.md` §10a.
+
+## Still open
+
+- The non-extractable `CryptoKey` hardening for the unlocked session (Element Web's pickle-key trick) is designed
+  but unbuilt: it would stop an XSS foothold exfiltrating the unwrapped keys, not using them.
+- Android acceptance in `frontend/integration_test/` for the real Keystore verifier path, if the owner wants it.
+- Merge/deploy: neither has been authorised. Version stays 0.1.24.
