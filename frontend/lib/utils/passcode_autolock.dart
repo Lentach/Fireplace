@@ -50,17 +50,44 @@ const int kPasscodeAttemptsBeforeBackoff = 5;
 
 /// Cooldown after [failedAttempts] consecutive wrong codes.
 ///
-/// This is the ONLY brute-force resistance the app-level gate has, and it is
+/// The curve is NIST SP 800-63B-4 §3.2.2's own worked example — "a period of
+/// time that increases as the subscriber account approaches its maximum
+/// allowance for consecutive failed attempts (e.g., 30 seconds up to an
+/// hour)" — and it is the only brute-force resistance the gate has. It is
 /// honest about being soft: the counter lives in the same storage as the
 /// verifier, so on web anyone with devtools can reset it. It exists to stop
 /// hand-typed guessing by someone holding the phone — the threat this
 /// feature is actually for — not offline attack.
+///
+/// Deliberately NOT a wipe-at-N (Phantom deletes its local encrypted backup
+/// after 7 wrong attempts, Ledger factory-resets after 3). Those systems can
+/// afford it because a seed phrase restores everything; this app's local
+/// history has no backup, so an attempt-triggered wipe would hand a
+/// data-destruction button to whoever picks the phone up. Erasing is a typed,
+/// deliberate user action instead — see the lock screen's erase panel.
 Duration passcodeBackoffFor(int failedAttempts) {
   if (failedAttempts < kPasscodeAttemptsBeforeBackoff) return Duration.zero;
   return switch (failedAttempts - kPasscodeAttemptsBeforeBackoff) {
     0 => const Duration(seconds: 30),
     1 => const Duration(minutes: 1),
     2 => const Duration(minutes: 5),
-    _ => const Duration(minutes: 15),
+    3 => const Duration(minutes: 15),
+    _ => const Duration(hours: 1),
   };
 }
+
+/// Free attempts left before the cooldown ladder starts, clamped at zero.
+///
+/// Display only — enforcement is [passcodeBackoffFor] plus the persisted
+/// `lockoutUntilMs`. NIST's usability guidance is to tell the claimant how
+/// many attempts remain and how long they must wait, and a user who mistypes
+/// a 6-digit code twice deserves to know a cooldown is coming.
+int passcodeAttemptsRemaining(int failedAttempts) {
+  final left = kPasscodeAttemptsBeforeBackoff - failedAttempts;
+  return left < 0 ? 0 : left;
+}
+
+/// Show the remaining-attempts warning at or below this many left. Two:
+/// warning on every miss trains the user to ignore it, warning only on the
+/// last one gives no time to slow down.
+const int kPasscodeAttemptsWarningThreshold = 2;

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fireplace/l10n/app_localizations.dart';
 import 'package:fireplace/providers/passcode_provider.dart';
+import 'package:fireplace/services/local_data_eraser.dart';
 import 'package:fireplace/services/passcode_store.dart';
 import 'package:fireplace/screens/passcode_unlock_screen.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
@@ -135,15 +136,10 @@ void main() {
     expect(find.text('taps: 1'), findsOneWidget,
         reason: 'state survived: the subtree was hidden, not rebuilt');
   });
-  testWidgets('the forgot-passcode door asks for confirmation first',
-      (tester) async {
-    // Only reachable while locked, and it must never fire on a single tap:
-    // it logs the user out.
-    await passcode.initialize();
-    await passcode.enable(passcode: '1234', mode: PasscodeMode.digits4);
-    passcode.lockNow();
-
-    var recoveries = 0;
+  Future<void> pumpLockScreen(
+    WidgetTester tester, {
+    required Future<LocalDataEraseReport> Function() onErase,
+  }) async {
     await tester.pumpWidget(
       ChangeNotifierProvider.value(
         value: passcode,
@@ -152,22 +148,107 @@ void main() {
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           locale: const Locale('en'),
-          home: PasscodeUnlockScreen(onForgot: () async => recoveries++),
+          home: PasscodeUnlockScreen(onErase: onErase),
         ),
       ),
     );
     await tester.pumpAndSettle();
+  }
 
-    expect(find.byKey(const Key('passcode-forgot-confirm')), findsNothing);
+  // The whole point of the 2026-09-04 redesign: there is NO password door.
+  // A forgotten code can only be escaped by destroying what it guards, which
+  // is how every key-derived lock in the field behaves (Telegram: "you'll
+  // need to reinstall the app"; Phantom: "Reset & wipe app"). So the panel
+  // must not offer a bypass, and it must not fire on a stray tap either.
+  testWidgets('a forgotten code offers erase only, behind a typed confirmation',
+      (tester) async {
+    await passcode.initialize();
+    await passcode.enable(passcode: '1234', mode: PasscodeMode.digits4);
+    passcode.lockNow();
+
+    final eraser = FakeLocalDataEraser();
+    await pumpLockScreen(tester, onErase: eraser.eraseEverything);
+
+    expect(find.byKey(const Key('passcode-erase-confirm')), findsNothing);
 
     await tester.tap(find.byKey(const Key('passcode-forgot-link')));
     await tester.pumpAndSettle();
-    expect(recoveries, 0, reason: 'opening the door must not log anyone out');
+    expect(eraser.calls, 0, reason: 'opening the panel must destroy nothing');
 
-    await tester.tap(find.byKey(const Key('passcode-forgot-confirm')));
+    // Confirmation still empty: the button exists but refuses.
+    await tester.tap(find.byKey(const Key('passcode-erase-confirm')));
+    await tester.pumpAndSettle();
+    expect(eraser.calls, 0);
+
+    await tester.enterText(
+      find.byKey(const Key('passcode-erase-field')),
+      'nope',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('passcode-erase-confirm')));
+    await tester.pumpAndSettle();
+    expect(eraser.calls, 0, reason: 'the wrong word must not erase anything');
+
+    await tester.enterText(
+      find.byKey(const Key('passcode-erase-field')),
+      'ERASE',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('passcode-erase-confirm')));
+    await tester.pumpAndSettle();
+    expect(eraser.calls, 1);
+  });
+
+  testWidgets('a partial erase is reported instead of claiming a clean slate',
+      (tester) async {
+    await passcode.initialize();
+    await passcode.enable(passcode: '1234', mode: PasscodeMode.digits4);
+    passcode.lockNow();
+
+    final eraser = FakeLocalDataEraser(
+      failed: const [LocalDataEraseArm.secureStorage],
+    );
+    await pumpLockScreen(tester, onErase: eraser.eraseEverything);
+
+    await tester.tap(find.byKey(const Key('passcode-forgot-link')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('passcode-erase-field')),
+      'ERASE',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('passcode-erase-confirm')));
     await tester.pumpAndSettle();
 
-    expect(recoveries, 1);
+    expect(eraser.calls, 1);
+    expect(find.byKey(const Key('passcode-erase-partial')), findsOneWidget);
+  });
+
+  // NIST SP 800-63B's usability guidance: tell the claimant how many attempts
+  // remain before the throttle bites. Silence here reads as "the app is
+  // broken", and the user finds out only when the cooldown starts.
+  testWidgets('the last few attempts before a cooldown are counted out',
+      (tester) async {
+    await passcode.initialize();
+    await passcode.enable(passcode: '1234', mode: PasscodeMode.digits4);
+    passcode.lockNow();
+
+    await pumpLockScreen(tester, onErase: FakeLocalDataEraser().eraseEverything);
+
+    expect(find.byKey(const Key('passcode-subtitle')), findsNothing);
+
+    for (var i = 0; i < 3; i++) {
+      for (final digit in ['9', '9', '9', '9']) {
+        await tester.tap(find.byKey(Key('passcode-key-$digit')));
+        await tester.pumpAndSettle();
+      }
+    }
+
+    expect(passcode.failedAttempts, 3);
+    final subtitle = tester.widget<Text>(
+      find.byKey(const Key('passcode-subtitle')),
+    );
+    expect(subtitle.data, contains('2'));
   });
 
 }

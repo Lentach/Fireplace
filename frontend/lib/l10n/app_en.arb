@@ -739,10 +739,17 @@
   "passcodeBlocked": "Too many attempts. Try again in {seconds}s.",
   "passcodeUnavailable": "This device could not secure the passcode.",
   "passcodeForgot": "Forgot your passcode?",
-  "passcodeForgotExplainer": "Logging out clears the passcode. Your messages stay on this device and come back when you sign in again with your account password.",
-  "passcodeForgotAction": "Log out and clear passcode",
+  "passcodeNoRecovery": "A forgotten passcode cannot be recovered. Nothing gets past it — not us, not your account password.",
+  "passcodeEraseWarning": "The only way out is to erase this app's data on this device and sign in again. Messages stored only here are gone forever, and your contacts will see a new safety number.",
+  "passcodeEraseConfirmWord": "ERASE",
+  "passcodeEraseConfirmHint": "Type {word} to confirm",
+  "passcodeEraseAction": "Erase data and sign out",
+  "passcodeErasing": "Erasing…",
+  "passcodeErasePartial": "Some data could not be erased. Try again, or clear this app's data in your system or browser settings.",
+  "passcodeAttemptsLeft": "{count, plural, one{1 attempt left before a cooldown} other{{count} attempts left before a cooldown}}",
   "passcodeLockNowTooltip": "Lock app",
   "passcodeSetUpTooltip": "Set up Passcode Lock",
-  "passcodeNote": "If you forget your passcode, log out and sign back in with your account password — your messages stay on this device.",
-  "passcodeScopeNote": "The passcode locks this app on this device. It does not encrypt stored data and is never sent to the server."
+  "passcodeNote": "If you forget your passcode, the only way back in is erasing this app's data on this device — messages stored only here would be lost.",
+  "passcodeScopeNoteDevice": "The passcode locks this app on this device. The verifier is held in the Android keystore and the app window is hidden from screenshots. It does not encrypt your messages and is never sent to the server.",
+  "passcodeScopeNoteBrowser": "The passcode locks this app in this browser. It does not encrypt stored data: someone with access to this browser profile can bypass it. It stops a person holding your device."
 }

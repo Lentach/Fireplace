@@ -147,6 +147,7 @@ class _PasscodeEntryViewState extends State<PasscodeEntryView> {
               const SizedBox(height: 8),
               Text(
                 widget.subtitle!,
+                key: const Key('passcode-subtitle'),
                 textAlign: TextAlign.center,
                 style: RpgTheme.bodyFont(fontSize: 13, color: colors.mutedText),
               ),

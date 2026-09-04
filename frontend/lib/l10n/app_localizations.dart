@@ -3374,17 +3374,53 @@ abstract class AppLocalizations {
   /// **'Nie pamiętasz kodu?'**
   String get passcodeForgot;
 
-  /// No description provided for @passcodeForgotExplainer.
+  /// No description provided for @passcodeNoRecovery.
   ///
   /// In pl, this message translates to:
-  /// **'Wylogowanie usuwa kod. Twoje wiadomości zostają na tym urządzeniu i wrócą po ponownym zalogowaniu hasłem konta.'**
-  String get passcodeForgotExplainer;
+  /// **'Nie ma sposobu, aby odzyskać zapomniany kod. Nikt — ani my, ani hasło Twojego konta — go nie obejdzie.'**
+  String get passcodeNoRecovery;
 
-  /// No description provided for @passcodeForgotAction.
+  /// No description provided for @passcodeEraseWarning.
   ///
   /// In pl, this message translates to:
-  /// **'Wyloguj i usuń kod'**
-  String get passcodeForgotAction;
+  /// **'Jedyne wyjście to usunięcie danych tej aplikacji z tego urządzenia i ponowne zalogowanie. Wiadomości przechowywane tylko tutaj znikną na zawsze, a Twoje kontakty zobaczą nowy numer bezpieczeństwa.'**
+  String get passcodeEraseWarning;
+
+  /// No description provided for @passcodeEraseConfirmWord.
+  ///
+  /// In pl, this message translates to:
+  /// **'USUN'**
+  String get passcodeEraseConfirmWord;
+
+  /// No description provided for @passcodeEraseConfirmHint.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wpisz {word}, aby potwierdzić'**
+  String passcodeEraseConfirmHint(String word);
+
+  /// No description provided for @passcodeEraseAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Usuń dane i wyloguj'**
+  String get passcodeEraseAction;
+
+  /// No description provided for @passcodeErasing.
+  ///
+  /// In pl, this message translates to:
+  /// **'Usuwanie…'**
+  String get passcodeErasing;
+
+  /// No description provided for @passcodeErasePartial.
+  ///
+  /// In pl, this message translates to:
+  /// **'Części danych nie udało się usunąć. Spróbuj ponownie albo wyczyść dane tej aplikacji w ustawieniach systemu lub przeglądarki.'**
+  String get passcodeErasePartial;
+
+  /// No description provided for @passcodeAttemptsLeft.
+  ///
+  /// In pl, this message translates to:
+  /// **'{count, plural, one{Została 1 próba przed przerwą} few{Zostały {count} próby przed przerwą} many{Zostało {count} prób przed przerwą} other{Zostało {count} próby przed przerwą}}'**
+  String passcodeAttemptsLeft(num count);
 
   /// No description provided for @passcodeLockNowTooltip.
   ///
@@ -3401,14 +3437,20 @@ abstract class AppLocalizations {
   /// No description provided for @passcodeNote.
   ///
   /// In pl, this message translates to:
-  /// **'Jeśli zapomnisz kodu, wyloguj się i zaloguj ponownie hasłem konta — wiadomości zostaną na tym urządzeniu.'**
+  /// **'Jeśli zapomnisz kodu, jedynym wyjściem jest usunięcie danych tej aplikacji z tego urządzenia — wiadomości zapisane tylko tutaj przepadną.'**
   String get passcodeNote;
 
-  /// No description provided for @passcodeScopeNote.
+  /// No description provided for @passcodeScopeNoteDevice.
   ///
   /// In pl, this message translates to:
-  /// **'Kod blokuje tę aplikację na tym urządzeniu. Nie szyfruje danych na dysku i nie jest wysyłany na serwer.'**
-  String get passcodeScopeNote;
+  /// **'Kod blokuje tę aplikację na tym urządzeniu. Weryfikator trzyma keystore Androida, a okno aplikacji jest ukryte przed zrzutami ekranu. Kod nie szyfruje wiadomości i nie jest wysyłany na serwer.'**
+  String get passcodeScopeNoteDevice;
+
+  /// No description provided for @passcodeScopeNoteBrowser.
+  ///
+  /// In pl, this message translates to:
+  /// **'Kod blokuje tę aplikację w tej przeglądarce. Nie szyfruje danych na dysku: ktoś z dostępem do profilu przeglądarki może go obejść. Chroni przed osobą, która trzyma Twoje urządzenie.'**
+  String get passcodeScopeNoteBrowser;
 }
 
 class _AppLocalizationsDelegate

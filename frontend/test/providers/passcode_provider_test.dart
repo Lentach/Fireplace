@@ -153,11 +153,13 @@ void main() {
       expect(damaged.failedAttempts, 0);
     });
 
-    test('recovery is the way out and it clears the wreckage', () async {
+    test('an erase is the way out and it clears the wreckage', () async {
       final damaged = damagedProvider();
       await damaged.initialize();
 
-      await damaged.clearForRecovery();
+      // What the eraser does to storage, then the gate's re-read.
+      await store.clearCredential();
+      await damaged.initialize();
 
       expect(damaged.state, PasscodeLockState.disabled);
       expect(store.record.enabled, isFalse);
@@ -372,16 +374,19 @@ void main() {
   });
 
   group('forgotten passcode', () {
-    test('clearForRecovery wipes the credential so a re-login is clean',
+    test('has no provider-side escape: only an erase can clear the credential',
         () async {
-      // Owner ruling: forgetting the passcode costs a logout, never history.
-      // The provider only drops its own credential — Signal keys survive
-      // logout by design (root CLAUDE.md §6), so nothing else may be touched.
+      // Owner ruling 2026-09-04: no password door. The provider deliberately
+      // exposes nothing that drops the credential — that power lives in
+      // `services/local_data_eraser.dart`, behind a typed confirmation, and
+      // it destroys the guarded data along with the code. Re-reading a wiped
+      // store is what actually opens the gate.
       await passcode.initialize();
       await passcode.enable(passcode: '1234', mode: PasscodeMode.digits4);
       passcode.lockNow();
 
-      await passcode.clearForRecovery();
+      await store.clearCredential();
+      await passcode.initialize();
 
       expect(passcode.state, PasscodeLockState.disabled);
       expect(store.record.enabled, isFalse);

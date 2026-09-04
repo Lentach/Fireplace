@@ -63,10 +63,12 @@ const Duration kPasscodeStoreReadTimeout = Duration(milliseconds: 2500);
 /// verifier and everything it guards sit in the same localStorage, so the gate
 /// stops a person holding the phone and nothing more.
 ///
-/// Forgetting the passcode costs a logout, never history: [clearForRecovery]
-/// drops only this credential, and Signal keys survive logout (root
-/// `CLAUDE.md` §6), so the user logs back in with their account password and
-/// keeps every message.
+/// Forgetting the passcode is NOT survivable, by design (owner ruling
+/// 2026-09-04): there is no password door, because a recovery path the
+/// account password can walk through is not a lock. The only way past a
+/// forgotten code is `services/local_data_eraser.dart` — destroy every local
+/// store and sign in again — which is the model Telegram, Threema, Phantom
+/// and Trust Wallet all ship.
 class PasscodeProvider extends ChangeNotifier {
   PasscodeProvider({
     PasscodeStore? store,
@@ -294,15 +296,6 @@ class PasscodeProvider extends ChangeNotifier {
       autoLockSeconds: _record.autoLockSeconds,
     );
     if (lock) _setState(PasscodeLockState.locked);
-  }
-
-  /// "I forgot my passcode" — destroys the credential so the app is reachable
-  /// again after a re-login. Touches NOTHING else; the caller performs the
-  /// logout, and Signal keys survive it, so no message history is lost.
-  Future<void> clearForRecovery() async {
-    await _store.clearCredential();
-    _record = await _store.load();
-    _setState(PasscodeLockState.disabled);
   }
 
   Future<bool?> _matches(String passcode) async {

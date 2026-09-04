@@ -1929,11 +1929,43 @@ class AppLocalizationsPl extends AppLocalizations {
   String get passcodeForgot => 'Nie pamiętasz kodu?';
 
   @override
-  String get passcodeForgotExplainer =>
-      'Wylogowanie usuwa kod. Twoje wiadomości zostają na tym urządzeniu i wrócą po ponownym zalogowaniu hasłem konta.';
+  String get passcodeNoRecovery =>
+      'Nie ma sposobu, aby odzyskać zapomniany kod. Nikt — ani my, ani hasło Twojego konta — go nie obejdzie.';
 
   @override
-  String get passcodeForgotAction => 'Wyloguj i usuń kod';
+  String get passcodeEraseWarning =>
+      'Jedyne wyjście to usunięcie danych tej aplikacji z tego urządzenia i ponowne zalogowanie. Wiadomości przechowywane tylko tutaj znikną na zawsze, a Twoje kontakty zobaczą nowy numer bezpieczeństwa.';
+
+  @override
+  String get passcodeEraseConfirmWord => 'USUN';
+
+  @override
+  String passcodeEraseConfirmHint(String word) {
+    return 'Wpisz $word, aby potwierdzić';
+  }
+
+  @override
+  String get passcodeEraseAction => 'Usuń dane i wyloguj';
+
+  @override
+  String get passcodeErasing => 'Usuwanie…';
+
+  @override
+  String get passcodeErasePartial =>
+      'Części danych nie udało się usunąć. Spróbuj ponownie albo wyczyść dane tej aplikacji w ustawieniach systemu lub przeglądarki.';
+
+  @override
+  String passcodeAttemptsLeft(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Zostało $count próby przed przerwą',
+      many: 'Zostało $count prób przed przerwą',
+      few: 'Zostały $count próby przed przerwą',
+      one: 'Została 1 próba przed przerwą',
+    );
+    return '$_temp0';
+  }
 
   @override
   String get passcodeLockNowTooltip => 'Zablokuj aplikację';
@@ -1943,9 +1975,13 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get passcodeNote =>
-      'Jeśli zapomnisz kodu, wyloguj się i zaloguj ponownie hasłem konta — wiadomości zostaną na tym urządzeniu.';
+      'Jeśli zapomnisz kodu, jedynym wyjściem jest usunięcie danych tej aplikacji z tego urządzenia — wiadomości zapisane tylko tutaj przepadną.';
 
   @override
-  String get passcodeScopeNote =>
-      'Kod blokuje tę aplikację na tym urządzeniu. Nie szyfruje danych na dysku i nie jest wysyłany na serwer.';
+  String get passcodeScopeNoteDevice =>
+      'Kod blokuje tę aplikację na tym urządzeniu. Weryfikator trzyma keystore Androida, a okno aplikacji jest ukryte przed zrzutami ekranu. Kod nie szyfruje wiadomości i nie jest wysyłany na serwer.';
+
+  @override
+  String get passcodeScopeNoteBrowser =>
+      'Kod blokuje tę aplikację w tej przeglądarce. Nie szyfruje danych na dysku: ktoś z dostępem do profilu przeglądarki może go obejść. Chroni przed osobą, która trzyma Twoje urządzenie.';
 }

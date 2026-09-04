@@ -1904,11 +1904,41 @@ class AppLocalizationsEn extends AppLocalizations {
   String get passcodeForgot => 'Forgot your passcode?';
 
   @override
-  String get passcodeForgotExplainer =>
-      'Logging out clears the passcode. Your messages stay on this device and come back when you sign in again with your account password.';
+  String get passcodeNoRecovery =>
+      'A forgotten passcode cannot be recovered. Nothing gets past it — not us, not your account password.';
 
   @override
-  String get passcodeForgotAction => 'Log out and clear passcode';
+  String get passcodeEraseWarning =>
+      'The only way out is to erase this app\'s data on this device and sign in again. Messages stored only here are gone forever, and your contacts will see a new safety number.';
+
+  @override
+  String get passcodeEraseConfirmWord => 'ERASE';
+
+  @override
+  String passcodeEraseConfirmHint(String word) {
+    return 'Type $word to confirm';
+  }
+
+  @override
+  String get passcodeEraseAction => 'Erase data and sign out';
+
+  @override
+  String get passcodeErasing => 'Erasing…';
+
+  @override
+  String get passcodeErasePartial =>
+      'Some data could not be erased. Try again, or clear this app\'s data in your system or browser settings.';
+
+  @override
+  String passcodeAttemptsLeft(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count attempts left before a cooldown',
+      one: '1 attempt left before a cooldown',
+    );
+    return '$_temp0';
+  }
 
   @override
   String get passcodeLockNowTooltip => 'Lock app';
@@ -1918,9 +1948,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get passcodeNote =>
-      'If you forget your passcode, log out and sign back in with your account password — your messages stay on this device.';
+      'If you forget your passcode, the only way back in is erasing this app\'s data on this device — messages stored only here would be lost.';
 
   @override
-  String get passcodeScopeNote =>
-      'The passcode locks this app on this device. It does not encrypt stored data and is never sent to the server.';
+  String get passcodeScopeNoteDevice =>
+      'The passcode locks this app on this device. The verifier is held in the Android keystore and the app window is hidden from screenshots. It does not encrypt your messages and is never sent to the server.';
+
+  @override
+  String get passcodeScopeNoteBrowser =>
+      'The passcode locks this app in this browser. It does not encrypt stored data: someone with access to this browser profile can bypass it. It stops a person holding your device.';
 }

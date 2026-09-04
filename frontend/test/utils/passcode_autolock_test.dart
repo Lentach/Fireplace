@@ -102,12 +102,21 @@ void main() {
       }
     });
 
-    test('escalates 30s, 1m, 5m and then caps at 15m', () {
+    // NIST SP 800-63B-4 §3.2.2 sanctions exactly this curve — "a period of
+    // time that increases as the subscriber account approaches its maximum
+    // allowance for consecutive failed attempts (e.g., 30 seconds up to an
+    // hour)". The cap is an hour, not 15 minutes, and it is deliberately NOT
+    // a wipe: Phantom can delete its local blob at 7 tries because a seed
+    // phrase restores it, whereas this app's local history has no backup, so
+    // an attempt-triggered wipe would hand a destroy button to whoever picks
+    // up the phone.
+    test('escalates 30s, 1m, 5m, 15m and then caps at 1 hour', () {
       expect(passcodeBackoffFor(5), const Duration(seconds: 30));
       expect(passcodeBackoffFor(6), const Duration(minutes: 1));
       expect(passcodeBackoffFor(7), const Duration(minutes: 5));
       expect(passcodeBackoffFor(8), const Duration(minutes: 15));
-      expect(passcodeBackoffFor(99), const Duration(minutes: 15));
+      expect(passcodeBackoffFor(9), const Duration(hours: 1));
+      expect(passcodeBackoffFor(99), const Duration(hours: 1));
     });
 
     test('never decreases as attempts pile up', () {
@@ -117,6 +126,30 @@ void main() {
         expect(current, greaterThanOrEqualTo(previous), reason: 'attempt $i');
         previous = current;
       }
+    });
+  });
+
+  // The count is shown to the user before the first cooldown lands, per NIST's
+  // usability guidance that a claimant should be told how many attempts remain
+  // and how long they must wait. Enforcement lives elsewhere; this is display.
+  group('passcodeAttemptsRemaining', () {
+    test('counts down from the free-attempt allowance', () {
+      expect(passcodeAttemptsRemaining(0), kPasscodeAttemptsBeforeBackoff);
+      expect(passcodeAttemptsRemaining(1), kPasscodeAttemptsBeforeBackoff - 1);
+      expect(passcodeAttemptsRemaining(4), 1);
+    });
+
+    test('never goes negative once the cooldown ladder has started', () {
+      expect(passcodeAttemptsRemaining(kPasscodeAttemptsBeforeBackoff), 0);
+      expect(passcodeAttemptsRemaining(99), 0);
+    });
+
+    test('warns only in the last couple of attempts', () {
+      // Two is the threshold: warning on every miss would train the user to
+      // ignore it, and warning only on the last one gives no time to stop.
+      expect(kPasscodeAttemptsWarningThreshold, 2);
+      expect(passcodeAttemptsRemaining(2), greaterThan(kPasscodeAttemptsWarningThreshold));
+      expect(passcodeAttemptsRemaining(3), kPasscodeAttemptsWarningThreshold);
     });
   });
 }

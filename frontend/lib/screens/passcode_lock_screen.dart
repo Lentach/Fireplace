@@ -6,6 +6,7 @@ import '../providers/passcode_provider.dart';
 import '../services/passcode_store.dart';
 import '../theme/rpg_theme.dart';
 import '../utils/passcode_autolock.dart';
+import 'passcode_unlock_screen.dart' show passcodeScopeNote;
 import '../widgets/glass/glass_sheet.dart';
 import '../widgets/glass/glass_top_bar.dart';
 import '../widgets/passcode_entry_view.dart';
@@ -91,7 +92,7 @@ class _IntroBody extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         Text(
-          l10n.passcodeScopeNote,
+          passcodeScopeNote(l10n),
           textAlign: TextAlign.center,
           style: RpgTheme.bodyFont(fontSize: 12, color: colors.mutedText),
         ),
@@ -151,7 +152,7 @@ class _EnabledBody extends StatelessWidget {
         ConsoleInfoRow(
           glyph: ConsoleGlyph.keys,
           title: l10n.passcodeNote,
-          body: l10n.passcodeScopeNote,
+          body: passcodeScopeNote(l10n),
         ),
         const SizedBox(height: 8),
         Center(

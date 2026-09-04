@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:fireplace/services/local_data_eraser.dart';
 import 'package:fireplace/services/passcode_kdf.dart';
 import 'package:fireplace/services/passcode_store.dart';
 
@@ -117,4 +118,19 @@ class MemoryPasscodeStore implements PasscodeStore {
     lockoutUntilMs:
         clearLockout ? null : (lockoutUntilMs ?? record.lockoutUntilMs),
   );
+}
+
+/// In-memory [LocalDataEraser]: records that the destructive path ran, and
+/// can report a partial failure so the UI's honesty about it is testable.
+class FakeLocalDataEraser implements LocalDataEraser {
+  FakeLocalDataEraser({this.failed = const <LocalDataEraseArm>[]});
+
+  int calls = 0;
+  List<LocalDataEraseArm> failed;
+
+  @override
+  Future<LocalDataEraseReport> eraseEverything() async {
+    calls++;
+    return LocalDataEraseReport(failed: failed);
+  }
 }

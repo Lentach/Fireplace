@@ -45,18 +45,20 @@ void main() {
   });
 
   group('disabled state', () {
-    testWidgets('offers to turn the lock on and explains the recovery rule',
+    testWidgets('warns that a forgotten code costs this device\'s data',
         (tester) async {
       await tester.pumpWidget(_host(passcode));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('passcode-turn-on')), findsOneWidget);
+      // The substance, not the wording: before turning the lock on, the user
+      // must be told the escape hatch DESTROYS local data, and must not be
+      // promised the account-password bypass this screen advertised until
+      // 2026-09-04.
+      expect(find.textContaining('erasing this app'), findsOneWidget);
       expect(
-        find.text(
-          'If you forget your passcode, log out and sign back in with your '
-          'account password — your messages stay on this device.',
-        ),
-        findsOneWidget,
+        find.textContaining('sign back in with your account password'),
+        findsNothing,
       );
       expect(find.byKey(const Key('passcode-turn-off')), findsNothing);
     });

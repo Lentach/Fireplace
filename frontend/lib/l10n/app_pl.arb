@@ -724,10 +724,23 @@
   },
   "passcodeUnavailable": "Nie udało się zabezpieczyć kodu na tym urządzeniu.",
   "passcodeForgot": "Nie pamiętasz kodu?",
-  "passcodeForgotExplainer": "Wylogowanie usuwa kod. Twoje wiadomości zostają na tym urządzeniu i wrócą po ponownym zalogowaniu hasłem konta.",
-  "passcodeForgotAction": "Wyloguj i usuń kod",
+  "passcodeNoRecovery": "Nie ma sposobu, aby odzyskać zapomniany kod. Nikt — ani my, ani hasło Twojego konta — go nie obejdzie.",
+  "passcodeEraseWarning": "Jedyne wyjście to usunięcie danych tej aplikacji z tego urządzenia i ponowne zalogowanie. Wiadomości przechowywane tylko tutaj znikną na zawsze, a Twoje kontakty zobaczą nowy numer bezpieczeństwa.",
+  "passcodeEraseConfirmWord": "USUN",
+  "passcodeEraseConfirmHint": "Wpisz {word}, aby potwierdzić",
+  "@passcodeEraseConfirmHint": {
+    "placeholders": { "word": { "type": "String" } }
+  },
+  "passcodeEraseAction": "Usuń dane i wyloguj",
+  "passcodeErasing": "Usuwanie…",
+  "passcodeErasePartial": "Części danych nie udało się usunąć. Spróbuj ponownie albo wyczyść dane tej aplikacji w ustawieniach systemu lub przeglądarki.",
+  "passcodeAttemptsLeft": "{count, plural, one{Została 1 próba przed przerwą} few{Zostały {count} próby przed przerwą} many{Zostało {count} prób przed przerwą} other{Zostało {count} próby przed przerwą}}",
+  "@passcodeAttemptsLeft": {
+    "placeholders": { "count": { "type": "num" } }
+  },
   "passcodeLockNowTooltip": "Zablokuj aplikację",
   "passcodeSetUpTooltip": "Ustaw blokadę kodem",
-  "passcodeNote": "Jeśli zapomnisz kodu, wyloguj się i zaloguj ponownie hasłem konta — wiadomości zostaną na tym urządzeniu.",
-  "passcodeScopeNote": "Kod blokuje tę aplikację na tym urządzeniu. Nie szyfruje danych na dysku i nie jest wysyłany na serwer."
+  "passcodeNote": "Jeśli zapomnisz kodu, jedynym wyjściem jest usunięcie danych tej aplikacji z tego urządzenia — wiadomości zapisane tylko tutaj przepadną.",
+  "passcodeScopeNoteDevice": "Kod blokuje tę aplikację na tym urządzeniu. Weryfikator trzyma keystore Androida, a okno aplikacji jest ukryte przed zrzutami ekranu. Kod nie szyfruje wiadomości i nie jest wysyłany na serwer.",
+  "passcodeScopeNoteBrowser": "Kod blokuje tę aplikację w tej przeglądarce. Nie szyfruje danych na dysku: ktoś z dostępem do profilu przeglądarki może go obejść. Chroni przed osobą, która trzyma Twoje urządzenie."
 }
