@@ -26,9 +26,15 @@ import '../../utils/web_focus_guard.dart';
 import '../../utils/web_ios_webkit.dart';
 import '../../utils/web_viewport_scroll.dart';
 import '../../utils/web_ios_viewport_pin.dart';
+import '../../services/media_crypto_service.dart';
+import '../../utils/video_preview.dart';
 import '../../utils/video_probe_stub.dart'
     if (dart.library.html) '../../utils/video_probe_web.dart'
+    if (dart.library.io) '../../utils/video_probe_io.dart'
     as video_probe;
+import '../../utils/video_transcode_stub.dart'
+    if (dart.library.io) '../../utils/video_transcode_io.dart'
+    as video_transcode;
 import '../chat_action_tiles.dart';
 import '../hearth_fade_arc.dart';
 import '../top_snackbar.dart' show showTopSnackBar;
@@ -57,6 +63,11 @@ class ChatInputBarState extends State<ChatInputBar>
     milliseconds: 175,
   );
   static const Object _composerTapRegionGroup = Object();
+  /// Test seam for the oversize-video transcode: unit tests cannot reach the
+  /// native codec channel, and the real thing is pinned on-device instead.
+  /// Non-null only under test.
+  @visibleForTesting
+  static Future<Uint8List?> Function(Uint8List bytes)? debugTranscodeOverride;
 
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
@@ -123,9 +134,9 @@ class ChatInputBarState extends State<ChatInputBar>
   // GlobalKey to access RecordingControllerState.buildRecordingBar() + methods.
   final _recordingKey = GlobalKey<RecordingControllerState>();
 
-  // Staged media (Clipboard Phase 2 image; video via the media-picker
-  // redesign). Chip renders above the input row; _sendStaged() drains it
-  // honoring the media-then-caption ordering contract (spec §3).
+  // Staged media (Clipboard Phase 2 image; a picked video sends immediately
+  // and never stages). Chip renders above the input row; _sendStaged() drains
+  // it honoring the media-then-caption ordering contract (spec §3).
   final _attachment = ComposerAttachmentController();
   bool _isSendingStagedMedia = false;
 
@@ -376,37 +387,103 @@ class ChatInputBarState extends State<ChatInputBar>
     _onPastedImage(bytes, mimeType, filename);
   }
 
-  /// Gallery/camera video pick → staged-video flow. Enforces the client
-  /// video policy before staging: extension whitelist → videoUnsupportedFormat,
-  /// 20 MB → videoTooLarge, probed duration >60s → videoTooLong. The web
-  /// probe reads duration from metadata; the native stub answers null (there
-  /// the picker's maxDuration is the cap).
-  Future<void> stagePickedVideo({
+  /// Gallery/camera video pick → IMMEDIATE send (owner ruling 2026-08-31).
+  ///
+  /// Video does NOT stage. iOS's own `Retake / Use Video` review screen is
+  /// already the confirmation step, so a composer chip made the user confirm
+  /// the same decision twice. Documents in `ChatActionTiles._routePickedFile`
+  /// have always sent immediately; video now matches them. Images still stage
+  /// — a gallery tap is their only confirmation, and they carry captions.
+  ///
+  /// Gate order is deliberate: the cheap extension and size checks run first,
+  /// because `probeVideoPreview` loads the whole clip into a decoder and costs
+  /// seconds on a phone. That single probe pass supplies the duration for the
+  /// cap AND the geometry + ThumbHash the receiving bubble needs — the
+  /// provider never re-probes.
+  Future<void> sendPickedVideo({
     required Uint8List bytes,
     required String filename,
   }) async {
     if (!_canAcceptPaste()) return;
     final l10n = AppLocalizations.of(context);
-    final probed = await video_probe.probeVideoDurationSeconds(bytes);
-    if (!mounted) return;
-    final duration = probed?.round();
-    if (duration != null && duration > 60) {
-      showTopSnackBar(context, l10n.videoTooLong, backgroundColor: Theme.of(context).colorScheme.error);
+    final ext = filename.contains('.')
+        ? filename.split('.').last.toLowerCase()
+        : '';
+    if (!kSendableVideoExtensions.contains(ext)) {
+      showTopSnackBar(
+        context,
+        l10n.videoUnsupportedFormat,
+        backgroundColor: Colors.red,
+      );
       return;
     }
-    final result = _attachment.stageVideo(
-      bytes: bytes,
-      filename: filename,
-      durationSeconds: duration,
-    );
-    if (result == StageResult.ok) return;
-    showTopSnackBar(
+    if (bytes.length > MediaCryptoService.maxBytes) {
+      final transcoded = await _transcodeOversizeVideo(bytes);
+      if (!mounted) return;
+      if (transcoded == null) {
+        // Named actuals, not just the limit: "34 MB, max 20 MB" tells the user
+        // WHY this clip failed and roughly how much to trim.
+        final sizeMb = (bytes.length / (1024 * 1024)).toStringAsFixed(1);
+        showTopSnackBar(
+          context,
+          l10n.videoTooLarge(sizeMb),
+          backgroundColor: Colors.red,
+        );
+        return;
+      }
+      bytes = transcoded;
+    }
+
+    final preview = await video_probe.probeVideoPreview(bytes);
+    if (!mounted) return;
+    final duration = preview.durationInSeconds;
+    if (duration != null &&
+        duration > MediaCryptoService.maxVideoDurationSeconds) {
+      final minutes = duration ~/ 60;
+      final seconds = duration % 60;
+      showTopSnackBar(
+        context,
+        l10n.videoTooLong('$minutes:${seconds.toString().padLeft(2, '0')}'),
+        backgroundColor: Colors.red,
+      );
+      return;
+    }
+
+    // Same collapse guard the staged-send path arms: this is a send, and the
+    // keyboard must not collapse underneath it.
+    _armComposerCollapseGuard();
+    await AttachmentHandler.sendVideo(
       context,
-      result == StageResult.tooLarge
-          ? l10n.videoTooLarge
-          : l10n.videoUnsupportedFormat,
-      backgroundColor: Theme.of(context).colorScheme.error,
+      videoBytes: bytes,
+      durationSeconds: duration,
+      width: preview.width,
+      height: preview.height,
+      thumbHash: preview.thumbHash,
     );
+  }
+
+  /// Move-4 on-device transcode for an oversize pick (owner decision
+  /// 2026-09-01: native first; the PWA keeps the 20 MB wall until chunked
+  /// streaming exists).
+  ///
+  /// Returns bytes that fit [MediaCryptoService.maxBytes], or null when no
+  /// transcode path exists (web), it failed, or the output is STILL oversize —
+  /// possible by physics: the codec's bitrate floor is 2 Mbps, so a ~3-minute
+  /// clip cannot always reach 18 MB. The caller shows the honest "too large"
+  /// toast for every null.
+  Future<Uint8List?> _transcodeOversizeVideo(Uint8List bytes) async {
+    final override = debugTranscodeOverride;
+    if (override == null && !video_transcode.isVideoTranscodeSupported) {
+      return null;
+    }
+    // Hardware transcode of a multi-minute clip takes seconds to tens of
+    // seconds; without this the composer just sits there silently.
+    showTopSnackBar(context, AppLocalizations.of(context).videoCompressing);
+    final out = override != null
+        ? await override(bytes)
+        : await video_transcode.transcodeVideoToFit(bytes);
+    if (out == null || out.length > MediaCryptoService.maxBytes) return null;
+    return out;
   }
 
   /// Mixed text+image paste: preventDefault suppressed the native insertion,
@@ -595,18 +672,12 @@ class ChatInputBarState extends State<ChatInputBar>
     _attachment.clear();
     _controller.clear();
     try {
-      final sent = staged.kind == StagedAttachmentKind.video
-          ? await AttachmentHandler.sendVideo(
-              context,
-              videoBytes: staged.bytes,
-              durationSeconds: staged.durationSeconds,
-            )
-          : await AttachmentHandler.sendImage(
-              context,
-              imageBytes: staged.bytes,
-              filename: staged.filename,
-              mimeType: staged.mimeType,
-            );
+      final sent = await AttachmentHandler.sendImage(
+        context,
+        imageBytes: staged.bytes,
+        filename: staged.filename,
+        mimeType: staged.mimeType,
+      );
       if (!mounted) return;
       if (caption.isNotEmpty) {
         if (sent) {
@@ -1340,7 +1411,7 @@ class ChatInputBarState extends State<ChatInputBar>
                   bottomPadding: bottomInteractivePadding,
                   onPingSent: _refocusComposerAfterPing,
                   onStageImage: stagePickedImage,
-                  onStageVideo: stagePickedVideo,
+                  onPickedVideo: sendPickedVideo,
                 ),
               ),
 

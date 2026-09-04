@@ -628,9 +628,18 @@
   "chatPickerOpenTooltip": "Nowy czat",
   "chatPickerInviteButton": "Zaproś kogoś",
   "videoMessage": "Wideo",
-  "videoTooLarge": "Wideo jest za duże (maks. 20 MB)",
-  "videoTooLong": "Wideo jest za długie (maks. 60 sekund)",
+  "videoTooLarge": "Wideo jest za duże ({size} MB, maks. 20 MB)",
+  "@videoTooLarge": {
+    "placeholders": { "size": { "type": "String" } }
+  },
+  "videoTooLong": "Wideo jest za długie ({duration}, maks. 3 minuty)",
+  "@videoTooLong": {
+    "placeholders": { "duration": { "type": "String" } }
+  },
+  "videoCompressing": "Kompresowanie wideo…",
   "videoUnsupportedFormat": "Nieobsługiwany format wideo (tylko MP4)",
+  "videoFailedToLoad": "Nie udało się załadować wideo",
+  "videoStillSending": "Trwa wysyłanie…",
   "attachmentUnsupportedFileType": "Nieobsługiwany typ pliku",
   "chatScrollToBottomSemantics": "Przewiń do najnowszych wiadomości",
   "avatarOpenProfileSemantics": "Otwórz profil"

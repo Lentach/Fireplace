@@ -7,6 +7,7 @@ import 'package:fireplace/providers/encryption_provider.dart';
 import 'package:fireplace/providers/messaging_provider.dart';
 import 'package:fireplace/services/api_service.dart';
 import 'package:fireplace/services/encrypted_media_upload_service.dart';
+import 'package:fireplace/services/media_crypto_service.dart';
 import 'package:fireplace/utils/e2e_diag_log.dart';
 import 'package:fireplace/utils/e2e_envelope.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -43,6 +44,37 @@ class _FakeMediaUpload extends EncryptedMediaUploadService {
     onEncrypted?.call('K', 'IV');
     capturedKey = 'K';
     if (throwOnUpload != null) throw throwOnUpload!;
+    return EncryptedMediaUpload(
+      mediaUrl: 'http://test/media/msgs/x.bin',
+      keyBase64: 'K',
+      ivBase64: 'IV',
+      mediaDuration: duration,
+    );
+  }
+}
+
+/// Simulates a socket reconnect landing while the upload bytes are on the
+/// wire: `onConnect(isReconnect: true)` wipes `_pendingSendContent` and the
+/// exactly-once latch (messaging_provider.dart, "retry was cancelled"), and
+/// the send path resumes to find its entry gone.
+class _ReconnectMidUpload extends EncryptedMediaUploadService {
+  _ReconnectMidUpload(this.onMidUpload)
+    : super(api: ApiService(baseUrl: 'http://test'));
+
+  final void Function() onMidUpload;
+
+  @override
+  Future<EncryptedMediaUpload> encryptAndUpload({
+    required Uint8List bytes,
+    required String token,
+    required String mediaType,
+    int? duration,
+    int? expiresIn,
+    String? fileName,
+    void Function(String keyBase64, String ivBase64)? onEncrypted,
+  }) async {
+    onEncrypted?.call('K', 'IV');
+    onMidUpload();
     return EncryptedMediaUpload(
       mediaUrl: 'http://test/media/msgs/x.bin',
       keyBase64: 'K',
@@ -204,6 +236,119 @@ void main() {
         msg.mediaUrl,
         isNull,
       ); // never patched — upload threw before the patch
+    });
+  });
+
+  group('MessagingProvider media send — video', () {
+    test(
+      'carries geometry and ThumbHash inside the envelope, never in the '
+      'outer emit',
+      () async {
+        final provider = _newProvider();
+        provider.setMediaUploadServiceForTest(_FakeMediaUpload());
+        final encryption = _SendReadyEncryption();
+        provider.setEncryptionProvider(encryption);
+        final emitted = <Map<String, dynamic>>[];
+        provider.setEmitCallback((event, data) {
+          if (event == 'sendMessage') {
+            emitted.add(Map<String, dynamic>.from(data as Map));
+          }
+        });
+
+        final ok = await provider.sendVideoMessage(
+          'tok',
+          Uint8List.fromList([1, 2, 3]),
+          2,
+          duration: 19,
+          width: 360,
+          height: 480,
+          thumbHash: 'video-thumb-hash',
+        );
+
+        expect(ok, isTrue);
+        final outerPayload = emitted.single;
+        expect(outerPayload['messageType'], 'VIDEO');
+        // Geometry is content, not metadata: the server must stay blind to it.
+        expect(outerPayload.containsKey('mediaWidth'), isFalse);
+        expect(outerPayload.containsKey('mediaHeight'), isFalse);
+        expect(outerPayload.containsKey('mediaThumbHash'), isFalse);
+
+        final innerEnvelope = E2eEnvelope.parse(
+          encryption.encryptedPlaintexts.single,
+        );
+        expect(innerEnvelope.mediaWidth, 360);
+        expect(innerEnvelope.mediaHeight, 480);
+        expect(innerEnvelope.mediaThumbHash, 'video-thumb-hash');
+
+        // The durable pending-send record is the only surviving plaintext copy
+        // when the ack is lost, so it must carry the geometry too.
+        final pendingSnapshot =
+            encryption.pendingRecords[outerPayload['encryptedContent']];
+        expect(pendingSnapshot?['mediaWidth'], 360);
+        expect(pendingSnapshot?['mediaHeight'], 480);
+        expect(pendingSnapshot?['mediaThumbHash'], 'video-thumb-hash');
+      },
+    );
+
+    test('optimistic bubble carries geometry before the upload resolves', () async {
+      final provider = _newProvider();
+      provider.setMediaUploadServiceForTest(
+        _FakeMediaUpload(throwOnUpload: Exception('boom')),
+      );
+
+      await provider.sendVideoMessage(
+        'tok',
+        Uint8List.fromList([1, 2, 3]),
+        2,
+        duration: 19,
+        width: 360,
+        height: 480,
+        thumbHash: 'video-thumb-hash',
+      );
+
+      // Upload threw, so mediaUrl was never patched — but the bubble must
+      // still be correctly shaped, because geometry is known before upload.
+      final msg = provider.messages.last;
+      expect(msg.deliveryStatus, MessageDeliveryStatus.failed);
+      expect(msg.mediaUrl, isNull);
+      expect(msg.mediaWidth, 360);
+      expect(msg.mediaHeight, 480);
+      expect(msg.mediaThumbHash, 'video-thumb-hash');
+    });
+
+    test('rejects a clip longer than the duration cap without uploading', () async {
+      final provider = _newProvider();
+      final fake = _FakeMediaUpload();
+      provider.setMediaUploadServiceForTest(fake);
+
+      final ok = await provider.sendVideoMessage(
+        'tok',
+        Uint8List.fromList([1, 2, 3]),
+        2,
+        duration: MediaCryptoService.maxVideoDurationSeconds + 1,
+      );
+
+      expect(ok, isFalse);
+      expect(fake.calls, isEmpty); // backstop fires BEFORE encrypt/upload
+      expect(provider.messages.last.deliveryStatus,
+          MessageDeliveryStatus.failed);
+    });
+
+    test('accepts a clip exactly at the duration cap', () async {
+      final provider = _newProvider();
+      final fake = _FakeMediaUpload();
+      provider.setMediaUploadServiceForTest(fake);
+
+      await provider.sendVideoMessage(
+        'tok',
+        Uint8List.fromList([1, 2, 3]),
+        2,
+        duration: MediaCryptoService.maxVideoDurationSeconds,
+      );
+
+      expect(fake.calls.single['mediaType'], 'video');
+      expect(fake.calls.single['duration'],
+          MediaCryptoService.maxVideoDurationSeconds);
     });
   });
 
@@ -386,6 +531,62 @@ void main() {
       expect(
         E2eDiagLog.entries.where((e) => e.contains('MEDIA_ORPHAN_LIKELY')),
         isEmpty,
+      );
+    });
+  });
+
+  group('reconnect during an in-flight media upload', () {
+    // onConnect(isReconnect: true) clears _pendingSendContent while the
+    // upload await is still pending. The old code then crashed on
+    // `_pendingSendContent[tempId]!` into the generic catch; the contract is
+    // a CLEAN failure — bubble marked failed, send returns false, no emit.
+    test('video send fails cleanly instead of throwing', () async {
+      final provider = _newProvider();
+      provider.setMediaUploadServiceForTest(
+        _ReconnectMidUpload(() => provider.onConnect(true)),
+      );
+      provider.setEncryptionProvider(_SendReadyEncryption());
+      final emitted = <String>[];
+      provider.setEmitCallback((event, data) {
+        if (event == 'sendMessage') emitted.add(event);
+      });
+
+      final ok = await provider.sendVideoMessage(
+        'tok',
+        List<int>.filled(64, 7),
+        2,
+        duration: 5,
+      );
+
+      expect(ok, isFalse);
+      expect(emitted, isEmpty);
+      final msg = provider.messages.last;
+      expect(msg.messageType, MessageType.video);
+      expect(msg.deliveryStatus, MessageDeliveryStatus.failed);
+    });
+
+    test('image send fails cleanly instead of throwing', () async {
+      final provider = _newProvider();
+      provider.setMediaUploadServiceForTest(
+        _ReconnectMidUpload(() => provider.onConnect(true)),
+      );
+      provider.setEncryptionProvider(_SendReadyEncryption());
+      final emitted = <String>[];
+      provider.setEmitCallback((event, data) {
+        if (event == 'sendMessage') emitted.add(event);
+      });
+
+      final ok = await provider.sendImageMessage(
+        'tok',
+        XFile.fromData(Uint8List.fromList([1, 2, 3]), name: 'a.jpg'),
+        2,
+      );
+
+      expect(ok, isFalse);
+      expect(emitted, isEmpty);
+      expect(
+        provider.messages.last.deliveryStatus,
+        MessageDeliveryStatus.failed,
       );
     });
   });

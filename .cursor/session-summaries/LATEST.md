@@ -36,6 +36,8 @@ which holds the full account — **rotating an entry out of this file loses noth
 > permanent record is `.planning/multi-device/` (`FINISH-HERE.md`, `progress.md`, `task_plan.md`),
 > not this file.
 
+**Date:** 2026-09-04 — **`feat/video-messages` IS MERGED INTO MASTER (this commit).** It carried frontend 0.1.22 → 0.1.24 and was what production actually served for three days, at the owner's instruction ("test before merging with production"), while master went on to 0.2.x with the multi-device program. Merging it closes that split: master now contains the video work AND the multi-device work. **The version stays master's `0.2.2` — merging an older release branch must never roll the pubspec back**, and the `light_compressor_v2` dependency the transcode needs is carried over. Six files conflicted, all resolved toward the branch for video behaviour and toward master for versions/counts: `chat_input_bar.sendPickedVideo` took the branch's complete shape (extension gate → size/transcode → single `probeVideoPreview` pass feeding both the duration cap and the geometry/ThumbHash), because master still held the pre-branch staging version whose non-parameterised `videoTooLong`/`videoTooLarge` no longer match the merged ARB. Full accounts: ➡ **`2026-09-01-session-video-messages.md`** (branch deploy) and **`2026-09-01-session-video-player-telegram.md`** (Telegram-style player + native transcode). ⚠️ `feat/passcode-lock` is still UNMERGED and is stacked on the old `feat/video-messages` head — it needs rebasing onto this merge, and its 9 commits touch `signal_stores.dart`, both sealed web stores, `encryption_service.dart` and `encryption_provider.dart`, i.e. multi-device territory.
+
 **Date:** 2026-09-03 (evening) — **0.2.2 IS LIVE (frontend `b73b7cd`, smoke 5/5; backend untouched 0.2.0): (lxxii)
 THE KEYLESS BANNER HAS A RESET DOOR, closing the gap (lxxi) opened** — the refused "start fresh" had been the only
 route from a plain keyless install to the §6.2 reset. The banner's disclosure now carries "Rozpocznij reset" (phrase
@@ -127,37 +129,5 @@ Each fix proven from source → §12 → built → falsified two-way → re-veri
   free: web compile + idle Gradle daemon) — never overlap a release web build with the emulator.
 - Verified: analyze clean · **flutter 1715/10sk (after (lxx) + riders, 09-03)** · verifier OK · backend untouched. Open: a linked device
   cannot know its primary is gone (no server signal until a reset); a locked install can still send.
-
-**Date:** 2026-09-02 — **THE WHOLE MULTI-DEVICE PROGRAMME RAN LIVE ON TWO REAL SURFACES (Pixel 7
-emulator primary + release-web install) — link, fan-out, self-sync both ways, §5.5 revoke, (lxiv)
-relogin, (lxv) re-link recovery — ALL OBSERVED. The 08-31 session's uncommitted (lxv) fix is
-proven end to end and committed; the same run found THREE more defects on that path, fixed under
-owner-ratified (lxvi) (three clauses), each falsified two-way AND re-verified live on rebuilt
-surfaces. Index now (a)–(lxvi). Nothing merged, nothing deployed.** ➡
-**`2026-09-02-session-two-device-live-qa-lxv-lxvi.md`** (environment recipe, DB evidence, the
-four UX observations left for the owner).
-- **(lxv) live:** revoke web #2 → relogin lands on device 1 → `E2E_DEVICE_MISMATCH` banner, device
-  1's `registrationId` **6852 untouched**, zero audit rows, no upload attempted → banner CTA →
-  device-side "Połącz to urządzenie" (dead-end 1 closed) → SAS approve →
-  `LINK_STALE_MATERIAL_DISPOSED → LINK_IDENTITY_ADOPTED` (dead-end 2 closed) → device 3, stamp 3,
-  messaging works. Fan-out/self-sync proven by `message_envelopes` rows (1601: 693/1+693/2; 1602:
-  693/1+694/1; 1603: 693/2+694/1).
-- **(lxvi) c1 — remote revoke while a chat is open painted a blank GREY page** (twice; empty
-  semantics, no error): the pushed `ChatDetailScreen` outlived `AuthGate`'s swap and sat over the
-  (lxiv) notice. `AuthGate` now pops the root navigator on the logged-in→out transition.
-- **(lxvi) c2 — after re-link, rows this install had ALREADY decrypted showed "Wysłana przed
-  połączeniem tego urządzenia" with the plaintext on disk** — the (lxv) "messages stay" sentence
-  held in storage, not display. `_hasUsableDecryptedContent` counted the `none_for_device`
-  sentinel as usable, so hydration never read the sealed copy. Sentinel is now a placeholder.
-- **(lxvi) c3 — system back (gesture/hardware/browser) skipped the ceremony cancel on BOTH link
-  screens**; only the arrow cancelled. Reopening showed the previous ceremony's `done`; a
-  new device backing out mid-SAS left a stage the primary could still approve (I1). `PopScope`.
-- Suite **1675/10sk**, analyze clean, verifier OK; backend untouched. ⚠️ Process: one
-  falsification silently did NOT land (multi-line call vs. regex — the HANDOFF §10 trap) and
-  its test stayed green; caught by counting surviving call sites, redone with the mutation
-  printed. **Print the mutated line every time.**
-- Left for the owner (recorded, not changed): keyless banner offers only "Zacznij od nowa"
-  (never "link"); keyless Devices screen shows red chain-invalid; Devices screen stale until
-  re-entry after a ceremony; linked device offered the primary flow (fails closed `linkNoDak`).
 
 - **Still binding, from the rolled-off 2026-08-21 T6 entry** (full text in `2026-08-21-session-t6-revocation.md`, closure in decision record §11, settlement spec §12 **(xxi)–(xxix)**): **a LOCKOUT lives in this area — login used to hardcode `deviceId = 1` (`auth.service.ts:74`), so the moment a reset revoked device 1 the correct password minted a token for a revoked device and both session gates correctly refused it.** Login resolves the LIVE PRIMARY (`DevicesService.resolveLoginDeviceId`); the regression test names the lockout. **The session gates deny only on an EXPLICIT `revokedAt` (xxii)** — a MISSING `devices` row must NEVER deny, or the whole pre-Phase-1 install base loses access; that is deliberately the inverse polarity of `DevicesService.isActive`, which gates key-material uploads and must fail closed on absence. **Both predicates stay; do not unify them.** **I6 silence is a separate rule from rejection (xxiii):** `getServedMessageIds` answers a revoked device with NOTHING — an empty list would mean "destroy all of them". **`account_authorizations` is REPLACED, never dropped (xxix)**, and the replacement is admitted only when the STORED enrollment no longer verifies under the account's CURRENT published identity — self-verifying, so no flag and no nullable state (this is the hook T10's (xlv) finally used). **The accept-side gate ((e)/(xxvii)) withholds on VERIFIED data only and its refusals are never terminal**; when the fetch itself FAILS, withholding applies to `originDeviceId >= 2` only, or one broken `getDeviceList` answer silences every conversation of a single-device account. **⚠️ THE APP-PROOF EARNED ITS KEEP:** the revoke button failed live with NOTHING in the server log — `revokeDevice` never armed its DAK from the Keystore, so `signList` threw before any emit, **and the unit suite was green because it pre-armed the engine — a test that could not fail.** Drive the production path.

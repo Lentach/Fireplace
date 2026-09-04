@@ -2939,20 +2939,38 @@ abstract class AppLocalizations {
   /// No description provided for @videoTooLarge.
   ///
   /// In pl, this message translates to:
-  /// **'Wideo jest za duże (maks. 20 MB)'**
-  String get videoTooLarge;
+  /// **'Wideo jest za duże ({size} MB, maks. 20 MB)'**
+  String videoTooLarge(String size);
 
   /// No description provided for @videoTooLong.
   ///
   /// In pl, this message translates to:
-  /// **'Wideo jest za długie (maks. 60 sekund)'**
-  String get videoTooLong;
+  /// **'Wideo jest za długie ({duration}, maks. 3 minuty)'**
+  String videoTooLong(String duration);
+
+  /// No description provided for @videoCompressing.
+  ///
+  /// In pl, this message translates to:
+  /// **'Kompresowanie wideo…'**
+  String get videoCompressing;
 
   /// No description provided for @videoUnsupportedFormat.
   ///
   /// In pl, this message translates to:
   /// **'Nieobsługiwany format wideo (tylko MP4)'**
   String get videoUnsupportedFormat;
+
+  /// No description provided for @videoFailedToLoad.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się załadować wideo'**
+  String get videoFailedToLoad;
+
+  /// No description provided for @videoStillSending.
+  ///
+  /// In pl, this message translates to:
+  /// **'Trwa wysyłanie…'**
+  String get videoStillSending;
 
   /// No description provided for @attachmentUnsupportedFileType.
   ///

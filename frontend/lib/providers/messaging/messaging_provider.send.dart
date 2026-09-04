@@ -235,7 +235,11 @@ extension MessagingSend on MessagingProvider {
       }
       final preview = await _extractMediaPreviewMetadata(rawBytes);
       if (preview != null) {
-        _pendingSendContent[tempId]!.addAll({
+        // Same reconnect-clears-the-map hazard as after the upload await:
+        // readAsBytes + preview extraction are awaits too.
+        final pending = _pendingAfterUpload(tempId);
+        if (pending == null) return false;
+        pending.addAll({
           'mediaWidth': preview.width,
           'mediaHeight': preview.height,
           if (preview.thumbHash != null) 'mediaThumbHash': preview.thumbHash,
@@ -268,7 +272,9 @@ extension MessagingSend on MessagingProvider {
           };
         },
       );
-      _pendingSendContent[tempId]!['mediaUrl'] = upload.mediaUrl;
+      final pending = _pendingAfterUpload(tempId);
+      if (pending == null) return false;
+      pending['mediaUrl'] = upload.mediaUrl;
 
       final idx = _messages.indexWhere((m) => m.tempId == tempId);
       if (idx != -1) {
@@ -394,7 +400,9 @@ extension MessagingSend on MessagingProvider {
       );
 
       final serverDuration = upload.mediaDuration ?? duration;
-      _pendingSendContent[tempId]!['mediaUrl'] = upload.mediaUrl;
+      final pending = _pendingAfterUpload(tempId);
+      if (pending == null) return;
+      pending['mediaUrl'] = upload.mediaUrl;
 
       final index = _messages.indexWhere((m) => m.tempId == tempId);
       if (index != -1) {
@@ -432,8 +440,14 @@ extension MessagingSend on MessagingProvider {
   /// Send a video message. Mirrors [sendVoiceMessage]/[sendFileMessage]:
   /// optimistic bubble, AES-GCM encrypt+upload (keys stashed into
   /// _pendingSendContent BEFORE any await — durability invariant), then the
-  /// E2E envelope send. [duration] is seconds, when the picker knows it
-  /// (native gallery picks and some web files don't expose it — omitted then).
+  /// E2E envelope send.
+  ///
+  /// [duration], [width], [height] and [thumbHash] come from the composer's
+  /// single `probeVideoPreview` pass — the provider deliberately does NOT
+  /// re-probe, because loading a multi-megabyte clip into a decoder twice
+  /// costs seconds on a phone. Each is omitted when the platform could not
+  /// read it; [width]/[height] drive the receiving bubble's aspect ratio and
+  /// [thumbHash] its placeholder, exactly as for images and GIFs.
   ///
   /// Returns true only AFTER the video's `sendMessage` socket emit (same
   /// caption-ordering contract as [sendImageMessage]); false = failed before
@@ -443,6 +457,9 @@ extension MessagingSend on MessagingProvider {
     List<int> videoBytes,
     int recipientId, {
     int? duration,
+    int? width,
+    int? height,
+    String? thumbHash,
   }) async {
     final activeConversationId = _conversationsProvider?.activeConversationId;
     if (activeConversationId == null || _currentUserId == null) return false;
@@ -462,12 +479,18 @@ extension MessagingSend on MessagingProvider {
         effectiveExpiresIn: effectiveExpiresIn,
         effectiveReplyToId: effectiveReplyToId,
         mediaDuration: duration,
+        mediaWidth: width,
+        mediaHeight: height,
+        mediaThumbHash: thumbHash,
       ),
     );
     _pendingSendContent[tempId] = <String, dynamic>{
       'content': '',
       'messageType': 'VIDEO',
       'mediaDuration': ?duration,
+      'mediaWidth': ?width,
+      'mediaHeight': ?height,
+      'mediaThumbHash': ?thumbHash,
     };
     _clearReplyingToAfterSendStart();
     notifyListeners();
@@ -477,11 +500,16 @@ extension MessagingSend on MessagingProvider {
         _markMessageFailed(tempId, 'Video too large (max 20 MB)');
         return false;
       }
-      // Client policy: 60 s cap. The composer already rejects with a toast
-      // when it knows the duration; this is the defensive backstop for
-      // programmatic callers.
-      if (duration != null && duration > 60) {
-        _markMessageFailed(tempId, 'Video too long (max 60 seconds)');
+      // Client policy: MediaCryptoService.maxVideoDurationSeconds. The
+      // composer already rejects with a toast when it knows the duration;
+      // this is the defensive backstop for programmatic callers.
+      if (duration != null &&
+          duration > MediaCryptoService.maxVideoDurationSeconds) {
+        _markMessageFailed(
+          tempId,
+          'Video too long (max '
+          '${MediaCryptoService.maxVideoDurationSeconds} seconds)',
+        );
         return false;
       }
 
@@ -496,13 +524,18 @@ extension MessagingSend on MessagingProvider {
             'content': '',
             'messageType': 'VIDEO',
             'mediaDuration': ?duration,
+            'mediaWidth': ?width,
+            'mediaHeight': ?height,
+            'mediaThumbHash': ?thumbHash,
             'mediaKey': key,
             'mediaIv': iv,
           };
         },
       );
       final serverDuration = upload.mediaDuration ?? duration;
-      _pendingSendContent[tempId]!['mediaUrl'] = upload.mediaUrl;
+      final pending = _pendingAfterUpload(tempId);
+      if (pending == null) return false;
+      pending['mediaUrl'] = upload.mediaUrl;
 
       final idx = _messages.indexWhere((m) => m.tempId == tempId);
       if (idx != -1) {
@@ -526,12 +559,39 @@ extension MessagingSend on MessagingProvider {
         mediaDuration: serverDuration,
         mediaKey: upload.keyBase64,
         mediaIv: upload.ivBase64,
+        mediaWidth: width,
+        mediaHeight: height,
+        mediaThumbHash: thumbHash,
       );
-    } catch (e) {
-      debugPrint('[MessagingProvider] Video send failed: $e');
+    } catch (e, st) {
+      debugPrint('[MessagingProvider] Video send failed: $e\n$st');
       _markMessageFailed(tempId, 'Video send failed: ${e.toString()}');
       return false;
     }
+  }
+
+  /// Post-await guard for every media send path — used after ANY await that
+  /// precedes a `_pendingSendContent[tempId]` write (file read, preview
+  /// extraction, Giphy download, the upload itself).
+  ///
+  /// The reconnect handler wipes `_pendingSendContent` AND the exactly-once
+  /// latch (`messaging_provider.dart` onConnect(isReconnect: true) — a
+  /// reconnect cancels any queued retry). A send that was IN FLIGHT across
+  /// that reconnect resumes here to find its entry gone. Proceeding anyway
+  /// would emit with reset exactly-once state; indexing with `!` (the old
+  /// code) crashed into the generic catch. The only safe move is to fail the
+  /// bubble cleanly for a manual retry.
+  ///
+  /// Returns the live entry, or null after marking the message failed.
+  Map<String, dynamic>? _pendingAfterUpload(String tempId) {
+    final pending = _pendingSendContent[tempId];
+    if (pending == null) {
+      _markMessageFailed(
+        tempId,
+        'Connection was reset during send. Please retry.',
+      );
+    }
+    return pending;
   }
 
   /// Send a GIF message. Downloads from Giphy, encrypts bytes, uploads blob, E2E envelope.
@@ -581,7 +641,12 @@ extension MessagingSend on MessagingProvider {
       }
       final preview = await _extractMediaPreviewMetadata(gifBytes);
       if (preview != null) {
-        _pendingSendContent[tempId]!.addAll({
+        // Giphy download + preview extraction sit before this write; a
+        // reconnect in that window cleared the map (same hazard as post-
+        // upload).
+        final pending = _pendingAfterUpload(tempId);
+        if (pending == null) return;
+        pending.addAll({
           'mediaWidth': preview.width,
           'mediaHeight': preview.height,
           if (preview.thumbHash != null) 'mediaThumbHash': preview.thumbHash,
@@ -615,7 +680,9 @@ extension MessagingSend on MessagingProvider {
           };
         },
       );
-      _pendingSendContent[tempId]!['mediaUrl'] = upload.mediaUrl;
+      final pending = _pendingAfterUpload(tempId);
+      if (pending == null) return;
+      pending['mediaUrl'] = upload.mediaUrl;
 
       final idx = _messages.indexWhere((m) => m.tempId == tempId);
       if (idx != -1) {
@@ -703,7 +770,9 @@ extension MessagingSend on MessagingProvider {
           };
         },
       );
-      _pendingSendContent[tempId]!['mediaUrl'] = upload.mediaUrl;
+      final pending = _pendingAfterUpload(tempId);
+      if (pending == null) return;
+      pending['mediaUrl'] = upload.mediaUrl;
 
       final idx = _messages.indexWhere((m) => m.tempId == tempId);
       if (idx != -1) {

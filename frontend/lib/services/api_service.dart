@@ -37,7 +37,21 @@ class ApiService {
   // That is the point: the caller stops waiting and its existing failure path
   // becomes reachable.
   static const Duration _kAuthTimeout = Duration(seconds: 15);
+
+  /// Avatar upload: bounded server-side at 5 MB, so 60 s is generous.
   static const Duration _kMediaTimeout = Duration(seconds: 60);
+
+  /// Encrypted chat media (upload AND fetch). Deliberately far longer than
+  /// [_kMediaTimeout]: these payloads run to [MediaCryptoService.maxBytes] and
+  /// the deadline is a hard cap on the WHOLE request, not an idle timeout, so
+  /// a slow-but-progressing transfer gets killed by a tight budget. At 20 MB
+  /// a 60 s deadline needs ~2.8 Mbps sustained; 180 s tolerates ~0.9 Mbps.
+  ///
+  /// The fetch side matters more than the upload: `fetchMediaBytes` buffers
+  /// the whole file with no streaming and no resume, so a timeout there is not
+  /// a slow video — it is a permanently unplayable one.
+  static const Duration _kLargeMediaTimeout = Duration(seconds: 180);
+
   static const Duration _kDefaultTimeout = Duration(seconds: 20);
 
   ApiService({required this.baseUrl, http.Client? httpClient})
@@ -417,7 +431,7 @@ class ApiService {
       ),
     );
 
-    final response = await _sendMultipart(request, _kMediaTimeout);
+    final response = await _sendMultipart(request, _kLargeMediaTimeout);
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception(_errorMessage(response, 'Upload failed'));
     }
@@ -534,7 +548,7 @@ class ApiService {
         : <String, String>{};
     final response = await _httpClient
         .get(Uri.parse(resolved), headers: headers)
-        .timeout(_kMediaTimeout);
+        .timeout(_kLargeMediaTimeout);
     if (response.statusCode != 200) {
       throw Exception('Media fetch failed: ${response.statusCode}');
     }
