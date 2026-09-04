@@ -132,6 +132,14 @@ class SealedWebContentKv implements ContentKv {
       // hiccup misread as "keys gone" would retire the whole history.
       throw const ContentStoreUnavailable('inventory');
     }
+    if (inventory.lockedKeyCount > 0) {
+      // Passcode-wrapped keys are present but cannot be opened. Unlike a
+      // genuinely unavailable store this must NOT degrade to the plaintext
+      // backend (see `ContentStoreUnavailable.locked`) — nor may the fold
+      // below run, because every sealed row would look key-less and get
+      // retired as proven loss.
+      throw const ContentStoreUnavailable('locked', locked: true);
+    }
     _knownKeys = Map<String, Uint8List>.of(inventory.keys);
 
     final sealedRows = <String, SealedWebEnvelope>{};

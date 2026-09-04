@@ -9,6 +9,7 @@ import 'package:shared_preferences_platform_interface/shared_preferences_platfor
 import 'package:shared_preferences_platform_interface/types.dart';
 
 import 'package:fireplace/services/encryption/content_key_manager.dart';
+import 'package:fireplace/services/encryption/content_key_wrap.dart';
 import 'package:fireplace/services/encryption/content_kv.dart';
 import 'package:fireplace/services/encryption/content_kv_opener_stub.dart'
     as web_opener;
@@ -218,6 +219,37 @@ void main() {
     sealer: sealer,
     lock: lock,
   );
+
+  // Phase 2: a passcode-wrapped content key whose vault is locked. The
+  // plaintext fallback in `content_kv_opener_stub.dart` is correct for a
+  // genuinely unavailable store, but taking it while LOCKED would write the
+  // decrypted-message cache in cleartext with the app still locked — so the
+  // exception has to say "locked" and the opener has to refuse to fall back.
+  Future<SealedWebContentKv> openStoreLocked() => SealedWebContentKv.open(
+    prefs: prefs,
+    keys: ContentKeyManager(
+      secure,
+      wrap: ContentKeyWrap(sealer: sealer),
+    ),
+    sealer: sealer,
+    lock: null,
+  );
+
+  group('passcode-wrapped keys (Phase 2)', () {
+    test('a locked key is unavailable-and-locked, never a plaintext fallback',
+        () async {
+      secure.store['fp_content_key_kidA'] = 'fpwk1:kek1:AQIDBA==';
+
+      await expectLater(
+        openStoreLocked(),
+        throwsA(
+          isA<ContentStoreUnavailable>()
+              .having((e) => e.stage, 'stage', 'locked')
+              .having((e) => e.locked, 'locked', isTrue),
+        ),
+      );
+    });
+  });
 
   Future<String> envelopeOf(
     String kid,

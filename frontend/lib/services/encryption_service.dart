@@ -1012,6 +1012,17 @@ class EncryptionService {
         'userId': userId,
       });
     }
+    // DURABLE on purpose: this is the one branch that mints a new Signal
+    // identity, and until 2026-09-04 it left only a debugPrint, so a
+    // misclassification could be inferred in the field solely from the
+    // peer identity-change cascade it caused hours later. Every guard
+    // above records its refusal; the action itself has to record too.
+    E2ePersistentDiag.record('IDENTITY_MINTED', {
+      'userId': userId,
+      'reason': guard.exists
+          ? 'server-bundle-unlocked-remint'
+          : 'absent-no-residue-server-says-none',
+    });
     debugPrint('[EncryptionService] Generating new keys (fresh install)');
     await _generateKeys();
     needsKeyUpload = true;

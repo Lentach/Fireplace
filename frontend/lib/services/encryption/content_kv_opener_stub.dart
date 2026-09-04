@@ -45,6 +45,16 @@ Future<ContentKv> _open() async {
       sealer: AesGcmContentSealer(),
     );
   } on ContentStoreUnavailable catch (e) {
+    if (e.locked) {
+      // Phase 2: wrapped keys present, vault locked. Falling back here would
+      // write the decrypted-message cache in cleartext while the app is still
+      // locked. Rethrow so E2E stays down until the user unlocks, and DO NOT
+      // memoize a broken store — `_memo` is cleared so the next attempt (post
+      // unlock) opens the sealed backend for real.
+      _memo = null;
+      E2ePersistentDiag.record('CONTENT_STORE_LOCKED', const {});
+      rethrow;
+    }
     // Fallback = the pre-sealing behavior, loudly diagnosed. Status quo
     // plaintext with a diag beats a store that pretends to be sealed. The
     // `web-` stage prefix keeps this stream separable from Android's.

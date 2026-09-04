@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 
 import '../secure_kv.dart';
+import 'content_key_wrap.dart';
 
 /// Owns the at-rest keys of the native encrypted content store.
 ///
@@ -36,8 +37,12 @@ import '../secure_kv.dart';
 /// deleted account's rows are shredded by the rotation that its row removals
 /// stamp, not by deleting the shared key.
 class ContentKeyManager {
-  ContentKeyManager(this._secure, {String keyPrefix = contentKeyPrefix})
-    : _keyPrefix = keyPrefix;
+  ContentKeyManager(
+    this._secure, {
+    String keyPrefix = contentKeyPrefix,
+    ContentKeyWrap? wrap,
+  }) : _keyPrefix = keyPrefix,
+       _wrap = wrap;
 
   final SecureKv _secure;
 
@@ -46,6 +51,11 @@ class ContentKeyManager {
   /// namespace so content-key rotation/shredding can never destroy a key
   /// Signal rows still need (docs/design/web-sig-sealing.md §3.2).
   final String _keyPrefix;
+
+  /// Passcode-derived wrap for this family's keys, or null when wrapping is
+  /// off (native builds, and web before the user enables Phase 2). See
+  /// `content_key_wrap.dart` for why only the KEYS are wrapped.
+  final ContentKeyWrap? _wrap;
 
   static const String dbKeyName = 'fp_content_db_key_v1';
   static const String contentKeyPrefix = 'fp_content_key_';
@@ -88,13 +98,14 @@ class ContentKeyManager {
     }
   }
 
-  /// Every content key currently held, or null when secure storage could not
-  /// be ENUMERATED — and the difference is load-bearing. A transient read
-  /// failure (Keystore not ready, device still locked after boot, plugin init
-  /// race — all real on Android) must never be read as "the keys are gone":
-  /// that misreading would retire the entire history over a hiccup. Null
-  /// means "answer unknown, change nothing"; a successfully enumerated map
-  /// that lacks a kid is the only evidence of genuine key loss.
+  /// Every content key currently USABLE, plus how many are present but
+  /// locked, or null when secure storage could not be ENUMERATED — and all
+  /// three answers are load-bearing. A transient read failure (Keystore not
+  /// ready, device still locked after boot, plugin init race — all real on
+  /// Android) must never be read as "the keys are gone": that misreading
+  /// would retire the entire history over a hiccup. Null means "answer
+  /// unknown, change nothing"; a successfully enumerated map that lacks a kid
+  /// is the only evidence of genuine key loss.
   ///
   /// [otherEntryCount] reports how many NON-content entries the enumeration
   /// saw (Signal keys live in the same store, so any real device has some).
@@ -102,13 +113,22 @@ class ContentKeyManager {
   /// the caller as unavailable-not-wiped, because a wiped secure store also
   /// means a wiped Signal identity — a different failure with its own path.
   ///
-  /// Entries that fail to parse are dropped (a corrupt value cannot decrypt
-  /// anything anyway; reporting it as present would just turn key-loss
-  /// detection off).
+  /// [KeyInventory.lockedKeyCount] counts passcode-wrapped keys this process
+  /// cannot open right now (`ContentKeyWrap` locked, wrong KEK, damaged
+  /// envelope). It exists because the alternative — dropping them like any
+  /// other unparseable value — makes a locked device look like a device with
+  /// NO keys, and a device with no keys and no sealed rows mints a fresh key
+  /// or falls back to plaintext. Callers MUST treat a non-zero count as
+  /// unavailable-not-absent, whatever the sealed-row probe says.
+  ///
+  /// Entries that fail to parse and are NOT envelopes are dropped (a corrupt
+  /// raw value cannot decrypt anything anyway; reporting it as present would
+  /// just turn key-loss detection off).
   Future<KeyInventory?> inventory() async {
     try {
       final keys = <String, Uint8List>{};
       var others = 0;
+      var locked = 0;
       final all = await _secure.readAll();
       for (final entry in all.entries) {
         if (!entry.key.startsWith(_keyPrefix)) {
@@ -116,12 +136,26 @@ class ContentKeyManager {
           continue;
         }
         final kid = entry.key.substring(_keyPrefix.length);
+        if (kid.isEmpty) continue;
+        if (WrappedContentKey.isEnvelope(entry.value)) {
+          final opened = await _wrap?.unwrapKey(entry.value);
+          if (opened != null && opened.length == 32) {
+            keys[kid] = opened;
+          } else {
+            locked++;
+          }
+          continue;
+        }
         final bytes = _fromHex(entry.value);
-        if (kid.isNotEmpty && bytes != null && bytes.length == 32) {
+        if (bytes != null && bytes.length == 32) {
           keys[kid] = bytes;
         }
       }
-      return KeyInventory(keys: keys, otherEntryCount: others);
+      return KeyInventory(
+        keys: keys,
+        otherEntryCount: others,
+        lockedKeyCount: locked,
+      );
     } catch (_) {
       return null;
     }
@@ -131,17 +165,27 @@ class ContentKeyManager {
   /// could not be proven durable (in which case any partial entry is removed
   /// best-effort and nothing may be sealed under it).
   ///
+  /// Under wrapping, minting while LOCKED returns null instead of writing a
+  /// raw key: a key minted while locked would be readable without the
+  /// passcode, which is precisely the door Phase 2 closes. It is also the
+  /// path a mis-set `lockedKeyCount` would take, so it fails closed twice.
+  ///
   /// The kid embeds a time component only to be unique and debuggable; nothing
   /// parses it.
   Future<String?> mintContentKey() async {
+    final wrap = _wrap;
+    if (wrap != null && wrap.isLocked) return null;
+
     final kid =
         'k${DateTime.now().toUtc().millisecondsSinceEpoch}${_rng.nextInt(0xffff)}';
     final name = '$_keyPrefix$kid';
-    final hex = _toHex(_randomBytes(32));
+    final raw = _randomBytes(32);
+    final stored = wrap == null ? _toHex(raw) : await wrap.wrapKey(raw);
+    if (stored == null) return null;
     try {
-      await _secure.write(name, hex);
+      await _secure.write(name, stored);
       final readBack = await _secure.read(name);
-      if (readBack != hex) {
+      if (readBack != stored) {
         try {
           await _secure.delete(name);
         } catch (_) {}
@@ -200,7 +244,16 @@ class ContentKeyManager {
 /// [ContentKeyManager.inventory] for why failure is a distinct null, not an
 /// empty map.
 class KeyInventory {
-  const KeyInventory({required this.keys, required this.otherEntryCount});
+  const KeyInventory({
+    required this.keys,
+    required this.otherEntryCount,
+    this.lockedKeyCount = 0,
+  });
+
+  /// Passcode-wrapped keys this process cannot open right now. Non-zero means
+  /// unavailable-not-absent: callers MUST NOT mint, MUST NOT fall back to a
+  /// plaintext store, and MUST NOT let an identity read resolve to `absent`.
+  final int lockedKeyCount;
 
   final Map<String, Uint8List> keys;
   final int otherEntryCount;

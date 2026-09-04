@@ -148,6 +148,15 @@ class SealedWebSignalKv implements SigWebKv {
       }
     }
 
+    // Phase 2 (passcode-wrapped keys): LOCKED outranks the sealed-row probe.
+    // A wrapped key we cannot open is present, not missing, so every branch
+    // below — mint a fresh kid, or declare a plaintext fallback legal — would
+    // seal over live material or hand the identity read an `absent` it must
+    // never see. Down this session; the key comes back on unlock.
+    if (inventory != null && inventory.lockedKeyCount > 0) {
+      throw const SigSealOpenUnavailable('locked', fallbackLegal: false);
+    }
+
     if (inventory == null) {
       if (all == null) {
         throw const SigSealOpenUnavailable('probe', fallbackLegal: false);

@@ -162,10 +162,18 @@ class PrefsContentKv implements ContentKv {
 /// the native store, so the web opener can use it without pulling the
 /// drift/SQLCipher backend into a web build.
 class ContentStoreUnavailable implements Exception {
-  const ContentStoreUnavailable(this.stage);
+  const ContentStoreUnavailable(this.stage, {this.locked = false});
 
   final String stage;
 
+  /// True when the store could not be armed because passcode-wrapped keys are
+  /// present but LOCKED. The caller must NOT fall back to the plaintext
+  /// backend in that case: the decrypted-message cache would be written in
+  /// cleartext while the app is still locked, which inverts the whole point
+  /// of wrapping. Fail closed and wait for the unlock instead.
+  final bool locked;
+
   @override
-  String toString() => 'ContentStoreUnavailable($stage)';
+  String toString() =>
+      'ContentStoreUnavailable($stage${locked ? ', locked' : ''})';
 }

@@ -126,9 +126,18 @@ void main() {
   });
 
   test('identity absent + enumeration SUCCEEDING empty still regenerates '
-      '(fresh installs must keep working)', () async {
+      '(fresh installs must keep working), and says so DURABLY', () async {
     await service.initialize(37, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
     expect(storage.store.keys, contains('e2e_37_identity_record_v1'));
+    // Until 2026-09-04 the only trace of a mint was a debugPrint, so a
+    // misclassification that minted over a surviving install could only be
+    // inferred afterwards from a peer identity-change cascade. Phase 2 makes
+    // the local key material passcode-wrapped, which adds a brand-new way to
+    // reach this branch wrongly, so the mint has to be visible in the field.
+    expect(
+      E2ePersistentDiag.entries.where((e) => e.contains('IDENTITY_MINTED')),
+      hasLength(1),
+    );
   });
 
   test('identity absent + surviving session rows + server bundle exists '

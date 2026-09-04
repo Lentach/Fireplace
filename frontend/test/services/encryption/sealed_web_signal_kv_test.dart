@@ -1,10 +1,12 @@
 import 'dart:typed_data';
+import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart'
     show SignalProtocolAddress;
 
 import 'package:fireplace/services/encryption/content_key_manager.dart';
+import 'package:fireplace/services/encryption/content_key_wrap.dart';
 import 'package:fireplace/services/encryption/content_sealer.dart';
 import 'package:fireplace/services/encryption/sealed_sig_envelope.dart';
 import 'package:fireplace/services/encryption/sealed_web_signal_kv.dart';
@@ -186,6 +188,73 @@ void main() {
   void seedKey([String kid = 'k1']) {
     secure.store['${ContentKeyManager.sigKeyPrefix}$kid'] = _hex64;
   }
+
+  /// Phase 2: a passcode-wrapped sig key on a device whose vault is locked.
+  void seedLockedKey({String kid = 'k1'}) {
+    final writer = ContentKeyWrap(sealer: sealer)
+      ..unlock(kek: Uint8List(32), kekId: 'kek1');
+    // Wrapped with the fake sealer, then abandoned: nothing in this test can
+    // open it, which is exactly the locked-device shape.
+    secure.store['${ContentKeyManager.sigKeyPrefix}$kid'] = 'fpwk1:kek1:'
+        '${base64Encode(Uint8List.fromList([1, 2, 3, 4]))}';
+    writer.lock();
+  }
+
+  Future<SealedWebSignalKv> openStoreLocked() => SealedWebSignalKv.open(
+    inner: inner(),
+    keys: ContentKeyManager(
+      secure,
+      keyPrefix: ContentKeyManager.sigKeyPrefix,
+      wrap: ContentKeyWrap(sealer: sealer),
+    ),
+    sealer: sealer,
+    lock: lock.run,
+  );
+
+  group('passcode-wrapped keys (Phase 2)', () {
+    // THE catastrophe test. A locked key with ZERO sealed rows is the state
+    // where every pre-Phase-2 branch does something destructive: the sig
+    // store would mint a fresh key and seal over the real one, or declare a
+    // plaintext fallback legal — after which the identity reads `absent` and
+    // `EncryptionService` mints a new Signal identity. Locked must outrank
+    // the sealed-row probe entirely.
+    test('locked keys refuse fallback and refuse to mint, even with ZERO '
+        'sealed rows on disk', () async {
+      seedLockedKey();
+
+      await expectLater(
+        openStoreLocked(),
+        throwsA(
+          isA<SigSealOpenUnavailable>()
+              .having((e) => e.fallbackLegal, 'fallbackLegal', isFalse)
+              .having((e) => e.stage, 'stage', 'locked'),
+        ),
+      );
+      expect(
+        secure.store.keys.where(
+          (k) => k.startsWith(ContentKeyManager.sigKeyPrefix),
+        ),
+        hasLength(1),
+        reason: 'nothing may be minted while the vault is locked',
+      );
+    });
+
+    test('locked keys refuse fallback with sealed rows present too', () async {
+      seedKey();
+      final kv = await openStore();
+      await kv.write(sessionKey, 'live-ratchet');
+      secure.store.clear();
+      seedLockedKey();
+
+      await expectLater(
+        openStoreLocked(),
+        throwsA(
+          isA<SigSealOpenUnavailable>()
+              .having((e) => e.fallbackLegal, 'fallbackLegal', isFalse),
+        ),
+      );
+    });
+  });
 
   group('seam', () {
     test('sealed family seals on write, unseals on read; envelope on disk',
