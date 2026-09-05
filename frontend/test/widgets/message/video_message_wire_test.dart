@@ -223,14 +223,16 @@ void main() {
       final close = find.byKey(const ValueKey('video_fullscreen_close'));
       expect(close, findsOneWidget);
 
-      // Slow drag over a third of the screen, no fling.
+      // Slow drag over a third of the screen: 3.5 % of the height per
+      // 100 ms ≈ 200 px/s on the 600 px test surface, well under the 700 px/s
+      // fling threshold, so the DISTANCE rule is what dismisses here.
       final start = tester.getCenter(find.byType(Dialog));
       final height = tester.view.physicalSize.height /
           tester.view.devicePixelRatio;
       final gesture = await tester.startGesture(start);
       for (var i = 0; i < 10; i++) {
         await gesture.moveBy(Offset(0, height * 0.035));
-        await tester.pump(const Duration(milliseconds: 16));
+        await tester.pump(const Duration(milliseconds: 100));
       }
       await gesture.up();
       await tester.pumpAndSettle();
