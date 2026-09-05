@@ -417,9 +417,20 @@ class _VideoMessageContentState extends State<VideoMessageContent>
               // above (reproduced on the emulator: the touch targets
               // `VIDEO[flt-platform-view]`, the paused bubble's targets
               // `FLUTTER-VIEW`). The interceptor is a transparent DOM layer
-              // above the video that hands the events back to Flutter.
+              // above the video that hands the events back to Flutter. The
+              // tap target MUST be its child: the interceptor's own render
+              // box is a platform view too, whose recognizer wins the arena
+              // sweep over any ancestor detector (second emulator round:
+              // the touch hit `DIV[flt-platform-view]` and nothing opened).
               // Native: plain passthrough.
-              if (playing) PointerInterceptor(child: const SizedBox.expand()),
+              if (playing)
+                PointerInterceptor(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _openFullscreen,
+                    child: const SizedBox.expand(),
+                  ),
+                ),
               if (!playing) const Center(child: _PlayBadge()),
               // Telegram layout: the clip's own chrome sits top-left, so the
               // bubble's time/ticks keep the bottom-right corner to
