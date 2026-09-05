@@ -111,5 +111,41 @@ void main() {
         throwsA(isA<Exception>()),
       );
     });
+
+    test(
+      'keyed media: the AES-GCM tag fits under the cap, one byte more does '
+      'not',
+      () async {
+        // The sender gates the PLAINTEXT at maxBytes; the ciphertext it
+        // uploads is 16 bytes longer. A receiver that compared the
+        // ciphertext against maxBytes refused every clip in the last 16
+        // bytes under the cap — sent fine, never played anywhere.
+        final crypto = _FakeCrypto();
+        final atTag = _FakeApi(Uint8List(MediaCryptoService.maxBytes + 16));
+        final out = await loadDecryptedMediaBytes(
+          url: 'u',
+          token: 't',
+          key: 'k',
+          iv: 'i',
+          api: atTag,
+          crypto: crypto,
+        );
+        expect(out, [9, 9, 9]);
+        expect(crypto.called, isTrue);
+
+        final overTag = _FakeApi(Uint8List(MediaCryptoService.maxBytes + 17));
+        expect(
+          () => loadDecryptedMediaBytes(
+            url: 'u',
+            token: 't',
+            key: 'k',
+            iv: 'i',
+            api: overTag,
+            crypto: _FakeCrypto(),
+          ),
+          throwsA(isA<Exception>()),
+        );
+      },
+    );
   });
 }

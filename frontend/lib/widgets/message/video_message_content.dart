@@ -189,13 +189,19 @@ class _VideoMessageContentState extends State<VideoMessageContent>
     return (visible / height).clamp(0.0, 1.0);
   }
 
-  /// Diag steps already recorded by THIS bubble — one per step, so a scroll
-  /// pass over a long chat cannot flood the 80-record durable log.
+  /// Diag step+reason pairs already recorded by THIS bubble — one per pair,
+  /// so a scroll pass over a long chat cannot flood the 80-record durable
+  /// log, while a bubble that is first below threshold and later ineligible
+  /// still reports both.
   final Set<String> _diagOnce = {};
 
-  void _diag(String step, Map<String, dynamic> data) {
-    if (!_diagOnce.add(step)) return;
-    E2ePersistentDiag.record(step, {'msgId': widget.message.id, ...data});
+  void _diag(String step, String reason, [Map<String, dynamic> data = const {}]) {
+    if (!_diagOnce.add('$step:$reason')) return;
+    E2ePersistentDiag.record(step, {
+      'msgId': widget.message.id,
+      'reason': reason,
+      ...data,
+    });
   }
 
   void _evaluateVisibility() {
@@ -205,10 +211,10 @@ class _VideoMessageContentState extends State<VideoMessageContent>
       // Only worth a record once the row COULD play: an undecrypted history
       // row skipping is the normal state, not a finding.
       if (_hasUploadedBlob) {
-        _diag('VIDEO_INLINE_SKIPPED', {
-          'autoplay': _autoplay,
-          'routeCurrent': _routeCurrent,
-        });
+        _diag(
+          'VIDEO_INLINE_SKIPPED',
+          !_autoplay ? 'autoplay_off' : 'route_covered',
+        );
       }
       return;
     }
@@ -218,7 +224,7 @@ class _VideoMessageContentState extends State<VideoMessageContent>
     if (_fullscreenOpen) return;
     final fraction = _visibleFraction();
     if (fraction == null) {
-      _diag('VIDEO_INLINE_SKIPPED', {'reason': 'no_layout'});
+      _diag('VIDEO_INLINE_SKIPPED', 'no_layout');
       return;
     }
     if (_session == null && fraction >= _kPlayVisibleFraction) {
@@ -226,8 +232,7 @@ class _VideoMessageContentState extends State<VideoMessageContent>
     } else if (_session != null && fraction < _kReleaseVisibleFraction) {
       _teardownInline('scrolled_out');
     } else if (_session == null) {
-      _diag('VIDEO_INLINE_SKIPPED', {
-        'reason': 'below_threshold',
+      _diag('VIDEO_INLINE_SKIPPED', 'below_threshold', {
         'fraction': (fraction * 100).round(),
         'viewportH': _viewportHeight.round(),
       });
@@ -269,7 +274,7 @@ class _VideoMessageContentState extends State<VideoMessageContent>
     if (resumeAt != null) await controller.seekTo(resumeAt);
     await controller.play();
     if (!mounted || !identical(session, _session)) return;
-    _diag('VIDEO_INLINE_OK', {
+    _diag('VIDEO_INLINE_OK', 'started', {
       'w': controller.value.size.width.round(),
       'h': controller.value.size.height.round(),
       'playing': controller.value.isPlaying,
@@ -283,7 +288,7 @@ class _VideoMessageContentState extends State<VideoMessageContent>
 
   void _teardownInline(String reason) {
     if (_session != null) {
-      _diag('VIDEO_INLINE_RELEASED_$reason', {'ready': _sessionReady});
+      _diag('VIDEO_INLINE_RELEASED', reason, {'ready': _sessionReady});
     }
     _releaseSession();
     if (mounted) setState(() {});
