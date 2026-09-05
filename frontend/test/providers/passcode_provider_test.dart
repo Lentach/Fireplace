@@ -27,6 +27,7 @@ void main() {
   late List<String> revokerCalls;
   late int relaunches;
   late bool canRelaunch;
+  late bool pickerActive;
 
   PasscodeProvider build({bool wrapKeys = false}) => PasscodeProvider(
     store: store,
@@ -38,6 +39,7 @@ void main() {
     wrapKeys: wrapKeys,
     canRelaunch: () => canRelaunch,
     relaunch: () => relaunches++,
+    nativePickerActive: () => pickerActive,
   );
 
   setUp(() {
@@ -50,6 +52,7 @@ void main() {
     revokerCalls = <String>[];
     relaunches = 0;
     canRelaunch = false;
+    pickerActive = false;
     revoker = E2eLockRevoker()
       ..onRevoke = () async {
         revokerCalls.add('revoke');
@@ -658,6 +661,58 @@ void main() {
       await passcode.setAutoLockSeconds(0);
       await passcode.noteBackgrounded();
 
+      expect(passcode.state, PasscodeLockState.locked);
+    });
+
+    test('the native picker surface is not a departure: at 0 s neither the '
+        'backgrounding nor the return locks while it is up', () async {
+      // Attach → the OS camera/file sheet hides the page. Locking here
+      // revokes the keys and (on web) replaces the process, so the picked
+      // bytes never reach the composer — the same shape the freeze-reload
+      // guard already suppresses for `composerNativePickerActive`.
+      await passcode.setAutoLockSeconds(0);
+      pickerActive = true;
+
+      await passcode.noteBackgrounded();
+      expect(passcode.state, PasscodeLockState.unlocked);
+      expect(revokerCalls, isEmpty);
+
+      now += const Duration(seconds: 20).inMilliseconds;
+      await passcode.evaluateOnForeground();
+      expect(passcode.state, PasscodeLockState.unlocked);
+    });
+
+    test('the picker span still stamps the clock, so a later return is judged '
+        'from the picker, not from a stale stamp', () async {
+      // Window 60 s: a real departure at t0, back at +30 (stays unlocked, the
+      // stamp is NOT refreshed by returning), picker at +50. Without a fresh
+      // stamp the return from the picker at +70 would read as 70 s away and
+      // lock a user who never left.
+      await passcode.noteBackgrounded();
+      now += const Duration(seconds: 30).inMilliseconds;
+      await passcode.evaluateOnForeground();
+      expect(passcode.state, PasscodeLockState.unlocked);
+
+      now += const Duration(seconds: 20).inMilliseconds;
+      pickerActive = true;
+      await passcode.noteBackgrounded();
+      expect(store.record.lastActiveAtMs, now);
+
+      now += const Duration(seconds: 20).inMilliseconds;
+      pickerActive = false;
+      await passcode.evaluateOnForeground();
+      expect(passcode.state, PasscodeLockState.unlocked);
+    });
+
+    test('once the picker span ends the guard is gone: the next backgrounding '
+        'locks as before', () async {
+      await passcode.setAutoLockSeconds(0);
+      pickerActive = true;
+      await passcode.noteBackgrounded();
+      expect(passcode.state, PasscodeLockState.unlocked);
+
+      pickerActive = false;
+      await passcode.noteBackgrounded();
       expect(passcode.state, PasscodeLockState.locked);
     });
 

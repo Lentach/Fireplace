@@ -12,6 +12,7 @@ import '../services/passcode_unlock_gate.dart';
 import '../utils/app_relaunch.dart';
 import '../utils/e2e_persistent_diag.dart';
 import '../utils/passcode_autolock.dart';
+import '../widgets/input/composer_keyboard_signals.dart';
 
 /// Where the app-level Passcode Lock stands right now.
 enum PasscodeLockState {
@@ -112,6 +113,7 @@ class PasscodeProvider extends ChangeNotifier {
     bool? wrapKeys,
     @visibleForTesting bool Function()? canRelaunch,
     @visibleForTesting void Function()? relaunch,
+    @visibleForTesting bool Function()? nativePickerActive,
   }) : _store = store ?? DevicePasscodeStore(),
        _kdf = kdf ?? const Pbkdf2PasscodeKdf(),
        _now = nowMs ?? _wallClock,
@@ -123,7 +125,9 @@ class PasscodeProvider extends ChangeNotifier {
        // it. `canRelaunchApp()` is false off-web, which covers the unit
        // suite; the explicit override covers a test that forces `wrapKeys`.
        _canRelaunch = canRelaunch ?? canRelaunchApp,
-       _relaunch = relaunch ?? relaunchApp;
+       _relaunch = relaunch ?? relaunchApp,
+       _nativePickerActive =
+           nativePickerActive ?? (() => composerNativePickerActive.value);
 
   static int _wallClock() => DateTime.now().millisecondsSinceEpoch;
 
@@ -144,6 +148,15 @@ class PasscodeProvider extends ChangeNotifier {
   /// Web-only in-place process restart. See [_lock] step 3.
   final bool Function() _canRelaunch;
   final void Function() _relaunch;
+
+  /// True while the composer's OS camera/file sheet is up. That sheet hides
+  /// the page (visibility loss on web, `paused` on Android) without the user
+  /// going anywhere, and a lock there revokes the keys and — on web —
+  /// replaces the process before the picked bytes reach the composer. Same
+  /// signal, same reason, as the freeze-reload suppression in `MainShell`.
+  /// The span self-caps at 3 minutes (`composer_keyboard_signals.dart`), so
+  /// a stuck flag degrades to the pre-guard behaviour, never to a dead lock.
+  final bool Function() _nativePickerActive;
 
   /// Backoff for the credential re-read in [_retryCredentialRead]. Capped so
   /// a device that never answers costs one read every 8 s and nothing more.
@@ -602,11 +615,15 @@ class PasscodeProvider extends ChangeNotifier {
   /// The stamp is written on the way OUT because that is the only moment the
   /// away-time can start being measured, and because on web the process may
   /// never run code again (frozen page replaced, or iOS killing the PWA).
+  ///
+  /// While the native picker is up the stamp is still written — the return
+  /// is judged from the picker, not from whatever older departure the stamp
+  /// held — but the immediate lock is held back; see [_nativePickerActive].
   Future<void> noteBackgrounded() async {
     if (!isEnabled) return;
     await _store.saveLastActiveAt(_now());
     _record = await _store.load();
-    if (_record.autoLockSeconds <= 0) {
+    if (_record.autoLockSeconds <= 0 && !_nativePickerActive()) {
       // Awaited: on web this backgrounding IS the last code this process may
       // ever run, so the revocation has to finish before we yield.
       await _lock();
@@ -616,9 +633,14 @@ class PasscodeProvider extends ChangeNotifier {
   }
 
   /// The app came back to the foreground.
+  ///
+  /// A return from the native picker is not a return from anywhere: the
+  /// picked bytes are about to land in the composer, and at 0 s the rule
+  /// below would lock (and on web relaunch) before they do.
   Future<void> evaluateOnForeground() async {
     if (!isEnabled) return;
     if (_state == PasscodeLockState.locked) return;
+    if (_nativePickerActive()) return;
     // Re-read: another PWA engine on the same origin may have moved the stamp.
     _record = await _store.load();
     final lock = shouldLockOnForeground(
