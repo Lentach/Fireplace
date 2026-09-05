@@ -438,21 +438,45 @@ class _VideoFullscreenViewState extends State<_VideoFullscreenView> {
       // LABEL ("Video") — which told the user nothing.
       final stillSending = error == VideoStageError.stillSending;
       final l10n = AppLocalizations.of(context);
+      final detail = stillSending ? null : _session?.failureDetail;
       return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              stillSending ? Icons.cloud_upload_outlined : Icons.broken_image,
-              size: 64,
-              color: Colors.white54,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              stillSending ? l10n.videoStillSending : l10n.videoFailedToLoad,
-              style: const TextStyle(color: Colors.white70),
-            ),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                stillSending
+                    ? Icons.cloud_upload_outlined
+                    : Icons.broken_image,
+                size: 64,
+                color: Colors.white54,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                stillSending
+                    ? l10n.videoStillSending
+                    : l10n.videoFailedToLoad,
+                style: const TextStyle(color: Colors.white70),
+              ),
+              if (detail != null) ...[
+                const SizedBox(height: 8),
+                // Diagnostic, deliberately untranslated: `stage · bytes ·
+                // error` straight from the session, so a phone screenshot
+                // of this screen is the bug report.
+                SelectableText(
+                  detail,
+                  key: const ValueKey('video_failure_detail'),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white38,
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
       );
     }

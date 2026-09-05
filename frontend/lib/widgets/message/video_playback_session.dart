@@ -51,6 +51,11 @@ class VideoPlaybackSession {
   String? _tempFilePath;
   bool _disposed = false;
 
+  /// `stage · bytes · error` of the last failed [load], for the fullscreen
+  /// error surface: a phone screenshot then names the failing stage without
+  /// the owner having to dig the durable log out of hacker mode.
+  String? failureDetail;
+
   VideoPlaybackSession({required this.message, required this.token});
 
   VideoPlayerController? get controller => _controller;
@@ -113,13 +118,15 @@ class VideoPlaybackSession {
       // copies the hacker-mode log hours later. Bounded fields — no URL, no
       // key material.
       final text = e.toString().replaceAll(RegExp(r'\s+'), ' ');
+      final bounded = text.length > 240 ? text.substring(0, 240) : text;
+      failureDetail = '$stage · ${byteCount}B · $bounded';
       E2ePersistentDiag.record('VIDEO_LOAD_FAILED', {
         'msgId': message.id,
         'stage': stage,
         'bytes': byteCount,
         'keyed': message.mediaKey != null && message.mediaIv != null,
         'disposed': _disposed,
-        'error': text.length > 240 ? text.substring(0, 240) : text,
+        'error': bounded,
       });
       _releaseResources();
       return VideoStageError.unplayable;
