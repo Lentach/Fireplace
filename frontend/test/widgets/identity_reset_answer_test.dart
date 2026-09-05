@@ -25,6 +25,7 @@ void main() {
     'cooldown',
     'invalid_phrase',
     'locked',
+    'not_enrolled',
     EncryptionProvider.identityResetPhraseTooNewStatus,
   ];
 
@@ -60,6 +61,7 @@ void main() {
     expect(identityResetAnswerIsRefusal('cooldown'), isTrue);
     expect(identityResetAnswerIsRefusal('invalid_phrase'), isTrue);
     expect(identityResetAnswerIsRefusal('locked'), isTrue);
+    expect(identityResetAnswerIsRefusal('not_enrolled'), isTrue);
     expect(identityResetAnswerIsRefusal('pending'), isFalse);
     expect(identityResetAnswerIsRefusal('existing'), isFalse);
   });

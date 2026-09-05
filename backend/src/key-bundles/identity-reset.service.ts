@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import * as argon2 from 'argon2';
+import { AccountAuthorization } from './account-authorization.entity';
 import { IdentityResetRequest } from './identity-reset-request.entity';
 import { RecoveryKey } from './recovery-key.entity';
 
@@ -78,7 +79,19 @@ export const RECOVERY_ARGON2_OPTIONS: argon2.HashOptions = {
 };
 
 export type RequestResetStatus =
-  'pending' | 'existing' | 'cooldown' | 'invalid_phrase' | 'locked';
+  | 'pending'
+  | 'existing'
+  | 'cooldown'
+  | 'invalid_phrase'
+  | 'locked'
+  /**
+   * (lxxiii) opt-in lock: the account has no `account_authorizations` row,
+   * so the §6.1 refusal is not armed and a fresh install replaces the
+   * identity on credentials alone. There is nothing for a ceremony to
+   * authorize — and its completion teardown would revoke device 1 and move
+   * the account onto an id no peer can synthesize while it stays un-enrolled.
+   */
+  | 'not_enrolled';
 
 export interface RequestResetResult {
   status: RequestResetStatus;
@@ -142,6 +155,8 @@ export class IdentityResetService {
     private readonly resetRepo: Repository<IdentityResetRequest>,
     @InjectRepository(RecoveryKey)
     private readonly recoveryRepo: Repository<RecoveryKey>,
+    @InjectRepository(AccountAuthorization)
+    private readonly authorizationRepo: Repository<AccountAuthorization>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -166,6 +181,30 @@ export class IdentityResetService {
         shortened: existing.shortened,
         // An already-running ceremony short-circuits BEFORE the phrase is
         // examined, so there is no age verdict to report.
+        phraseTooNew: false,
+      };
+    }
+
+    // (lxxiii) opt-in lock: an un-enrolled account is never refused by §6.1,
+    // so a ceremony cannot help it and its completion would actively harm it
+    // (see `RequestResetStatus`). Refused BEFORE the phrase is examined —
+    // this is a fact about the account, not an attempt against the phrase,
+    // so it spends nothing and never counts toward the five-attempt lockout.
+    // Ordered after the pending check on purpose: a row created before this
+    // rule existed must keep answering `existing` so it stays cancellable.
+    const enrolled =
+      (await this.authorizationRepo.findOne({
+        where: { userId },
+        select: { userId: true },
+      })) !== null;
+    if (!enrolled) {
+      this.logger.warn(
+        `[identity-reset] request refused: account not enrolled userId=${userId}`,
+      );
+      return {
+        status: 'not_enrolled',
+        deadlineAt: null,
+        shortened: false,
         phraseTooNew: false,
       };
     }

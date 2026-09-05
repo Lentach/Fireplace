@@ -797,6 +797,10 @@ class AppLocalizationsPl extends AppLocalizations {
       'Zbyt wiele prób z kluczem odzyskiwania. Spróbuj ponownie za około godzinę albo rozpocznij reset bez klucza i poczekaj 72 godziny.';
 
   @override
+  String get identityResetNotEnrolled =>
+      'To konto nie ma połączonych urządzeń, więc jego klucze nie są zablokowane — reset nie jest potrzebny. Zaloguj się na nowym urządzeniu, a nowe klucze zastąpią stare automatycznie.';
+
+  @override
   String get identityResetNoAnswer =>
       'Brak odpowiedzi serwera, więc nic nie zostało rozpoczęte. Sprawdź połączenie i spróbuj ponownie.';
 

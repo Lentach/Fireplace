@@ -295,6 +295,7 @@
   "identityResetCooldown": "A reset was cancelled recently, so a new one cannot start for up to 24 hours. If someone else keeps cancelling it, change your password to sign them out first.",
   "identityResetPhraseRejected": "Those 12 words did not match the recovery key stored for this account. You can try again, or start the reset without it and wait 72 hours.",
   "identityResetPhraseLocked": "Too many recovery-key attempts. Try again in about an hour, or start the reset without the key and wait 72 hours.",
+  "identityResetNotEnrolled": "This account has no linked devices, so its keys are not locked \u2014 no reset is needed. Sign in on the new device and its keys replace the old ones automatically.",
   "identityResetNoAnswer": "No answer from the server, so nothing was started. Check your connection and try again.",
   "identityFingerprintUnavailable": "Fingerprint unavailable.",
   "blockUser": "Block user",

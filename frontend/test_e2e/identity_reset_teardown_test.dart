@@ -498,13 +498,24 @@ void main() {
   // exists. The probe above LINKS a device before it resets, because
   // falsification 12 needs two partitions to be non-vacuous — so every reset
   // this suite has ever run happened on an ENROLLED account. A single-device
-  // account is the majority shape, and §6.2 is precisely the "I lost my only
-  // device" ceremony, so the never-enrolled reset is the COMMON path and has
-  // never once been exercised.
+  // account is the majority shape — and since (lxxiii) made enrolment OPT-IN
+  // it is the DEFAULT shape, every user who never linked a second device.
+  //
+  // Under (lxxiii) the §6.1 lock is not armed for such an account, so a fresh
+  // install replaces the identity on credentials alone (`via=unlocked`) under
+  // device 1, and a peer that synthesizes device 1 for a non-enrolled account
+  // is addressing the device that EXISTS. A §6.2 ceremony could therefore only
+  // HARM it: its completion teardown revokes device 1 and allocates id >= 2
+  // while the account stays un-enrolled, so every peer keeps synthesizing
+  // device 1 and the only live device is unaddressable until it re-enrols
+  // ((xlv) clause 2 keeps the server silent, fail-closed, forever). Ruling
+  // 2026-09-05: the ceremony is REFUSED for an un-enrolled account, before the
+  // phrase is examined. This probe pins that refusal AND the addressability it
+  // protects.
   // ---------------------------------------------------------------------
   group(
-    '§6.2 reset on a NEVER-ENROLLED account: peers must still be able to '
-    'address the recovering device (amendments (a)/(f)/(x)/(xxix))',
+    '§6.2 reset on a NEVER-ENROLLED account: refused, because the unlocked '
+    'remint under device 1 is what keeps it addressable ((lxxiii), (xlv))',
     () {
       final baseUrl = e2eBaseUrl();
       final runTag = DateTime.now().millisecondsSinceEpoch.toString();
@@ -540,9 +551,9 @@ void main() {
       });
 
       test(
-        'after the teardown allocates a fresh id, the account is still '
-        'un-enrolled, so a peer synthesizes device 1 and can neither address '
-        'nor accept the only device that exists',
+        'a fresh install remints unlocked under device 1, the ceremony is '
+        'refused without spending the phrase, and a peer synthesizing device 1 '
+        'addresses the device that exists',
         () async {
           expect(
             await scalar(
@@ -553,134 +564,109 @@ void main() {
             reason: 'the whole point: this account never enrolled',
           );
 
-          // ---- the ceremony, same aged-not-waited shape as the probe above --
+          // ---- the "I lost my only device" shape: a reinstall ---------------
           recovering = E2eClient('nrer', baseUrl)..adoptAccountFrom(solo);
           await recovering!.connectSocket();
           FlutterSecureStorage.setMockInitialValues({});
           final freshKeys = await recovering!.initializeKeys();
+          final freshIdentity =
+              (freshKeys['keyBundle'] as Map)['identityPublicKey'] as String;
 
+          // (lxxiii) clause 1: accepted on credentials alone. No roster
+          // teardown ran, so the answer carries no re-homed device id — the
+          // material stays under device 1, which is the id peers synthesize.
+          final accepted = await recovering!.uploadKeyBundleRaw(freshKeys);
+          expect(accepted['success'], isTrue, reason: '$accepted');
           expect(
-            (await recovering!.uploadKeyBundleRaw(freshKeys))['error'],
-            'identity_locked',
-            reason: '§6.1 is what makes a reset necessary at all',
+            accepted.containsKey('deviceId'),
+            isFalse,
+            reason: 'an unlocked remint must not re-home the device',
+          );
+          expect(
+            await scalar(
+              'SELECT "identityPublicKey" FROM key_bundles '
+              'WHERE "userId" = ${solo.userId} AND "deviceId" = 1;',
+            ),
+            freshIdentity,
+          );
+          expect(
+            await scalar(
+              'SELECT count(*) FROM devices WHERE "userId" = ${solo.userId} '
+              'AND "revokedAt" IS NOT NULL;',
+            ),
+            '0',
+            reason: 'nothing was revoked: device 1 is still the live device',
           );
 
+          // ---- the ceremony is refused, and the phrase is untouched ---------
           expect(await solo.setRecoveryKey('nre-phrase-$runTag'), isTrue);
-          await e2eSql(
-            'UPDATE recovery_keys SET "createdAt" = NOW() - INTERVAL \'4 days\' '
-            'WHERE "userId" = ${solo.userId};',
-          );
           final requested = await solo.requestIdentityReset(
             recoveryPhrase: 'nre-phrase-$runTag',
           );
-          expect(requested['status'], 'pending', reason: '$requested');
-
-          await e2eSql(
-            'UPDATE identity_reset_requests SET "deadlineAt" = now() - '
-            'interval \'5 seconds\' WHERE "userId" = ${solo.userId} '
-            'AND status = \'pending\';',
-          );
-          var status = 'pending';
-          for (var i = 0; i < 40 && status != 'completed'; i++) {
-            await Future<void>.delayed(const Duration(seconds: 3));
-            status = (await scalar(
-              'SELECT status FROM identity_reset_requests WHERE "userId" = '
-              '${solo.userId} ORDER BY id DESC LIMIT 1;',
-            ))!;
-          }
-          expect(status, 'completed', reason: 'the real sweep must complete it');
-
-          final accepted = await recovering!.uploadKeyBundleRaw(freshKeys);
-          expect(accepted['success'], isTrue, reason: '$accepted');
-          final newDeviceId = accepted['deviceId'] as int;
-
-          // (a)/(f)(i): ids are never reused, so the ONLY live device is >= 2.
-          expect(newDeviceId, greaterThanOrEqualTo(2));
+          expect(requested['status'], 'not_enrolled', reason: '$requested');
+          expect(requested['deadlineAt'], isNull);
           expect(
             await scalar(
-              'SELECT string_agg("deviceId"::text, \',\' ORDER BY "deviceId") '
-              'FROM devices WHERE "userId" = ${solo.userId} '
-              'AND "revokedAt" IS NULL;',
+              'SELECT count(*) FROM identity_reset_requests '
+              'WHERE "userId" = ${solo.userId};',
             ),
-            '$newDeviceId',
-            reason: 'exactly one live device, and it is not device 1',
+            '0',
+            reason: 'a refusal writes no ceremony row',
           );
-
-          // ---- (xlv) CLAUSE 2: the roster is REFUSED, not answered ---------
-          // The teardown deliberately does not touch `account_authorizations`
-          // ((xxix)) — correct for an account that HAD a row, but this one
-          // never did and never gets one. Answering `authorization: null` here
-          // would make every peer synthesize the single device 1 that a
-          // non-enrolled account is supposed to have, and device 1 is exactly
-          // what this teardown revoked. So the server stays SILENT, which is
-          // fail-closed on the client (I5), until the replacement lands.
-          recovering!.events.discard('deviceList');
-          recovering!.socketService.socket!.emit('getDeviceList', {
-            'userId': solo.userId,
-          });
-          await recovering!.events.none(
-            'deviceList',
-            within: const Duration(seconds: 4),
-            reason:
-                'an un-enrolled account whose live devices exclude device 1 '
-                'must not be answered — a synthesized device 1 would silently '
-                'lose every message in both directions',
-          );
-
-          // ---- (xlv) CLAUSE 1: the replacement enrollment ------------------
-          // No surviving row, so the replacement is a FIRST enrollment and the
-          // server says so.
+          // The refusal is about the account, not the phrase: a correct phrase
+          // presented to a refused ceremony is neither spent nor counted.
           expect(
-            accepted['nextListVersion'],
-            1,
-            reason: 'an account that never enrolled re-enrolls at version 1',
-          );
-          final replacement = DeviceAuthorityEngine();
-          final replaced = await replacement.enroll(
-            userId: solo.userId,
-            identity: IdentityKeyPair.fromSerialized(
-              base64Decode(await recovering!.exportIdentityPair()),
+            await scalar(
+              'SELECT "usedAt" IS NULL AND "failedAttempts" = 0 '
+              'FROM recovery_keys WHERE "userId" = ${solo.userId};',
             ),
-            send: recovering!.enrollDeviceAuthority,
-            deviceId: newDeviceId,
-            version: accepted['nextListVersion'] as int,
+            't',
+            reason: 'the phrase must survive for a future enrolled ceremony',
           );
-          expect(replaced.accepted, isTrue, reason: '${replaced.error}');
 
-          // ---- and now peers can reach the account, both directions --------
+          // ---- and a peer can reach the account, both directions -----------
+          // A non-enrolled account is answered `authorization: null` (the
+          // fail-closed §8 shape) and the peer synthesizes device 1 — which,
+          // because nothing was torn down, is exactly the device that holds
+          // the fresh material.
           final roster = await recovering!.fetchDeviceList(solo.userId);
+          expect(roster['authorization'], isNull);
           final verified = DeviceListCache().adopt(
             userId: solo.userId,
-            authorization: roster['authorization'] as Map<String, dynamic>?,
-            tofuIdentityKeyBase64: base64Encode(
-              IdentityKeyPair.fromSerialized(
-                base64Decode(await recovering!.exportIdentityPair()),
-              ).getPublicKey().serialize(),
-            ),
+            authorization: null,
+            tofuIdentityKeyBase64: freshIdentity,
           );
 
-          // Peer -> reset user: the fan-out addresses `liveDeviceIds`
+          // Peer -> user: the fan-out addresses `liveDeviceIds`
           // (`messaging_provider.send.dart`).
           expect(
             verified.liveDeviceIds,
-            [newDeviceId],
+            [1],
             reason:
-                'a peer must fan out to the device that EXISTS; addressing the '
-                'synthesized device 1 loses every inbound message',
+                'a peer must fan out to the device that EXISTS; for an '
+                'un-enrolled account that is the synthesized device 1',
           );
 
-          // Reset user -> peer: `_originDeviceIsLive`
+          // User -> peer: `_originDeviceIsLive`
           // (`messaging_provider.decrypt.dart`) refuses an origin the list does
-          // not contain, so the peer withholds every message this account sends.
+          // not contain, so the peer would withhold every message otherwise.
           expect(
-            verified.isLiveDevice(newDeviceId),
+            verified.isLiveDevice(1),
             isTrue,
             reason:
-                'a peer must accept the recovering device as a live origin, or '
-                'it withholds as DECRYPT_REFUSED_REVOKED_ORIGIN forever',
+                'a peer must accept device 1 as a live origin, or it withholds '
+                'as DECRYPT_REFUSED_REVOKED_ORIGIN forever',
           );
+
+          // And the served bundle is the fresh one under device 1, so the
+          // session a peer builds is one the recovering install can decrypt.
+          final served = await recovering!.fetchBundleFor(
+            solo.userId,
+            deviceId: 1,
+          );
+          expect(served['identityPublicKey'], freshIdentity);
         },
-        timeout: const Timeout(Duration(minutes: 6)),
+        timeout: const Timeout(Duration(minutes: 3)),
       );
     },
     skip: _enabled ? false : 'set --dart-define=RESET_PROBE=true',

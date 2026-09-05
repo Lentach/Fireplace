@@ -1412,6 +1412,12 @@ abstract class AppLocalizations {
   /// **'Zbyt wiele prób z kluczem odzyskiwania. Spróbuj ponownie za około godzinę albo rozpocznij reset bez klucza i poczekaj 72 godziny.'**
   String get identityResetPhraseLocked;
 
+  /// No description provided for @identityResetNotEnrolled.
+  ///
+  /// In pl, this message translates to:
+  /// **'To konto nie ma połączonych urządzeń, więc jego klucze nie są zablokowane — reset nie jest potrzebny. Zaloguj się na nowym urządzeniu, a nowe klucze zastąpią stare automatycznie.'**
+  String get identityResetNotEnrolled;
+
   /// No description provided for @identityResetNoAnswer.
   ///
   /// In pl, this message translates to:

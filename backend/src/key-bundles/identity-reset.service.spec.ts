@@ -13,6 +13,7 @@ import {
   RESET_DELAY_RECOVERY_MS,
   RECOVERY_MIN_AGE_MS,
 } from './identity-reset.service';
+import { AccountAuthorization } from './account-authorization.entity';
 import { IdentityResetRequest } from './identity-reset-request.entity';
 import { RecoveryKey } from './recovery-key.entity';
 
@@ -112,6 +113,7 @@ describe('IdentityResetService (reset ceremony §6.2 / recovery key §6.2.1)', (
   let service: IdentityResetService;
   let resetRepo: Record<string, jest.Mock>;
   let recoveryRepo: Record<string, jest.Mock>;
+  let authorizationRepo: Record<string, jest.Mock>;
   let resetBuilder: BuilderMock;
   let recoveryBuilder: BuilderMock;
   let warnSpy: jest.SpyInstance;
@@ -134,6 +136,12 @@ describe('IdentityResetService (reset ceremony §6.2 / recovery key §6.2.1)', (
       insert: jest.fn().mockResolvedValue({ identifiers: [{ id: 1 }] }),
       update: jest.fn().mockResolvedValue({ affected: 1 }),
       createQueryBuilder: jest.fn(() => recoveryBuilder),
+    };
+    // ENROLLED by default: the ceremony only exists for enrolled accounts
+    // ((lxxiii) opt-in lock), so every test below models one unless it says
+    // otherwise.
+    authorizationRepo = {
+      findOne: jest.fn().mockResolvedValue({ userId: 7 }),
     };
 
     // The service spends the phrase and creates the row inside ONE
@@ -162,6 +170,10 @@ describe('IdentityResetService (reset ceremony §6.2 / recovery key §6.2.1)', (
           useValue: resetRepo,
         },
         { provide: getRepositoryToken(RecoveryKey), useValue: recoveryRepo },
+        {
+          provide: getRepositoryToken(AccountAuthorization),
+          useValue: authorizationRepo,
+        },
         { provide: DataSource, useValue: dataSource },
       ],
     }).compile();
@@ -217,6 +229,47 @@ describe('IdentityResetService (reset ceremony §6.2 / recovery key §6.2.1)', (
       });
       // A repeat request must not restart or extend the clock.
       expect(resetRepo.insert).not.toHaveBeenCalled();
+    });
+
+    it('refuses an UN-ENROLLED account outright, before any phrase is spent — the lock is not armed, so there is nothing to reset', async () => {
+      // (lxxiii) opt-in lock: with no `account_authorizations` row the §6.1
+      // refusal never fires, so a fresh install replaces the identity on
+      // credentials alone. A ceremony here could only HARM the account: the
+      // completion teardown revokes device 1 and allocates a fresh id while
+      // the account stays un-enrolled, so peers keep synthesizing device 1
+      // and the recovering device is unaddressable until it re-enrols.
+      authorizationRepo.findOne.mockResolvedValue(null);
+
+      const result = await service.requestReset(7, 'a-correct-phrase');
+
+      expect(result).toEqual({
+        status: 'not_enrolled',
+        deadlineAt: null,
+        shortened: false,
+        phraseTooNew: false,
+      });
+      // Nothing written and the phrase untouched: the refusal is a fact about
+      // the account, not about the phrase, so it must not count as an attempt.
+      expect(resetRepo.insert).not.toHaveBeenCalled();
+      expect(recoveryRepo.findOne).not.toHaveBeenCalled();
+      expect(recoveryRepo.update).not.toHaveBeenCalled();
+      expect(recoveryBuilder.execute).not.toHaveBeenCalled();
+    });
+
+    it('still reports an already-pending ceremony on an un-enrolled account (rows from before the rule stay cancellable)', async () => {
+      authorizationRepo.findOne.mockResolvedValue(null);
+      const deadlineAt = new Date(Date.now() + 1000);
+      resetRepo.findOne.mockResolvedValue({
+        userId: 7,
+        status: 'pending',
+        deadlineAt,
+        shortened: false,
+      });
+
+      const result = await service.requestReset(7);
+
+      expect(result.status).toBe('existing');
+      expect(result.deadlineAt).toBe(deadlineAt);
     });
 
     it('refuses during the cooldown that follows a cancel', async () => {

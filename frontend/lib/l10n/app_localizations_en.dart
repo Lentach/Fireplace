@@ -790,6 +790,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Too many recovery-key attempts. Try again in about an hour, or start the reset without the key and wait 72 hours.';
 
   @override
+  String get identityResetNotEnrolled =>
+      'This account has no linked devices, so its keys are not locked — no reset is needed. Sign in on the new device and its keys replace the old ones automatically.';
+
+  @override
   String get identityResetNoAnswer =>
       'No answer from the server, so nothing was started. Check your connection and try again.';
 

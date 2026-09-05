@@ -1631,7 +1631,7 @@ class EncryptionProvider extends ChangeNotifier {
   bool get identityResetShortened => _identityResetShortened;
 
   /// Last answer to a reset request: 'pending', 'existing', 'cooldown',
-  /// 'invalid_phrase', 'locked', or one of the two synthetic values
+  /// 'invalid_phrase', 'locked', 'not_enrolled', or one of the two synthetic values
   /// ([identityResetNoAnswerStatus], [identityResetPhraseTooNewStatus]).
   /// Null once consumed by the UI.
   String? get identityResetRequestStatus => _identityResetRequestStatus;

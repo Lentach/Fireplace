@@ -142,6 +142,11 @@ String? identityResetAnswerMessage(AppLocalizations l10n, String? status) {
       return l10n.identityResetPhraseRejected;
     case 'locked':
       return l10n.identityResetPhraseLocked;
+    case 'not_enrolled':
+      // (lxxiii) opt-in lock: nothing is locked, so nothing needs resetting.
+      // Point at the recovery that actually works for this account — a fresh
+      // sign-in — instead of leaving the user hunting for a ceremony.
+      return l10n.identityResetNotEnrolled;
     case EncryptionProvider.identityResetNoAnswerStatus:
     case null:
       // Silence is an answer too: nothing was started, and saying "started"
@@ -159,7 +164,8 @@ bool identityResetAnswerIsRefusal(String? status) =>
     status == EncryptionProvider.identityResetNoAnswerStatus ||
     status == 'cooldown' ||
     status == 'invalid_phrase' ||
-    status == 'locked';
+    status == 'locked' ||
+    status == 'not_enrolled';
 
 /// Starts a reset, offering the recovery-key path first.
 ///
