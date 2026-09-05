@@ -107,6 +107,7 @@ class _IntroBody extends StatelessWidget {
         builder: (_) => PasscodeSetupScreen(
           initialMode: PasscodeMode.digits6,
           allowModeChoice: true,
+          keyMaterial: passcode.wrapsKeys,
           onCommit: (code, mode) =>
               passcode.enable(passcode: code, mode: mode),
         ),
@@ -177,6 +178,7 @@ class _EnabledBody extends StatelessWidget {
         builder: (_) => PasscodeSetupScreen(
           initialMode: passcodeProvider.mode,
           allowModeChoice: true,
+          keyMaterial: passcodeProvider.wrapsKeys,
           onCommit: (code, mode) => passcodeProvider.change(
             current: current,
             next: code,
@@ -299,10 +301,17 @@ class PasscodeSetupScreen extends StatefulWidget {
     required this.initialMode,
     required this.onCommit,
     this.allowModeChoice = true,
+    this.keyMaterial = false,
   });
 
   final PasscodeMode initialMode;
   final bool allowModeChoice;
+
+  /// True where the code derives the content KEK (web wrapping). Raises the
+  /// custom-code floor and drops the 4-digit shape, which the provider
+  /// refuses outright there — offering a choice that can only fail is how a
+  /// user ends up staring at "this device could not secure the passcode".
+  final bool keyMaterial;
 
   /// Persists the finished code. Returning false surfaces the generic
   /// unavailable message and keeps the user on the screen.
@@ -319,6 +328,17 @@ class _PasscodeSetupScreenState extends State<PasscodeSetupScreen> {
 
   Future<void> _submit(String code) async {
     final l10n = AppLocalizations.of(context);
+    // Checked on the FIRST entry: making the user type a code twice before
+    // telling them it is too weak is the same dead end as the generic
+    // failure this replaces.
+    if (refusePasscode(code, _mode, keyMaterial: widget.keyMaterial) ==
+        PasscodeRefusal.tooWeakForKeys) {
+      setState(() {
+        _first = null;
+        _error = l10n.passcodeTooWeakForKeys;
+      });
+      return;
+    }
     if (_first == null) {
       setState(() {
         _first = code;
@@ -371,12 +391,16 @@ class _PasscodeSetupScreenState extends State<PasscodeSetupScreen> {
               title: l10n.passcodeOptionSixDigits,
               onTap: () => Navigator.of(sheetContext).pop(PasscodeMode.digits6),
             ),
-            SettingsConsoleRow(
-              key: const Key('passcode-option-four'),
-              glyph: ConsoleGlyph.password,
-              title: l10n.passcodeOptionFourDigits,
-              onTap: () => Navigator.of(sheetContext).pop(PasscodeMode.digits4),
-            ),
+            // Absent under wrapping: `_modeAllowed` refuses digits4 there, so
+            // the row could only ever produce a failure.
+            if (!widget.keyMaterial)
+              SettingsConsoleRow(
+                key: const Key('passcode-option-four'),
+                glyph: ConsoleGlyph.password,
+                title: l10n.passcodeOptionFourDigits,
+                onTap: () =>
+                    Navigator.of(sheetContext).pop(PasscodeMode.digits4),
+              ),
             const SizedBox(height: 8),
           ],
         ),

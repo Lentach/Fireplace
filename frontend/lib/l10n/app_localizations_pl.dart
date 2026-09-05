@@ -1987,5 +1987,9 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get passcodeScopeNoteBrowser =>
-      'Kod blokuje tę aplikację w tej przeglądarce. Nie szyfruje danych na dysku: ktoś z dostępem do profilu przeglądarki może go obejść. Chroni przed osobą, która trzyma Twoje urządzenie.';
+      'Kod szyfruje klucze zapisane w tej przeglądarce: ktoś z kopią profilu przeglądarki nie odczyta bez niego Twoich wiadomości. Kod nigdy nie jest wysyłany na serwer.';
+
+  @override
+  String get passcodeTooWeakForKeys =>
+      'Kod szyfruje klucze w tej przeglądarce, więc własny kod musi mieć co najmniej 6 znaków i nie może składać się tylko z cyfr.';
 }

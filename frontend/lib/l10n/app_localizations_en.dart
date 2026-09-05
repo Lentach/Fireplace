@@ -1960,5 +1960,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get passcodeScopeNoteBrowser =>
-      'The passcode locks this app in this browser. It does not encrypt stored data: someone with access to this browser profile can bypass it. It stops a person holding your device.';
+      'The passcode encrypts this browser\'s stored keys: someone with a copy of this browser profile cannot read your messages without it. It is never sent to the server.';
+
+  @override
+  String get passcodeTooWeakForKeys =>
+      'Because the passcode encrypts this browser\'s keys, a custom code needs at least 6 characters and cannot be digits only.';
 }

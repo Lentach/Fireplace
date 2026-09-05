@@ -743,5 +743,6 @@
   "passcodeSetUpTooltip": "Ustaw blokadę kodem",
   "passcodeNote": "Jeśli zapomnisz kodu, jedynym wyjściem jest usunięcie danych tej aplikacji z tego urządzenia — wiadomości zapisane tylko tutaj przepadną.",
   "passcodeScopeNoteDevice": "Kod blokuje tę aplikację na tym urządzeniu. Weryfikator trzyma keystore Androida, a okno aplikacji jest ukryte przed zrzutami ekranu. Kod nie szyfruje wiadomości i nie jest wysyłany na serwer.",
-  "passcodeScopeNoteBrowser": "Kod blokuje tę aplikację w tej przeglądarce. Nie szyfruje danych na dysku: ktoś z dostępem do profilu przeglądarki może go obejść. Chroni przed osobą, która trzyma Twoje urządzenie."
+  "passcodeScopeNoteBrowser": "Kod szyfruje klucze zapisane w tej przeglądarce: ktoś z kopią profilu przeglądarki nie odczyta bez niego Twoich wiadomości. Kod nigdy nie jest wysyłany na serwer.",
+  "passcodeTooWeakForKeys": "Kod szyfruje klucze w tej przeglądarce, więc własny kod musi mieć co najmniej 6 znaków i nie może składać się tylko z cyfr."
 }

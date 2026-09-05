@@ -45,6 +45,16 @@ enum PasscodeUnlockResult {
 /// Shortest accepted custom alphanumeric passcode.
 const int kPasscodeMinAlphanumericLength = 4;
 
+/// Shortest custom passcode accepted where the code is real key material.
+///
+/// Six characters with at least one non-digit, versus the four that suffice
+/// for a pure gate. Not security theatre: under wrapping the KEK has no
+/// entropy but this, and the wrapped envelopes plus the KEK salt sit in the
+/// same origin storage they protect, so every candidate can be tried
+/// OFFLINE at GPU speed. It does not make a hand-chosen code strong — it
+/// only refuses the spaces small enough to fall in seconds.
+const int kPasscodeMinKeyMaterialLength = 6;
+
 /// Ceiling on the boot-time credential read.
 ///
 /// The gate covers the app until this resolves, so a storage layer that HANGS
@@ -356,7 +366,7 @@ class PasscodeProvider extends ChangeNotifier {
     required String passcode,
     required PasscodeMode mode,
   }) async {
-    if (!isValidPasscode(passcode, mode)) return false;
+    if (!isValidPasscode(passcode, mode, keyMaterial: _wrapKeys)) return false;
     if (!_modeAllowed(mode)) return false;
     final salt = generatePasscodeSalt();
     final verifier = await _derive(passcode, salt, kPasscodeKdfIterations);
@@ -382,7 +392,7 @@ class PasscodeProvider extends ChangeNotifier {
   /// re-derived — unreadable history with no passcode to blame.
   Future<bool> disable({required String passcode}) async {
     if (!isEnabled) return false;
-    if (await _matches(passcode) != true) return false;
+    if (!await verifyCurrent(passcode)) return false;
     if (await _vault.isWrappingOn()) {
       if (_vault.isLocked && !await _openVault(passcode)) return false;
       if (!await _vault.unwrapAllKeys(kPasscodeWrappedKeyPrefixes)) {
@@ -401,9 +411,27 @@ class PasscodeProvider extends ChangeNotifier {
   /// to gate a change or a disable behind the CURRENT passcode. Returns false
   /// for a wrong code and for an unavailable KDF alike — the caller's next
   /// step is the same either way, and neither may reveal anything more.
+  ///
+  /// Throttled on the SAME ladder as [unlock], and for the same reason: this
+  /// is a credential oracle. Left unmetered it let anyone who reached a
+  /// momentarily-unlocked app grind the code at KDF speed from Settings,
+  /// leaving no persisted trace — and on web recovering the code yields the
+  /// KEK, hence every future lock too.
   Future<bool> verifyCurrent(String passcode) async {
     if (!isEnabled) return false;
-    return await _matches(passcode) ?? false;
+    // Refuse before the KDF runs: while the cooldown is live not even a
+    // correct code is confirmed, so there is nothing to learn by waiting.
+    if (lockoutRemaining != null) return false;
+
+    final matched = await _matches(passcode);
+    // An unavailable KDF is not a wrong code and must not consume an attempt.
+    if (matched == null) return false;
+    if (matched) {
+      await _clearAttemptState();
+      return true;
+    }
+    await _registerFailedAttempt();
+    return false;
   }
 
   /// Replaces the credential (and possibly the mode). Requires the old code.
@@ -413,9 +441,9 @@ class PasscodeProvider extends ChangeNotifier {
     required PasscodeMode mode,
   }) async {
     if (!isEnabled) return false;
-    if (!isValidPasscode(next, mode)) return false;
+    if (!isValidPasscode(next, mode, keyMaterial: _wrapKeys)) return false;
     if (!_modeAllowed(mode)) return false;
-    if (await _matches(current) != true) return false;
+    if (!await verifyCurrent(current)) return false;
 
     final salt = generatePasscodeSalt();
     final verifier = await _derive(next, salt, kPasscodeKdfIterations);
@@ -466,10 +494,7 @@ class PasscodeProvider extends ChangeNotifier {
       if (!await _openVault(passcode)) {
         return PasscodeUnlockResult.unavailable;
       }
-      if (_record.failedAttempts != 0 || _record.lockoutUntilMs != null) {
-        await _store.saveAttemptState(failedAttempts: 0, lockoutUntilMs: null);
-        _record = await _store.load();
-      }
+      await _clearAttemptState();
       _gate.open();
       _setState(PasscodeLockState.unlocked);
       // Bring the E2E stack back if a re-lock revoked it and the process
@@ -481,6 +506,22 @@ class PasscodeProvider extends ChangeNotifier {
       return PasscodeUnlockResult.ok;
     }
 
+    await _registerFailedAttempt();
+    return PasscodeUnlockResult.wrong;
+  }
+
+  /// Wipes the attempt ladder after a code is accepted. No write when there
+  /// is nothing to clear, so a normal unlock costs no storage round trip.
+  Future<void> _clearAttemptState() async {
+    if (_record.failedAttempts == 0 && _record.lockoutUntilMs == null) return;
+    await _store.saveAttemptState(failedAttempts: 0, lockoutUntilMs: null);
+    _record = await _store.load();
+  }
+
+  /// Advances the cooldown ladder by one wrong code. Shared by [unlock] and
+  /// [verifyCurrent] so Settings cannot be a cheaper oracle than the lock
+  /// screen.
+  Future<void> _registerFailedAttempt() async {
     final failed = _record.failedAttempts + 1;
     final backoff = passcodeBackoffFor(failed);
     await _store.saveAttemptState(
@@ -491,7 +532,6 @@ class PasscodeProvider extends ChangeNotifier {
     );
     _record = await _store.load();
     notifyListeners();
-    return PasscodeUnlockResult.wrong;
   }
 
   Future<void> setAutoLockSeconds(int seconds) async {
@@ -675,14 +715,62 @@ class PasscodeProvider extends ChangeNotifier {
   }
 }
 
+/// Why a candidate passcode was refused; [PasscodeRefusal.none] means it is
+/// acceptable. A reason rather than a bare bool because the setup screen has
+/// to tell the user which rule they hit — a silent refusal on the Custom
+/// path is a dead end, since the keypad modes enforce their own shape.
+enum PasscodeRefusal {
+  none,
+
+  /// Wrong length, or a non-digit in a numeric mode.
+  shape,
+
+  /// Long enough to be a gate code, too weak to be a KEK: under wrapping the
+  /// passcode IS the key, so it must clear
+  /// [kPasscodeMinKeyMaterialLength] characters and contain something that
+  /// is not a digit.
+  tooWeakForKeys,
+}
+
 /// Whether [passcode] is acceptable for [mode]: exact length and digits only
 /// for the numeric modes, at least [kPasscodeMinAlphanumericLength] characters
 /// for a custom one.
-bool isValidPasscode(String passcode, PasscodeMode mode) {
+///
+/// [keyMaterial] is true wherever the code derives the KEK (web wrapping). It
+/// raises the Custom floor, because that mode had no character rule at all:
+/// `1234` typed as a Custom code produced exactly the 10^4 KEK space the
+/// [PasscodeProvider._modeAllowed] digits4 refusal exists to forbid, and
+/// `123456` the same 10^6 space as digits6 (owner ruling 2026-09-05). The
+/// numeric keypad modes are governed by that refusal, not by this floor.
+PasscodeRefusal refusePasscode(
+  String passcode,
+  PasscodeMode mode, {
+  bool keyMaterial = false,
+}) {
   final fixed = mode.fixedLength;
   if (fixed != null) {
-    if (passcode.length != fixed) return false;
-    return RegExp(r'^\d+$').hasMatch(passcode);
+    if (passcode.length != fixed) return PasscodeRefusal.shape;
+    return RegExp(r'^\d+$').hasMatch(passcode)
+        ? PasscodeRefusal.none
+        : PasscodeRefusal.shape;
   }
-  return passcode.trim().length >= kPasscodeMinAlphanumericLength;
+  final trimmed = passcode.trim();
+  if (trimmed.length < kPasscodeMinAlphanumericLength) {
+    return PasscodeRefusal.shape;
+  }
+  if (!keyMaterial) return PasscodeRefusal.none;
+  if (trimmed.length < kPasscodeMinKeyMaterialLength) {
+    return PasscodeRefusal.tooWeakForKeys;
+  }
+  return RegExp(r'^\d+$').hasMatch(trimmed)
+      ? PasscodeRefusal.tooWeakForKeys
+      : PasscodeRefusal.none;
 }
+
+bool isValidPasscode(
+  String passcode,
+  PasscodeMode mode, {
+  bool keyMaterial = false,
+}) =>
+    refusePasscode(passcode, mode, keyMaterial: keyMaterial) ==
+    PasscodeRefusal.none;

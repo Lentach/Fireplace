@@ -752,5 +752,6 @@
   "passcodeSetUpTooltip": "Set up Passcode Lock",
   "passcodeNote": "If you forget your passcode, the only way back in is erasing this app's data on this device — messages stored only here would be lost.",
   "passcodeScopeNoteDevice": "The passcode locks this app on this device. The verifier is held in the Android keystore and the app window is hidden from screenshots. It does not encrypt your messages and is never sent to the server.",
-  "passcodeScopeNoteBrowser": "The passcode locks this app in this browser. It does not encrypt stored data: someone with access to this browser profile can bypass it. It stops a person holding your device."
+  "passcodeScopeNoteBrowser": "The passcode encrypts this browser's stored keys: someone with a copy of this browser profile cannot read your messages without it. It is never sent to the server.",
+  "passcodeTooWeakForKeys": "Because the passcode encrypts this browser's keys, a custom code needs at least 6 characters and cannot be digits only."
 }

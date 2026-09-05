@@ -770,6 +770,171 @@ void main() {
       expect(passcode.state, PasscodeLockState.disabled);
     });
   });
+
+  group('key-material entropy floor (web wrapping)', () {
+    test('a 4-digit code typed as a Custom passcode is refused under wrapping',
+        () async {
+      // The digits4 MODE is already refused. This is the same 10^4 space
+      // reached through the alphanumeric mode, which only checked length.
+      final wrapping = build(wrapKeys: true);
+      await wrapping.initialize();
+
+      final ok = await wrapping.enable(
+        passcode: '1234',
+        mode: PasscodeMode.alphanumeric,
+      );
+
+      expect(ok, isFalse);
+      expect(wrapping.isEnabled, isFalse);
+    });
+
+    test('an all-numeric 6-char Custom code is refused under wrapping',
+        () async {
+      // Same space as digits6 but arriving by the path with no character
+      // rule at all; the owner's ruling is that key material may not be
+      // all digits however it is typed.
+      final wrapping = build(wrapKeys: true);
+      await wrapping.initialize();
+
+      expect(
+        await wrapping.enable(
+          passcode: '123456',
+          mode: PasscodeMode.alphanumeric,
+        ),
+        isFalse,
+      );
+    });
+
+    test('a short Custom code is refused under wrapping even with letters',
+        () async {
+      final wrapping = build(wrapKeys: true);
+      await wrapping.initialize();
+
+      expect(
+        await wrapping.enable(
+          passcode: 'ab1c',
+          mode: PasscodeMode.alphanumeric,
+        ),
+        isFalse,
+      );
+    });
+
+    test('a 6-char Custom code with a letter is accepted under wrapping',
+        () async {
+      final wrapping = build(wrapKeys: true);
+      await wrapping.initialize();
+
+      expect(
+        await wrapping.enable(
+          passcode: 'abc123',
+          mode: PasscodeMode.alphanumeric,
+        ),
+        isTrue,
+      );
+      expect(wrapping.isEnabled, isTrue);
+    });
+
+    test('the floor does not apply where the code is only a gate', () async {
+      // Android: the passcode is a verifier, not key material, so the
+      // 4-character minimum the owner kept stays in force there.
+      await passcode.initialize();
+
+      expect(
+        await passcode.enable(
+          passcode: '1234',
+          mode: PasscodeMode.alphanumeric,
+        ),
+        isTrue,
+      );
+    });
+
+    test('change refuses a weak Custom code under wrapping', () async {
+      final wrapping = build(wrapKeys: true);
+      await wrapping.initialize();
+      await wrapping.enable(passcode: 'abc123', mode: PasscodeMode.digits6);
+
+      expect(
+        await wrapping.change(
+          current: 'abc123',
+          next: '999999',
+          mode: PasscodeMode.alphanumeric,
+        ),
+        isFalse,
+      );
+    });
+  });
+
+  group('settings-prompt throttle', () {
+    test('verifyCurrent counts a wrong code toward the lockout', () async {
+      await passcode.initialize();
+      await passcode.enable(passcode: '123456', mode: PasscodeMode.digits6);
+
+      for (var i = 0; i < kPasscodeAttemptsBeforeBackoff; i++) {
+        expect(await passcode.verifyCurrent('000000'), isFalse);
+      }
+
+      expect(passcode.lockoutRemaining, isNotNull);
+    });
+
+    test('verifyCurrent refuses outright while locked out, even if correct',
+        () async {
+      await passcode.initialize();
+      await passcode.enable(passcode: '123456', mode: PasscodeMode.digits6);
+      for (var i = 0; i < kPasscodeAttemptsBeforeBackoff; i++) {
+        await passcode.verifyCurrent('000000');
+      }
+      expect(passcode.lockoutRemaining, isNotNull);
+
+      // The whole point: no oracle. A correct code is not confirmed while the
+      // cooldown is running, so the grind cannot proceed at KDF speed.
+      expect(await passcode.verifyCurrent('123456'), isFalse);
+    });
+
+    test('a correct code clears the attempt state', () async {
+      await passcode.initialize();
+      await passcode.enable(passcode: '123456', mode: PasscodeMode.digits6);
+      await passcode.verifyCurrent('000000');
+      await passcode.verifyCurrent('000000');
+
+      expect(await passcode.verifyCurrent('123456'), isTrue);
+      expect(passcode.failedAttempts, 0);
+      expect(passcode.lockoutRemaining, isNull);
+    });
+
+    test('disable is throttled through the same path', () async {
+      await passcode.initialize();
+      await passcode.enable(passcode: '123456', mode: PasscodeMode.digits6);
+      for (var i = 0; i < kPasscodeAttemptsBeforeBackoff; i++) {
+        expect(await passcode.disable(passcode: '000000'), isFalse);
+      }
+
+      expect(passcode.lockoutRemaining, isNotNull);
+      expect(await passcode.disable(passcode: '123456'), isFalse);
+      expect(passcode.isEnabled, isTrue);
+    });
+
+    test('change is throttled through the same path', () async {
+      await passcode.initialize();
+      await passcode.enable(passcode: '123456', mode: PasscodeMode.digits6);
+      for (var i = 0; i < kPasscodeAttemptsBeforeBackoff; i++) {
+        await passcode.change(
+          current: '000000',
+          next: '654321',
+          mode: PasscodeMode.digits6,
+        );
+      }
+
+      expect(passcode.lockoutRemaining, isNotNull);
+      expect(
+        await passcode.change(
+          current: '123456',
+          next: '654321',
+          mode: PasscodeMode.digits6,
+        ),
+        isFalse,
+      );
+    });
+  });
 }
 
 class _ThrowingStore implements PasscodeStore {
