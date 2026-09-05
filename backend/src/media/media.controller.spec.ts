@@ -226,6 +226,29 @@ describe('MediaController', () => {
     );
   });
 
+  // Regression for the 2026-09-06 phone lockout: with a 60/min limit and no
+  // cache header, inline video autoplay + fullscreen re-downloads in ONE chat
+  // tripped 429 and every later media load failed. Blobs are immutable, so
+  // the client may cache them; the throttle stays only as a scrape brake.
+  it('serveMsgs marks the immutable blob privately cacheable and is not throttled at chat pace', async () => {
+    await controller.serveMsgs('abc.bin', fakeRes);
+    expect(fakeRes.setHeader).toHaveBeenCalledWith(
+      'Cache-Control',
+      'private, max-age=31536000, immutable',
+    );
+    // @nestjs/throttler stores per-throttler-name metadata as `<key><name>`.
+    const throttle: unknown = Reflect.getMetadata(
+      'THROTTLER:TTLdefault',
+      controllerMethod('serveMsgs'),
+    );
+    const limit: unknown = Reflect.getMetadata(
+      'THROTTLER:LIMITdefault',
+      controllerMethod('serveMsgs'),
+    );
+    // A media-heavy chat open is dozens of blob fetches within seconds.
+    expect({ ttlMs: throttle, limit }).toEqual({ ttlMs: 60000, limit: 600 });
+  });
+
   it('serveAvatars serves file directly by default', async () => {
     await controller.serveAvatars('uuid.jpg', fakeRes);
     expect(fakeRes.sendFile).toHaveBeenCalledWith(

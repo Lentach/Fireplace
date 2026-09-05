@@ -110,12 +110,27 @@ export class MediaController {
     res.status(200).send();
   }
 
+  /**
+   * Message media blobs are IMMUTABLE — UUID-named ciphertext that is never
+   * rewritten — so the browser may keep them for a year (`private`: only the
+   * requesting client's cache, never a shared proxy). Without this every
+   * repeat load re-downloaded the blob: with inline video autoplay a single
+   * chat (every image, every autoplay restart, every fullscreen open and
+   * close) blew through the old 60/min limit in one session and every
+   * later load failed with 429 — owner's phones, 2026-09-06 ("plays once,
+   * then broken"). The throttle is only a scrape brake: the route is JWT-
+   * guarded and names are unguessable, so 600/min per client is plenty of
+   * headroom for a media-heavy chat and still bounds a leaked token.
+   */
   @Get('msgs/:filename')
   @UseGuards(JwtAuthGuard)
-  @Throttle({ default: { limit: 60, ttl: 60000 } })
+  @Throttle({ default: { limit: 600, ttl: 60000 } })
   async serveMsgs(@Param('filename') filename: string, @Res() res: Response) {
     const safeFilename = path.basename(filename);
     if (safeFilename !== filename) throw new BadRequestException('Invalid filename');
+    // nginx forwards Cache-Control from the X-Accel response, so this header
+    // reaches the client on both serving paths.
+    res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
     if (!useXAccel) {
       return res.sendFile(path.join(mediaDir, 'msgs', safeFilename));
     }
