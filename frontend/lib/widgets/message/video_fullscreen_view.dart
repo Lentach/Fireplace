@@ -104,15 +104,22 @@ class _VideoFullscreenViewState extends State<_VideoFullscreenView> {
   @override
   void dispose() {
     _hideTimer?.cancel();
-    final controller = _controller;
-    if (controller != null && controller.value.isInitialized) {
-      // Runs on EVERY dismissal route (close button, system back, barrier),
-      // which is what lets showVideoFullscreen always answer with a position.
-      widget.onLastPosition(controller.value.position);
-    }
-    controller?.removeListener(_onControllerTick);
+    _controller?.removeListener(_onControllerTick);
     _session?.dispose();
     super.dispose();
+  }
+
+  /// Runs on EVERY dismissal route (back chevron, system back, swipe-down)
+  /// at pop time. NOT in dispose(): `showDialog`'s future resolves on pop,
+  /// and the widget is only disposed after the exit transition — reporting
+  /// from dispose always arrived too late and the bubble resumed from the
+  /// handoff position instead (measured on the emulator: 27.4 s → 21.7 s).
+  void _onPopInvoked(bool didPop, Object? _) {
+    if (!didPop) return;
+    final controller = _controller;
+    if (controller != null && controller.value.isInitialized) {
+      widget.onLastPosition(controller.value.position);
+    }
   }
 
   void _onControllerTick() {
@@ -232,10 +239,12 @@ class _VideoFullscreenViewState extends State<_VideoFullscreenView> {
     // thin out under the finger the way Telegram's does.
     final progress = (_dragDy / height).clamp(0.0, 1.0);
     final scale = 1 - progress * 0.25;
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: EdgeInsets.zero,
-      child: _stageGestures(
+    return PopScope(
+      onPopInvokedWithResult: _onPopInvoked,
+      child: Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: _stageGestures(
         child: Stack(
           children: [
             Positioned.fill(
@@ -253,6 +262,7 @@ class _VideoFullscreenViewState extends State<_VideoFullscreenView> {
           ],
         ),
       ),
+    ),
     );
   }
 
