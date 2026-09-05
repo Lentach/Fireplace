@@ -3,6 +3,7 @@ import 'package:video_player/video_player.dart';
 
 import '../../models/message_model.dart';
 import '../../utils/encrypted_media_loader.dart';
+import '../../utils/e2e_persistent_diag.dart';
 import '../../utils/video_blob_url_stub.dart'
     if (dart.library.html) '../../utils/video_blob_url_web.dart' as video_blob;
 import '../../utils/video_temp_file_stub.dart'
@@ -68,6 +69,11 @@ class VideoPlaybackSession {
     if (url == null || url.isEmpty || !url.startsWith('http')) {
       return VideoStageError.stillSending;
     }
+    // Which step failed. The loader throws one undifferentiated exception,
+    // so the stage is tracked here — the diag record below is the ONLY way a
+    // field failure can be told apart (fetch vs decrypt vs decoder).
+    var stage = 'fetch_decrypt';
+    var byteCount = 0;
     try {
       final bytes = await loadDecryptedMediaBytes(
         url: url,
@@ -75,8 +81,10 @@ class VideoPlaybackSession {
         key: message.mediaKey,
         iv: message.mediaIv,
       );
+      byteCount = bytes.length;
       if (_disposed) return VideoStageError.unplayable;
 
+      stage = 'source';
       final VideoPlayerController controller;
       if (kIsWeb) {
         final blobUrl = video_blob.createVideoObjectUrl(bytes);
@@ -96,10 +104,23 @@ class VideoPlaybackSession {
       // Assign before initialize() so a dispose during the await still tears
       // the controller down.
       _controller = controller;
+      stage = 'initialize';
       await controller.initialize();
       if (_disposed) return VideoStageError.unplayable;
       return null;
-    } catch (_) {
+    } catch (e) {
+      // Durable, not just the ring: the owner reproduces on a phone and
+      // copies the hacker-mode log hours later. Bounded fields — no URL, no
+      // key material.
+      final text = e.toString().replaceAll(RegExp(r'\s+'), ' ');
+      E2ePersistentDiag.record('VIDEO_LOAD_FAILED', {
+        'msgId': message.id,
+        'stage': stage,
+        'bytes': byteCount,
+        'keyed': message.mediaKey != null && message.mediaIv != null,
+        'disposed': _disposed,
+        'error': text.length > 240 ? text.substring(0, 240) : text,
+      });
       _releaseResources();
       return VideoStageError.unplayable;
     }
