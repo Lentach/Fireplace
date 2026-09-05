@@ -23,21 +23,24 @@ class _RecordingArbiter extends InlineVideoArbiter {
   }
 }
 
-MessageModel _videoMessage({String? mediaUrl}) => MessageModel(
-  id: 7,
-  content: '',
-  senderId: 1,
-  senderUsername: 'alice',
-  conversationId: 10,
-  deliveryStatus: MessageDeliveryStatus.read,
-  messageType: MessageType.video,
-  createdAt: DateTime(2026, 1, 1, 14, 30),
-  mediaUrl: mediaUrl,
-  mediaDuration: 12,
-  mediaWidth: 360,
-  mediaHeight: 480,
-  encryptedContent: 'cipher',
-);
+MessageModel _videoMessage({String? mediaUrl, bool keyed = true}) =>
+    MessageModel(
+      id: 7,
+      content: '',
+      senderId: 1,
+      senderUsername: 'alice',
+      conversationId: 10,
+      deliveryStatus: MessageDeliveryStatus.read,
+      messageType: MessageType.video,
+      createdAt: DateTime(2026, 1, 1, 14, 30),
+      mediaUrl: mediaUrl,
+      mediaKey: keyed ? 'k' : null,
+      mediaIv: keyed ? 'iv' : null,
+      mediaDuration: 12,
+      mediaWidth: 360,
+      mediaHeight: 480,
+      encryptedContent: 'cipher',
+    );
 
 Future<void> _pumpBubble(
   WidgetTester tester,
@@ -135,6 +138,39 @@ void main() {
       );
       expect(arbiter.holds(tester.state(find.byType(VideoMessageContent))),
           isFalse);
+    },
+  );
+
+  testWidgets(
+    'a history row without its media keys never requests the slot, and '
+    'requests it once the decrypt pass supplies them',
+    (tester) async {
+      // The server row carries the plaintext mediaUrl column before the
+      // Signal pass reaches it. Loading then only fetches a blob it cannot
+      // decrypt; and the row is rebuilt IN PLACE when the keys land, with no
+      // scroll — so the update itself must re-evaluate.
+      final arbiter = _RecordingArbiter();
+      final settings = SettingsProvider();
+      await _pumpBubble(
+        tester,
+        _videoMessage(mediaUrl: 'https://example.com/media/msgs/v.bin',
+            keyed: false),
+        settings: settings,
+        arbiter: arbiter,
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+      expect(arbiter.requests, 0);
+
+      await _pumpBubble(
+        tester,
+        _videoMessage(mediaUrl: 'https://example.com/media/msgs/v.bin'),
+        settings: settings,
+        arbiter: arbiter,
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+      expect(arbiter.requests, 1);
     },
   );
 }
