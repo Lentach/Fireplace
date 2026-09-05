@@ -16,23 +16,33 @@ class _RecordingArbiter extends InlineVideoArbiter {
 
   int requests = 0;
 
+  /// `(priority, granted)` per request, in order.
+  final List<(int, bool)> log = [];
+
   @override
-  void request(Object owner, VoidCallback onRevoke) {
+  bool request(Object owner, VoidCallback onRevoke, {required int priority}) {
     requests++;
-    super.request(owner, onRevoke);
+    final granted = super.request(owner, onRevoke, priority: priority);
+    log.add((priority, granted));
+    return granted;
   }
 }
 
-MessageModel _videoMessage({String? mediaUrl, bool keyed = true}) =>
+MessageModel _videoMessage({
+  String? mediaUrl,
+  bool keyed = true,
+  int id = 7,
+  DateTime? createdAt,
+}) =>
     MessageModel(
-      id: 7,
+      id: id,
       content: '',
       senderId: 1,
       senderUsername: 'alice',
       conversationId: 10,
       deliveryStatus: MessageDeliveryStatus.read,
       messageType: MessageType.video,
-      createdAt: DateTime(2026, 1, 1, 14, 30),
+      createdAt: createdAt ?? DateTime(2026, 1, 1, 14, 30),
       mediaUrl: mediaUrl,
       mediaKey: keyed ? 'k' : null,
       mediaIv: keyed ? 'iv' : null,
@@ -138,6 +148,66 @@ void main() {
       );
       expect(arbiter.holds(tester.state(find.byType(VideoMessageContent))),
           isFalse);
+    },
+  );
+
+  testWidgets(
+    'two visible clips: the NEWER message holds the slot even when the older '
+    'bubble mounts after it, and the denied one retries once the slot frees',
+    (tester) async {
+      // Owner, 2026-09-06: on chat open the second-to-last video played and
+      // the last sat blurred — "latest requester wins" was mount order.
+      final arbiter = _RecordingArbiter();
+      final newer = _videoMessage(
+        id: 2,
+        createdAt: DateTime(2026, 1, 1, 14, 31),
+        mediaUrl: 'https://example.com/media/msgs/new.bin',
+      );
+      final older = _videoMessage(
+        id: 1,
+        createdAt: DateTime(2026, 1, 1, 14, 30),
+        mediaUrl: 'https://example.com/media/msgs/old.bin',
+      );
+      await tester.pumpWidget(
+        ChangeNotifierProvider<SettingsProvider>.value(
+          value: SettingsProvider(),
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('en'),
+            home: Scaffold(
+              body: Column(
+                children: [
+                  // Newer first in the tree, so its post-frame request runs
+                  // FIRST and the older bubble's request is the later one.
+                  SizedBox(
+                    height: 200,
+                    child: VideoMessageContent(message: newer, arbiter: arbiter),
+                  ),
+                  SizedBox(
+                    height: 200,
+                    child: VideoMessageContent(message: older, arbiter: arbiter),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final newerP = newer.createdAt.millisecondsSinceEpoch;
+      final olderP = older.createdAt.millisecondsSinceEpoch;
+      expect(arbiter.log.take(2), [(newerP, true), (olderP, false)]);
+
+      // The newer clip's (stubbed) load fails and releases the slot; the
+      // denied older bubble must re-request on that release, without any
+      // scroll, and get it — and the failed newer bubble must NOT retry on
+      // its own release (that would loop, and hammer the server).
+      await tester.pumpAndSettle();
+      final afterOpen = arbiter.log.skip(2).toList();
+      expect(afterOpen.where((e) => e.$1 == newerP), isEmpty);
+      expect(afterOpen.last, (olderP, true));
     },
   );
 
