@@ -25,7 +25,7 @@ Owner report against live 0.2.3 (four nits, questions asked and answered up fron
 
 ## Verification
 
-- `flutter analyze --no-fatal-infos` clean; full `flutter test` **1761 passed / 10 skipped** (was 1748).
+- `flutter analyze --no-fatal-infos` clean; full `flutter test` **1761 passed / 10 skipped** (was 1748); +1 after the post-review route-cover test (1762, `test/widgets/message` 138 green).
 - Falsification: the retry-geometry test and the keys-arrival test both FAIL with the fix stashed and pass with it.
 - **Live browser smoke** (dev backend `docker compose -p fireplace`, `flutter run -d web-server --web-port 8091`, headless Chromium, two accounts 111/112 — B in an incognito `createBrowserContext()` because the DDC dev server only boots on the `localhost` origin): sender pick of `docs/design/cosmic/cosmic-dimming.mp4` (1080×2400) → portrait bubble with real poster → inline muted loop, `0:03` countdown, speaker → unmute (`muted:false`) → tap → fullscreen continues from 0.3 s with sound → chrome shows seek bar ~80 px up → Esc returns → inline resumes at the returned position. Settings switch OFF → `flutter.autoplay_videos=false` → chat re-entry has **0** `<video>` elements. Receiver B cold entry: bubble goes portrait after the decrypt pass and autoplays muted (`muted:true, loop:true, 1080×2400`), with exactly one live `<video>` while two video bubbles were on screen (cap holds).
 - NOT verified: iOS probe fix (no device); real Android phone gesture-nav interaction with the raised slider; the camcorder door on a real Android (the `<input capture>` mapping is browser-documented, not observed here); memory under rapid scrolling on a phone.

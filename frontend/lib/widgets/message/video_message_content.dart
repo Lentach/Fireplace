@@ -93,6 +93,17 @@ class _VideoMessageContentState extends State<VideoMessageContent>
   double _viewportHeight = 0;
   ScrollPosition? _scrollPosition;
 
+  /// False while another route covers the chat; the slot is released then.
+  bool _routeCurrent = true;
+
+  /// Position to seek to when the next inline session starts — set when the
+  /// fullscreen dialog returns after the route cover released the session.
+  Duration? _resumeAt;
+
+  /// True while the fullscreen dialog is up; blocks an inline restart until
+  /// its final position is known.
+  bool _fullscreenOpen = false;
+
   /// Uploaded AND decrypted. A history row arrives with its plaintext
   /// `mediaUrl` column but no `mediaKey` until the Signal pass reaches it;
   /// loading then would fetch the blob only to fail the decrypt.
@@ -179,10 +190,14 @@ class _VideoMessageContentState extends State<VideoMessageContent>
 
   void _evaluateVisibility() {
     if (!mounted) return;
-    if (!_autoplay || !_hasUploadedBlob) {
+    if (!_autoplay || !_hasUploadedBlob || !_routeCurrent) {
       if (_session != null) _teardownInline();
       return;
     }
+    // The dialog's future settles only after its exit transition, while
+    // isCurrent flips back at pop START — a restart here would run before
+    // _openFullscreen learns the position. It re-evaluates itself on return.
+    if (_fullscreenOpen) return;
     final fraction = _visibleFraction();
     if (fraction == null) return;
     if (_session == null && fraction >= _kPlayVisibleFraction) {
@@ -222,6 +237,9 @@ class _VideoMessageContentState extends State<VideoMessageContent>
     controller.addListener(_onControllerTick);
     await controller.setVolume(_muted ? 0 : 1);
     await controller.setLooping(true);
+    final resumeAt = _resumeAt;
+    _resumeAt = null;
+    if (resumeAt != null) await controller.seekTo(resumeAt);
     await controller.play();
     if (!mounted || !identical(session, _session)) return;
     setState(() => _sessionReady = session.isReady);
@@ -276,19 +294,24 @@ class _VideoMessageContentState extends State<VideoMessageContent>
       await controller.pause();
     }
     if (!mounted) return;
-    final returned = await showVideoFullscreen(
-      context,
-      widget.message,
-      startAt: handoff,
-    );
+    _fullscreenOpen = true;
+    Duration? returned;
+    try {
+      returned = await showVideoFullscreen(
+        context,
+        widget.message,
+        startAt: handoff,
+      );
+    } finally {
+      _fullscreenOpen = false;
+    }
     if (!mounted) return;
-    final session = _session;
-    if (session == null || !session.isReady || !_arbiter.holds(this)) return;
-    // Resume inline where fullscreen left off, still under this bubble's own
-    // mute state — fullscreen volume never leaks back.
-    final inline = session.controller!;
-    await inline.seekTo(returned ?? handoff ?? Duration.zero);
-    await inline.play();
+    // The dialog is a route, so the chat route stopped being current and the
+    // slot was released underneath it (nothing holds a decrypted blob behind
+    // a covering route). Hand the next session its resume point and let the
+    // normal visibility rule decide whether one starts.
+    _resumeAt = returned ?? handoff;
+    _evaluateVisibility();
   }
 
   /// `m:ss` from the envelope's `mediaDuration`. Null when the sending
@@ -311,8 +334,14 @@ class _VideoMessageContentState extends State<VideoMessageContent>
       // no autoplay, never a crash.
       autoplay = false;
     }
-    if (autoplay != _autoplay) {
+    // ModalRoute.of subscribes this element to route changes, so a push over
+    // the chat (Settings, another chat, the fullscreen dialog itself) rebuilds
+    // here with isCurrent false. localToGlobal alone would still report the
+    // bubble on screen under an opaque route and keep a decrypted blob alive.
+    final routeCurrent = ModalRoute.of(context)?.isCurrent ?? true;
+    if (autoplay != _autoplay || routeCurrent != _routeCurrent) {
       _autoplay = autoplay;
+      _routeCurrent = routeCurrent;
       // Side effects (session teardown/start) cannot run inside build.
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => _evaluateVisibility(),
