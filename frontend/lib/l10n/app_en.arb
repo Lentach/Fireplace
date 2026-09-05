@@ -682,6 +682,7 @@
   "videoStillSending": "Still sending…",
   "videoUnmute": "Unmute",
   "videoMute": "Mute",
+  "videoSenderYou": "You",
   "settingsAutoplayVideos": "Autoplay videos",
   "settingsAutoplayVideosSubtitle": "Videos in chats play muted while they are on screen",
   "attachmentUnsupportedFileType": "Unsupported file type",

@@ -9,7 +9,9 @@ class MessageDateSeparator extends StatelessWidget {
 
   const MessageDateSeparator({super.key, required this.date});
 
-  String _formatDate(BuildContext context) {
+  /// "Today" / "Yesterday" / short date for [date], device-local. Shared with
+  /// the fullscreen video header so both surfaces name a day the same way.
+  static String dayLabel(BuildContext context, DateTime date) {
     final l10n = AppLocalizations.of(context);
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -21,6 +23,8 @@ class MessageDateSeparator extends StatelessWidget {
     if (diff == 1) return l10n.chatDateYesterday;
     return MaterialLocalizations.of(context).formatShortDate(localDate);
   }
+
+  String _formatDate(BuildContext context) => dayLabel(context, date);
 
   @override
   Widget build(BuildContext context) {

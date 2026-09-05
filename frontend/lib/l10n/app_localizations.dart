@@ -3098,6 +3098,12 @@ abstract class AppLocalizations {
   /// **'Wycisz'**
   String get videoMute;
 
+  /// No description provided for @videoSenderYou.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ty'**
+  String get videoSenderYou;
+
   /// No description provided for @settingsAutoplayVideos.
   ///
   /// In pl, this message translates to:

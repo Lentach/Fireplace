@@ -90,6 +90,7 @@ dependencies:
   pointycastle: ^4.0.0
   qr_flutter: ^4.1.0
   light_compressor_v2: ^1.9.1
+  pointer_interceptor: ^0.10.1+2
 
 dependency_overrides:
   record_linux: ^1.3.0
