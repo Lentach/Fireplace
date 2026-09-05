@@ -21,6 +21,7 @@ import 'package:fireplace/providers/conversations_provider.dart';
 import 'package:fireplace/providers/encryption_provider.dart';
 import 'package:fireplace/providers/friends_provider.dart';
 import 'package:fireplace/providers/messaging_provider.dart';
+import 'package:fireplace/providers/passcode_provider.dart';
 import 'package:fireplace/providers/settings_provider.dart';
 import 'package:fireplace/screens/device_link_gate_screen.dart';
 import 'package:fireplace/screens/link_this_device_screen.dart'
@@ -33,6 +34,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../support/passcode_fakes.dart';
 
 class _FakeAuth extends AuthProvider {
   int logoutCalls = 0;
@@ -165,6 +168,15 @@ void main() {
         ),
         ChangeNotifierProvider<ConnectionProvider>(
           create: (_) => _FakeConnection(),
+        ),
+        // The Chats header carries the Passcode Lock padlock, so the shell
+        // this host mounts needs the provider; a memory-backed one keeps the
+        // suite off disk.
+        ChangeNotifierProvider<PasscodeProvider>(
+          create: (_) => PasscodeProvider(
+            store: MemoryPasscodeStore(),
+            kdf: FakePasscodeKdf(),
+          ),
         ),
       ],
       child: MaterialApp(

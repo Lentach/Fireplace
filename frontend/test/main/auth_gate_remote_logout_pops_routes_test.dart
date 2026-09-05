@@ -22,6 +22,7 @@ import 'package:fireplace/providers/conversations_provider.dart';
 import 'package:fireplace/providers/encryption_provider.dart';
 import 'package:fireplace/providers/friends_provider.dart';
 import 'package:fireplace/providers/messaging_provider.dart';
+import 'package:fireplace/providers/passcode_provider.dart';
 import 'package:fireplace/providers/settings_provider.dart';
 import 'package:fireplace/screens/auth_screen.dart';
 import 'package:fireplace/screens/main_shell.dart';
@@ -31,6 +32,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../support/passcode_fakes.dart';
 
 /// Session state the test flips by hand; nothing touches storage or network.
 class _ToggleAuth extends AuthProvider {
@@ -72,6 +75,14 @@ Future<void> _pumpApp(WidgetTester tester, _ToggleAuth auth) async {
         ChangeNotifierProvider(create: (_) => ConversationsProvider()),
         ChangeNotifierProvider(create: (_) => MessagingProvider()),
         ChangeNotifierProvider(create: (_) => ConnectionProvider()),
+        // The Chats header carries the Passcode Lock padlock, so the shell
+        // AuthGate mounts needs the provider; memory-backed to stay off disk.
+        ChangeNotifierProvider<PasscodeProvider>(
+          create: (_) => PasscodeProvider(
+            store: MemoryPasscodeStore(),
+            kdf: FakePasscodeKdf(),
+          ),
+        ),
       ],
       child: MaterialApp(
         theme: RpgTheme.themeDataLight,
