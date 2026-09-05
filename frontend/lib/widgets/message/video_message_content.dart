@@ -259,6 +259,10 @@ class _VideoMessageContentState extends State<VideoMessageContent>
   }
 
   Future<void> _startInline() async {
+    // Every inline session is a fresh playthrough and starts muted — an
+    // earlier unmute (or sound in fullscreen) does not carry over.
+    _muted = true;
+    _lastPosition = Duration.zero;
     // Newest message wins the slot: two visible clips on chat open must
     // resolve to the LAST one, not whichever mounted later.
     final granted = _arbiter.request(
@@ -338,12 +342,26 @@ class _VideoMessageContentState extends State<VideoMessageContent>
     _arbiter.release(this);
   }
 
+  /// Last observed position, to spot the loop wrapping. Inline has no seek
+  /// bar, so a backward jump can only be the clip starting over.
+  Duration _lastPosition = Duration.zero;
+
   void _onControllerTick() {
     final controller = _session?.controller;
     if (controller == null) return;
     final value = controller.value;
     if (!value.isInitialized) return;
-    final remaining = value.duration - value.position;
+    final position = value.position;
+    // Owner rule (2026-09-06): an inline unmute lasts ONE playthrough — the
+    // auto-replay comes back muted, like the clip first appeared. Fullscreen
+    // is different: sound there stays on.
+    if (!_muted && position < _lastPosition - const Duration(milliseconds: 500)) {
+      _muted = true;
+      controller.setVolume(0);
+      if (mounted) setState(() {});
+    }
+    _lastPosition = position;
+    final remaining = value.duration - position;
     final seconds = remaining.inSeconds < 0 ? 0 : remaining.inSeconds;
     // Whole-second gate: the notifier only fires ~1 Hz during playback.
     if (_remainingSeconds.value != seconds) _remainingSeconds.value = seconds;
