@@ -1151,6 +1151,11 @@ extension MessagingSend on MessagingProvider {
         _messages[index] = _messages[index].copyWith(
           deliveryStatus: MessageDeliveryStatus.sending,
         );
+        // Geometry + ThumbHash ride along exactly as the image branch does.
+        // They were dropped here, so a video that failed once and was retried
+        // reached the peer WITHOUT geometry — a square legacy bubble with no
+        // poster — while the first attempt's optimistic bubble looked right.
+        // Second independent cause of the 2026-09-05 "square video" report.
         _pendingSendContent[tempId] = <String, dynamic>{
           'content': '',
           'messageType': 'VIDEO',
@@ -1159,6 +1164,10 @@ extension MessagingSend on MessagingProvider {
             'mediaDuration': message.mediaDuration,
           'mediaKey': vKey,
           'mediaIv': vIv,
+          if (message.mediaWidth != null) 'mediaWidth': message.mediaWidth,
+          if (message.mediaHeight != null) 'mediaHeight': message.mediaHeight,
+          if (message.mediaThumbHash != null)
+            'mediaThumbHash': message.mediaThumbHash,
         };
         notifyListeners();
         _encryptAndSend(
@@ -1171,6 +1180,9 @@ extension MessagingSend on MessagingProvider {
           mediaDuration: message.mediaDuration,
           mediaKey: vKey,
           mediaIv: vIv,
+          mediaWidth: message.mediaWidth,
+          mediaHeight: message.mediaHeight,
+          mediaThumbHash: message.mediaThumbHash,
         );
       }
       return;

@@ -290,6 +290,53 @@ void main() {
       },
     );
 
+    test(
+      'a RETRY after the upload succeeded still carries geometry and '
+      'ThumbHash in the envelope',
+      () async {
+        // Regression: the video retry branch rebuilt the pending payload from
+        // url/key/iv/duration only, so a clip that failed once and was retried
+        // reached the peer with no geometry — the 220 px legacy square with a
+        // blank poster — while the first attempt's optimistic bubble looked
+        // right. Images never had this hole; video must match them.
+        final provider = _newProvider();
+        provider.setMediaUploadServiceForTest(_FakeMediaUpload());
+        final encryption = _SendReadyEncryption();
+        provider.setEncryptionProvider(encryption);
+        final emitted = <Map<String, dynamic>>[];
+        provider.setEmitCallback((event, data) {
+          if (event == 'sendMessage') {
+            emitted.add(Map<String, dynamic>.from(data as Map));
+          }
+        });
+
+        await provider.sendVideoMessage(
+          'tok',
+          Uint8List.fromList([1, 2, 3]),
+          2,
+          duration: 19,
+          width: 360,
+          height: 480,
+          thumbHash: 'video-thumb-hash',
+        );
+        final tempId = emitted.single['tempId'] as String;
+
+        provider.markSendingMessagesFailed('dropped');
+        await provider.retryFailedMessage(tempId);
+        for (var i = 0; i < 30; i++) {
+          await Future<void>.delayed(Duration.zero);
+        }
+
+        expect(emitted, hasLength(2));
+        final retried = E2eEnvelope.parse(encryption.encryptedPlaintexts.last);
+        expect(retried.mediaUrl, 'http://test/media/msgs/x.bin');
+        expect(retried.mediaWidth, 360);
+        expect(retried.mediaHeight, 480);
+        expect(retried.mediaThumbHash, 'video-thumb-hash');
+        expect(retried.mediaDuration, 19);
+      },
+    );
+
     test('optimistic bubble carries geometry before the upload resolves', () async {
       final provider = _newProvider();
       provider.setMediaUploadServiceForTest(

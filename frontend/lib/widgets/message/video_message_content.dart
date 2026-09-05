@@ -93,8 +93,13 @@ class _VideoMessageContentState extends State<VideoMessageContent>
   double _viewportHeight = 0;
   ScrollPosition? _scrollPosition;
 
+  /// Uploaded AND decrypted. A history row arrives with its plaintext
+  /// `mediaUrl` column but no `mediaKey` until the Signal pass reaches it;
+  /// loading then would fetch the blob only to fail the decrypt.
   bool get _hasUploadedBlob =>
-      widget.message.mediaUrl?.startsWith('http') ?? false;
+      (widget.message.mediaUrl?.startsWith('http') ?? false) &&
+      widget.message.mediaKey != null &&
+      widget.message.mediaIv != null;
 
   @override
   void initState() {
@@ -113,6 +118,23 @@ class _VideoMessageContentState extends State<VideoMessageContent>
       _scrollPosition?.removeListener(_evaluateVisibility);
       _scrollPosition = position;
       position?.addListener(_evaluateVisibility);
+    }
+  }
+
+  @override
+  void didUpdateWidget(VideoMessageContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The row is rebuilt in place when the decrypt pass fills in the media
+    // keys (same key, same State), and nothing scrolls — so without this the
+    // receiver's bubble never autoplays until the user moves the list.
+    final old = oldWidget.message;
+    final now = widget.message;
+    if (old.mediaKey != now.mediaKey ||
+        old.mediaIv != now.mediaIv ||
+        old.mediaUrl != now.mediaUrl) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _evaluateVisibility(),
+      );
     }
   }
 
