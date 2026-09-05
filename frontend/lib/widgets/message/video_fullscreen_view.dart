@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -270,24 +271,21 @@ class _VideoFullscreenViewState extends State<_VideoFullscreenView> {
                 Positioned(
                   left: 12,
                   right: 12,
-                  bottom: 0,
-                  child: SafeArea(
-                    child: Padding(
-                      // Well clear of the bottom edge. A 12 px inset put the
-                      // thumb inside Android's gesture-navigation zone, so a
-                      // scrub drag fired swipe-up-home instead of seeking
-                      // (owner report 2026-09-05). SafeArea reports 0 there
-                      // in the Chrome PWA, so the clearance has to be
-                      // explicit; Telegram keeps its scrubber ~64 px up.
-                      padding: const EdgeInsets.only(bottom: 64),
-                      child: VideoSeekBar(
-                        controller: controller,
-                        onScrubStart: () => _hideTimer?.cancel(),
-                        onScrubEnd: () {
-                          if (controller.value.isPlaying) _scheduleHide();
-                        },
-                      ),
-                    ),
+                  // Uniform 64 px clearance from the physical bottom edge. A
+                  // 12 px inset put the thumb inside Android's gesture-
+                  // navigation zone, so a scrub drag fired swipe-up-home
+                  // instead of seeking (owner report 2026-09-05). The Chrome
+                  // PWA reports a 0 bottom inset there, so the clearance is
+                  // explicit and the system inset only ever widens it
+                  // (iOS home indicator = 34 pt, still 64 total, not 98).
+                  // Telegram keeps its scrubber ~64 px up.
+                  bottom: math.max(64.0, MediaQuery.viewPaddingOf(context).bottom + 12),
+                  child: VideoSeekBar(
+                    controller: controller,
+                    onScrubStart: () => _hideTimer?.cancel(),
+                    onScrubEnd: () {
+                      if (controller.value.isPlaying) _scheduleHide();
+                    },
                   ),
                 ),
             ],

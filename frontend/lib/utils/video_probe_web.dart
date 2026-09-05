@@ -66,10 +66,6 @@ Future<VideoPreview> probeVideoPreview(
     video.src = url;
     if (!await _awaitMetadata(video)) return VideoPreview.unknown;
 
-    final rawDuration = video.duration;
-    final duration = rawDuration.isFinite && rawDuration > 0
-        ? rawDuration
-        : null;
     var width = video.videoWidth;
     var height = video.videoHeight;
     if (width <= 0 || height <= 0) {
@@ -78,6 +74,13 @@ Future<VideoPreview> probeVideoPreview(
       height = video.videoHeight;
     }
     final hasGeometry = width > 0 && height > 0;
+    // Read AFTER the geometry wait: on the same WebKit path that reports 0x0
+    // at loadedmetadata the duration is often NaN there too, and losing it
+    // silently disables the composer's duration cap.
+    final rawDuration = video.duration;
+    final duration = rawDuration.isFinite && rawDuration > 0
+        ? rawDuration
+        : null;
 
     String? thumbHash;
     if (hasGeometry) {

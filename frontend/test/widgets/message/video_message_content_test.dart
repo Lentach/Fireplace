@@ -161,6 +161,7 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
       expect(arbiter.requests, 0);
+      final stateBefore = tester.state(find.byType(VideoMessageContent));
 
       await _pumpBubble(
         tester,
@@ -170,7 +171,46 @@ void main() {
       );
       await tester.pump();
       await tester.pumpAndSettle();
+      // Same State: the request came from didUpdateWidget, not from a fresh
+      // initState — otherwise this test would pass without the fix.
+      expect(
+        identical(tester.state(find.byType(VideoMessageContent)), stateBefore),
+        isTrue,
+      );
       expect(arbiter.requests, 1);
+    },
+  );
+
+  testWidgets(
+    'a route pushed over the chat stops inline requests; popping it '
+    're-requests without a scroll',
+    (tester) async {
+      // The chat page stays laid out under an opaque route, so localToGlobal
+      // still reports the bubble on screen — without the route check a
+      // decrypted blob would keep playing behind Settings, and nothing else
+      // re-evaluates on the way back (no scroll, no settings flip).
+      final arbiter = _RecordingArbiter();
+      final settings = SettingsProvider();
+      await _pumpBubble(
+        tester,
+        _videoMessage(mediaUrl: 'https://example.com/media/msgs/v.bin'),
+        settings: settings,
+        arbiter: arbiter,
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+      expect(arbiter.requests, 1);
+
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+      navigator.push(
+        MaterialPageRoute<void>(builder: (_) => const Scaffold()),
+      );
+      await tester.pumpAndSettle();
+      expect(arbiter.requests, 1, reason: 'covered: must not request');
+
+      navigator.pop();
+      await tester.pumpAndSettle();
+      expect(arbiter.requests, 2, reason: 'current again: re-request');
     },
   );
 }
