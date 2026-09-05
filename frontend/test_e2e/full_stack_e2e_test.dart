@@ -868,37 +868,6 @@ void main() {
       );
 
       test(
-        'one-time pre-keys under an UNPUBLISHED identity are refused and the '
-        'published pool survives (§5.1)',
-        () async {
-          // Observed live 2026-08-18: the lock refused a session's identity and
-          // that same session still upserted 20 OTPs over the legitimate
-          // device's keyId 0..19 slots. Unservable (the fetch filter pins the
-          // published identity) but the victim's pool went empty until a peer
-          // fetch re-triggered replenishment.
-          await alice.uploadDeviceOneTimePreKeys(
-            deviceId: 1,
-            identityPublicKey: 'unpublished-identity-$runTag',
-            keyIds: const [0, 1],
-            publicKeyPrefix: 'foreign-otp-',
-            expectRefusal: 'identity_locked',
-          );
-
-          // The account still serves a key, and never the refused epoch's.
-          final served = await alice.fetchBundleFor(alice.userId, deviceId: 1);
-          expect(served['identityPublicKey'], sharedIdentity);
-          final otp = served['oneTimePreKeyPublic'] as String?;
-          expect(
-            otp,
-            isNotNull,
-            reason: 'the refusal must not have emptied the pool',
-          );
-          expect(otp, isNot(startsWith('foreign-otp-')));
-        },
-        timeout: const Timeout(Duration(minutes: 1)),
-      );
-
-      test(
         'an unknown device is served nothing, never another device\'s keys',
         () async {
           // Fail-closed: serving device 1's bundle for a device that never
@@ -1006,6 +975,45 @@ void main() {
         expect(verdict.ok, isTrue, reason: 'reason=${verdict.reason}');
         expect(verdict.deviceList!.devices.single.deviceId, 1);
       }, timeout: const Timeout(Duration(minutes: 2)));
+
+      test(
+        'one-time pre-keys under an UNPUBLISHED identity are refused on an '
+        'ENROLLED account and the published pool survives (§5.1)',
+        () async {
+          // Observed live 2026-08-18: the lock refused a session's identity and
+          // that same session still upserted 20 OTPs over the legitimate
+          // device's keyId 0..19 slots. Unservable (the fetch filter pins the
+          // published identity) but the victim's pool went empty until a peer
+          // fetch re-triggered replenishment.
+          //
+          // Runs AFTER alice's enrolment: since (lxxiii) clause 1 the OTP site
+          // is exempt on an UN-enrolled account (bundle + OTPs are emitted back
+          // to back and the keys may land first), so only an enrolled account
+          // refuses here.
+          final before = await alice.fetchBundleFor(alice.userId, deviceId: 1);
+          final publishedIdentity = before['identityPublicKey'] as String;
+
+          await alice.uploadDeviceOneTimePreKeys(
+            deviceId: 1,
+            identityPublicKey: 'unpublished-identity-$runTag',
+            keyIds: const [0, 1],
+            publicKeyPrefix: 'foreign-otp-',
+            expectRefusal: 'identity_locked',
+          );
+
+          // The account still serves a key, and never the refused epoch's.
+          final served = await alice.fetchBundleFor(alice.userId, deviceId: 1);
+          expect(served['identityPublicKey'], publishedIdentity);
+          final otp = served['oneTimePreKeyPublic'] as String?;
+          expect(
+            otp,
+            isNotNull,
+            reason: 'the refusal must not have emptied the pool',
+          );
+          expect(otp, isNot(startsWith('foreign-otp-')));
+        },
+        timeout: const Timeout(Duration(minutes: 1)),
+      );
 
       test('a second enrollment is refused — first-write-wins, the DAK '
           'authority is born once (I2)', () async {

@@ -7,9 +7,22 @@
 // — the last one shipped in 0a and only the live harness caught it). So this
 // drives the real socket wire and then reads the server's own view back to
 // confirm nothing moved.
+//
+// Since amendment (lxxiii) clause 1 the lock is OPT-IN: enrolling a DAK (spec
+// §3, `enrollDeviceAuthority`) is what arms it. So the two halves below are
+// ordered by enrolment state — first the un-enrolled account, whose identity
+// moves on credentials alone but LOUDLY; then the same account enrolled, where
+// the identical upload is refused before any write. The §6.1 nonce single-spend
+// is no longer observable on the wire (un-enrolled falls through to `unlocked`,
+// enrolled refuses the signature path outright per (liv)); it stays pinned by
+// the backend unit suite (`chat-key-exchange.service.spec.ts`).
 
+import 'dart:convert';
+
+import 'package:fireplace/services/device_list/device_authority_engine.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/e2e_test_client.dart';
@@ -22,12 +35,12 @@ void main() {
     final baseUrl = e2eBaseUrl();
     late E2eClient owner;
     E2eClient? replacement;
+    // A third installation with its own fresh keys, tried against the account
+    // once it is enrolled — the shape of a password-only takeover.
+    E2eClient? intruder;
     // Third authenticated session, minted by the carve-out test's re-login —
     // same account, so it costs nothing against the register throttle.
     E2eClient? relogin;
-    // Captured while the owner's record still exists: the first test wipes the
-    // shared mock stores to model a second installation, which destroys it.
-    late String ownerPair;
 
     setUpAll(() async {
       await requireBackendUp(baseUrl);
@@ -40,23 +53,26 @@ void main() {
       await owner.registerFresh();
       await owner.connectSocket();
       await owner.initializeAndUploadKeys();
-      ownerPair = await owner.exportIdentityPair();
     });
 
     tearDownAll(() {
       owner.dispose();
       replacement?.dispose();
+      intruder?.dispose();
       relogin?.dispose();
     });
 
     test(
-      'an unauthorized identity replacement is refused and changes nothing',
+      'an UN-ENROLLED account replaces its identity on credentials alone, and '
+      'every other session is told ((lxxiii) clause 1)',
       () async {
         final storedBefore = await owner.fetchBundleFor(owner.userId);
         final originalIdentity = storedBefore['identityPublicKey'] as String;
 
         // A second installation on the same account with brand-new keys: the
         // shape of both a legitimate reinstall AND a password-only takeover.
+        // Un-enrolled, the server cannot tell them apart and must not strand
+        // the reinstall — so it accepts, and the churn stays loud.
         // ignore: invalid_use_of_visible_for_testing_member
         FlutterSecureStorage.setMockInitialValues({});
         // ignore: invalid_use_of_visible_for_testing_member
@@ -72,7 +88,59 @@ void main() {
           reason: 'the test is meaningless unless the identity really differs',
         );
 
+        owner.events.discard('ownIdentityReplaced');
         final answer = await replacement!.uploadKeyBundleRaw(freshKeys);
+        expect(answer['success'], isTrue, reason: 'error=${answer['error']}');
+
+        final storedAfter = await owner.fetchBundleFor(owner.userId);
+        expect(storedAfter['identityPublicKey'], freshIdentity);
+
+        // The §6.0 alarm is the only protection an un-enrolled account has
+        // against a takeover, so the OTHER session must hear about it.
+        await owner.events.next(
+          'ownIdentityReplaced',
+          reason: 'the owner session must be alarmed by the unlocked replacement',
+        );
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
+
+    test(
+      'once ENROLLED, an unauthorized identity replacement is refused and '
+      'changes nothing',
+      () async {
+        // Arm the lock: enroll a DAK under the identity the account now
+        // publishes (the replacement's — it owns the stored bundle).
+        final holder = IdentityKeyPair.fromSerialized(
+          base64Decode(await replacement!.exportIdentityPair()),
+        );
+        final enrolled = await DeviceAuthorityEngine().enroll(
+          userId: owner.userId,
+          identity: holder,
+          send: replacement!.enrollDeviceAuthority,
+        );
+        expect(enrolled.accepted, isTrue, reason: 'error=${enrolled.error}');
+
+        final storedBefore = await owner.fetchBundleFor(owner.userId);
+        final originalIdentity = storedBefore['identityPublicKey'] as String;
+
+        // ignore: invalid_use_of_visible_for_testing_member
+        FlutterSecureStorage.setMockInitialValues({});
+        // ignore: invalid_use_of_visible_for_testing_member
+        SharedPreferences.setMockInitialValues({});
+        intruder = E2eClient('lockint', baseUrl)..adoptAccountFrom(owner);
+        await intruder!.connectSocket();
+        final freshKeys = await intruder!.initializeKeys();
+        final freshIdentity =
+            (freshKeys['keyBundle'] as Map)['identityPublicKey'] as String;
+        expect(
+          freshIdentity,
+          isNot(originalIdentity),
+          reason: 'the test is meaningless unless the identity really differs',
+        );
+
+        owner.events.discard('ownIdentityReplaced');
+        final answer = await intruder!.uploadKeyBundleRaw(freshKeys);
 
         expect(answer['success'], isFalse);
         expect(answer['error'], 'identity_locked');
@@ -92,60 +160,6 @@ void main() {
       },
       timeout: const Timeout(Duration(minutes: 3)),
     );
-
-    test('an issued nonce is spent by ONE attempt, valid or not, and a proof '
-        'signed by the previous identity key is then accepted', () async {
-      final storedBefore = await owner.fetchBundleFor(owner.userId);
-      final originalIdentity = storedBefore['identityPublicKey'] as String;
-      final rotatedKeys = await replacement!.initializeKeys();
-      final rotatedIdentity =
-          (rotatedKeys['keyBundle'] as Map)['identityPublicKey'] as String;
-
-      // Issue a nonce, then burn it on an attempt carrying no proof.
-      final spentNonce = await owner.fetchRegistrationLockNonce();
-      final burn = await owner.uploadKeyBundleRaw(rotatedKeys);
-      expect(burn['success'], isFalse);
-
-      // A perfectly valid proof over that SAME nonce must now be refused:
-      // one issued nonce authorizes at most one attempt, so a captured
-      // proof cannot be replayed into a later window.
-      final staleProof = await owner.signIdentityChange(
-        signerPairBase64: ownerPair,
-        newIdentityPublicKeyBase64: rotatedIdentity,
-        nonceBase64: spentNonce,
-      );
-      final replay = await owner.uploadKeyBundleRaw(
-        rotatedKeys,
-        identitySignature: staleProof,
-        nonce: spentNonce,
-      );
-      expect(replay['success'], isFalse);
-      expect(replay['error'], 'identity_locked');
-      expect(
-        (await owner.fetchBundleFor(owner.userId))['identityPublicKey'],
-        originalIdentity,
-        reason: 'neither refused attempt may move the stored identity',
-      );
-
-      // Control: a fresh nonce with the same signing key IS the legitimate
-      // rotation path, and it goes through.
-      final freshNonce = await owner.fetchRegistrationLockNonce();
-      final goodProof = await owner.signIdentityChange(
-        signerPairBase64: ownerPair,
-        newIdentityPublicKeyBase64: rotatedIdentity,
-        nonceBase64: freshNonce,
-      );
-      final accepted = await owner.uploadKeyBundleRaw(
-        rotatedKeys,
-        identitySignature: goodProof,
-        nonce: freshNonce,
-      );
-
-      expect(accepted['success'], isTrue);
-      final storedAfter = await owner.fetchBundleFor(owner.userId);
-      expect(storedAfter['identityPublicKey'], rotatedIdentity);
-      expect(storedAfter['identityPublicKey'], isNot(originalIdentity));
-    }, timeout: const Timeout(Duration(minutes: 3)));
 
     // /auth/register is throttled to 10/hour per IP and the rest of the
     // harness already spends 9, so a fresh account per group would push the
