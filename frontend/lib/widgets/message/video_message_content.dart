@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../l10n/app_localizations.dart';
@@ -410,15 +411,25 @@ class _VideoMessageContentState extends State<VideoMessageContent>
               // never a squash.
               if (playing && controller != null)
                 _InlineVideoStage(controller: controller),
+              // On the web the <video> is a platform view, and the engine
+              // drops pointer events whose DOM target sits inside one — a
+              // finger on the playing clip never reached the GestureDetector
+              // above (reproduced on the emulator: the touch targets
+              // `VIDEO[flt-platform-view]`, the paused bubble's targets
+              // `FLUTTER-VIEW`). The interceptor is a transparent DOM layer
+              // above the video that hands the events back to Flutter.
+              // Native: plain passthrough.
+              if (playing) PointerInterceptor(child: const SizedBox.expand()),
               if (!playing) const Center(child: _PlayBadge()),
+              // Telegram layout: the clip's own chrome sits top-left, so the
+              // bubble's time/ticks keep the bottom-right corner to
+              // themselves.
               if (!playing) _DurationChip(label: _durationLabel()),
               if (playing)
-                _RemainingChip(remainingSeconds: _remainingSeconds),
-              if (playing)
-                Positioned(
-                  right: 4,
-                  bottom: 4,
-                  child: _MuteButton(muted: _muted, onPressed: _toggleMute),
+                _RemainingMutePill(
+                  remainingSeconds: _remainingSeconds,
+                  muted: _muted,
+                  onToggleMute: _toggleMute,
                 ),
             ],
           ),
@@ -454,35 +465,6 @@ class _InlineVideoStage extends StatelessWidget {
   }
 }
 
-/// Small round mute toggle over the playing video. The only inline control —
-/// everything else still lives in the fullscreen player.
-class _MuteButton extends StatelessWidget {
-  final bool muted;
-  final VoidCallback onPressed;
-
-  const _MuteButton({required this.muted, required this.onPressed});
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    return Material(
-      color: Colors.black54,
-      shape: const CircleBorder(),
-      child: IconButton(
-        key: const ValueKey('video_inline_mute_toggle'),
-        iconSize: 18,
-        visualDensity: VisualDensity.compact,
-        tooltip: muted ? l10n.videoUnmute : l10n.videoMute,
-        icon: Icon(
-          muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
-          color: Colors.white.withValues(alpha: 0.9),
-        ),
-        onPressed: onPressed,
-      ),
-    );
-  }
-}
-
 String _formatSeconds(int seconds) {
   final clamped = seconds < 0 ? 0 : seconds;
   final minutes = clamped ~/ 60;
@@ -513,8 +495,8 @@ class _PlayBadge extends StatelessWidget {
   }
 }
 
-/// Small duration pill, bottom-left: the bubble's own time overlay owns the
-/// bottom-right corner.
+/// Duration pill, top-left (Telegram): the bubble's own time/ticks overlay
+/// owns the bottom-right corner and the bottom-left stays clear too.
 class _DurationChip extends StatelessWidget {
   final String? label;
 
@@ -524,54 +506,90 @@ class _DurationChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final value = label;
     if (value == null) return const SizedBox.shrink();
-    return Positioned(left: 8, bottom: 8, child: _OverlayPill(text: value));
+    return Positioned(left: 8, top: 8, child: _OverlayPill(text: value));
   }
 }
 
-/// Countdown pill while playing: time REMAINING, stepping at 1 Hz off the
-/// controller listener. Subscribes to its own notifier so the once-a-second
-/// tick repaints this pill alone.
-class _RemainingChip extends StatelessWidget {
+/// `0:12 🔇` while playing, top-left, as one tappable pill (Telegram): time
+/// REMAINING stepping at 1 Hz off the controller listener, plus the speaker
+/// state. The whole pill toggles mute — a 12 px glyph alone is not a target.
+/// Subscribes to its own notifier so the once-a-second tick repaints the
+/// pill alone.
+class _RemainingMutePill extends StatelessWidget {
   final ValueListenable<int?> remainingSeconds;
+  final bool muted;
+  final VoidCallback onToggleMute;
 
-  const _RemainingChip({required this.remainingSeconds});
+  const _RemainingMutePill({
+    required this.remainingSeconds,
+    required this.muted,
+    required this.onToggleMute,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Positioned(
       left: 8,
-      bottom: 8,
-      child: ValueListenableBuilder<int?>(
-        valueListenable: remainingSeconds,
-        builder: (context, seconds, _) {
-          if (seconds == null) return const SizedBox.shrink();
-          return _OverlayPill(text: _formatSeconds(seconds));
-        },
+      top: 8,
+      child: Semantics(
+        button: true,
+        label: muted ? l10n.videoUnmute : l10n.videoMute,
+        child: GestureDetector(
+          key: const ValueKey('video_inline_mute_toggle'),
+          behavior: HitTestBehavior.opaque,
+          onTap: onToggleMute,
+          child: ValueListenableBuilder<int?>(
+            valueListenable: remainingSeconds,
+            builder: (context, seconds, _) {
+              return _OverlayPill(
+                text: seconds == null ? null : _formatSeconds(seconds),
+                trailing: Icon(
+                  muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                  size: 14,
+                  color: Colors.white.withValues(alpha: 0.9),
+                ),
+              );
+            },
+          ),
+        ),
       ),
     );
   }
 }
 
-/// Shared scrim pill for the duration and countdown chips.
+/// Shared scrim pill for the duration chip and the remaining+mute pill.
 class _OverlayPill extends StatelessWidget {
-  final String text;
+  final String? text;
+  final Widget? trailing;
 
-  const _OverlayPill({required this.text});
+  const _OverlayPill({required this.text, this.trailing});
 
   @override
   Widget build(BuildContext context) {
+    final label = text;
+    final icon = trailing;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.45),
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 11,
-          color: Colors.white.withValues(alpha: 0.9),
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (label != null)
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.white.withValues(alpha: 0.9),
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          if (label != null && icon != null) const SizedBox(width: 4),
+          ?icon,
+        ],
       ),
     );
   }

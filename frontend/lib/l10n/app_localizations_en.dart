@@ -1688,6 +1688,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get videoMute => 'Mute';
 
   @override
+  String get videoSenderYou => 'You';
+
+  @override
   String get settingsAutoplayVideos => 'Autoplay videos';
 
   @override

@@ -643,6 +643,7 @@
   "videoStillSending": "Trwa wysyłanie…",
   "videoUnmute": "Włącz dźwięk",
   "videoMute": "Wycisz",
+  "videoSenderYou": "Ty",
   "settingsAutoplayVideos": "Autoodtwarzanie wideo",
   "settingsAutoplayVideosSubtitle": "Wideo w czacie odtwarzają się bez dźwięku, gdy są widoczne",
   "attachmentUnsupportedFileType": "Nieobsługiwany typ pliku",

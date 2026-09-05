@@ -2,12 +2,15 @@ import 'dart:math' as math;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
 import '../../providers/auth_provider.dart';
+import '../../theme/rpg_theme.dart';
+import '../message_date_separator.dart';
 import 'video_playback_session.dart';
 
 /// Opens the fullscreen video player for [message], optionally starting at
@@ -31,7 +34,8 @@ Future<Duration?> showVideoFullscreen(
   Duration? lastPosition;
   await showDialog<void>(
     context: context,
-    barrierColor: Colors.black,
+    // The view paints its own black backdrop so a swipe-down can thin it.
+    barrierColor: Colors.transparent,
     builder: (_) => _VideoFullscreenView(
       message: message,
       startAt: startAt,
@@ -124,8 +128,8 @@ class _VideoFullscreenViewState extends State<_VideoFullscreenView> {
         if (playing) {
           _scheduleHide();
         } else {
-          // Pause and end-of-clip both surface the chrome and pin it: a
-          // stopped player must never sit behind invisible controls.
+          // A pause surfaces the chrome and pins it: a stopped player must
+          // never sit behind invisible controls. (End-of-clip loops instead.)
           _hideTimer?.cancel();
           _chromeVisible = true;
         }
@@ -161,7 +165,9 @@ class _VideoFullscreenViewState extends State<_VideoFullscreenView> {
     if (startAt != null && startAt > Duration.zero) {
       await session.controller!.seekTo(startAt);
     }
-    await session.controller!.setLooping(false);
+    // Owner call (2026-09-05): the clip replays from the top when it ends,
+    // like Telegram's viewer, instead of parking on the last frame.
+    await session.controller!.setLooping(true);
     await session.controller!.play();
   }
 
@@ -187,23 +193,70 @@ class _VideoFullscreenViewState extends State<_VideoFullscreenView> {
       controller.pause();
       return;
     }
-    if (controller.value.position >= controller.value.duration) {
-      controller.seekTo(Duration.zero);
-    }
     controller.play();
     _scheduleHide();
   }
 
+  // --- swipe-down dismiss (Telegram) --------------------------------------
+
+  /// Vertical finger offset while a dismiss drag is in flight; 0 at rest.
+  double _dragDy = 0;
+
+  /// Fraction of the viewport the finger must travel to dismiss on release
+  /// without a fling.
+  static const _kDismissFraction = 0.22;
+  static const _kDismissFlingVelocity = 700.0;
+
+  void _onDragStart(DragStartDetails _) => _hideTimer?.cancel();
+
+  void _onDragUpdate(DragUpdateDetails details) {
+    setState(() => _dragDy = math.max(0, _dragDy + details.delta.dy));
+  }
+
+  void _onDragEnd(DragEndDetails details) {
+    final height = MediaQuery.sizeOf(context).height;
+    final flung = details.primaryVelocity != null &&
+        details.primaryVelocity! > _kDismissFlingVelocity;
+    if (flung || _dragDy > height * _kDismissFraction) {
+      Navigator.pop(context);
+      return;
+    }
+    setState(() => _dragDy = 0);
+    if (_controller?.value.isPlaying ?? false) _scheduleHide();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final height = MediaQuery.sizeOf(context).height;
+    // The backdrop is painted here, not by the dialog barrier, so it can
+    // thin out under the finger the way Telegram's does.
+    final progress = (_dragDy / height).clamp(0.0, 1.0);
+    final scale = 1 - progress * 0.25;
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: EdgeInsets.zero,
-      child: Stack(
-        children: [
-          Positioned.fill(child: _buildStage()),
-          _buildChrome(context),
-        ],
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _toggleChrome,
+        onVerticalDragStart: _onDragStart,
+        onVerticalDragUpdate: _onDragUpdate,
+        onVerticalDragEnd: _onDragEnd,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: ColoredBox(
+                color: Colors.black.withValues(alpha: 1 - progress),
+              ),
+            ),
+            Positioned.fill(
+              child: Transform.translate(
+                offset: Offset(0, _dragDy),
+                child: Transform.scale(scale: scale, child: _buildStage()),
+              ),
+            ),
+            if (_dragDy == 0) _buildChrome(context),
+          ],
+        ),
       ),
     );
   }
@@ -211,8 +264,20 @@ class _VideoFullscreenViewState extends State<_VideoFullscreenView> {
   /// Every control lives in one fading layer so it appears and hides as a
   /// unit. `IgnorePointer` while hidden: an invisible close button that still
   /// swallows taps would fight the chrome-revealing tap on the stage.
+  ///
+  /// Telegram shape: back chevron top-left with a sender/day header pill,
+  /// centered play/pause, and an `elapsed — slider — remaining` pill above the
+  /// gesture-navigation zone.
   Widget _buildChrome(BuildContext context) {
     final controller = _controller;
+    final l10n = AppLocalizations.of(context);
+    final myId = context.read<AuthProvider>().currentUser?.id;
+    final sender = widget.message.senderId == myId
+        ? l10n.videoSenderYou
+        : widget.message.senderUsername;
+    final when =
+        '${MessageDateSeparator.dayLabel(context, widget.message.createdAt)}'
+        ' · ${RpgTheme.formatMessageClock(widget.message.createdAt)}';
     return Positioned.fill(
       child: IgnorePointer(
         ignoring: !_chromeVisible,
@@ -229,20 +294,59 @@ class _VideoFullscreenViewState extends State<_VideoFullscreenView> {
                   child: Padding(
                     padding: const EdgeInsets.all(8),
                     child: Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         Material(
                           color: Colors.black54,
                           shape: const CircleBorder(),
                           child: IconButton(
                             key: const ValueKey('video_fullscreen_close'),
-                            icon: const Icon(Icons.close, color: Colors.white),
+                            icon: const Icon(
+                              Icons.arrow_back_ios_new_rounded,
+                              color: Colors.white,
+                            ),
                             tooltip: MaterialLocalizations.of(
                               context,
                             ).closeButtonTooltip,
                             onPressed: () => Navigator.pop(context),
                           ),
                         ),
+                        Expanded(
+                          child: Center(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.black54,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    sender,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  Text(
+                                    when,
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        // Balances the back button so the header pill is
+                        // centered on the screen, not on the leftover width.
+                        const SizedBox(width: 48),
                       ],
                     ),
                   ),
@@ -280,12 +384,19 @@ class _VideoFullscreenViewState extends State<_VideoFullscreenView> {
                   // (iOS home indicator = 34 pt, still 64 total, not 98).
                   // Telegram keeps its scrubber ~64 px up.
                   bottom: math.max(64.0, MediaQuery.viewPaddingOf(context).bottom + 12),
-                  child: VideoSeekBar(
-                    controller: controller,
-                    onScrubStart: () => _hideTimer?.cancel(),
-                    onScrubEnd: () {
-                      if (controller.value.isPlaying) _scheduleHide();
-                    },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: VideoSeekBar(
+                      controller: controller,
+                      onScrubStart: () => _hideTimer?.cancel(),
+                      onScrubEnd: () {
+                        if (controller.value.isPlaying) _scheduleHide();
+                      },
+                    ),
                   ),
                 ),
             ],
@@ -327,17 +438,22 @@ class _VideoFullscreenViewState extends State<_VideoFullscreenView> {
       );
     }
     final controller = _controller!;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: _toggleChrome,
-      child: Center(
-        child: AspectRatio(
-          // NOT controller.value.aspectRatio: that getter ignores
-          // rotationCorrection, while VideoPlayer compensates internally
-          // with a RotatedBox. Trusting it squashes every rotated phone
-          // recording into a landscape box.
-          aspectRatio: rotationAwareAspectRatio(controller.value),
-          child: VideoPlayer(controller),
+    return Center(
+      child: AspectRatio(
+        // NOT controller.value.aspectRatio: that getter ignores
+        // rotationCorrection, while VideoPlayer compensates internally
+        // with a RotatedBox. Trusting it squashes every rotated phone
+        // recording into a landscape box.
+        aspectRatio: rotationAwareAspectRatio(controller.value),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            VideoPlayer(controller),
+            // Web: the <video> is a platform view whose DOM events never
+            // reach Flutter — without this the chrome-toggling tap and the
+            // swipe-down were dead on real phones (see the bubble's note).
+            PointerInterceptor(child: const SizedBox.expand()),
+          ],
         ),
       ),
     );
@@ -449,7 +565,11 @@ class _VideoSeekBarState extends State<VideoSeekBar> {
               ),
             ),
             Text(
-              _timestamp(value.duration),
+              // Telegram: the right label counts DOWN.
+              _timestamp(
+                Duration(milliseconds: (maxMs - positionMs).round()),
+              ),
+              key: const ValueKey('video_remaining_label'),
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 12,

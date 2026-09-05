@@ -209,6 +209,59 @@ void main() {
         findsOneWidget,
       );
     });
+
+    testWidgets('a long swipe down dismisses the fullscreen viewer', (
+      tester,
+    ) async {
+      await _pumpBubble(
+        tester,
+        _videoMessage(mediaWidth: 360, mediaHeight: 480),
+      );
+      await tester.tapAt(tester.getCenter(find.byType(VideoMessageContent)));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      final close = find.byKey(const ValueKey('video_fullscreen_close'));
+      expect(close, findsOneWidget);
+
+      // Slow drag over a third of the screen, no fling.
+      final start = tester.getCenter(find.byType(Dialog));
+      final height = tester.view.physicalSize.height /
+          tester.view.devicePixelRatio;
+      final gesture = await tester.startGesture(start);
+      for (var i = 0; i < 10; i++) {
+        await gesture.moveBy(Offset(0, height * 0.035));
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(close, findsNothing);
+    });
+
+    testWidgets('a short swipe down snaps back and keeps the viewer', (
+      tester,
+    ) async {
+      await _pumpBubble(
+        tester,
+        _videoMessage(mediaWidth: 360, mediaHeight: 480),
+      );
+      await tester.tapAt(tester.getCenter(find.byType(VideoMessageContent)));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      final close = find.byKey(const ValueKey('video_fullscreen_close'));
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byType(Dialog)),
+      );
+      for (var i = 0; i < 5; i++) {
+        await gesture.moveBy(const Offset(0, 8));
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(close, findsOneWidget);
+    });
   });
 
   group('fullscreen seek bar', () {
