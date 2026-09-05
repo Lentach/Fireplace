@@ -276,9 +276,22 @@ class _PasscodeUnlockScreenState extends State<PasscodeUnlockScreen> {
 }
 
 /// Copy for "what this lock actually protects", chosen per platform because
-/// the honest answer differs: on Android the verifier is Keystore-backed and
-/// the window carries `FLAG_SECURE`, while on web it shares localStorage with
-/// everything it guards. Bitwarden ships the same candor about its PIN
+/// the honest answer differs: on Android the passcode is only a GATE — the
+/// verifier is Keystore-backed and the window carries `FLAG_SECURE`, but
+/// nothing is encrypted by it — while on web it is real key material, so the
+/// 32-byte content/sig keys are wrapped under a passcode-derived KEK and a
+/// copy of the browser profile is useless without the code.
+///
+/// The web half said the OPPOSITE until 2026-09-05 ("does not encrypt stored
+/// data … someone with access to this browser profile can bypass it"): true
+/// in Phase 1, false once wrapping shipped, and false in the harmful
+/// direction, since it argues for a weak code at the moment the code became
+/// the only barrier. Both halves must track what their platform actually
+/// does — see `frontend/CLAUDE.md` §10a/§10b.
+///
+/// What we still do NOT claim on web: the guarantee is only as strong as the
+/// passcode, because the wrapped envelopes and the KEK salt live in the same
+/// origin storage they protect. Bitwarden ships the same candor about its PIN
 /// ("can weaken the level of encryption"); silence here would be a claim we
 /// cannot support.
 String passcodeScopeNote(AppLocalizations l10n) =>

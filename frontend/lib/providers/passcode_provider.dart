@@ -407,10 +407,16 @@ class PasscodeProvider extends ChangeNotifier {
     return true;
   }
 
-  /// Checks a code without changing any state. Used by the settings screens
-  /// to gate a change or a disable behind the CURRENT passcode. Returns false
-  /// for a wrong code and for an unavailable KDF alike — the caller's next
-  /// step is the same either way, and neither may reveal anything more.
+  /// Checks the CURRENT code for the settings screens, to gate a change or a
+  /// disable. Returns false for a wrong code and for an unavailable KDF alike
+  /// — the caller's next step is the same either way, and neither may reveal
+  /// anything more.
+  ///
+  /// It DOES change state, despite the name: a wrong code advances the
+  /// attempt ladder and notifies, a right one clears it. Callers that show a
+  /// "wrong passcode" message on false must therefore check
+  /// [lockoutRemaining] first, or they will tell a user their correct code is
+  /// wrong for the length of a cooldown.
   ///
   /// Throttled on the SAME ladder as [unlock], and for the same reason: this
   /// is a credential oracle. Left unmetered it let anyone who reached a

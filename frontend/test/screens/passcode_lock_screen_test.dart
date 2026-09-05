@@ -5,6 +5,7 @@ import 'package:fireplace/providers/passcode_provider.dart';
 import 'package:fireplace/screens/passcode_lock_screen.dart';
 import 'package:fireplace/services/passcode_store.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
+import 'package:fireplace/utils/passcode_autolock.dart';
 import 'package:provider/provider.dart';
 
 import '../support/passcode_fakes.dart';
@@ -182,6 +183,30 @@ void main() {
 
       expect(passcode.isEnabled, isTrue);
       expect(await passcode.unlock('5678'), PasscodeUnlockResult.ok);
+    });
+
+    testWidgets(
+        'a cooldown in Settings is never reported as a wrong passcode',
+        (tester) async {
+      // Regression: `verifyCurrent` became throttled, so false stopped
+      // meaning "wrong". Reporting the cooldown as a wrong code tells a user
+      // their CORRECT passcode is wrong for as long as an hour.
+      await tester.pumpWidget(_host(passcode));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('passcode-turn-off')));
+      await tester.pumpAndSettle();
+
+      for (var i = 0; i < kPasscodeAttemptsBeforeBackoff; i++) {
+        await _type(tester, '9999');
+      }
+      expect(passcode.lockoutRemaining, isNotNull);
+
+      // The correct code, while the ladder is running.
+      await _type(tester, '1234');
+
+      expect(find.text('Wrong passcode. Try again.'), findsNothing);
+      expect(passcode.isEnabled, isTrue, reason: 'cooldown must still gate');
     });
   });
 }

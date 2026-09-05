@@ -281,10 +281,25 @@ class _PasscodePromptScreenState extends State<_PasscodePromptScreen> {
         title: l10n.passcodeCurrentTitle,
         errorText: _error,
         onSubmit: (code) async {
+          // `verifyCurrent` is throttled, so false no longer means "wrong".
+          // Reporting a cooldown as a wrong code would tell a user their
+          // CORRECT passcode is wrong for up to an hour.
+          final blocked = widget.passcode.lockoutRemaining;
+          if (blocked != null) {
+            setState(
+              () => _error = l10n.passcodeBlocked(blocked.inSeconds + 1),
+            );
+            return;
+          }
           final ok = await widget.passcode.verifyCurrent(code);
           if (!context.mounted) return;
           if (!ok) {
-            setState(() => _error = l10n.passcodeWrong);
+            final cooldown = widget.passcode.lockoutRemaining;
+            setState(
+              () => _error = cooldown != null
+                  ? l10n.passcodeBlocked(cooldown.inSeconds + 1)
+                  : l10n.passcodeWrong,
+            );
             return;
           }
           Navigator.of(context).pop(code);

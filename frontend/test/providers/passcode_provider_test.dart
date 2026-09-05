@@ -851,16 +851,25 @@ void main() {
     test('change refuses a weak Custom code under wrapping', () async {
       final wrapping = build(wrapKeys: true);
       await wrapping.initialize();
-      await wrapping.enable(passcode: 'abc123', mode: PasscodeMode.digits6);
+      // Asserted, not assumed: 'abc123' with digits6 fails the ^\d+$ shape
+      // rule, so an unchecked enable here left the passcode DISABLED and
+      // change() then returned false at its `isEnabled` guard — green with
+      // or without the floor this test exists to pin.
+      expect(
+        await wrapping.enable(passcode: '123456', mode: PasscodeMode.digits6),
+        isTrue,
+      );
 
       expect(
         await wrapping.change(
-          current: 'abc123',
+          current: '123456',
           next: '999999',
           mode: PasscodeMode.alphanumeric,
         ),
         isFalse,
       );
+      // The credential must not have moved.
+      expect(await wrapping.verifyCurrent('123456'), isTrue);
     });
   });
 
