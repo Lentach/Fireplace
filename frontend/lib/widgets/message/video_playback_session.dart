@@ -7,6 +7,18 @@ import '../../utils/video_blob_url_stub.dart'
     if (dart.library.html) '../../utils/video_blob_url_web.dart' as video_blob;
 import '../../utils/video_temp_file_stub.dart'
     if (dart.library.io) '../../utils/video_temp_file_io.dart' as video_temp;
+import '../../utils/video_preview.dart';
+
+/// Display aspect ratio of [value], honouring the container rotation that
+/// [VideoPlayerValue.aspectRatio] silently drops. Shared by the fullscreen
+/// stage and the inline bubble player, which must letterbox identically.
+double rotationAwareAspectRatio(VideoPlayerValue value) {
+  final size = value.size;
+  if (size.width <= 0 || size.height <= 0) return 1.0;
+  return videoRotationSwapsAxes(value.rotationCorrection)
+      ? size.height / size.width
+      : size.width / size.height;
+}
 
 /// Why a video has nothing to show.
 ///

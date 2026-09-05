@@ -85,6 +85,7 @@ class SettingsProvider extends ChangeNotifier {
     }
     _loadLocalePreference();
     _loadContactsListView();
+    _loadAutoplayVideos();
   }
 
   Future<void> _loadLocalePreference() async {
@@ -130,6 +131,30 @@ class SettingsProvider extends ChangeNotifier {
   }
 
   static const String _contactsListViewKey = 'contacts_list_view';
+
+  /// Chat videos play muted inline while visible. Device-local view
+  /// preference, not user data. Default ON (Telegram parity).
+  bool _autoplayVideos = true;
+
+  bool get autoplayVideos => _autoplayVideos;
+
+  Future<void> _loadAutoplayVideos() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getBool(_autoplayVideosKey);
+    if (saved == null || saved == _autoplayVideos) return;
+    _autoplayVideos = saved;
+    notifyListeners();
+  }
+
+  Future<void> setAutoplayVideos(bool enabled) async {
+    if (_autoplayVideos == enabled) return;
+    _autoplayVideos = enabled;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_autoplayVideosKey, enabled);
+  }
+
+  static const String _autoplayVideosKey = 'autoplay_videos';
 
   Future<void> _loadThemePreference() async {
     final prefs = await SharedPreferences.getInstance();
