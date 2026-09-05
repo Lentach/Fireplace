@@ -223,6 +223,7 @@ describe('MediaController', () => {
     await controller.serveMsgs('abc.bin', fakeRes);
     expect(fakeRes.sendFile).toHaveBeenCalledWith(
       expect.stringMatching(/msgs[/\\]abc\.bin/),
+      expect.anything(),
     );
   });
 
