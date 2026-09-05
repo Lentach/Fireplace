@@ -434,7 +434,10 @@ class ChatInputBarState extends State<ChatInputBar>
       bytes = transcoded;
     }
 
-    final preview = await video_probe.probeVideoPreview(bytes);
+    final preview = await video_probe.probeVideoPreview(
+      bytes,
+      mimeType: videoMimeForFilename(filename),
+    );
     if (!mounted) return;
     final duration = preview.durationInSeconds;
     if (duration != null &&

@@ -26,7 +26,13 @@ const _kProbeTimeout = Duration(seconds: 10);
 /// Answers [VideoPreview.unknown] on any failure, including hosts with no
 /// video plugin registered at all (desktop, the widget-test binding) — probing
 /// is best-effort and must never block a send.
-Future<VideoPreview> probeVideoPreview(Uint8List bytes) async {
+///
+/// [mimeType] is accepted for signature parity with the web probe; the native
+/// decoder sniffs the temp file and ignores it.
+Future<VideoPreview> probeVideoPreview(
+  Uint8List bytes, {
+  String mimeType = 'video/mp4',
+}) async {
   String? path;
   VideoPlayerController? controller;
   try {

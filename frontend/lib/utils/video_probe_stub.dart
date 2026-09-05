@@ -8,5 +8,7 @@ import 'video_preview.dart';
 ///
 /// Answers "unknown", so the composer cannot enforce the duration cap and the
 /// chat bubble falls back to its legacy fixed frame. Both are graceful.
-Future<VideoPreview> probeVideoPreview(Uint8List bytes) async =>
-    VideoPreview.unknown;
+Future<VideoPreview> probeVideoPreview(
+  Uint8List bytes, {
+  String mimeType = 'video/mp4',
+}) async => VideoPreview.unknown;

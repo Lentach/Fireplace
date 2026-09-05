@@ -9,6 +9,20 @@ import 'dart:typed_data';
 /// send. Keep the two in step.
 const kSendableVideoExtensions = {'mp4', 'm4v', 'mov'};
 
+/// Container MIME for a sendable video filename. `.mov` is QuickTime, not
+/// MP4 — Safari consults the blob type before sniffing, so the web probe
+/// labels the blob with this instead of a blanket `video/mp4`.
+String videoMimeForFilename(String filename) {
+  final ext = filename.contains('.')
+      ? filename.split('.').last.toLowerCase()
+      : '';
+  return switch (ext) {
+    'mov' => 'video/quicktime',
+    'm4v' => 'video/x-m4v',
+    _ => 'video/mp4',
+  };
+}
+
 /// True when a container rotation turns the frame a quarter turn, swapping the
 /// meaning of the coded width and height.
 ///

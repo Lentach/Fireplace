@@ -1616,6 +1616,12 @@ abstract class AppLocalizations {
   /// **'Aparat'**
   String get attachmentOptionCamera;
 
+  /// No description provided for @attachmentOptionRecordVideo.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nagraj wideo'**
+  String get attachmentOptionRecordVideo;
+
   /// No description provided for @attachmentOptionFile.
   ///
   /// In pl, this message translates to:
@@ -3079,6 +3085,30 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Trwa wysyłanie…'**
   String get videoStillSending;
+
+  /// No description provided for @videoUnmute.
+  ///
+  /// In pl, this message translates to:
+  /// **'Włącz dźwięk'**
+  String get videoUnmute;
+
+  /// No description provided for @videoMute.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wycisz'**
+  String get videoMute;
+
+  /// No description provided for @settingsAutoplayVideos.
+  ///
+  /// In pl, this message translates to:
+  /// **'Autoodtwarzanie wideo'**
+  String get settingsAutoplayVideos;
+
+  /// No description provided for @settingsAutoplayVideosSubtitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wideo w czacie odtwarzają się bez dźwięku, gdy są widoczne'**
+  String get settingsAutoplayVideosSubtitle;
 
   /// No description provided for @attachmentUnsupportedFileType.
   ///
