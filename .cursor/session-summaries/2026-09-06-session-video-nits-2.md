@@ -78,3 +78,21 @@ empty; paused bubble shows `0:22` top-left.
 - iOS: not verified here (no device). The interceptor path is the same DOM mechanism on Safari; owner to confirm.
 - Longer videos plan (WebCodecs transcode first, chunked streaming later) — after owner accepts this round.
 - Merge path unchanged: master's red e2e first, PR #163, PATCH bump on master, backend deploy before web.
+
+## Second half of the day: the 429, the arbiter, the animated dismiss
+
+**Owner after 0.2.11:** "videos send with lag, plays once after send then blurred; tapping → failed to load; reopen chat → plays once → broken; a second clip to someone else blurred too." Desktop pair (`vnitdesk2`→`vnitdesk3`, 8 MB) on 0.2.11: send 3.4 s, both ends autoplay, fullscreen, no errors — so the phone was hitting something the desktop never did. **0.2.12** put `stage · bytes · error` under "Nie udało się załadować wideo" (`VideoPlaybackSession.failureDetail`, key `video_failure_detail`); the owner's screenshot read **`fetch_decrypt 0B Exception Media fetch failed 429`**.
+
+**Cause:** `GET /media/msgs/:filename` (every image AND video blob) had `@Throttle 60/min` per client IP (`HttpThrottlerGuard` keys on `X-Real-IP`) and no cache header, so every load hit the origin. Inline autoplay multiplied loads (scroll-in, fullscreen open, fullscreen close — the dialog releases the inline session by design — and the sender's optimistic→real State replacement), the chat's images share the bucket, and both phones share the WiFi IP. After the 60th blob in a minute every load was 429 until the window reset → "plays once, then broken".
+
+**Fix (backend, `media.controller.ts`):** 600/min and `Cache-Control: private, max-age=31536000, immutable` (UUID-named ciphertext, never rewritten; nginx passes Cache-Control through the X-Accel response — verified on a live blob: `X-RateLimit-Limit: 600`, header present). Spec pins both (`THROTTLER:TTLdefault` / `THROTTLER:LIMITdefault` metadata keys — the throttler suffixes the name). Deployed by the agent on the owner's "deploy it as you always do": VM `git checkout test/video-nits-0.2.3 && ./deploy-backend.sh` → `/version` `0.2.12 / 0df8dd82`, healthy in 10 s. There was NO backend delta between live `5ffef19b` and `5d669ce`, so this shipped exactly one change.
+
+**Arbiter (owner: last video blurred, previous one playing on chat open):** `request(owner, onRevoke, {required int priority})` → bool, priority = `createdAt.millisecondsSinceEpoch`. Higher revokes, lower is denied; the bubble sets `_deniedByNewer` and the arbiter's next release re-evaluates it (post-frame, outside the notifier). **First cut looped:** every bubble reacted to every release, so a bubble whose own load failed re-requested every frame (`pumpAndSettle` timeouts caught it) — exactly the pattern that would have hammered the throttle. Only a denied bubble reacts now. Tests: arbiter unit (priority, denial, equal-priority, release-notifies-once), widget (newer first in tree, older denied, older granted after the newer's failed load, newer never retries).
+
+**Swipe-down:** `_slide` AnimationController; release → easeIn to the bottom (80–220 ms by fling speed) then pop, or easeOutCubic back in 220 ms; `MediaQuery.disableAnimationsOf` → 0 ms; `_dismissing` latch. Measured in the desktop pair: y 236 → 296 → 344 → 402 → 468 → 590 → 673 → 764 → off in ~230 ms, stage width 336 → 270, inline resumes underneath.
+
+**Re-entry proof (sender's chat, two clips):** back → re-enter ×3, the bottom (newest) clip plays every time.
+
+**Not app bugs:** Android gallery "Gotowe" greyed with nothing picked = Android's photo picker (browser `<input type=file>`); back cancels. Heavy video lag on the PWA = whole-file decrypt in RAM + blob URL + no streaming; native app is the right home for long/heavy clips (owner's call, agreed).
+
+**Harness notes:** registration is 10/h per IP — the desktop pair burned it (`vnitdesk2..5`; `vnitdesk4` never registered); fresh incognito contexts are KEYLESS for existing accounts under the live 0.2.3 gate, so use a freshly registered account as the sender. The emulator did not boot under `-gpu swiftshader_indirect` within 10 min (adb never listed it) — stopped; the desktop pair carried the proof. Suite **1768 / 10 skipped**.
