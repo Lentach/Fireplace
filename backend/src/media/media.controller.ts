@@ -128,12 +128,17 @@ export class MediaController {
   async serveMsgs(@Param('filename') filename: string, @Res() res: Response) {
     const safeFilename = path.basename(filename);
     if (safeFilename !== filename) throw new BadRequestException('Invalid filename');
-    // nginx forwards Cache-Control from the X-Accel response, so this header
-    // reaches the client on both serving paths.
-    res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+    const cacheControl = 'private, max-age=31536000, immutable';
     if (!useXAccel) {
-      return res.sendFile(path.join(mediaDir, 'msgs', safeFilename));
+      // Header scoped to the successful send: set up front it would ride on
+      // a sendFile 404 too, and the client would cache that miss for a year.
+      return res.sendFile(path.join(mediaDir, 'msgs', safeFilename), {
+        headers: { 'Cache-Control': cacheControl },
+      });
     }
+    // nginx forwards Cache-Control from the X-Accel response and generates
+    // its own headers for a missing file, so this reaches only real blobs.
+    res.setHeader('Cache-Control', cacheControl);
     res.setHeader('X-Accel-Redirect', `/internal/media/msgs/${safeFilename}`);
     res.status(200).send();
   }
