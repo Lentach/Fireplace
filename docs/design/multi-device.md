@@ -2565,6 +2565,34 @@ that is the designed outcome).
     Falsification: (F9) standalone check inverted → the button renders in a plain tab; (F10) nudge
     removed → no install line for an enrolled non-standalone web primary.
 
+- **Amendment 2026-09-05 (D25, agent ruling on the owner's delegation — "I've not enough knowledge
+  to take that decision, please make it for me"; backend rule + client copy):**
+  - **(lxxv) — the §6.2 ceremony is REFUSED for an UN-ENROLLED account.** (lxxiii) clause 1 made
+    never-enrolled the DEFAULT population (every user who never linked a second device), and for
+    such an account §6.1 never refuses: a fresh install re-mints on credentials alone under
+    device 1, and a peer synthesizing device 1 for a non-enrolled account ((xlv) clause 2's
+    `authorization: null`) addresses the device that EXISTS. Nothing checked enrolment in
+    `identity-reset.service.ts`, and `DeviceLinkGateScreen` shows the reset door in its
+    `checkingOnly` state, so an un-enrolled owner could still start the 72 h ceremony — whose
+    completion teardown revokes device 1 and allocates id ≥ 2 while the account stays un-enrolled:
+    the (xlv) silence then holds forever and the only live device is unaddressable until it
+    re-enrols. A ceremony can therefore only HARM an un-enrolled account. Rule: `requestReset`
+    answers the new status `not_enrolled` (`identityResetStatus { status: 'not_enrolled' }`) when no
+    `account_authorizations` row exists, BEFORE the phrase is examined — a fact about the account,
+    not an attempt: no row written, the phrase neither spent nor counted toward the five-attempt
+    lockout. Ordered AFTER the pending check so a row created before this rule keeps answering
+    `existing` and stays cancellable. Enrolment is monotonic ((xxix): the row is never dropped), so
+    the refusal can never trap an account that later needs the ceremony. Client copy points at the
+    recovery that works — sign in on the new device (`identityResetNotEnrolled`, EN+PL); older
+    clients see an unknown status and say nothing (`identityResetAnswerMessage` default).
+    Alternatives rejected: skipping roster reallocation for un-enrolled completions (keeps a 72 h
+    wait that buys nothing and leaves the door's copy lying), and rewriting the probe around the
+    stranding (documents the gap instead of closing it). Probe: `identity_reset_teardown_test`'s
+    never-enrolled group now proves the unlocked remint under device 1, the `not_enrolled` answer
+    with phrase intact, `authorization: null`, `liveDeviceIds == [1]` and `isLiveDevice(1)` — the
+    addressability assertions that never executed while the group died on its stale
+    `identity_locked` premise.
+
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the
   test-integrity findings are folded at `4c0e0bf`; the four security findings were T9. **T10 (xlv)

@@ -1,4 +1,4 @@
-# 2026-09-05 (evening) — video-nits merged to master, the e2e-wire red explained and fixed, passcode-lock rebased and green
+# 2026-09-05 (evening → late) — video-nits merged, both CI reds explained and fixed, (lxxv) ruled, master deployed as 0.2.16, passcode-lock rebased + picker-guard bug fixed
 
 Owner's brief, in order: (1) "make sure the passcode lock works correctly and is ready to deploy; we
 changed video messages, it might conflict"; (2) "video messages are done and ready but I'm not sure it
@@ -74,56 +74,106 @@ Fix (`95df1fb`, master):
   spent (the first full run showed 3 `ThrottlerException` setUpAll failures — that is the harness's
   own documented ceiling, not a regression). `CLAUDE.md` §3 harness figure updated 43/2 → 44/5.
 
-## The isolated-probe red — NOT fixed, needs a ruling
+## The isolated-probe red — a REAL gap, ruled (lxxv)
 
-`identity_reset_teardown_test.dart:542` "§6.2 reset on a NEVER-ENROLLED account" fails at its PREMISE
-(`:562-566`, `expect(error, 'identity_locked', reason: '§6.1 is what makes a reset necessary at
-all')`). Under (lxxiii) a never-enrolled recovering install remints unlocked; it never needs the
-ceremony, and the product routes it that way (`IDENTITY_GUARD_UNLOCKED_REMINT`). The test cannot be
-adapted mechanically: once the unlocked upload succeeds, the later post-reset upload is not an identity
-change, so no roster teardown runs and `accepted['deviceId']` is absent.
+`identity_reset_teardown_test.dart:542` "§6.2 reset on a NEVER-ENROLLED account" failed at its PREMISE
+(`:562-566`, `expect(error, 'identity_locked')`), which (lxxiii) removed — so its actual guard
+assertions (`events.none('deviceList')`, `liveDeviceIds`) had never executed since `a71ed33`. Not
+stale, though: `requestIdentityReset` had NO enrolment check (`identity-reset.service.ts` never consulted
+`isEnrolled`), and `device_link_gate_screen.dart:136` shows the reset door in every non-pending state
+including `checkingOnly`. So an un-enrolled owner could start the 72 h ceremony; its completion
+teardown revokes device 1 and allocates id ≥ 2 while the account stays un-enrolled — (xlv) clause 2
+then keeps the server silent, and the only live device is unaddressable until it re-enrols. And
+(lxxiii) turned never-enrolled from "a live population of exactly 0" (the header's own words) into the
+DEFAULT population: every user who never linked a second device.
 
-But the reset is still REACHABLE for an un-enrolled account: the wire `requestIdentityReset` has no
-enrolment check (`identity-reset.service.ts` never consults `isEnrolled`), and
-`device_link_gate_screen.dart:136` shows the reset door on every non-pending state including
-`checkingOnly` (identity check unavailable). If such an account completes the 72 h ceremony, the
-teardown revokes device 1 and allocates id ≥ 2 while the account stays un-enrolled — exactly the
-un-addressable shape the probe guards ((xlv) clause 2 keeps the server silent, so it is fail-closed,
-but the account is stranded until it re-enrols). The LATEST header already records "the never-enrolled
-reset had a live population of exactly 0". Options for the owner / the (lxxiii) agent: (a) refuse
-`requestIdentityReset` for un-enrolled accounts (the unlocked remint IS their recovery); (b) make the
-teardown skip roster reallocation when un-enrolled; (c) keep the mechanism and rewrite the probe to
-force the ceremony without the `identity_locked` premise. Until ruled, `e2e-isolated-probes` stays red
-and **"never deploy on red" still applies to master**.
+Owner delegated the ruling ("I've not enough knowledge to take that decision, please make it for me").
+Ruled **(a): refuse the ceremony for an un-enrolled account.** Reasoning: §6.1 never refuses such an
+account, so the unlocked remint under device 1 IS its recovery and a ceremony can only harm it;
+enrolment is monotonic ((xxix)), so the refusal can never trap an account that later needs the
+ceremony. Rejected (b) skip roster reallocation when un-enrolled — keeps a 72 h wait that buys nothing
+and leaves the door's copy lying; rejected (c) rewrite the probe around the stranding — documents the
+gap instead of closing it. Recorded as spec §12 D25 (lxxv).
 
-## `feat/passcode-lock`
+Implementation (`dbd3cc8` + count `9a1c439`, master):
+- Backend: `RequestResetStatus` gains `not_enrolled`; `requestReset` answers it when no
+  `account_authorizations` row exists, BEFORE the phrase is examined (nothing written, phrase neither
+  spent nor counted), AFTER the pending check (a pre-rule row still answers `existing`, stays
+  cancellable). `IdentityResetService` injects the `AccountAuthorization` repo (already in the module's
+  forFeature list). Red→green unit tests; key-bundles jest 223/223; backend count 1064 → **1066**.
+- Client: `identityResetAnswerMessage` maps `not_enrolled` → `identityResetNotEnrolled` (EN+PL:
+  "no linked devices, keys not locked, sign in on the new device");
+  `identityResetAnswerIsRefusal` counts it. Older clients: unknown status → silent (`default`).
+- Probe: the never-enrolled group rewritten to prove the contract end to end — unlocked remint under
+  device 1 (no re-homed `deviceId` in the ack, nothing revoked), `not_enrolled` with no ceremony row and
+  `usedAt IS NULL AND failedAttempts = 0`, `authorization: null` served, `DeviceListCache.adopt` →
+  `liveDeviceIds == [1]` and `isLiveDevice(1)`, fresh bundle served under device 1. Ran locally exactly
+  as CI does: RESET_PROBE **2/2**, ENROLLED_LOCK_PROBE **2/2**, then the shared harness again **44/5**.
+- Root `CLAUDE.md` §7 reset-ceremony line carries the new status.
 
-Rebased twice (onto `29e5734`, then `95df1fb`); now `dfdf846`, 14 commits, pushed with
-`--force-with-lease`. Each time the rebased tree was diffed against `git merge-tree --write-tree` of a
-plain merge: **byte-identical for every code path**; only `CLAUDE.md:67` and `LATEST.md` needed hands
-(the count line is a three-way collision every time — video 1768/10, passcode 1909/14, merged
-1929/14). Docs invariants re-checked after each rebase: exactly one `Still binding` bullet, the four
-passcode session files present, §10a entropy-floor bullets present. Analyze clean; full suite **1929 /
-14 skipped** on the rebased branch. Owner's UX verdicts (reload-on-lock, 0 s auto-lock on desktop web,
-6-digit vs alphanumeric) are STILL outstanding; nothing in the branch changed this session.
+**Master CI on `9a1c439`: 5/5 GREEN** — the first fully green master since `5d669ce` (0.2.3).
 
-## Deploy status
+## `feat/passcode-lock` — rebased ×3, and a real bug the advisor caught
 
-**Nothing deployed.** Prod is still `0.2.15 / c8f662e` + backend `0.2.14 / 7e957d64` from the test
-branch. When the isolated-probe red is ruled on and master is green: `deploy-backend.sh` on the VM
-FIRST (the VM is checked out on `test/video-nits-0.2.3` — `git checkout master` there first; (lxxiii)
-needs the server's `via=unlocked` before the web build ships), then bump `frontend/pubspec.yaml`
-0.2.4 → **0.2.16** (PATCH above the live 0.2.15; the file is CRLF — use the editor), `deploy-web.ps1`,
-smoke `--commit <sha>` from the main checkout, and grep the served bundle for a localized string.
-Merging `feat/passcode-lock` needs the owner's explicit OK; he has not given it.
+Rebased onto `29e5734`, `95df1fb`, `8a5c41c`, then `9a1c439`; now **`83afc18`**, 15 commits, pushed
+`--force-with-lease` each time. Every rebase was diffed against `git merge-tree --write-tree` of a plain
+merge: **byte-identical for every code path**; only `CLAUDE.md:67` (a three-number line: backend /
+Flutter / harness — take the branch side then force all three; the first sed no-op'd once because the
+intermediate commit read 1908, not 1909) and `LATEST.md` needed hands. Docs invariants after each: one
+`Still binding` bullet, five dated entries, the four passcode session files, §10a entropy bullets.
+
+⚠️ The rebases were done IN THE OWNER'S MAIN WORKTREE while his branch was checked out there — the
+advisor rightly flagged it. Code identical, but a running `flutter run` would have been on different
+files. He had said testing was paused; restart any dev server before trusting it.
+
+**Picker-guard bug (advisor finding, verified in source, fixed `cdf2a27`):** `main_shell.dart:88-89`
+fires `noteBackgrounded()` on ANY visibility loss, while `:120` right below suppresses the frozen-page
+reload for exactly the `composerNativePickerActive` case. The attach camera/file sheet IS a visibility
+loss (and `paused` on Android), so at auto-lock 0 s: tap attach → `_lock()` → keys revoked → on web the
+process replaced → picked bytes lost. `PasscodeProvider` now takes `nativePickerActive` (default
+`composerNativePickerActive.value`, injectable): `noteBackgrounded` still stamps the clock (so a 60 s
+window is measured from the picker, not a stale departure) but holds the immediate lock;
+`evaluateOnForeground` returns early while the span is up. The span self-caps at 3 min, so a stuck flag
+degrades to the old behaviour. Three tests, proven by MUTATION — removing either guard fails two of them.
+Suite **1932 / 14 skipped**, analyze clean. Draft PR **#164** opened so the branch finally gets CI runs
+(CI triggers on master pushes and `pull_request` only — the branch had NEVER had one); the pre-rebase
+run was green except the isolated probe it inherited from master, now fixed.
+
+Still open on the branch: Android-only — a manual padlock during a fullscreen clip with sound leaves
+audio playing behind the `Offstage` lock (web relaunches). Owner's UX verdicts (reload-on-lock, 0 s
+desktop auto-lock, 6-digit vs alphanumeric) outstanding; his sequencing: test the branch, then merge.
+
+## Deploy — master live, both tiers
+
+Preflight: `git diff 7e957d6 origin/master` touched NO migrations, entities, `docker-compose.prod.yml`
+or `backend/Dockerfile` → no staging rehearsal. Order per `a71ed33`'s own note, backend FIRST:
+VM `git checkout master && git pull --ff-only && ./deploy-backend.sh` → healthy in 10 s, `/version` →
+`0.2.4 / 9a1c4396` (the `version` string is the pubspec at the VM's checkout; the 0.2.16 bump landed one
+commit later — `gitCommit` is the truth). Then `chore(release): frontend 0.2.16` (`fda92b3`, CRLF-aware
+sed, re-grepped), `deploy-web.ps1` from a detached `../fireplace-deploy` worktree → `PUBLISHED_OK`, exit
+1 from the dep-less gate as documented, smoke from the main checkout `--commit fda92b3` → **5/5**.
+Served bundle: `tylko MP4` 1, `reset nie jest potrzebny` 1, `not_enrolled` 2, `Blokada kodem` 0
+(passcode is not on master — correct). Live now: `/version.json` **0.2.16 / fda92b3**, `/version`
+**9a1c4396**, `/health` ok. First time in front of users: `a71ed33`'s opt-in lock + gate, (lxxv), and
+the whole video-nits line as MASTER rather than a branch test. Rollback: web redeploy `c8f662e`;
+backend `git checkout test/video-nits-0.2.3 && ./deploy-backend.sh`.
 
 ## Traps recorded
 
 - `flutter test test_e2e` locally: set `E2E_DB_CONTAINER=fireplace-db-1` (via `cmd /c "set …&&
-  flutter.bat test …"` — a git-bash `export` does not reach the Windows child), and expect the
-  `/auth/register` 10/h/IP bucket to bite on the second run within an hour; `docker compose restart
-  backend` resets it (in-memory throttler).
-- `git worktree` + `comm <(…)` fails on this Windows git-bash ("fd redirections beyond stdin/stdout/
-  stderr") — write the two lists to files first.
+  flutter.bat test …"` — a git-bash `export` does not reach the Windows child; the default in
+  `e2e_test_client.dart:66` is `fireplace-0a-db-1`), and expect the `/auth/register` 10/h/IP bucket to
+  bite on the second run within an hour; `docker compose restart backend` resets it (in-memory).
+- Docker Desktop QUIT between two runs an hour apart (npipe gone). `powershell Start-Process 'C:\Program
+  Files\Docker\Docker\Docker Desktop.exe'`; daemon answered in ~10 s. A fresh backend worktree needs
+  `npm ci` before jest (`'jest' is not recognized`), and `npx jest` refuses (two configs) — use `npm test --`.
+- To run the dev backend from a DIFFERENT worktree against the same containers: `docker compose -p
+  fireplace up -d --force-recreate backend` from that worktree (bind mount follows the cwd); verify with
+  `docker inspect … Mounts`.
+- dart2js escapes non-ASCII in string literals — grep the served bundle for an ASCII substring of a
+  Polish string (`nie ma połączonych` → 0, `nie ma po` → 1).
+- `git worktree` + `comm <(…)` fails on this Windows git-bash — write the two lists to files first.
+- The `CLAUDE.md:67` Tests line collides three ways on every rebase; taking one side and sed-fixing the
+  others silently reverts whichever number you forgot. Grep all three after resolving.
 - Ask the deploy question BEFORE assuming "merge and deploy" means master: here the tested build was a
-  branch, master carried untested work, and deploying master would have shipped it on red.
+  branch, master carried untested work, and deploying master blind would have shipped it on red.
