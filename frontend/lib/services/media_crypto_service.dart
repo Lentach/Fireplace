@@ -18,6 +18,13 @@ class EncryptedMedia {
 class MediaCryptoService {
   static const int maxBytes = 20 * 1024 * 1024;
 
+  /// AES-GCM appends a 16-byte authentication tag, so a plaintext that just
+  /// passes [maxBytes] on the sender produces a ciphertext 16 bytes longer.
+  /// The RECEIVER's size guard must compare against this, not [maxBytes] —
+  /// otherwise a clip in the last 16 bytes under the cap sends fine and is
+  /// refused on every receiver with a silent poster + "failed to load".
+  static const int maxCiphertextBytes = maxBytes + 16;
+
   /// Client video-length policy, in seconds. Enforced by the composer with a
   /// toast and re-checked in `sendVideoMessage` as a backstop.
   ///

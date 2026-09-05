@@ -9,6 +9,7 @@ import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/settings_provider.dart';
+import '../../utils/e2e_persistent_diag.dart';
 import 'inline_video_arbiter.dart';
 import 'media_preview_frame.dart';
 import 'video_fullscreen_view.dart';
@@ -188,10 +189,27 @@ class _VideoMessageContentState extends State<VideoMessageContent>
     return (visible / height).clamp(0.0, 1.0);
   }
 
+  /// Diag steps already recorded by THIS bubble — one per step, so a scroll
+  /// pass over a long chat cannot flood the 80-record durable log.
+  final Set<String> _diagOnce = {};
+
+  void _diag(String step, Map<String, dynamic> data) {
+    if (!_diagOnce.add(step)) return;
+    E2ePersistentDiag.record(step, {'msgId': widget.message.id, ...data});
+  }
+
   void _evaluateVisibility() {
     if (!mounted) return;
     if (!_autoplay || !_hasUploadedBlob || !_routeCurrent) {
-      if (_session != null) _teardownInline();
+      if (_session != null) _teardownInline('ineligible');
+      // Only worth a record once the row COULD play: an undecrypted history
+      // row skipping is the normal state, not a finding.
+      if (_hasUploadedBlob) {
+        _diag('VIDEO_INLINE_SKIPPED', {
+          'autoplay': _autoplay,
+          'routeCurrent': _routeCurrent,
+        });
+      }
       return;
     }
     // The dialog's future settles only after its exit transition, while
@@ -199,11 +217,20 @@ class _VideoMessageContentState extends State<VideoMessageContent>
     // _openFullscreen learns the position. It re-evaluates itself on return.
     if (_fullscreenOpen) return;
     final fraction = _visibleFraction();
-    if (fraction == null) return;
+    if (fraction == null) {
+      _diag('VIDEO_INLINE_SKIPPED', {'reason': 'no_layout'});
+      return;
+    }
     if (_session == null && fraction >= _kPlayVisibleFraction) {
       _startInline();
     } else if (_session != null && fraction < _kReleaseVisibleFraction) {
-      _teardownInline();
+      _teardownInline('scrolled_out');
+    } else if (_session == null) {
+      _diag('VIDEO_INLINE_SKIPPED', {
+        'reason': 'below_threshold',
+        'fraction': (fraction * 100).round(),
+        'viewportH': _viewportHeight.round(),
+      });
     }
   }
 
@@ -230,7 +257,7 @@ class _VideoMessageContentState extends State<VideoMessageContent>
     }
     if (failure != null) {
       // Silent poster fallback — the fullscreen view owns honest error copy.
-      _teardownInline();
+      _teardownInline('load_failed');
       return;
     }
     final controller = session.controller!;
@@ -242,14 +269,22 @@ class _VideoMessageContentState extends State<VideoMessageContent>
     if (resumeAt != null) await controller.seekTo(resumeAt);
     await controller.play();
     if (!mounted || !identical(session, _session)) return;
+    _diag('VIDEO_INLINE_OK', {
+      'w': controller.value.size.width.round(),
+      'h': controller.value.size.height.round(),
+      'playing': controller.value.isPlaying,
+    });
     setState(() => _sessionReady = session.isReady);
   }
 
   /// The arbiter granted the slot to a newer requester; this bubble must free
   /// its decrypted buffer NOW. Releasing back is a no-op by arbiter contract.
-  void _onSlotRevoked() => _teardownInline();
+  void _onSlotRevoked() => _teardownInline('revoked');
 
-  void _teardownInline() {
+  void _teardownInline(String reason) {
+    if (_session != null) {
+      _diag('VIDEO_INLINE_RELEASED_$reason', {'ready': _sessionReady});
+    }
     _releaseSession();
     if (mounted) setState(() {});
   }

@@ -23,8 +23,12 @@ Future<Uint8List> loadDecryptedMediaBytes({
 }) async {
   final service = api ?? ApiService(baseUrl: baseUrl ?? AppConfig.baseUrl);
   final raw = await service.fetchMediaBytes(url, token);
-  if (raw.length > MediaCryptoService.maxBytes) {
-    throw Exception('Media too large');
+  final encrypted = key != null && iv != null;
+  final cap = encrypted
+      ? MediaCryptoService.maxCiphertextBytes
+      : MediaCryptoService.maxBytes;
+  if (raw.length > cap) {
+    throw Exception('Media too large (${raw.length} > $cap)');
   }
   if (key != null && iv != null) {
     return (crypto ?? MediaCryptoService())
