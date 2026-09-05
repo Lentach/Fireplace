@@ -118,7 +118,24 @@ class _VideoMessageContentState extends State<VideoMessageContent>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // A denied request (a newer clip held the slot) must retry the moment
+    // the slot frees, without waiting for the user to scroll.
+    _arbiter.addListener(_onArbiterChanged);
     // First layout has to happen before the bubble can know where it sits.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _evaluateVisibility());
+  }
+
+  /// True after the arbiter denied this bubble because a newer clip held the
+  /// slot; the next release re-evaluates. Nothing else reacts to arbiter
+  /// traffic — a bubble whose own load failed must NOT re-request on its own
+  /// release, or it retries every frame (and hammers the server).
+  bool _deniedByNewer = false;
+
+  void _onArbiterChanged() {
+    if (!_deniedByNewer || _session != null || _arbiter.holds(this)) return;
+    _deniedByNewer = false;
+    // Outside the notifier's dispatch: a request from here would notify
+    // re-entrantly while another bubble is still being told.
     WidgetsBinding.instance.addPostFrameCallback((_) => _evaluateVisibility());
   }
 
@@ -154,6 +171,7 @@ class _VideoMessageContentState extends State<VideoMessageContent>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _arbiter.removeListener(_onArbiterChanged);
     _scrollPosition?.removeListener(_evaluateVisibility);
     _releaseSession();
     _remainingSeconds.dispose();
@@ -241,7 +259,18 @@ class _VideoMessageContentState extends State<VideoMessageContent>
   }
 
   Future<void> _startInline() async {
-    _arbiter.request(this, _onSlotRevoked);
+    // Newest message wins the slot: two visible clips on chat open must
+    // resolve to the LAST one, not whichever mounted later.
+    final granted = _arbiter.request(
+      this,
+      _onSlotRevoked,
+      priority: widget.message.createdAt.millisecondsSinceEpoch,
+    );
+    if (!granted) {
+      _deniedByNewer = true;
+      _diag('VIDEO_INLINE_SKIPPED', 'newer_clip_holds_slot');
+      return;
+    }
     String token;
     try {
       token = Provider.of<AuthProvider>(context, listen: false).token ?? '';

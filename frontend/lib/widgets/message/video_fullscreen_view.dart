@@ -82,7 +82,8 @@ class _VideoFullscreenView extends StatefulWidget {
   State<_VideoFullscreenView> createState() => _VideoFullscreenViewState();
 }
 
-class _VideoFullscreenViewState extends State<_VideoFullscreenView> {
+class _VideoFullscreenViewState extends State<_VideoFullscreenView>
+    with SingleTickerProviderStateMixin {
   VideoPlaybackSession? _session;
   bool _loading = true;
   VideoStageError? _error;
@@ -98,12 +99,17 @@ class _VideoFullscreenViewState extends State<_VideoFullscreenView> {
   @override
   void initState() {
     super.initState();
+    _slide = AnimationController(vsync: this)
+      ..addListener(
+        () => setState(() => _dragDy = _slideTween.evaluate(_slide)),
+      );
     _load();
   }
 
   @override
   void dispose() {
     _hideTimer?.cancel();
+    _slide.dispose();
     _controller?.removeListener(_onControllerTick);
     _session?.dispose();
     super.dispose();
@@ -206,30 +212,66 @@ class _VideoFullscreenViewState extends State<_VideoFullscreenView> {
 
   // --- swipe-down dismiss (Telegram) --------------------------------------
 
-  /// Vertical finger offset while a dismiss drag is in flight; 0 at rest.
+  /// Vertical stage offset while a dismiss drag is in flight; 0 at rest.
+  /// Driven by the finger during the drag and by [_slide] afterwards.
   double _dragDy = 0;
+
+  /// Set once the release decided to dismiss: the stage keeps sliding off
+  /// the bottom and the dialog pops when it is gone. Further drags ignored.
+  bool _dismissing = false;
+
+  late final AnimationController _slide;
+  Tween<double> _slideTween = Tween(begin: 0, end: 0);
 
   /// Fraction of the viewport the finger must travel to dismiss on release
   /// without a fling.
   static const _kDismissFraction = 0.22;
   static const _kDismissFlingVelocity = 700.0;
 
-  void _onDragStart(DragStartDetails _) => _hideTimer?.cancel();
+  void _onDragStart(DragStartDetails _) {
+    if (_dismissing) return;
+    _slide.stop();
+    _hideTimer?.cancel();
+  }
 
   void _onDragUpdate(DragUpdateDetails details) {
+    if (_dismissing) return;
     setState(() => _dragDy = math.max(0, _dragDy + details.delta.dy));
   }
 
-  void _onDragEnd(DragEndDetails details) {
+  /// Telegram's release: the stage keeps travelling in the finger's
+  /// direction — off the bottom to dismiss, or back to rest — instead of
+  /// popping from wherever the finger let go (owner: "discards ugly").
+  /// Reduce-motion collapses both animations to a snap.
+  Future<void> _onDragEnd(DragEndDetails details) async {
+    if (_dismissing) return;
     final height = MediaQuery.sizeOf(context).height;
-    final flung = details.primaryVelocity != null &&
-        details.primaryVelocity! > _kDismissFlingVelocity;
-    if (flung || _dragDy > height * _kDismissFraction) {
+    final velocity = details.primaryVelocity ?? 0;
+    final dismiss =
+        velocity > _kDismissFlingVelocity || _dragDy > height * _kDismissFraction;
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final target = dismiss ? height : 0.0;
+    final distance = (target - _dragDy).abs();
+    // A fling finishes at the finger's speed (bounded); a slow release glides.
+    final ms = reduceMotion
+        ? 0
+        : dismiss
+            ? (distance / math.max(velocity, 1400) * 1000).clamp(80, 220).round()
+            : 220;
+    _dismissing = dismiss;
+    _slideTween = Tween(begin: _dragDy, end: target);
+    _slide.duration = Duration(milliseconds: ms);
+    _slide.value = 0;
+    await _slide.animateTo(
+      1,
+      curve: dismiss ? Curves.easeIn : Curves.easeOutCubic,
+    );
+    if (!mounted) return;
+    if (dismiss) {
       Navigator.pop(context);
-      return;
+    } else if (_controller?.value.isPlaying ?? false) {
+      _scheduleHide();
     }
-    setState(() => _dragDy = 0);
-    if (_controller?.value.isPlaying ?? false) _scheduleHide();
   }
 
   @override
