@@ -101,7 +101,21 @@ void main() {
     expect(pl.identityResetCooldown.toLowerCase(), contains('hasło'));
   });
 
-  test('an unknown future status says nothing rather than guessing', () {
-    expect(identityResetAnswerMessage(en, 'something_new'), isNull);
+  test('an unknown future status is a REFUSAL with a sentence, never silence',
+      () {
+    // A server newer than this client answers a status it has never seen
+    // (this happened live with `not_enrolled` on 2026-09-05: every cached PWA
+    // session during the deploy window was that client). Silence plus
+    // not-a-refusal is the one combination the pending banner must never
+    // produce — nothing started, and the user is left believing otherwise.
+    expect(identityResetAnswerIsRefusal('something_new'), isTrue);
+    expect(
+      identityResetAnswerMessage(en, 'something_new'),
+      en.identityResetNoAnswer,
+    );
+    expect(
+      identityResetAnswerMessage(pl, 'something_new'),
+      pl.identityResetNoAnswer,
+    );
   });
 }

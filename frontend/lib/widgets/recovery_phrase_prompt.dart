@@ -123,8 +123,16 @@ class _RecoveryPhrasePromptState extends State<_RecoveryPhrasePrompt> {
 /// Pure on purpose: the refusals are exactly the ones a genuine owner hits
 /// while recovering (a mistyped phrase that still passes the local checksum,
 /// the lockout after five of those, the post-cancel cooldown), so the mapping
-/// is worth pinning by test rather than burying in a widget callback. `null`
-/// for an unrecognised status: say nothing rather than guess.
+/// is worth pinning by test rather than burying in a widget callback.
+///
+/// An UNRECOGNISED status is answered like no answer at all. The server only
+/// says `pending`/`existing` when a ceremony is running, and every status it
+/// has ever added since has been a refusal (`not_enrolled`, 2026-09-05 —
+/// cached PWA sessions during that deploy window were exactly this client).
+/// Guessing "started" would leave the account unreachable with the user
+/// believing otherwise; saying nothing lets the pending banner stay blank
+/// while [identityResetAnswerIsRefusal] must still be true. So: the no-answer
+/// sentence, and a refusal.
 String? identityResetAnswerMessage(AppLocalizations l10n, String? status) {
   switch (status) {
     case 'pending':
@@ -149,23 +157,20 @@ String? identityResetAnswerMessage(AppLocalizations l10n, String? status) {
       return l10n.identityResetNotEnrolled;
     case EncryptionProvider.identityResetNoAnswerStatus:
     case null:
+    default:
       // Silence is an answer too: nothing was started, and saying "started"
       // (or nothing at all) would leave the account unreachable and the user
       // believing otherwise.
       return l10n.identityResetNoAnswer;
-    default:
-      return null;
   }
 }
 
-/// True for the answers that mean nothing was started.
+/// True for the answers that mean nothing was started — which is every answer
+/// except the two that report a running ceremony.
 bool identityResetAnswerIsRefusal(String? status) =>
-    status == null ||
-    status == EncryptionProvider.identityResetNoAnswerStatus ||
-    status == 'cooldown' ||
-    status == 'invalid_phrase' ||
-    status == 'locked' ||
-    status == 'not_enrolled';
+    status != 'pending' &&
+    status != 'existing' &&
+    status != EncryptionProvider.identityResetPhraseTooNewStatus;
 
 /// Starts a reset, offering the recovery-key path first.
 ///
