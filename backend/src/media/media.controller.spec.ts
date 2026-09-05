@@ -232,9 +232,15 @@ describe('MediaController', () => {
   // the client may cache them; the throttle stays only as a scrape brake.
   it('serveMsgs marks the immutable blob privately cacheable and is not throttled at chat pace', async () => {
     await controller.serveMsgs('abc.bin', fakeRes);
-    expect(fakeRes.setHeader).toHaveBeenCalledWith(
+    // Direct-serve path: the header rides on the SUCCESSFUL sendFile only —
+    // a 404 from sendFile must not carry a year-long immutable cache.
+    expect(fakeRes.setHeader).not.toHaveBeenCalledWith(
       'Cache-Control',
-      'private, max-age=31536000, immutable',
+      expect.anything(),
+    );
+    expect(fakeRes.sendFile).toHaveBeenCalledWith(
+      expect.stringMatching(/msgs[/\\]abc\.bin/),
+      { headers: { 'Cache-Control': 'private, max-age=31536000, immutable' } },
     );
     // @nestjs/throttler stores per-throttler-name metadata as `<key><name>`.
     const throttle: unknown = Reflect.getMetadata(

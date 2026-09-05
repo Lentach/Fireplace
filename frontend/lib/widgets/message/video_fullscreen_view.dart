@@ -18,9 +18,11 @@ import 'video_playback_session.dart';
 /// where the bubble left off).
 ///
 /// Resolves with the LAST playback position when the dialog closes, or null
-/// when the clip never initialised. Both dismissal routes — the close button
-/// and system back — pop the same dialog, so the position is captured in the
-/// view's `dispose` rather than threaded through every `Navigator.pop`.
+/// when the clip never initialised. All three dismissal routes — the back
+/// chevron, system back and the swipe-down — pop the same dialog, so the
+/// position is captured once, in the view's `PopScope.onPopInvokedWithResult`
+/// (NOT `dispose`: `showDialog` resolves at pop, dispose runs after the exit
+/// transition and always arrived too late).
 ///
 /// Mirrors the image viewer's presentation (transparent full-bleed [Dialog],
 /// tap-to-close chrome) so both media types dismiss identically. A dialog —
