@@ -205,6 +205,9 @@ void main() {
       // The correct code, while the ladder is running.
       await _type(tester, '1234');
 
+      // Positive assertion first: absence of the wrong-code string alone
+      // would also pass on a BLANK error, which pins nothing.
+      expect(find.textContaining('Too many attempts'), findsOneWidget);
       expect(find.text('Wrong passcode. Try again.'), findsNothing);
       expect(passcode.isEnabled, isTrue, reason: 'cooldown must still gate');
     });
