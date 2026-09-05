@@ -235,12 +235,7 @@ class _VideoFullscreenViewState extends State<_VideoFullscreenView> {
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: EdgeInsets.zero,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: _toggleChrome,
-        onVerticalDragStart: _onDragStart,
-        onVerticalDragUpdate: _onDragUpdate,
-        onVerticalDragEnd: _onDragEnd,
+      child: _stageGestures(
         child: Stack(
           children: [
             Positioned.fill(
@@ -258,6 +253,20 @@ class _VideoFullscreenViewState extends State<_VideoFullscreenView> {
           ],
         ),
       ),
+    );
+  }
+
+  /// Tap toggles chrome; a vertical drag is the swipe-down dismiss. Used
+  /// twice: around the whole surface (letterbox bars) and as the pointer
+  /// interceptor's child over the `<video>` itself — see [_buildStage].
+  Widget _stageGestures({required Widget child}) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _toggleChrome,
+      onVerticalDragStart: _onDragStart,
+      onVerticalDragUpdate: _onDragUpdate,
+      onVerticalDragEnd: _onDragEnd,
+      child: child,
     );
   }
 
@@ -451,8 +460,11 @@ class _VideoFullscreenViewState extends State<_VideoFullscreenView> {
             VideoPlayer(controller),
             // Web: the <video> is a platform view whose DOM events never
             // reach Flutter — without this the chrome-toggling tap and the
-            // swipe-down were dead on real phones (see the bubble's note).
-            PointerInterceptor(child: const SizedBox.expand()),
+            // swipe-down were dead on real phones. The gestures must be the
+            // interceptor's CHILD, not an ancestor (see the bubble's note).
+            PointerInterceptor(
+              child: _stageGestures(child: const SizedBox.expand()),
+            ),
           ],
         ),
       ),
