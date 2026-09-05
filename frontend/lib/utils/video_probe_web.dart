@@ -14,6 +14,16 @@ import 'video_preview.dart';
 /// file may fire neither `loadedmetadata` nor `error`.
 const _kMetadataTimeout = Duration(seconds: 5);
 
+/// Longest we will wait for intrinsic dimensions AFTER `loadedmetadata`.
+///
+/// WebKit fires `loadedmetadata` with `videoWidth`/`videoHeight` still 0 for
+/// some QuickTime camera recordings and only reports real dimensions on the
+/// later `resize` / `loadeddata` events. Reading geometry at `loadedmetadata`
+/// alone published three of four iPhone-recorded clips WITHOUT geometry —
+/// the receiving bubble then fell back to its 220 px legacy frame and showed
+/// a grey square with no poster (owner report 2026-09-05).
+const _kGeometryTimeout = Duration(seconds: 3);
+
 /// Longest we will wait for a seek to land on a decodable frame. Failing this
 /// costs only the ThumbHash — geometry and duration are already in hand.
 const _kPosterTimeout = Duration(seconds: 5);
@@ -30,12 +40,19 @@ const _kPosterMaxSide = 240;
 /// ThumbHash. A failure in phase two still returns phase one's data, because
 /// geometry alone is what fixes the chat bubble's aspect ratio.
 ///
+/// [mimeType] labels the blob. Safari consults the type before sniffing, so a
+/// `.mov` capture labelled `video/mp4` is a needless gamble; the caller
+/// derives it from the picked filename ([videoMimeForFilename]).
+///
 /// The blob is same-origin, so the canvas is never tainted and `toDataURL`
 /// cannot throw a security error.
-Future<VideoPreview> probeVideoPreview(Uint8List bytes) async {
+Future<VideoPreview> probeVideoPreview(
+  Uint8List bytes, {
+  String mimeType = 'video/mp4',
+}) async {
   final blob = web.Blob(
     [bytes.toJS].toJS,
-    web.BlobPropertyBag(type: 'video/mp4'),
+    web.BlobPropertyBag(type: mimeType),
   );
   final url = web.URL.createObjectURL(blob);
   // preload='auto' (not 'metadata'): we need a decodable frame, and Safari
@@ -53,8 +70,13 @@ Future<VideoPreview> probeVideoPreview(Uint8List bytes) async {
     final duration = rawDuration.isFinite && rawDuration > 0
         ? rawDuration
         : null;
-    final width = video.videoWidth;
-    final height = video.videoHeight;
+    var width = video.videoWidth;
+    var height = video.videoHeight;
+    if (width <= 0 || height <= 0) {
+      await _awaitGeometry(video);
+      width = video.videoWidth;
+      height = video.videoHeight;
+    }
     final hasGeometry = width > 0 && height > 0;
 
     String? thumbHash;
@@ -101,6 +123,32 @@ Future<bool> _awaitMetadata(web.HTMLVideoElement video) {
   video.addEventListener('loadedmetadata', onLoaded);
   video.addEventListener('error', onError);
   Timer(_kMetadataTimeout, () => finish(false));
+  return completer.future;
+}
+
+/// Completes when the element reports non-zero dimensions, on `error`, or on
+/// timeout. `resize` is the event WebKit fires when the dimensions become
+/// known; `loadeddata` / `canplay` cover engines that never fire it.
+Future<void> _awaitGeometry(web.HTMLVideoElement video) {
+  final completer = Completer<void>();
+  late final JSFunction onEvent;
+  const events = ['resize', 'loadeddata', 'canplay', 'error'];
+
+  void finish() {
+    if (completer.isCompleted) return;
+    for (final name in events) {
+      video.removeEventListener(name, onEvent);
+    }
+    completer.complete();
+  }
+
+  onEvent = ((web.Event event) {
+    if (event.type == 'error' || video.videoWidth > 0) finish();
+  }).toJS;
+  for (final name in events) {
+    video.addEventListener(name, onEvent);
+  }
+  Timer(_kGeometryTimeout, finish);
   return completer.future;
 }
 

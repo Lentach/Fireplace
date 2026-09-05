@@ -832,6 +832,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get attachmentOptionCamera => 'Camera';
 
   @override
+  String get attachmentOptionRecordVideo => 'Record video';
+
+  @override
   String get attachmentOptionFile => 'File';
 
   @override
@@ -1677,6 +1680,19 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get videoStillSending => 'Still sending…';
+
+  @override
+  String get videoUnmute => 'Unmute';
+
+  @override
+  String get videoMute => 'Mute';
+
+  @override
+  String get settingsAutoplayVideos => 'Autoplay videos';
+
+  @override
+  String get settingsAutoplayVideosSubtitle =>
+      'Videos in chats play muted while they are on screen';
 
   @override
   String get attachmentUnsupportedFileType => 'Unsupported file type';

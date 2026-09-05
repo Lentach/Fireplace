@@ -311,6 +311,7 @@
   "attachmentOptionDocument": "Dokument",
   "attachmentOptionGallery": "Galeria",
   "attachmentOptionCamera": "Aparat",
+  "attachmentOptionRecordVideo": "Nagraj wideo",
   "attachmentOptionFile": "Plik",
   "actionTileDisappearingMessages": "Znikające wiadomości",
   "disappearingTimerTitle": "Znikające wiadomości",
@@ -640,6 +641,10 @@
   "videoUnsupportedFormat": "Nieobsługiwany format wideo (tylko MP4)",
   "videoFailedToLoad": "Nie udało się załadować wideo",
   "videoStillSending": "Trwa wysyłanie…",
+  "videoUnmute": "Włącz dźwięk",
+  "videoMute": "Wycisz",
+  "settingsAutoplayVideos": "Autoodtwarzanie wideo",
+  "settingsAutoplayVideosSubtitle": "Wideo w czacie odtwarzają się bez dźwięku, gdy są widoczne",
   "attachmentUnsupportedFileType": "Nieobsługiwany typ pliku",
   "chatScrollToBottomSemantics": "Przewiń do najnowszych wiadomości",
   "avatarOpenProfileSemantics": "Otwórz profil"

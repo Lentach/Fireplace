@@ -254,7 +254,13 @@ class _VideoFullscreenViewState extends State<_VideoFullscreenView> {
                   bottom: 0,
                   child: SafeArea(
                     child: Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
+                      // Well clear of the bottom edge. A 12 px inset put the
+                      // thumb inside Android's gesture-navigation zone, so a
+                      // scrub drag fired swipe-up-home instead of seeking
+                      // (owner report 2026-09-05). SafeArea reports 0 there
+                      // in the Chrome PWA, so the clearance has to be
+                      // explicit; Telegram keeps its scrubber ~64 px up.
+                      padding: const EdgeInsets.only(bottom: 64),
                       child: VideoSeekBar(
                         controller: controller,
                         onScrubStart: () => _hideTimer?.cancel(),

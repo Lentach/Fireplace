@@ -271,9 +271,16 @@ class ChatActionTiles extends StatelessWidget {
     return box.localToGlobal(Offset.zero) & box.size;
   }
 
-  /// Android three-door sheet: Gallery / Camera / File. Each door opens the
-  /// anchored input with a door-specific accept, so Chrome never shows its
-  /// ambiguous camera/camcorder/media chooser.
+  /// Android four-door sheet: Gallery / Camera / Record video / File. Each
+  /// door opens the anchored input with a door-specific accept, so Chrome
+  /// never shows its ambiguous camera/camcorder/media chooser.
+  ///
+  /// Video capture is its own door because Android has no single input that
+  /// offers "photo or video": `image/*` + `capture` opens the camera in photo
+  /// mode and `video/*` + `capture` opens the camcorder. iOS ignores `capture`
+  /// and shows its own "Take Photo or Video" sheet, which is why iOS could
+  /// record a video from the camera and Android could not (owner report
+  /// 2026-09-05).
   Future<void> _showAndroidAttachmentSheet(
     BuildContext context,
     Rect anchor,
@@ -316,6 +323,19 @@ class ChatActionTiles extends StatelessWidget {
                   sheetContext,
                   anchor,
                   accept: 'image/*',
+                  capture: 'environment',
+                ),
+              ),
+              _AttachmentDoorRow(
+                key: const Key('attachment-door-record-video'),
+                icon: Icons.videocam_outlined,
+                label: l10n.attachmentOptionRecordVideo,
+                color: glass.onGlassAccent,
+                onTap: () => _openDoor(
+                  context,
+                  sheetContext,
+                  anchor,
+                  accept: 'video/*',
                   capture: 'environment',
                 ),
               ),

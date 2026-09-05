@@ -839,6 +839,9 @@ class AppLocalizationsPl extends AppLocalizations {
   String get attachmentOptionCamera => 'Aparat';
 
   @override
+  String get attachmentOptionRecordVideo => 'Nagraj wideo';
+
+  @override
   String get attachmentOptionFile => 'Plik';
 
   @override
@@ -1701,6 +1704,19 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get videoStillSending => 'Trwa wysyłanie…';
+
+  @override
+  String get videoUnmute => 'Włącz dźwięk';
+
+  @override
+  String get videoMute => 'Wycisz';
+
+  @override
+  String get settingsAutoplayVideos => 'Autoodtwarzanie wideo';
+
+  @override
+  String get settingsAutoplayVideosSubtitle =>
+      'Wideo w czacie odtwarzają się bez dźwięku, gdy są widoczne';
 
   @override
   String get attachmentUnsupportedFileType => 'Nieobsługiwany typ pliku';

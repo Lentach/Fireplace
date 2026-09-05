@@ -311,6 +311,7 @@
   "attachmentOptionDocument": "Document",
   "attachmentOptionGallery": "Gallery",
   "attachmentOptionCamera": "Camera",
+  "attachmentOptionRecordVideo": "Record video",
   "attachmentOptionFile": "File",
   "actionTileDisappearingMessages": "Disappearing messages",
   "disappearingTimerTitle": "Disappearing messages",
@@ -658,6 +659,10 @@
   "videoUnsupportedFormat": "Unsupported video format (MP4 only)",
   "videoFailedToLoad": "Video failed to load",
   "videoStillSending": "Still sending…",
+  "videoUnmute": "Unmute",
+  "videoMute": "Mute",
+  "settingsAutoplayVideos": "Autoplay videos",
+  "settingsAutoplayVideosSubtitle": "Videos in chats play muted while they are on screen",
   "attachmentUnsupportedFileType": "Unsupported file type",
   "chatScrollToBottomSemantics": "Scroll to newest messages",
   "avatarOpenProfileSemantics": "Open profile"
