@@ -7,34 +7,37 @@ import 'package:video_player/video_player.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
 import '../../providers/auth_provider.dart';
-import '../../utils/video_preview.dart';
 import 'video_playback_session.dart';
 
-/// Opens the fullscreen video player for [message].
+/// Opens the fullscreen video player for [message], optionally starting at
+/// [startAt] (the inline player hands its position over so the clip resumes
+/// where the bubble left off).
+///
+/// Resolves with the LAST playback position when the dialog closes, or null
+/// when the clip never initialised. Both dismissal routes — the close button
+/// and system back — pop the same dialog, so the position is captured in the
+/// view's `dispose` rather than threaded through every `Navigator.pop`.
 ///
 /// Mirrors the image viewer's presentation (transparent full-bleed [Dialog],
 /// tap-to-close chrome) so both media types dismiss identically. A dialog —
 /// not a route — because that is the established pattern here and it gives
 /// system-back dismissal for free.
-Future<void> showVideoFullscreen(
+Future<Duration?> showVideoFullscreen(
   BuildContext context,
-  MessageModel message,
-) {
-  return showDialog<void>(
+  MessageModel message, {
+  Duration? startAt,
+}) async {
+  Duration? lastPosition;
+  await showDialog<void>(
     context: context,
     barrierColor: Colors.black,
-    builder: (_) => _VideoFullscreenView(message: message),
+    builder: (_) => _VideoFullscreenView(
+      message: message,
+      startAt: startAt,
+      onLastPosition: (position) => lastPosition = position,
+    ),
   );
-}
-
-/// Display aspect ratio of [value], honouring the container rotation that
-/// [VideoPlayerValue.aspectRatio] silently drops.
-double _rotationAwareAspectRatio(VideoPlayerValue value) {
-  final size = value.size;
-  if (size.width <= 0 || size.height <= 0) return 1.0;
-  return videoRotationSwapsAxes(value.rotationCorrection)
-      ? size.height / size.width
-      : size.width / size.height;
+  return lastPosition;
 }
 
 /// `m:ss` (or `h:mm:ss` past the hour) for the seek-bar timestamps.
@@ -61,8 +64,14 @@ const _kChromeAutoHide = Duration(seconds: 3);
 /// could safely free it.
 class _VideoFullscreenView extends StatefulWidget {
   final MessageModel message;
+  final Duration? startAt;
+  final ValueChanged<Duration> onLastPosition;
 
-  const _VideoFullscreenView({required this.message});
+  const _VideoFullscreenView({
+    required this.message,
+    required this.startAt,
+    required this.onLastPosition,
+  });
 
   @override
   State<_VideoFullscreenView> createState() => _VideoFullscreenViewState();
@@ -90,7 +99,13 @@ class _VideoFullscreenViewState extends State<_VideoFullscreenView> {
   @override
   void dispose() {
     _hideTimer?.cancel();
-    _controller?.removeListener(_onControllerTick);
+    final controller = _controller;
+    if (controller != null && controller.value.isInitialized) {
+      // Runs on EVERY dismissal route (close button, system back, barrier),
+      // which is what lets showVideoFullscreen always answer with a position.
+      widget.onLastPosition(controller.value.position);
+    }
+    controller?.removeListener(_onControllerTick);
     _session?.dispose();
     super.dispose();
   }
@@ -141,6 +156,10 @@ class _VideoFullscreenViewState extends State<_VideoFullscreenView> {
       _playing = true;
     });
     _scheduleHide();
+    final startAt = widget.startAt;
+    if (startAt != null && startAt > Duration.zero) {
+      await session.controller!.seekTo(startAt);
+    }
     await session.controller!.setLooping(false);
     await session.controller!.play();
   }
@@ -319,7 +338,7 @@ class _VideoFullscreenViewState extends State<_VideoFullscreenView> {
           // rotationCorrection, while VideoPlayer compensates internally
           // with a RotatedBox. Trusting it squashes every rotated phone
           // recording into a landscape box.
-          aspectRatio: _rotationAwareAspectRatio(controller.value),
+          aspectRatio: rotationAwareAspectRatio(controller.value),
           child: VideoPlayer(controller),
         ),
       ),

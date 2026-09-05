@@ -515,6 +515,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   _buildAppearanceRow(context, settings),
                   _buildLanguageRow(context, settings),
+                  SettingsConsoleRow(
+                    key: const ValueKey('settings-autoplay-videos-row'),
+                    glyph: ConsoleGlyph.media,
+                    title: l10n.settingsAutoplayVideos,
+                    subtitle: l10n.settingsAutoplayVideosSubtitle,
+                    trailing: Switch(
+                      value: settings.autoplayVideos,
+                      onChanged: (v) => settings.setAutoplayVideos(v),
+                    ),
+                    onTap: () =>
+                        settings.setAutoplayVideos(!settings.autoplayVideos),
+                  ),
 
                   SettingsSectionCaption(label: l10n.settingsSectionSecurity),
                   SettingsConsoleRow(
