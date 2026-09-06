@@ -638,9 +638,14 @@ class PasscodeProvider extends ChangeNotifier {
   /// held — but the immediate lock is held back; see [_nativePickerActive].
   Future<void> noteBackgrounded() async {
     if (!isEnabled) return;
-    if (_away) return;
-    _away = true;
-    await _store.saveLastActiveAt(_now());
+    // The latch guards the STAMP only. The verdict below still runs on every
+    // signal, so a second "leaving" signal can still lock at 0 s (e.g. the
+    // picker span ended without a return ever being reported) — it just
+    // cannot move the moment we left.
+    if (!_away) {
+      _away = true;
+      await _store.saveLastActiveAt(_now());
+    }
     _record = await _store.load();
     if (_record.autoLockSeconds <= 0 && !_nativePickerActive()) {
       // Awaited: on web this backgrounding IS the last code this process may

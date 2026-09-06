@@ -720,6 +720,27 @@ void main() {
       expect(passcode.state, PasscodeLockState.locked);
     });
 
+    test('after a lock and an unlock, a SHORT absence stays unlocked — the '
+        'pre-lock departure must not be the reference', () async {
+      // The wake that shows the lock screen is itself a "return" the verdict
+      // skips (state is locked). If that left the departure open, the next
+      // leave would not stamp and the return would be judged against the
+      // departure from BEFORE the lock: the app would lock every single time,
+      // whatever the setting says.
+      await passcode.noteBackgrounded();
+      now += const Duration(seconds: 61).inMilliseconds;
+      await passcode.evaluateOnForeground(); // wake → locked
+      expect(passcode.state, PasscodeLockState.locked);
+      await passcode.evaluateOnForeground(); // `resumed` arrives while locked
+      expect(await passcode.unlock('1234'), PasscodeUnlockResult.ok);
+
+      now += const Duration(seconds: 30).inMilliseconds;
+      await passcode.noteBackgrounded();
+      now += const Duration(seconds: 5).inMilliseconds;
+      await passcode.evaluateOnForeground();
+      expect(passcode.state, PasscodeLockState.unlocked);
+    });
+
     test('with immediate auto-lock, backgrounding locks on the spot', () async {
       await passcode.setAutoLockSeconds(0);
       await passcode.noteBackgrounded();
@@ -781,6 +802,25 @@ void main() {
       pickerActive = false;
       await passcode.noteBackgrounded(); // a real departure
       expect(passcode.state, PasscodeLockState.locked);
+    });
+
+    test('the latch guards the stamp, not the verdict: at 0 s a second '
+        '"leaving" signal after the picker span ended still locks, even with '
+        'no return in between', () async {
+      await passcode.setAutoLockSeconds(0);
+      pickerActive = true;
+      await passcode.noteBackgrounded();
+      final departedAt = store.record.lastActiveAtMs;
+      expect(passcode.state, PasscodeLockState.unlocked);
+
+      // The span self-caps (3 min) without the page ever reporting visible;
+      // the next lifecycle signal must still be able to lock.
+      now += const Duration(seconds: 5).inMilliseconds;
+      pickerActive = false;
+      await passcode.noteBackgrounded();
+      expect(passcode.state, PasscodeLockState.locked);
+      expect(store.record.lastActiveAtMs, departedAt,
+          reason: 'the second signal locks but does not move the departure');
     });
 
     test('a disabled passcode never locks on return', () async {
