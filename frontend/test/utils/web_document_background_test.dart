@@ -116,5 +116,39 @@ void main() {
         reason: 'author !important would beat the runtime inline theme sync',
       );
     });
+
+    // The privacy curtain's padlock is stroked in the theme accent at boot,
+    // from a second hand-copied map. Same drift risk, same pin — and the
+    // curtain must exist, be hidden by default, and sit above everything.
+    test('index.html curtain accent map matches RpgTheme.ephemeralAccent', () {
+      final html = File('web/index.html').readAsStringSync();
+      final block = RegExp(r'var accents = \{([^}]*)\}').firstMatch(html);
+      expect(block, isNotNull, reason: 'curtain script must define accents');
+      final expected = <String, Color>{
+        'dark': RpgTheme.accentDarkGray,
+        'blue': RpgTheme.accentBlue,
+        'cosmic': RpgTheme.accentCosmic,
+        'teal': RpgTheme.primaryTealStone,
+        'light': RpgTheme.primaryLight,
+      };
+      for (final entry in expected.entries) {
+        final match = RegExp(
+          "${entry.key}:\\s*'(#[0-9a-fA-F]{6})'",
+        ).firstMatch(block!.group(1)!);
+        expect(match, isNotNull, reason: 'accents must map "${entry.key}"');
+        expect(
+          match!.group(1)!.toLowerCase(),
+          webDocumentBackgroundCss(entry.value),
+          reason: '"${entry.key}" curtain accent drifted from RpgTheme',
+        );
+      }
+      expect(html, contains('id="fp-curtain"'));
+      expect(
+        RegExp(r'#fp-curtain\s*\{[^}]*display:\s*none').hasMatch(html),
+        isTrue,
+        reason: 'the curtain is hidden until blur/boot shows it',
+      );
+      expect(html, contains("localStorage.getItem('flutter.passcode_enabled')"));
+    });
   });
 }

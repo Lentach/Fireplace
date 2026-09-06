@@ -6,6 +6,7 @@ import 'package:fireplace/services/local_data_eraser.dart';
 import 'package:fireplace/services/passcode_store.dart';
 import 'package:fireplace/screens/passcode_unlock_screen.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
+import 'package:fireplace/widgets/input/composer_keyboard_signals.dart';
 import 'package:fireplace/widgets/passcode_gate.dart';
 import 'package:provider/provider.dart';
 
@@ -116,6 +117,37 @@ void main() {
     expect(find.text('SECRET CHATS'), findsNothing);
     expect(find.byKey(const Key('passcode-curtain')), findsNothing);
     expect(find.byKey(const Key('passcode-dots')), findsOneWidget);
+  });
+
+  testWidgets('a departure during the attach picker span does NOT curtain — '
+      'the OS sheet is the cover, and a curtain would flash over the composer '
+      'when it closes', (tester) async {
+    final passcodeWithPicker = PasscodeProvider(
+      store: store,
+      kdf: kdf,
+      nowMs: () => now,
+      nativePickerActive: () => composerNativePickerActive.value,
+    );
+    await passcodeWithPicker.initialize();
+    await passcodeWithPicker.enable(
+      passcode: '1234',
+      mode: PasscodeMode.digits4,
+    );
+    await tester.pumpWidget(_host(passcodeWithPicker));
+    await tester.pumpAndSettle();
+
+    beginComposerNativePicker();
+    try {
+      await passcodeWithPicker.noteBackgrounded();
+      await tester.pump();
+
+      expect(find.byKey(const Key('passcode-curtain')), findsNothing);
+      expect(find.text('SECRET CHATS').hitTestable(), findsOneWidget);
+    } finally {
+      // Ends the span AND cancels its 3-minute self-cap timer, which the
+      // test binding would otherwise report as still pending.
+      endComposerNativePicker();
+    }
   });
 
   testWidgets('with no passcode there is no curtain: departures are nobody\'s '

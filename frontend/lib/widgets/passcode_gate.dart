@@ -6,6 +6,7 @@ import '../providers/passcode_provider.dart';
 import '../screens/passcode_unlock_screen.dart';
 import '../services/local_data_eraser.dart';
 import '../utils/privacy_curtain.dart';
+import 'input/composer_keyboard_signals.dart';
 import 'passcode_curtain.dart';
 
 /// Wraps the whole app below `MaterialApp.builder`, so the lock covers every
@@ -29,6 +30,13 @@ class PasscodeGate extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final passcode = context.watch<PasscodeProvider>();
+    return ValueListenableBuilder<bool>(
+      valueListenable: composerNativePickerActive,
+      builder: (context, pickerActive, _) => _body(context, passcode, pickerActive),
+    );
+  }
+
+  Widget _body(BuildContext context, PasscodeProvider passcode, bool pickerActive) {
     final state = passcode.state;
     // `unknown` counts as covered: the credential has not been read yet, and
     // painting the shell for one frame on every cold start of a locked app
@@ -45,7 +53,10 @@ class PasscodeGate extends StatelessWidget {
     // lifted HERE, after a frame that paints the state replacing it: the lock
     // screen, or the app once the return verdict said "still inside the
     // window". Lifting any earlier is the chat-for-one-frame flash again.
-    armDomCurtain(passcode.isEnabled);
+    // Disarmed for the attach picker span (`composerNativePickerActive`): the
+    // OS sheet hides the page, and a curtain over the composer would flash
+    // when it closes — the same exemption the immediate lock has.
+    armDomCurtain(passcode.isEnabled && !pickerActive);
     if (state != PasscodeLockState.unknown && !curtained) {
       WidgetsBinding.instance.addPostFrameCallback((_) => hideDomCurtain());
     }

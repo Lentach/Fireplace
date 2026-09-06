@@ -853,16 +853,18 @@ void main() {
       expect(seen, isNot(contains('clear/unlocked')));
     });
 
-    test('a departure while already locked does not curtain (the lock screen '
-        'is the cover), and a picker return lifts it', () async {
+    test('no curtain while already locked (the lock screen is the cover) and '
+        'none for the attach picker (the OS sheet is)', () async {
       passcode.lockNow();
       await passcode.noteBackgrounded();
       expect(passcode.curtained, isFalse);
       expect(await passcode.unlock('1234'), PasscodeUnlockResult.ok);
 
+      // A curtain over the composer would flash for a frame when the sheet
+      // closes — the same exemption the immediate lock has.
       pickerActive = true;
       await passcode.noteBackgrounded();
-      expect(passcode.curtained, isTrue);
+      expect(passcode.curtained, isFalse);
       await passcode.evaluateOnForeground(); // picker still up at this return
       expect(passcode.curtained, isFalse);
       expect(passcode.state, PasscodeLockState.unlocked);

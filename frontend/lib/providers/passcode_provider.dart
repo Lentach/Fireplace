@@ -667,7 +667,12 @@ class PasscodeProvider extends ChangeNotifier {
     if (!isEnabled) return;
     // Synchronously, before any await: this frame is the one the browser will
     // show on wake.
-    if (_state == PasscodeLockState.unlocked) _setCurtained(true);
+    // Not for the attach picker: its sheet hides the page, and a curtain
+    // over the composer would flash for a frame when the sheet closes —
+    // the same exemption the immediate lock has.
+    if (_state == PasscodeLockState.unlocked && !_nativePickerActive()) {
+      _setCurtained(true);
+    }
     // The latch guards the STAMP only. The verdict below still runs on every
     // signal, so a second "leaving" signal can still lock at 0 s (e.g. the
     // picker span ended without a return ever being reported) — it just

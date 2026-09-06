@@ -106,9 +106,11 @@
     (function () {
       var armed = false;
       var el = null;
+      // Mirrors RpgTheme.ephemeralAccent — pinned by
+      // test/utils/web_document_background_test.dart.
       var accents = {
-        dark: '#FF6666', blue: '#2AABEE', cosmic: '#8FD8FF',
-        teal: '#C2410C', light: '#C2410C'
+        dark: '#5C9EAD', blue: '#2AABEE', cosmic: '#8FD8FF',
+        teal: '#0F766E', light: '#C2410C'
       };
       var node = function () {
         if (el) return el;
