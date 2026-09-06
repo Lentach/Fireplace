@@ -28,11 +28,17 @@ Six changes, all client-side (no backend change, no wire change):
    the credentials are already in hand, and "account created, now sign in" was the step where the
    user got lost. It returns true whenever the ACCOUNT exists; a failed auto-sign-in falls back to
    `registerSucceeded` + a prefilled login tab.
-4. **The 409 carries a way out.** `recoverableUsername` + a "Przejdź do logowania" /
-   "Sign in instead" button (`Key('auth-go-to-login')`) that switches tabs with the username
-   prefilled. Naming the refusal is not enough: "that name is taken" still sends the user to
-   invent a NEW name, i.e. away from the account they just created — the exact trap that stranded
-   the friend after his registration succeeded on a request whose answer was lost.
+4. **A taken name tries the credentials before it refuses — the friend's case now SELF-HEALS.**
+   A 409 is the shape of the lost-response retry: the row exists and the password the user just
+   typed is its password. `register` therefore attempts one sign-in on 409; if it opens the
+   account, the user lands in the app and reads nothing at all. Only when that sign-in is refused
+   (the name is someone else's) does the surface say "already taken" — and then it carries a way
+   out: `recoverableUsername` + a "Przejdź do logowania" / "Sign in instead" button
+   (`Key('auth-go-to-login')`, register tab only) that switches tabs with the username prefilled.
+   Naming the refusal alone is not enough: "that name is taken" still sends the user to invent a
+   NEW name, i.e. away from the account they just created. **Not a new oracle:** it is one
+   ordinary login attempt, on the same 30/15 min login throttle as the sign-in form, behind the
+   stricter 10/h register throttle.
 5. **A lost register answer has its own honest wording** (`registerOutcomeUnknown`): the request
    is not idempotent and `Future.timeout` cannot abort it, so the account may exist — the copy
    says to try signing in, and the same recovery button appears.
@@ -57,19 +63,21 @@ re-wrapping failures as `Exception(text)` — that wrap destroyed the status.
   unlocalized), `app_en.arb` / `app_pl.arb` (+10 strings each)
 - `frontend/lib/screens/auth_screen.dart`, `frontend/lib/widgets/auth_form.dart`,
   `frontend/lib/screens/settings_screen.dart`
-- `frontend/test/providers/auth_registration_outcome_test.dart` (new, 9 tests),
+- `frontend/test/providers/auth_registration_outcome_test.dart` (new, 10 tests),
   `frontend/test/screens/auth_screen_theme_test.dart` (the enum↔string pin, extended)
 
 ## Verification
 
-- **Live, against a real backend** (`docker compose up` + `flutter run -d web-server :8099`,
-  headless Chromium, 480×900): register tab shows both rule lines; a fresh registration lands
-  DIRECTLY in the Chats shell (no sign-in step); the same username again → *"Ta nazwa użytkownika
-  jest już zajęta. Jeśli to Ty założyłeś to konto, zaloguj się."* + *"Przejdź do logowania"* →
-  login tab prefilled; a wrong password → *"Nieprawidłowa nazwa użytkownika lub hasło."*; the
-  right one → shell. Four screenshots taken at each step.
-- `flutter analyze --no-fatal-infos` clean; **`flutter test` 1777 / 10 skipped** on master
-  (1768 + 9 new), count verifier OK; CLAUDE.md §3 updated.
+- **Live, against a real backend** (local `docker compose` stack + `flutter run -d web-server`,
+  headless Chromium, 480×900), five runs: register tab shows both rule lines; a fresh
+  registration lands DIRECTLY in the Chats shell (no sign-in step); **pressing "Utwórz konto"
+  again with the SAME name and password — the friend's exact situation — lands in the shell too,
+  with no message at all**; the same name with a DIFFERENT password → *"Ta nazwa użytkownika jest
+  już zajęta. Jeśli to Ty założyłeś to konto, zaloguj się."* + *"Przejdź do logowania"* → login
+  tab prefilled; a wrong password on the login tab → *"Nieprawidłowa nazwa użytkownika lub
+  hasło."*; the right one → shell. Screenshot at each step.
+- `flutter analyze --no-fatal-infos` clean; **`flutter test` 1778 / 10 skipped** on master
+  (1768 + 10 new), count verifier OK; CLAUDE.md §3 updated.
 - Version bumped `0.2.16 → 0.2.17` (frontend-only release; **not deployed** — owner's call).
 
 ## Notes for next session

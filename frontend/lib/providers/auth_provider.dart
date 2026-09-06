@@ -616,15 +616,29 @@ class AuthProvider extends ChangeNotifier {
   /// The credentials are already in hand here, so the honest end state of a
   /// successful registration is a signed-in session.
   ///
-  /// Returns true when the account now exists — including the case where the
-  /// follow-up sign-in failed ([AuthStatusCode.registerSucceeded]); the caller
-  /// checks [isLoggedIn] to know whether it also has a session.
+  /// Returns true when the account now exists AND belongs to these credentials
+  /// — including a name that was already taken by the user's own earlier
+  /// attempt (recovered by signing in) and the case where the follow-up
+  /// sign-in failed ([AuthStatusCode.registerSucceeded]); the caller checks
+  /// [isLoggedIn] to know whether it also has a session.
   Future<bool> register(String username, String password) async {
     clearStatus();
     try {
       await _api.register(username, password);
     } catch (e) {
       final code = classifyAuthFailure(e, attempt: AuthAttempt.register);
+
+      // A taken name is the SHAPE of the lost-response case: the register
+      // request whose answer never arrived still created the account, and the
+      // retry the user makes seconds later lands here. The credentials in hand
+      // settle it without asking them anything — if they open that account, it
+      // was theirs and they are now in it. This is not a new oracle: it is one
+      // ordinary login attempt, on the same throttle as the login form.
+      if (code == AuthStatusCode.nicknameTaken &&
+          await _signIn(username, password, reportFailure: false)) {
+        return true;
+      }
+
       // Both of these mean "an account under this name may be yours already",
       // so the surface can offer the way out instead of a dead end.
       _recoverableUsername =

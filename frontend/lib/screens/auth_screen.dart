@@ -236,8 +236,14 @@ class _AuthScreenState extends State<AuthScreen> {
                               ),
                             ),
                           ],
+                          // Only on the register tab: after a created account
+                          // whose auto sign-in failed the screen already put
+                          // the user on LOGOWANIE with the name filled in, and
+                          // "sign in instead" there points at the tab they are
+                          // standing on.
                           if (authProvider.recoverableUsername
-                              case final username?) ...[
+                                  case final username?
+                              when !_isLogin) ...[
                             const SizedBox(height: 4),
                             TextButton(
                               key: const Key('auth-go-to-login'),

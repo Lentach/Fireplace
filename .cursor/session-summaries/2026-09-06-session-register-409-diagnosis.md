@@ -127,11 +127,12 @@ Read-only. Prod nginx access log + `chatdb` rows are the proof; nothing was depl
 changed. **The code read IS the code that ran**: `git diff c8f662e..HEAD --` over
 `auth_provider.dart`, `auth_screen.dart`, `api_service.dart` and `auth_form.dart` is EMPTY, so the
 working tree matches the bundle in his footer. Incidental re-verification (volatile facts, §1):
-prod is now **frontend `0.2.16 / fda92b3`** (`curl …/version.json`) and **backend
-`0.2.4 / 9a1c4396`** on `master` (container started 2026-09-05T22:12Z), i.e. master IS deployed —
-the LATEST deploy-state block claiming `0.2.15 / c8f662e` + `0.2.14 / 7e957d64` on
-`test/video-nits-0.2.3` was stale and is corrected there. His attempts predate that deploy, which
-is why his footer shows `c8f662e`.
+prod is **frontend `0.2.16 / fda92b3`** (`curl …/version.json`) and **backend `0.2.4 / 9a1c4396`**
+on `master` (container started 2026-09-05T22:12Z) — which is exactly what this file's LATEST
+deploy-state block already said, so nothing there needed correcting. (An earlier draft of this
+summary claimed it did; that draft was written in the `feat/passcode-lock` worktree, whose LATEST
+copy still carried the pre-deploy `0.2.15 / c8f662e` block. Master's was current.) His attempts
+predate that deploy, which is why his footer shows `c8f662e`.
 
 ## Notes for next session
 

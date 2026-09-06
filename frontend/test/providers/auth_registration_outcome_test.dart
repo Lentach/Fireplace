@@ -29,17 +29,43 @@ void main() {
   // → he picked a different name. The account was HIS. Every assertion here is
   // about what the surface can now say and offer.
   group('registration outcome is explained, not swallowed', () {
-    test('a taken nickname is named, and offers the account it belongs to',
+    test('a taken name that opens with these credentials signs the user in',
+        () async {
+      // The friend's ACTUAL situation: his first register committed the row,
+      // its answer was lost, and his retry hit 409. The password he just typed
+      // is the account's password, so the retry can simply land him inside.
+      final auth = _provider(
+        MockClient((req) async => switch (req.url.path) {
+              '/auth/register' =>
+                _json({'message': 'nickname is already taken'}, 409),
+              '/auth/login' =>
+                _json({'access_token': _accessJwt, 'refresh_token': 'r'}, 200),
+              '/users/me' =>
+                _json({'id': 114, 'username': 'ma0i', 'tag': '5269'}, 200),
+              _ => throw StateError('unexpected ${req.url.path}'),
+            }),
+      );
+
+      expect(await auth.register('ma0i', 'Password1'), isTrue);
+      expect(auth.isLoggedIn, isTrue);
+      expect(auth.statusCode, isNull);
+      expect(auth.recoverableUsername, isNull);
+    });
+
+    test("someone else's name is named, and offers the sign-in door",
         () async {
       final auth = _provider(
-        MockClient(
-          (req) async => req.url.path == '/auth/register'
-              ? _json({'message': 'nickname is already taken'}, 409)
-              : throw StateError('unexpected ${req.url.path}'),
-        ),
+        MockClient((req) async => switch (req.url.path) {
+              '/auth/register' =>
+                _json({'message': 'nickname is already taken'}, 409),
+              // Not this user's account: the credentials do not open it.
+              '/auth/login' => _json({'message': 'Invalid credentials'}, 401),
+              _ => throw StateError('unexpected ${req.url.path}'),
+            }),
       );
 
       expect(await auth.register('maoi', 'Password1'), isFalse);
+      expect(auth.isLoggedIn, isFalse);
       expect(auth.statusCode, AuthStatusCode.nicknameTaken);
       expect(auth.recoverableUsername, 'maoi');
     });
@@ -151,17 +177,23 @@ void main() {
 
   group('a status describes the attempt in front of the user', () {
     test('a new attempt clears the previous verdict before it runs', () async {
-      var first = true;
+      // First attempt: a name owned by SOMEONE ELSE (the recovery sign-in is
+      // refused), so the taken-name verdict stands and must not outlive it.
+      var registerCalls = 0;
       final auth = _provider(
         MockClient((req) async {
-          if (req.url.path == '/auth/register' && first) {
-            first = false;
-            return _json({'message': 'nickname is already taken'}, 409);
+          if (req.url.path == '/auth/register') {
+            registerCalls++;
+            return registerCalls == 1
+                ? _json({'message': 'nickname is already taken'}, 409)
+                : _json({'id': 8, 'username': 'inny'}, 201);
           }
           return switch (req.url.path) {
-            '/auth/register' => _json({'id': 8, 'username': 'inny'}, 201),
-            '/auth/login' =>
-              _json({'access_token': _accessJwt, 'refresh_token': 'r'}, 200),
+            // The recovery sign-in after the first 409 is refused; the one
+            // after the second (successful) register is not.
+            '/auth/login' => registerCalls >= 2
+                ? _json({'access_token': _accessJwt, 'refresh_token': 'r'}, 200)
+                : _json({'message': 'Invalid credentials'}, 401),
             '/users/me' => _json({'id': 8, 'username': 'inny'}, 200),
             _ => throw StateError('unexpected ${req.url.path}'),
           };
