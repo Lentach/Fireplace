@@ -657,6 +657,69 @@ void main() {
       expect(passcode.state, PasscodeLockState.locked);
     });
 
+    test('a second "leaving" signal while still away does not move the stamp: '
+        'the phone wake path (hidden → inactive → resumed) must judge from the '
+        'real departure', () async {
+      // Proven on the Pixel_7 emulator 2026-09-06 against the deployed 0.2.17
+      // build: screen off 75 s with a 1-minute window → Chats, no lock. On
+      // wake Flutter web delivers `inactive` before `resumed` (visible but not
+      // yet focused); MainShell treats `inactive` as a departure and called
+      // noteBackgrounded(), which re-stamped `passcode_last_active_at` at the
+      // wake instant, so evaluateOnForeground() saw ~0 s away. Both edges
+      // stay wired — on iOS `inactive` may be the only departure signal — the
+      // provider just refuses to restamp a departure it already recorded.
+      await passcode.noteBackgrounded(); // screen off (blur / hidden)
+      final departedAt = store.record.lastActiveAtMs;
+      now += const Duration(seconds: 75).inMilliseconds;
+
+      await passcode.noteBackgrounded(); // wake: `inactive` before `resumed`
+      expect(store.record.lastActiveAtMs, departedAt,
+          reason: 'the stamp is the moment we LEFT, not the moment we came back');
+
+      await passcode.evaluateOnForeground(); // `resumed`
+      expect(passcode.state, PasscodeLockState.locked);
+    });
+
+    test('after a return has been judged, the next departure stamps afresh',
+        () async {
+      await passcode.noteBackgrounded();
+      now += const Duration(seconds: 10).inMilliseconds;
+      await passcode.evaluateOnForeground();
+      expect(passcode.state, PasscodeLockState.unlocked);
+
+      // A pull of the notification shade: `inactive` then `resumed` while the
+      // page stays visible. First signal of a NEW departure — it must stamp.
+      now += const Duration(seconds: 30).inMilliseconds;
+      await passcode.noteBackgrounded();
+      expect(store.record.lastActiveAtMs, now);
+      now += const Duration(seconds: 5).inMilliseconds;
+      await passcode.evaluateOnForeground();
+      expect(passcode.state, PasscodeLockState.unlocked);
+
+      // And a real departure after that is measured from ITS stamp.
+      now += const Duration(seconds: 1).inMilliseconds;
+      await passcode.noteBackgrounded();
+      now += const Duration(seconds: 61).inMilliseconds;
+      await passcode.evaluateOnForeground();
+      expect(passcode.state, PasscodeLockState.locked);
+    });
+
+    test('a lock closes the departure: after unlocking, leaving again stamps '
+        'and locks as a fresh departure', () async {
+      await passcode.noteBackgrounded();
+      now += const Duration(seconds: 61).inMilliseconds;
+      await passcode.evaluateOnForeground();
+      expect(passcode.state, PasscodeLockState.locked);
+      expect(await passcode.unlock('1234'), PasscodeUnlockResult.ok);
+
+      now += const Duration(seconds: 5).inMilliseconds;
+      await passcode.noteBackgrounded();
+      expect(store.record.lastActiveAtMs, now);
+      now += const Duration(seconds: 61).inMilliseconds;
+      await passcode.evaluateOnForeground();
+      expect(passcode.state, PasscodeLockState.locked);
+    });
+
     test('with immediate auto-lock, backgrounding locks on the spot', () async {
       await passcode.setAutoLockSeconds(0);
       await passcode.noteBackgrounded();
@@ -708,11 +771,15 @@ void main() {
         'locks as before', () async {
       await passcode.setAutoLockSeconds(0);
       pickerActive = true;
-      await passcode.noteBackgrounded();
+      await passcode.noteBackgrounded(); // the sheet hides the page
+      expect(passcode.state, PasscodeLockState.unlocked);
+      // The sheet closes: the page is visible again before the picked file's
+      // change event lands, so the flag is still up at this return.
+      await passcode.evaluateOnForeground();
       expect(passcode.state, PasscodeLockState.unlocked);
 
       pickerActive = false;
-      await passcode.noteBackgrounded();
+      await passcode.noteBackgrounded(); // a real departure
       expect(passcode.state, PasscodeLockState.locked);
     });
 

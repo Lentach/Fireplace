@@ -601,6 +601,9 @@ class PasscodeProvider extends ChangeNotifier {
   /// teardown would cost an E2E re-init and buy nothing. That platform's lock
   /// is a UI barrier and `frontend/CLAUDE.md` §10b says so out loud.
   Future<void> _lock() async {
+    // A lock closes the departure: after the unlock the next "leaving"
+    // signal is a NEW departure and must stamp.
+    _away = false;
     _vault.lock();
     _gate.close();
     _setState(PasscodeLockState.locked);
@@ -609,18 +612,34 @@ class PasscodeProvider extends ChangeNotifier {
     if (_canRelaunch()) _relaunch();
   }
 
+  /// True between the first "leaving" signal and the next foreground verdict.
+  ///
+  /// One departure arrives as SEVERAL signals: `blur` and `visibilitychange`
+  /// on the way out, and on the way back in Flutter web delivers `inactive`
+  /// (visible, not yet focused) BEFORE `resumed`, and `MainShell` rightly
+  /// treats `inactive` as a departure — on iOS it may be the only one it
+  /// gets. Without this flag that late `inactive` re-stamped the clock at the
+  /// WAKE instant, and the verdict a moment later saw ~0 s away: a phone left
+  /// screen-off for 15 minutes came back unlocked (owner, iOS + Android PWA,
+  /// 2026-09-06; reproduced on the Pixel_7 emulator with the persisted stamp
+  /// read on both edges). The stamp must be the moment we LEFT.
+  bool _away = false;
+
   /// The app left the foreground: stamp the clock, and lock immediately when
   /// the user chose the immediate setting.
   ///
   /// The stamp is written on the way OUT because that is the only moment the
   /// away-time can start being measured, and because on web the process may
   /// never run code again (frozen page replaced, or iOS killing the PWA).
+  /// Only the FIRST signal of a departure writes it; see [_away].
   ///
   /// While the native picker is up the stamp is still written — the return
   /// is judged from the picker, not from whatever older departure the stamp
   /// held — but the immediate lock is held back; see [_nativePickerActive].
   Future<void> noteBackgrounded() async {
     if (!isEnabled) return;
+    if (_away) return;
+    _away = true;
     await _store.saveLastActiveAt(_now());
     _record = await _store.load();
     if (_record.autoLockSeconds <= 0 && !_nativePickerActive()) {
@@ -636,9 +655,11 @@ class PasscodeProvider extends ChangeNotifier {
   ///
   /// A return from the native picker is not a return from anywhere: the
   /// picked bytes are about to land in the composer, and at 0 s the rule
-  /// below would lock (and on web relaunch) before they do.
+  /// below would lock (and on web relaunch) before they do. The departure is
+  /// closed all the same, so the NEXT departure stamps afresh.
   Future<void> evaluateOnForeground() async {
     if (!isEnabled) return;
+    _away = false;
     if (_state == PasscodeLockState.locked) return;
     if (_nativePickerActive()) return;
     // Re-read: another PWA engine on the same origin may have moved the stamp.
