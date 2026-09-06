@@ -12,6 +12,7 @@ import '../services/passcode_unlock_gate.dart';
 import '../utils/app_relaunch.dart';
 import '../utils/e2e_persistent_diag.dart';
 import '../utils/passcode_autolock.dart';
+import '../utils/privacy_curtain.dart';
 import '../widgets/input/composer_keyboard_signals.dart';
 
 /// Where the app-level Passcode Lock stands right now.
@@ -604,12 +605,38 @@ class PasscodeProvider extends ChangeNotifier {
     // A lock closes the departure: after the unlock the next "leaving"
     // signal is a NEW departure and must stamp.
     _away = false;
+    _curtained = false; // the lock screen is the cover now
     _vault.lock();
     _gate.close();
     _setState(PasscodeLockState.locked);
     if (!_wrapKeys || !await _vault.isWrappingOn()) return;
     await _revoker.revoke();
     if (_canRelaunch()) _relaunch();
+  }
+
+  /// True from a departure signal until the next foreground verdict: the
+  /// gate paints the lock screen's chrome over the app meanwhile.
+  ///
+  /// On wake the browser re-shows the LAST PAINTED frame before any code runs
+  /// (owner, both phones, 2026-09-06: "for a millisecond there is the chat").
+  /// No verdict can beat that frame; the only cure is to have painted
+  /// something else on the way OUT. `blur` arrives about a second before the
+  /// page is hidden on Android (probe 2026-09-06), so the curtain gets its
+  /// frame. It is a cover, not a lock — no keypad, nothing revoked — and it is
+  /// lifted only AFTER the return verdict, or lifting it would itself flash
+  /// the chat before a lock lands.
+  bool _curtained = false;
+  bool get curtained => _curtained;
+
+  void _setCurtained(bool next) {
+    if (_curtained == next) return;
+    _curtained = next;
+    // The DOM curtain (web) is normally already up — the page's own blur
+    // handler showed it before this code ran. Belt and braces for a departure
+    // signal that reached Flutter without one. It is LIFTED by the gate, after
+    // it has painted the state that replaces it.
+    if (next) showDomCurtain();
+    notifyListeners();
   }
 
   /// True between the first "leaving" signal and the next foreground verdict.
@@ -638,6 +665,9 @@ class PasscodeProvider extends ChangeNotifier {
   /// held — but the immediate lock is held back; see [_nativePickerActive].
   Future<void> noteBackgrounded() async {
     if (!isEnabled) return;
+    // Synchronously, before any await: this frame is the one the browser will
+    // show on wake.
+    if (_state == PasscodeLockState.unlocked) _setCurtained(true);
     // The latch guards the STAMP only. The verdict below still runs on every
     // signal, so a second "leaving" signal can still lock at 0 s (e.g. the
     // picker span ended without a return ever being reported) — it just
@@ -665,8 +695,14 @@ class PasscodeProvider extends ChangeNotifier {
   Future<void> evaluateOnForeground() async {
     if (!isEnabled) return;
     _away = false;
-    if (_state == PasscodeLockState.locked) return;
-    if (_nativePickerActive()) return;
+    if (_state == PasscodeLockState.locked) {
+      _setCurtained(false);
+      return;
+    }
+    if (_nativePickerActive()) {
+      _setCurtained(false);
+      return;
+    }
     // Re-read: another PWA engine on the same origin may have moved the stamp.
     _record = await _store.load();
     final lock = shouldLockOnForeground(
@@ -675,7 +711,11 @@ class PasscodeProvider extends ChangeNotifier {
       nowMs: _now(),
       autoLockSeconds: _record.autoLockSeconds,
     );
-    if (lock) await _lock();
+    if (lock) {
+      await _lock();
+    } else {
+      _setCurtained(false);
+    }
   }
 
   /// Whether [mode] may be used on this device.

@@ -823,6 +823,51 @@ void main() {
           reason: 'the second signal locks but does not move the departure');
     });
 
+    test('the curtain drops synchronously on a departure and lifts only after '
+        'the return verdict — never before a lock', () async {
+      final seen = <String>[];
+      passcode.addListener(() {
+        seen.add('${passcode.curtained ? 'curtain' : 'clear'}/'
+            '${passcode.state.name}');
+      });
+
+      final leaving = passcode.noteBackgrounded();
+      // Before the first await inside noteBackgrounded resolves.
+      expect(passcode.curtained, isTrue);
+      await leaving;
+
+      // Inside the window: the curtain lifts, the app is unlocked.
+      now += const Duration(seconds: 10).inMilliseconds;
+      await passcode.evaluateOnForeground();
+      expect(passcode.curtained, isFalse);
+      expect(passcode.state, PasscodeLockState.unlocked);
+
+      // Past the window: no notification may ever show "clear + unlocked"
+      // between the curtain and the lock — that frame would be the chat.
+      seen.clear();
+      await passcode.noteBackgrounded();
+      now += const Duration(seconds: 61).inMilliseconds;
+      await passcode.evaluateOnForeground();
+      expect(passcode.state, PasscodeLockState.locked);
+      expect(passcode.curtained, isFalse);
+      expect(seen, isNot(contains('clear/unlocked')));
+    });
+
+    test('a departure while already locked does not curtain (the lock screen '
+        'is the cover), and a picker return lifts it', () async {
+      passcode.lockNow();
+      await passcode.noteBackgrounded();
+      expect(passcode.curtained, isFalse);
+      expect(await passcode.unlock('1234'), PasscodeUnlockResult.ok);
+
+      pickerActive = true;
+      await passcode.noteBackgrounded();
+      expect(passcode.curtained, isTrue);
+      await passcode.evaluateOnForeground(); // picker still up at this return
+      expect(passcode.curtained, isFalse);
+      expect(passcode.state, PasscodeLockState.unlocked);
+    });
+
     test('a disabled passcode never locks on return', () async {
       await passcode.disable(passcode: '1234');
       await passcode.noteBackgrounded();

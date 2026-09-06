@@ -60,6 +60,77 @@ void main() {
     expect(find.text('SECRET CHATS'), findsNothing);
   });
 
+  testWidgets('before initialize resolves, the cover is the lock screen\'s own '
+      'chrome, not a bare scaffold colour', (tester) async {
+    // Owner, 2026-09-06: a wake-lock showed "chat → white → lock screen". The
+    // white was ours — this branch painted a plain ColoredBox until the
+    // credential read resolved.
+    await tester.pumpWidget(_host(passcode));
+    await tester.pump();
+
+    expect(find.byKey(const Key('passcode-curtain')), findsOneWidget);
+    expect(find.byKey(const Key('passcode-dots')), findsNothing);
+  });
+
+  testWidgets('a departure with the passcode ON drops the curtain over the app '
+      'before the browser snapshots the frame; the return lifts it',
+      (tester) async {
+    // The chat flash on wake is the browser re-showing the LAST PAINTED frame
+    // before any code runs. The only way to not show the chat is to have
+    // painted something else on the way out.
+    await passcode.initialize();
+    await passcode.enable(passcode: '1234', mode: PasscodeMode.digits4);
+    await tester.pumpWidget(_host(passcode));
+    await tester.pumpAndSettle();
+    expect(find.text('SECRET CHATS'), findsOneWidget);
+
+    await passcode.noteBackgrounded(); // blur / inactive on the way out
+    await tester.pump();
+    // The app stays mounted underneath (a pending attach picker must survive);
+    // the curtain is opaque and on top, so nothing of it is reachable.
+    expect(find.text('SECRET CHATS').hitTestable(), findsNothing);
+    expect(find.byKey(const Key('passcode-curtain')), findsOneWidget);
+    expect(find.byKey(const Key('passcode-dots')), findsNothing,
+        reason: 'a curtain is not a lock: no keypad, nothing to type');
+
+    now += 10000; // inside the 1-minute window
+    await passcode.evaluateOnForeground();
+    await tester.pump();
+    expect(find.byKey(const Key('passcode-curtain')), findsNothing);
+    expect(find.text('SECRET CHATS').hitTestable(), findsOneWidget);
+  });
+
+  testWidgets('a return past the window turns the curtain into the lock, never '
+      'the app', (tester) async {
+    await passcode.initialize();
+    await passcode.enable(passcode: '1234', mode: PasscodeMode.digits4);
+    await tester.pumpWidget(_host(passcode));
+    await tester.pumpAndSettle();
+
+    await passcode.noteBackgrounded();
+    await tester.pump();
+    now += 61000;
+    await passcode.evaluateOnForeground();
+    await tester.pump();
+
+    expect(find.text('SECRET CHATS'), findsNothing);
+    expect(find.byKey(const Key('passcode-curtain')), findsNothing);
+    expect(find.byKey(const Key('passcode-dots')), findsOneWidget);
+  });
+
+  testWidgets('with no passcode there is no curtain: departures are nobody\'s '
+      'business', (tester) async {
+    await passcode.initialize();
+    await tester.pumpWidget(_host(passcode));
+    await tester.pumpAndSettle();
+
+    await passcode.noteBackgrounded();
+    await tester.pump();
+
+    expect(find.text('SECRET CHATS'), findsOneWidget);
+    expect(find.byKey(const Key('passcode-curtain')), findsNothing);
+  });
+
   testWidgets('while locked the app is hidden behind the lock screen',
       (tester) async {
     await passcode.initialize();

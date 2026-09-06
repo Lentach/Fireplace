@@ -5,6 +5,8 @@ import '../providers/auth_provider.dart';
 import '../providers/passcode_provider.dart';
 import '../screens/passcode_unlock_screen.dart';
 import '../services/local_data_eraser.dart';
+import '../utils/privacy_curtain.dart';
+import 'passcode_curtain.dart';
 
 /// Wraps the whole app below `MaterialApp.builder`, so the lock covers every
 /// pushed route and the bottom nav — not just the shell.
@@ -26,22 +28,37 @@ class PasscodeGate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<PasscodeProvider>().state;
+    final passcode = context.watch<PasscodeProvider>();
+    final state = passcode.state;
     // `unknown` counts as covered: the credential has not been read yet, and
     // painting the shell for one frame on every cold start of a locked app
     // would defeat the point.
     final covered =
         state == PasscodeLockState.locked || state == PasscodeLockState.unknown;
+    // The curtain is painted OVER the app rather than Offstage-ing it: the
+    // subtree may hold a pending `<input type=file>` (the attach picker), and
+    // un-painting it mid-pick is the (2026-08-21) lost-pick shape again.
+    final curtained = !covered && passcode.curtained;
 
+    // The DOM curtain (web/index.html) is shown by the page itself on blur —
+    // no Flutter frame needed — and at boot when a passcode is enabled. It is
+    // lifted HERE, after a frame that paints the state replacing it: the lock
+    // screen, or the app once the return verdict said "still inside the
+    // window". Lifting any earlier is the chat-for-one-frame flash again.
+    armDomCurtain(passcode.isEnabled);
+    if (state != PasscodeLockState.unknown && !curtained) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => hideDomCurtain());
+    }
     return Stack(
       children: [
         Positioned.fill(child: Offstage(offstage: covered, child: child)),
         if (covered)
           Positioned.fill(
             child: state == PasscodeLockState.unknown
-                ? ColoredBox(color: Theme.of(context).scaffoldBackgroundColor)
+                ? const PasscodeCurtain()
                 : PasscodeUnlockScreen(onErase: () => _erase(context)),
           ),
+        if (curtained) const Positioned.fill(child: PasscodeCurtain()),
       ],
     );
   }

@@ -211,5 +211,55 @@ void main() {
       expect(find.text('Wrong passcode. Try again.'), findsNothing);
       expect(passcode.isEnabled, isTrue, reason: 'cooldown must still gate');
     });
+
+    testWidgets('turning the passcode off returns to where the user came from, '
+        'not to the "enable it" page', (tester) async {
+      // Owner, 2026-09-06: after "Wyłącz blokadę kodem" the page just
+      // re-rendered as the setup page. The job is done; go back.
+      await tester.pumpWidget(ChangeNotifierProvider.value(
+        value: passcode,
+        child: MaterialApp(
+          theme: RpgTheme.themeDataLight,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('en'),
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                key: const Key('open-passcode'),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const PasscodeLockScreen(),
+                  ),
+                ),
+                child: const Text('SETTINGS HOME'),
+              ),
+            ),
+          ),
+        ),
+      ));
+      await tester.tap(find.byKey(const Key('open-passcode')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('passcode-turn-off')), findsOneWidget);
+
+      // A cancelled prompt stays put.
+      await tester.tap(find.byKey(const Key('passcode-turn-off')));
+      await tester.pumpAndSettle();
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('passcode-turn-off')), findsOneWidget);
+      expect(passcode.isEnabled, isTrue);
+
+      // The right code disables AND leaves.
+      await tester.tap(find.byKey(const Key('passcode-turn-off')));
+      await tester.pumpAndSettle();
+      await _type(tester, '1234');
+
+      expect(passcode.isEnabled, isFalse);
+      expect(find.text('SETTINGS HOME'), findsOneWidget);
+      expect(find.byKey(const Key('passcode-turn-off')), findsNothing);
+      expect(find.byKey(const Key('passcode-enable')), findsNothing,
+          reason: 'the setup page must not be what the user lands on');
+    });
   });
 }

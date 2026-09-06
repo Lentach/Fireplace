@@ -193,7 +193,10 @@ class _EnabledBody extends StatelessWidget {
     final passcodeProvider = context.read<PasscodeProvider>();
     final current = await _askCurrentCode(context, passcodeProvider);
     if (current == null) return;
-    await passcodeProvider.disable(passcode: current);
+    final disabled = await passcodeProvider.disable(passcode: current);
+    // The job is done — leave, instead of re-rendering as the "enable it"
+    // page the user has no reason to look at. A refusal stays put.
+    if (disabled && context.mounted) Navigator.of(context).pop();
   }
 
   Future<void> _pickAutoLock(BuildContext context) async {

@@ -41,6 +41,18 @@
        synced from Dart (lib/utils/web_document_background.dart). Inert CSS
        only — background-color never affects layout/scroll/viewport. */
     html, body { background-color: #F7F4F0; }
+    /* Privacy curtain (passcode lock). Shown SYNCHRONOUSLY from the blur /
+       visibilitychange handler below — a real screen-off gives 80–400 ms
+       between blur and hidden (measured, Pixel_7 2026-09-06), which is not
+       enough for a Flutter frame, and on wake the browser re-shows the last
+       painted frame before any code runs. A DOM paint needs no Flutter frame.
+       Also shown at boot when the passcode is enabled, so a lock's relaunch
+       boots into this instead of a bare background. Dart lifts it once the
+       gate has painted a known state (lib/utils/privacy_curtain_web.dart). */
+    #fp-curtain { position: fixed; inset: 0; z-index: 2147483647;
+      display: none; background-color: inherit; }
+    #fp-curtain svg { position: absolute; top: 44px; left: 50%;
+      transform: translateX(-50%); width: 64px; height: 56px; }
   </style>
   <script>
     // Pre-paint theme sync: the static #F7F4F0 above is the FRESH-INSTALL
@@ -86,8 +98,57 @@
       } catch (e) { /* fresh-install default stays */ }
     })();
   </script>
+  <script>
+    // Privacy curtain — see the #fp-curtain comment above. `arm(true)` is
+    // called from Dart while a passcode is enabled; only then do blur /
+    // visibilitychange show it. Hiding is Dart's job (after the return
+    // verdict; lifting it earlier would flash the chat before a lock lands).
+    (function () {
+      var armed = false;
+      var el = null;
+      var accents = {
+        dark: '#FF6666', blue: '#2AABEE', cosmic: '#8FD8FF',
+        teal: '#C2410C', light: '#C2410C'
+      };
+      var node = function () {
+        if (el) return el;
+        el = document.getElementById('fp-curtain');
+        return el;
+      };
+      var show = function () { var n = node(); if (n) n.style.display = 'block'; };
+      var hide = function () { var n = node(); if (n) n.style.display = 'none'; };
+      var onLeave = function () { if (armed) show(); };
+      window.addEventListener('blur', onLeave);
+      document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState !== 'visible') onLeave();
+      });
+      window.__fpCurtain = {
+        arm: function (on) { armed = !!on; },
+        show: show,
+        hide: hide
+      };
+      // Boot: a locked app's relaunch must not flash a bare background.
+      try {
+        if ((localStorage.getItem('flutter.passcode_enabled') || '') === 'true') {
+          var theme = (localStorage.getItem('flutter.theme_preference') || '').replace(/"/g, '');
+          document.addEventListener('DOMContentLoaded', function () {
+            var svg = document.querySelector('#fp-curtain svg');
+            if (svg) svg.setAttribute('stroke', accents[theme] || accents.light);
+            show();
+          });
+        }
+      } catch (e) { /* no curtain at boot */ }
+    })();
+  </script>
 </head>
 <body>
+  <div id="fp-curtain" aria-hidden="true">
+    <svg viewBox="0 0 64 56" fill="none" stroke="#C2410C" stroke-width="2">
+      <path d="M32 2 L58 16 L58 40 L32 54 L6 40 L6 16 Z"/>
+      <rect x="24" y="26" width="16" height="13" rx="2"/>
+      <path d="M27 26 V21 a5 5 0 0 1 10 0 V26"/>
+    </svg>
+  </div>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
