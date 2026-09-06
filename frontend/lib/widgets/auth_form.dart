@@ -6,7 +6,22 @@ class AuthForm extends StatefulWidget {
   final bool isLogin;
   final Future<void> Function(String username, String password) onSubmit;
 
-  const AuthForm({super.key, required this.isLogin, required this.onSubmit});
+  /// Username to start with. Set when the screen sends the user from the
+  /// register tab to the sign-in tab, so they never retype a name the app
+  /// already knows.
+  final String? initialUsername;
+
+  /// Called on the first keystroke after a status is showing, so a message
+  /// about the PREVIOUS attempt cannot sit under an edited form.
+  final VoidCallback? onEdited;
+
+  const AuthForm({
+    super.key,
+    required this.isLogin,
+    required this.onSubmit,
+    this.initialUsername,
+    this.onEdited,
+  });
 
   @override
   State<AuthForm> createState() => _AuthFormState();
@@ -14,15 +29,41 @@ class AuthForm extends StatefulWidget {
 
 class _AuthFormState extends State<AuthForm> {
   final _formKey = GlobalKey<FormState>();
-  final _usernameController = TextEditingController();
+  late final TextEditingController _usernameController =
+      TextEditingController(text: widget.initialUsername ?? '');
   final _passwordController = TextEditingController();
   bool _loading = false;
+
+  @override
+  void didUpdateWidget(AuthForm oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final prefill = widget.initialUsername;
+    if (prefill != null && prefill != oldWidget.initialUsername) {
+      _usernameController.text = prefill;
+    }
+  }
 
   @override
   void dispose() {
     _usernameController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  /// The server's rule (`RegisterDto`), enforced here so the user reads it
+  /// under the field instead of receiving a 400 the surface cannot explain.
+  static final RegExp _usernameCharset = RegExp(r'^[a-zA-Z0-9_]+$');
+
+  String? _validateUsername(String? value, AppLocalizations l10n) {
+    final username = value?.trim() ?? '';
+    if (username.isEmpty) return l10n.authUsernameRequired;
+    if (widget.isLogin) return null;
+    if (username.length < 3 ||
+        username.length > 20 ||
+        !_usernameCharset.hasMatch(username)) {
+      return l10n.authUsernameRules;
+    }
+    return null;
   }
 
   String? _validatePassword(String? value, AppLocalizations l10n) {
@@ -47,6 +88,21 @@ class _AuthFormState extends State<AuthForm> {
     }
   }
 
+  /// The rule stated BEFORE the user hits it. The registration rules live on
+  /// the server (`RegisterDto`); a door that keeps them secret can only answer
+  /// a violation with a refusal, which is what made "something went wrong" the
+  /// whole conversation.
+  Widget _rules(BuildContext context, String text) => Padding(
+    padding: const EdgeInsets.only(top: 6, left: 4, right: 4),
+    child: Text(
+      text,
+      style: RpgTheme.bodyFont(
+        fontSize: 11,
+        color: FireplaceColors.of(context).mutedText,
+      ),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -68,10 +124,10 @@ class _AuthFormState extends State<AuthForm> {
               context: context,
             ),
             onFieldSubmitted: (_) => _handleSubmit(),
-            validator: (value) => (value == null || value.isEmpty)
-                ? l10n.authUsernameRequired
-                : null,
+            onChanged: (_) => widget.onEdited?.call(),
+            validator: (value) => _validateUsername(value, l10n),
           ),
+          if (!widget.isLogin) _rules(context, l10n.authUsernameRules),
           const SizedBox(height: 16),
           TextFormField(
             controller: _passwordController,
@@ -88,6 +144,7 @@ class _AuthFormState extends State<AuthForm> {
             ),
             obscureText: true,
             onFieldSubmitted: (_) => _handleSubmit(),
+            onChanged: (_) => widget.onEdited?.call(),
             // Enforce strength only on registration; login just needs non-empty
             validator: widget.isLogin
                 ? (value) => (value == null || value.isEmpty)
@@ -95,6 +152,7 @@ class _AuthFormState extends State<AuthForm> {
                       : null
                 : (value) => _validatePassword(value, l10n),
           ),
+          if (!widget.isLogin) _rules(context, l10n.authPasswordRules),
           const SizedBox(height: 24),
           ElevatedButton(
             onPressed: _loading ? null : _handleSubmit,

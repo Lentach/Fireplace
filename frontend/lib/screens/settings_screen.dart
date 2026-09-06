@@ -6,6 +6,7 @@ import '../models/chat_background_preference.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/appearance_preview.dart';
 import '../providers/auth_provider.dart';
+import '../l10n/auth_status_text.dart';
 import '../providers/connection_provider.dart';
 import '../providers/encryption_provider.dart';
 import '../providers/settings_provider.dart';
@@ -135,11 +136,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (mounted) {
         showTopSnackBar(
           context,
-          '${AppLocalizations.of(context).passwordResetFailed}: ${e.toString()}',
+          _credentialFailureText(e),
           backgroundColor: Theme.of(context).colorScheme.error,
         );
       }
     }
+  }
+
+  /// Why a password change or an account deletion was refused, in the user's
+  /// language. Appending `e.toString()` (what this did until 2026-09-06) put
+  /// untranslated backend English — or a bare status code — behind a generic
+  /// prefix, so "wrong current password" and "the server is down" read alike.
+  String _credentialFailureText(Object error) {
+    final l10n = AppLocalizations.of(context);
+    return authStatusText(
+      l10n,
+      classifyAuthFailure(error, attempt: AuthAttempt.credentialChange),
+    );
   }
 
   Future<void> _showDeleteAccountDialog() async {
@@ -166,7 +179,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (mounted) {
         showTopSnackBar(
           context,
-          '${AppLocalizations.of(context).accountDeletionFailed}: ${e.toString()}',
+          _credentialFailureText(e),
           backgroundColor: Theme.of(context).colorScheme.error,
         );
       }

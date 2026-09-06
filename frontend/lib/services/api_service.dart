@@ -6,6 +6,7 @@ import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'session_refresh_exception.dart';
+import 'api_exception.dart';
 import '../models/user_model.dart';
 
 class ApiService {
@@ -70,6 +71,20 @@ class ApiService {
     return '$fallback (${response.statusCode})';
   }
 
+  /// Throw the response as an [ApiException], keeping its status.
+  ///
+  /// Every caller that must EXPLAIN a refusal (the auth surface above all)
+  /// needs the status, not prose: 409 "already taken", 401 "wrong password",
+  /// 429 "too many attempts" and a 502 mid-deploy are four different things to
+  /// say and only the status distinguishes them reliably across locales.
+  Never _fail(http.Response response, String fallback, String endpoint) {
+    throw ApiException(
+      statusCode: response.statusCode,
+      message: _errorMessage(response, fallback),
+      endpoint: endpoint,
+    );
+  }
+
   /// Multipart send under ONE deadline covering both the request and the body
   /// drain — timing them separately would allow twice the intended budget.
   Future<http.Response> _sendMultipart(
@@ -95,7 +110,7 @@ class ApiService {
     ).timeout(_kAuthTimeout);
 
     if (response.statusCode != 201) {
-      throw Exception(_errorMessage(response, 'Registration failed'));
+      _fail(response, 'Registration failed', 'POST /auth/register');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
@@ -109,7 +124,7 @@ class ApiService {
     ).timeout(_kAuthTimeout);
 
     if (response.statusCode != 201 && response.statusCode != 200) {
-      throw Exception(_errorMessage(response, 'Login failed'));
+      _fail(response, 'Login failed', 'POST /auth/login');
     }
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     final access = data['access_token'] as String?;
@@ -314,7 +329,7 @@ class ApiService {
     ).timeout(_kDefaultTimeout);
 
     if (response.statusCode != 201 && response.statusCode != 200) {
-      throw Exception(_errorMessage(response, 'Password reset failed'));
+      _fail(response, 'Password reset failed', 'POST /users/reset-password');
     }
   }
 
@@ -329,7 +344,7 @@ class ApiService {
     ).timeout(_kDefaultTimeout);
 
     if (response.statusCode != 200) {
-      throw Exception(_errorMessage(response, 'Account deletion failed'));
+      _fail(response, 'Account deletion failed', 'DELETE /users/account');
     }
   }
 
@@ -561,7 +576,7 @@ class ApiService {
       headers: {'Authorization': 'Bearer $token'},
     ).timeout(_kDefaultTimeout);
     if (response.statusCode != 200) {
-      throw Exception('HTTP_${response.statusCode}: fetchMe failed');
+      _fail(response, 'fetchMe failed', 'GET /users/me');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }

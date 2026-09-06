@@ -1004,6 +1004,66 @@ abstract class AppLocalizations {
   /// **'Coś poszło nie tak. Spróbuj ponownie.'**
   String get authStatusUnexpectedError;
 
+  /// Auth surface status, localized from an AuthStatusCode.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ta nazwa użytkownika jest już zajęta. Jeśli to Ty założyłeś to konto, zaloguj się.'**
+  String get authStatusNicknameTaken;
+
+  /// Auth surface status, localized from an AuthStatusCode.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nazwa użytkownika musi mieć 3-20 znaków i zawierać tylko litery, cyfry i _ .'**
+  String get authStatusUsernameInvalid;
+
+  /// Auth surface status, localized from an AuthStatusCode.
+  ///
+  /// In pl, this message translates to:
+  /// **'Hasło musi mieć co najmniej 8 znaków oraz zawierać wielką literę, małą literę i cyfrę.'**
+  String get authStatusPasswordTooWeak;
+
+  /// Auth surface status, localized from an AuthStatusCode.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nieprawidłowa nazwa użytkownika lub hasło.'**
+  String get authStatusInvalidCredentials;
+
+  /// Auth surface status, localized from an AuthStatusCode.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zbyt wiele prób. Odczekaj chwilę i spróbuj ponownie.'**
+  String get authStatusTooManyAttempts;
+
+  /// Auth surface status, localized from an AuthStatusCode.
+  ///
+  /// In pl, this message translates to:
+  /// **'Serwer nie mógł tego teraz obsłużyć. Spróbuj za chwilę.'**
+  String get authStatusServerError;
+
+  /// Auth surface status, localized from an AuthStatusCode.
+  ///
+  /// In pl, this message translates to:
+  /// **'Połączenie zerwało się, zanim dotarła odpowiedź, więc konto mogło już powstać. Spróbuj zalogować się tą samą nazwą i hasłem.'**
+  String get authStatusRegisterOutcomeUnknown;
+
+  /// Button that switches the auth screen to the sign-in tab with the username prefilled.
+  ///
+  /// In pl, this message translates to:
+  /// **'Przejdź do logowania'**
+  String get authGoToLogin;
+
+  /// Helper text under the username field on the registration tab.
+  ///
+  /// In pl, this message translates to:
+  /// **'3-20 znaków: tylko litery, cyfry i _'**
+  String get authUsernameRules;
+
+  /// Helper text under the password field on the registration tab.
+  ///
+  /// In pl, this message translates to:
+  /// **'Co najmniej 8 znaków, w tym wielka litera, mała litera i cyfra'**
+  String get authPasswordRules;
+
   /// Reveals the full explanation on a collapsed identity banner.
   ///
   /// In pl, this message translates to:

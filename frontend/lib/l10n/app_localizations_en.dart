@@ -521,6 +521,43 @@ class AppLocalizationsEn extends AppLocalizations {
       'Something went wrong. Please try again.';
 
   @override
+  String get authStatusNicknameTaken =>
+      'That username is already taken. If you created this account, sign in instead.';
+
+  @override
+  String get authStatusUsernameInvalid =>
+      'Username must be 3-20 characters and use only letters, digits and _ .';
+
+  @override
+  String get authStatusPasswordTooWeak =>
+      'Password must be at least 8 characters and contain an uppercase letter, a lowercase letter and a digit.';
+
+  @override
+  String get authStatusInvalidCredentials => 'Wrong username or password.';
+
+  @override
+  String get authStatusTooManyAttempts =>
+      'Too many attempts. Wait a while and try again.';
+
+  @override
+  String get authStatusServerError =>
+      'The server could not handle that right now. Try again in a moment.';
+
+  @override
+  String get authStatusRegisterOutcomeUnknown =>
+      'The connection dropped before we got an answer, so the account may already exist. Try signing in with the same username and password.';
+
+  @override
+  String get authGoToLogin => 'Sign in instead';
+
+  @override
+  String get authUsernameRules => '3-20 characters: letters, digits and _ only';
+
+  @override
+  String get authPasswordRules =>
+      'At least 8 characters, with an uppercase letter, a lowercase letter and a digit';
+
+  @override
   String get identityAlertShowDetails => 'Details';
 
   @override

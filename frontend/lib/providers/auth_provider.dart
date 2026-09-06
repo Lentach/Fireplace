@@ -3,9 +3,11 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
+import 'package:http/http.dart' as http;
 import '../models/user_model.dart';
 import '../services/auth_token_store.dart';
 import '../services/api_service.dart';
+import '../services/api_exception.dart';
 import '../services/pwa_app_badge_clear.dart';
 import '../services/push_service.dart';
 import '../services/session_refresh_exception.dart';
@@ -26,16 +28,102 @@ enum AuthStatusCode {
   /// the session may still be there on the next launch.
   savedSessionUnreadable,
 
-  /// Registration succeeded; the user still has to sign in.
+  /// Registration succeeded but the automatic sign-in that follows it did not,
+  /// so the credentials still work and the user only has to sign in.
   registerSucceeded,
+
+  /// The username is taken. The account may well be the user's OWN from a
+  /// previous attempt, so the surface must offer signing in, never just
+  /// "pick another name" — that is the advice that strands someone whose
+  /// registration succeeded on a request whose response never arrived.
+  nicknameTaken,
+
+  /// The server rejected the username's shape (3-20 chars, letters/digits/`_`).
+  usernameInvalid,
+
+  /// The server rejected the password's shape (8+ chars, upper+lower+digit).
+  passwordTooWeak,
+
+  /// Wrong username or password on sign-in, or the wrong current password on
+  /// a password change.
+  invalidCredentials,
+
+  /// The endpoint's rate limit refused this attempt (HTTP 429).
+  tooManyAttempts,
+
+  /// The server answered, but with a failure of its own (HTTP 5xx, including a
+  /// gateway error while the backend is being deployed).
+  serverError,
 
   /// The backend could not be reached at all.
   serverUnreachable,
+
+  /// The register request was sent and its answer never arrived (timeout or a
+  /// dropped connection — a phone switching WiFi→cellular is enough). The
+  /// account MAY exist: `Future.timeout` cannot abort the in-flight request, so
+  /// the row can be committed while the client reports failure. Telling the
+  /// user to retry the same name would only produce [nicknameTaken]; the honest
+  /// instruction is to try signing in.
+  registerOutcomeUnknown,
 
   /// Anything else. Deliberately generic: the previous behaviour leaked the
   /// exception text, which was untranslated and told the user nothing they
   /// could act on.
   unexpectedError,
+}
+
+/// Which credential call failed. The same HTTP status means different things
+/// per door: a 400 on register is almost always the USERNAME rule (the form
+/// already enforces the password rule before sending), while a 400 on a
+/// password change is the new password.
+enum AuthAttempt { register, login, credentialChange }
+
+/// Maps a failed credential call to what the user should be TOLD.
+///
+/// Driven by the HTTP STATUS, never by matching the server's prose: the text is
+/// untranslated, unversioned backend English. The one place prose is consulted
+/// is choosing between the two shapes a 400 can carry, and it defaults to the
+/// attempt's more likely rule when the hint is absent.
+///
+/// Transport failures are classified by TYPE. Matching on message substrings
+/// (`'Failed to fetch'`, `'SocketException'`) was engine-specific: `package:http`
+/// re-throws the browser's own `TypeError` text (`browser_client.dart`
+/// `_toClientException`), so those literals only ever matched Chromium and
+/// `dart:io`, and every WebKit network failure — plus every timeout — fell
+/// through to [AuthStatusCode.unexpectedError].
+AuthStatusCode classifyAuthFailure(
+  Object error, {
+  required AuthAttempt attempt,
+}) {
+  if (error is ApiException) {
+    final looksLikePassword = error.message.toLowerCase().contains('password');
+    return switch (error.statusCode) {
+      400 || 422 =>
+        (attempt == AuthAttempt.register && !looksLikePassword)
+            ? AuthStatusCode.usernameInvalid
+            : AuthStatusCode.passwordTooWeak,
+      401 || 403 => AuthStatusCode.invalidCredentials,
+      409 => AuthStatusCode.nicknameTaken,
+      429 => AuthStatusCode.tooManyAttempts,
+      >= 500 => AuthStatusCode.serverError,
+      _ => AuthStatusCode.unexpectedError,
+    };
+  }
+
+  final lost =
+      error is TimeoutException ||
+      error is http.ClientException ||
+      // dart:io socket errors cannot be type-checked from web-safe code.
+      error.toString().contains('SocketException');
+  if (lost) {
+    // A register request whose ANSWER was lost may still have created the
+    // account — the request is not idempotent and `Future.timeout` cannot abort
+    // it — so this door gets its own, honest wording.
+    return attempt == AuthAttempt.register
+        ? AuthStatusCode.registerOutcomeUnknown
+        : AuthStatusCode.serverUnreachable;
+  }
+  return AuthStatusCode.unexpectedError;
 }
 
 class AuthProvider extends ChangeNotifier {
@@ -70,6 +158,7 @@ class AuthProvider extends ChangeNotifier {
   Future<void>? _sessionRefreshInFlight;
   bool _isRestoringSession = true;
   String? _lastSessionEndReason;
+  String? _recoverableUsername;
 
   static const int _refreshMaxAttempts = 3;
   static const Duration _refreshRetryBaseDelay = Duration(milliseconds: 250);
@@ -93,6 +182,12 @@ class AuthProvider extends ChangeNotifier {
   /// screenshot names the exact logout path; null on a clean cold start —
   /// which itself is a signal (wiped storage leaves nothing to clear).
   String? get lastSessionEndReason => _lastSessionEndReason;
+
+  /// The username a failed REGISTER should offer to sign in with, because the
+  /// account may already exist under it ([AuthStatusCode.nicknameTaken] or
+  /// [AuthStatusCode.registerOutcomeUnknown]). Null whenever no such offer
+  /// applies. The screen uses it to prefill the sign-in tab.
+  String? get recoverableUsername => _recoverableUsername;
 
   void setOnAccessTokenChanged(void Function(String)? cb) {
     onAccessTokenChanged = cb;
@@ -474,7 +569,7 @@ class AuthProvider extends ChangeNotifier {
       final userData = await _api.fetchMe(_token!);
       _currentUser = UserModel.fromJson(userData);
     } on Exception catch (e) {
-      if (e.toString().startsWith('Exception: HTTP_401')) {
+      if (e is ApiException && e.statusCode == 401) {
         if (_refreshToken != null) {
           try {
             await _refreshSessionLocked();
@@ -512,22 +607,58 @@ class AuthProvider extends ChangeNotifier {
     return false;
   }
 
+  /// Creates the account and SIGNS THE USER IN when it can.
+  ///
+  /// Registration used to end at "account created, now sign in", which is one
+  /// more step where a user can get lost — and the step where one did: he read
+  /// the failure of a request whose account had in fact been created, retried
+  /// the same name, got a 409 rendered as "something went wrong", and stopped.
+  /// The credentials are already in hand here, so the honest end state of a
+  /// successful registration is a signed-in session.
+  ///
+  /// Returns true when the account now exists — including the case where the
+  /// follow-up sign-in failed ([AuthStatusCode.registerSucceeded]); the caller
+  /// checks [isLoggedIn] to know whether it also has a session.
   Future<bool> register(String username, String password) async {
+    clearStatus();
     try {
       await _api.register(username, password);
-      _statusCode = AuthStatusCode.registerSucceeded;
-      _isError = false;
-      notifyListeners();
-      return true;
     } catch (e) {
-      _statusCode = _networkErrorCode(e);
+      final code = classifyAuthFailure(e, attempt: AuthAttempt.register);
+      // Both of these mean "an account under this name may be yours already",
+      // so the surface can offer the way out instead of a dead end.
+      _recoverableUsername =
+          (code == AuthStatusCode.nicknameTaken ||
+              code == AuthStatusCode.registerOutcomeUnknown)
+          ? username
+          : null;
+      _statusCode = code;
       _isError = true;
       notifyListeners();
       return false;
     }
+
+    // The account exists from here on: never report a failure for it.
+    final signedIn = await _signIn(username, password, reportFailure: false);
+    if (!signedIn) {
+      _recoverableUsername = username;
+      _statusCode = AuthStatusCode.registerSucceeded;
+      _isError = false;
+      notifyListeners();
+    }
+    return true;
   }
 
   Future<bool> login(String identifier, String password) async {
+    clearStatus();
+    return _signIn(identifier, password, reportFailure: true);
+  }
+
+  Future<bool> _signIn(
+    String identifier,
+    String password, {
+    required bool reportFailure,
+  }) async {
     try {
       final body = await _api.login(identifier, password);
       await _persistTokens(body);
@@ -535,31 +666,20 @@ class AuthProvider extends ChangeNotifier {
       _currentUser = UserModel.fromJson(userData);
 
       _statusMessage = null;
+      _statusCode = null;
+      _recoverableUsername = null;
       _isError = false;
       _startSessionRefreshTimer();
       notifyListeners();
       return true;
     } catch (e) {
-      _statusCode = _networkErrorCode(e);
-      _isError = true;
-      notifyListeners();
+      if (reportFailure) {
+        _statusCode = classifyAuthFailure(e, attempt: AuthAttempt.login);
+        _isError = true;
+        notifyListeners();
+      }
       return false;
     }
-  }
-
-  /// Classifies a failure WITHOUT quoting it. The exception text is developer
-  /// diagnostics: untranslated, often a stack-adjacent string, and never
-  /// something a user can act on.
-  static AuthStatusCode _networkErrorCode(Object e) {
-    final msg = e.toString();
-    if (msg.contains('Failed to fetch') ||
-        msg.contains('Connection refused') ||
-        msg.contains('Connection reset') ||
-        msg.contains('SocketException') ||
-        msg.contains('NetworkException')) {
-      return AuthStatusCode.serverUnreachable;
-    }
-    return AuthStatusCode.unexpectedError;
   }
 
   Future<void> logout() async {
@@ -580,6 +700,7 @@ class AuthProvider extends ChangeNotifier {
   void clearStatus() {
     _statusMessage = null;
     _statusCode = null;
+    _recoverableUsername = null;
     _isError = false;
     notifyListeners();
   }
@@ -654,31 +775,27 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Changes the password and ends the session. Failures propagate UNWRAPPED —
+  /// re-wrapping them as `Exception(text)` (what this did until 2026-09-06)
+  /// destroyed the [ApiException] status, and the Settings surface could then
+  /// only print the raw string after "Password reset failed".
   Future<void> resetPassword(String oldPassword, String newPassword) async {
     if (_token == null) {
       throw Exception('Not authenticated');
     }
-    try {
-      await _api.resetPassword(_token!, oldPassword, newPassword);
-      await _clearLocalAuthState('password_changed', source: 'resetPassword');
-    } catch (e) {
-      throw Exception(e.toString().replaceFirst('Exception: ', ''));
-    }
+    await _api.resetPassword(_token!, oldPassword, newPassword);
+    await _clearLocalAuthState('password_changed', source: 'resetPassword');
   }
 
+  /// Deletes the account and logs out. Failures propagate unwrapped, same
+  /// reason as [resetPassword].
   Future<bool> deleteAccount(String password) async {
     if (_token == null) {
       throw Exception('Not authenticated');
     }
-
-    try {
-      await _api.deleteAccount(_token!, password);
-
-      await logout();
-      return true;
-    } catch (e) {
-      throw Exception(e.toString().replaceFirst('Exception: ', ''));
-    }
+    await _api.deleteAccount(_token!, password);
+    await logout();
+    return true;
   }
 
   @override

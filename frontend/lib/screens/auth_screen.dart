@@ -9,6 +9,7 @@ import '../widgets/glass/glass_surface.dart';
 import '../services/api_service.dart';
 import '../widgets/chat_background_pattern.dart';
 import '../l10n/app_localizations.dart';
+import '../l10n/auth_status_text.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -20,19 +21,34 @@ class AuthScreen extends StatefulWidget {
 class _AuthScreenState extends State<AuthScreen> {
   bool _isLogin = true;
 
+  /// Prefills the username field when the screen itself puts one there (the
+  /// "sign in instead" jump after a taken name or a lost register answer).
+  String? _prefilledUsername;
+
   /// The status line to show, localized here because the provider has no
   /// locale. A code always wins over [AuthProvider.statusMessage]: the latter
   /// is the pre-localized channel used for the device-revoked notice, and the
   /// provider clears one whenever it sets the other.
   String? _statusText(AuthProvider auth, AppLocalizations l10n) {
-    return switch (auth.statusCode) {
-      AuthStatusCode.savedSessionUnreadable =>
-        l10n.authStatusSavedSessionUnreadable,
-      AuthStatusCode.registerSucceeded => l10n.authStatusRegisterSucceeded,
-      AuthStatusCode.serverUnreachable => l10n.authStatusServerUnreachable,
-      AuthStatusCode.unexpectedError => l10n.authStatusUnexpectedError,
-      null => auth.statusMessage,
-    };
+    final code = auth.statusCode;
+    if (code == null) return auth.statusMessage;
+    return authStatusText(l10n, code);
+  }
+
+  void _switchTab(AuthProvider auth, {required bool login}) {
+    setState(() => _isLogin = login);
+    auth.clearStatus();
+  }
+
+  /// The way OUT of a registration that cannot proceed: carry the username to
+  /// the sign-in tab instead of leaving the user to invent another name — the
+  /// one move that guarantees they never reach an account they already own.
+  void _goToLoginWith(AuthProvider auth, String username) {
+    setState(() {
+      _isLogin = true;
+      _prefilledUsername = username;
+    });
+    auth.clearStatus();
   }
 
   Widget _tab(
@@ -154,16 +170,14 @@ class _AuthScreenState extends State<AuthScreen> {
                             child: Row(
                               children: [
                                 _tab(context, l10n.authLoginTab, _isLogin, () {
-                                  setState(() => _isLogin = true);
-                                  authProvider.clearStatus();
+                                  _switchTab(authProvider, login: true);
                                 }),
                                 _tab(
                                   context,
                                   l10n.authRegisterTab,
                                   !_isLogin,
                                   () {
-                                    setState(() => _isLogin = false);
-                                    authProvider.clearStatus();
+                                    _switchTab(authProvider, login: false);
                                   },
                                 ),
                               ],
@@ -172,16 +186,32 @@ class _AuthScreenState extends State<AuthScreen> {
                           const SizedBox(height: 24),
                           AuthForm(
                             isLogin: _isLogin,
+                            initialUsername: _prefilledUsername,
+                            // A status describes ONE attempt. Leaving it under
+                            // an edited form is how a stale "already taken"
+                            // ended up under a name the user had just changed.
+                            onEdited: authProvider.statusCode == null
+                                ? null
+                                : authProvider.clearStatus,
                             onSubmit: (username, password) async {
                               if (_isLogin) {
                                 await authProvider.login(username, password);
                               } else {
-                                final success = await authProvider.register(
+                                final created = await authProvider.register(
                                   username,
                                   password,
                                 );
-                                if (success && mounted) {
-                                  setState(() => _isLogin = true);
+                                // Registration signs the user in itself; the
+                                // shell takes over and this screen is gone. It
+                                // lands here only when that sign-in failed, so
+                                // the credentials are ready on the login tab.
+                                if (created &&
+                                    mounted &&
+                                    !authProvider.isLoggedIn) {
+                                  setState(() {
+                                    _isLogin = true;
+                                    _prefilledUsername = username;
+                                  });
                                 }
                               }
                             },
@@ -204,6 +234,16 @@ class _AuthScreenState extends State<AuthScreen> {
                                     // paper; this door is always light.
                                     : RpgTheme.successColorLight,
                               ),
+                            ),
+                          ],
+                          if (authProvider.recoverableUsername
+                              case final username?) ...[
+                            const SizedBox(height: 4),
+                            TextButton(
+                              key: const Key('auth-go-to-login'),
+                              onPressed: () =>
+                                  _goToLoginWith(authProvider, username),
+                              child: Text(l10n.authGoToLogin),
                             ),
                           ],
                         ],

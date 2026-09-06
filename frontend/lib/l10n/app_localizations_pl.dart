@@ -524,6 +524,44 @@ class AppLocalizationsPl extends AppLocalizations {
       'Coś poszło nie tak. Spróbuj ponownie.';
 
   @override
+  String get authStatusNicknameTaken =>
+      'Ta nazwa użytkownika jest już zajęta. Jeśli to Ty założyłeś to konto, zaloguj się.';
+
+  @override
+  String get authStatusUsernameInvalid =>
+      'Nazwa użytkownika musi mieć 3-20 znaków i zawierać tylko litery, cyfry i _ .';
+
+  @override
+  String get authStatusPasswordTooWeak =>
+      'Hasło musi mieć co najmniej 8 znaków oraz zawierać wielką literę, małą literę i cyfrę.';
+
+  @override
+  String get authStatusInvalidCredentials =>
+      'Nieprawidłowa nazwa użytkownika lub hasło.';
+
+  @override
+  String get authStatusTooManyAttempts =>
+      'Zbyt wiele prób. Odczekaj chwilę i spróbuj ponownie.';
+
+  @override
+  String get authStatusServerError =>
+      'Serwer nie mógł tego teraz obsłużyć. Spróbuj za chwilę.';
+
+  @override
+  String get authStatusRegisterOutcomeUnknown =>
+      'Połączenie zerwało się, zanim dotarła odpowiedź, więc konto mogło już powstać. Spróbuj zalogować się tą samą nazwą i hasłem.';
+
+  @override
+  String get authGoToLogin => 'Przejdź do logowania';
+
+  @override
+  String get authUsernameRules => '3-20 znaków: tylko litery, cyfry i _';
+
+  @override
+  String get authPasswordRules =>
+      'Co najmniej 8 znaków, w tym wielka litera, mała litera i cyfra';
+
+  @override
   String get identityAlertShowDetails => 'Szczegóły';
 
   @override
