@@ -62,7 +62,7 @@ dependencies:
   # uses the JS/WebCrypto path, Android builds via Gradle/NDK. Unpin only if a
   # future version carries something needed AND VS Build Tools C++ is installed.
   webcrypto: 0.6.0
-  flutter_local_notifications: ^22.2.0
+  flutter_local_notifications: ^22.3.0
   flutter_web_plugins:
     sdk: flutter
   emoji_picker_flutter: ^4.5.3
@@ -70,15 +70,15 @@ dependencies:
   # Direct because ConnectionProvider reads clock.now() for the serverTime
   # retry floor — package:clock is what fake_async overrides, so the floor is
   # deterministic under test while DateTime.now() would not be.
-  clock: ^1.1.2
+  clock: ^1.1.3
   skeletonizer: ^2.1.3
   # Encrypted native content store. These bounds are load-bearing, not
   # cosmetic: drift >=2.32 and sqlite3 3.x moved to native-assets BUILD HOOKS,
   # which demand MSVC on every local `flutter test` on Windows — the exact trap
   # webcrypto 0.6.1 set (see frontend/CLAUDE.md §5). `^2.31.0` would have
   # allowed 2.32 on the next `pub upgrade`, so the upper bound is explicit.
-  drift: ">=2.31.0 <2.32.0"
-  sqlite3: ">=2.9.0 <3.0.0"
+  drift: ^2.34.3
+  sqlite3: ^3.5.2
   sqlcipher_flutter_libs: ^0.6.8
   bip39_mnemonic: ^4.1.0
   # T3 link ceremony crypto (spec §5.1 / §12 item (ii)): HKDF-SHA256 rides
@@ -111,8 +111,8 @@ dev_dependencies:
   # Same upper bound as `drift` above — a drift_dev that outruns the runtime
   # package would regenerate `content_db.g.dart` against a version this app
   # deliberately does not use.
-  drift_dev: ">=2.31.0 <2.32.0"
-  build_runner: ^2.15.1
+  drift_dev: ^2.34.5
+  build_runner: ^2.16.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
