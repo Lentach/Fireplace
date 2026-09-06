@@ -78,7 +78,14 @@ re-wrapping failures as `Exception(text)` — that wrap destroyed the status.
   hasło."*; the right one → shell. Screenshot at each step.
 - `flutter analyze --no-fatal-infos` clean; **`flutter test` 1779 / 10 skipped** on master
   (1768 + 11 new), count verifier re-run against the captured log; CLAUDE.md §3 updated.
-- Version bumped `0.2.16 → 0.2.17` (frontend-only release; **not deployed** — owner's call).
+- **DEPLOYED 2026-09-06 as `0.2.17 / a6a6be9`** (frontend only; backend untouched at
+  `0.2.4 / 9a1c4396`). `deploy-web.ps1` from the `fireplace-0a` worktree printed `PUBLISHED_OK`
+  then exited 1 on the smoke-deps check as documented; the gate ran from the main checkout —
+  **smoke 5/5** with `--commit a6a6be9`. Beyond the commit string (a stale-but-consistent build
+  passes that), the served `main.dart.js` was grepped for the LOCALIZED new copy and contains all
+  of it: `Przejdź do logowania`, `Ta nazwa użytkownika jest już zajęta…`, `Nieprawidłowe hasło.`,
+  `3-20 znaków: tylko litery, cyfry i _`, `…konto mogło już powstać…`, `Zbyt wiele prób…`,
+  `Serwer nie mógł tego teraz obsłużyć…`. Users must fully close + reopen the PWA to pick it up.
 
 ## Post-review (two-axis review of `90f7056...HEAD` per `skill://code-review`)
 
@@ -105,13 +112,17 @@ asked to echo `git rev-parse HEAD` (both reported `6dfdb37`) — the sibling wor
 
 ## Notes for next session
 
-- **Not deployed.** Frontend-only: `git pull ; .\deploy-web.ps1`, then
-  `cd scripts/smoke && node post-deploy-smoke.mjs`. Backend needs nothing.
+- **Shipped and verified live** (see Verification). Owner still owes his friend the one-liner: the
+  account `ma0i#5269` exists, and on `0.2.17` pressing *Utwórz konto* with that name and password
+  simply signs him in.
 - Landed on `master` from the `feat/passcode-lock` worktree by patch transplant — the working copy
-  at `Desktop/Fireplace` is checked out on that branch, `Desktop/fireplace-0a` holds `master`.
-  **`git status -sb` first, every session; CLAUDE.md §1's claim that `Desktop/Fireplace` is on
-  master is currently false.** `feat/passcode-lock` will need a rebase; the overlap is
-  `settings_screen.dart` (additive rows) and the l10n files (unioned).
+  at `Desktop/Fireplace` is checked out on that branch, `Desktop/fireplace-0a` holds `master`
+  (root `CLAUDE.md` §1 corrected in this session). **`git status -sb` first, every session.**
+  `feat/passcode-lock` will need a rebase; the overlap is `settings_screen.dart` (additive rows)
+  and the l10n files (unioned) — plus `auth_screen.dart`/`auth_form.dart` now that this landed.
+- **`deploy-web.ps1` must be run from the worktree that holds `master`**, and it will always exit
+  1 there after `PUBLISHED_OK` (no `scripts/smoke` node_modules in a worktree) — that exit is not
+  a failed publish. Run the gate from the main checkout with `--commit <sha>`, never `-SkipVerify`.
 - Not done, deliberately: `/auth/register` is still not idempotent. The recovery affordance covers
   the user-visible half; an idempotency key (or a name-availability probe) is the server-side half
   and needs a wire decision.
