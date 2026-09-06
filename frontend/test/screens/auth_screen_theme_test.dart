@@ -172,6 +172,7 @@ void main() {
         AuthStatusCode.usernameInvalid: en.authStatusUsernameInvalid,
         AuthStatusCode.passwordTooWeak: en.authStatusPasswordTooWeak,
         AuthStatusCode.invalidCredentials: en.authStatusInvalidCredentials,
+        AuthStatusCode.wrongPassword: en.authStatusWrongPassword,
         AuthStatusCode.tooManyAttempts: en.authStatusTooManyAttempts,
         AuthStatusCode.serverError: en.authStatusServerError,
         AuthStatusCode.serverUnreachable: en.authStatusServerUnreachable,

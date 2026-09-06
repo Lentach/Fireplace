@@ -17,6 +17,7 @@ String authStatusText(AppLocalizations l10n, AuthStatusCode code) {
     AuthStatusCode.usernameInvalid => l10n.authStatusUsernameInvalid,
     AuthStatusCode.passwordTooWeak => l10n.authStatusPasswordTooWeak,
     AuthStatusCode.invalidCredentials => l10n.authStatusInvalidCredentials,
+    AuthStatusCode.wrongPassword => l10n.authStatusWrongPassword,
     AuthStatusCode.tooManyAttempts => l10n.authStatusTooManyAttempts,
     AuthStatusCode.serverError => l10n.authStatusServerError,
     AuthStatusCode.serverUnreachable => l10n.authStatusServerUnreachable,

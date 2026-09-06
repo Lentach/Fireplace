@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:fireplace/providers/auth_provider.dart';
+import 'package:fireplace/services/api_exception.dart';
 import 'package:fireplace/services/api_service.dart';
 
 // exp 9999999999; the client never verifies the signature.
@@ -139,6 +140,28 @@ void main() {
 
       expect(await auth.login('ma0i', 'nope'), isFalse);
       expect(auth.statusCode, AuthStatusCode.invalidCredentials);
+    });
+
+    test(
+        'a 401 on a password-only door does not name the username field',
+        () async {
+      // Settings → change password / delete account ask for a password and
+      // nothing else, so "wrong username or password" points at a field the
+      // user never touched.
+      final err = ApiException(
+        statusCode: 401,
+        message: 'Invalid credentials',
+        endpoint: 'POST /users/reset-password',
+      );
+
+      expect(
+        classifyAuthFailure(err, attempt: AuthAttempt.credentialChange),
+        AuthStatusCode.wrongPassword,
+      );
+      expect(
+        classifyAuthFailure(err, attempt: AuthAttempt.login),
+        AuthStatusCode.invalidCredentials,
+      );
     });
 
     test('the rate limit says so', () async {

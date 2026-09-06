@@ -1031,6 +1031,12 @@ abstract class AppLocalizations {
   /// Auth surface status, localized from an AuthStatusCode.
   ///
   /// In pl, this message translates to:
+  /// **'Nieprawidłowe hasło.'**
+  String get authStatusWrongPassword;
+
+  /// Auth surface status, localized from an AuthStatusCode.
+  ///
+  /// In pl, this message translates to:
   /// **'Zbyt wiele prób. Odczekaj chwilę i spróbuj ponownie.'**
   String get authStatusTooManyAttempts;
 

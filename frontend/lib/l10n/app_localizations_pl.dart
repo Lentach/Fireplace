@@ -540,6 +540,9 @@ class AppLocalizationsPl extends AppLocalizations {
       'Nieprawidłowa nazwa użytkownika lub hasło.';
 
   @override
+  String get authStatusWrongPassword => 'Nieprawidłowe hasło.';
+
+  @override
   String get authStatusTooManyAttempts =>
       'Zbyt wiele prób. Odczekaj chwilę i spróbuj ponownie.';
 

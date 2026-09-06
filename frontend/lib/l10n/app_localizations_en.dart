@@ -536,6 +536,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get authStatusInvalidCredentials => 'Wrong username or password.';
 
   @override
+  String get authStatusWrongPassword => 'Wrong password.';
+
+  @override
   String get authStatusTooManyAttempts =>
       'Too many attempts. Wait a while and try again.';
 

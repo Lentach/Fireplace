@@ -44,9 +44,13 @@ enum AuthStatusCode {
   /// The server rejected the password's shape (8+ chars, upper+lower+digit).
   passwordTooWeak,
 
-  /// Wrong username or password on sign-in, or the wrong current password on
-  /// a password change.
+  /// Wrong username or password on SIGN-IN, where both fields are in play.
   invalidCredentials,
+
+  /// The wrong password on a surface that only asked for a password — the
+  /// Settings password change and the account-deletion confirmation. Naming
+  /// the username there points at a field the user never touched.
+  wrongPassword,
 
   /// The endpoint's rate limit refused this attempt (HTTP 429).
   tooManyAttempts,
@@ -102,7 +106,9 @@ AuthStatusCode classifyAuthFailure(
         (attempt == AuthAttempt.register && !looksLikePassword)
             ? AuthStatusCode.usernameInvalid
             : AuthStatusCode.passwordTooWeak,
-      401 || 403 => AuthStatusCode.invalidCredentials,
+      401 || 403 => attempt == AuthAttempt.credentialChange
+          ? AuthStatusCode.wrongPassword
+          : AuthStatusCode.invalidCredentials,
       409 => AuthStatusCode.nicknameTaken,
       429 => AuthStatusCode.tooManyAttempts,
       >= 500 => AuthStatusCode.serverError,

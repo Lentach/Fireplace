@@ -194,6 +194,8 @@
   "@authStatusPasswordTooWeak": {"description": "Auth surface status, localized from an AuthStatusCode."},
   "authStatusInvalidCredentials": "Wrong username or password.",
   "@authStatusInvalidCredentials": {"description": "Auth surface status, localized from an AuthStatusCode."},
+  "authStatusWrongPassword": "Wrong password.",
+  "@authStatusWrongPassword": {"description": "Auth surface status, localized from an AuthStatusCode."},
   "authStatusTooManyAttempts": "Too many attempts. Wait a while and try again.",
   "@authStatusTooManyAttempts": {"description": "Auth surface status, localized from an AuthStatusCode."},
   "authStatusServerError": "The server could not handle that right now. Try again in a moment.",

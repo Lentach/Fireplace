@@ -194,6 +194,8 @@
   "@authStatusPasswordTooWeak": {"description": "Auth surface status, localized from an AuthStatusCode."},
   "authStatusInvalidCredentials": "Nieprawidłowa nazwa użytkownika lub hasło.",
   "@authStatusInvalidCredentials": {"description": "Auth surface status, localized from an AuthStatusCode."},
+  "authStatusWrongPassword": "Nieprawidłowe hasło.",
+  "@authStatusWrongPassword": {"description": "Auth surface status, localized from an AuthStatusCode."},
   "authStatusTooManyAttempts": "Zbyt wiele prób. Odczekaj chwilę i spróbuj ponownie.",
   "@authStatusTooManyAttempts": {"description": "Auth surface status, localized from an AuthStatusCode."},
   "authStatusServerError": "Serwer nie mógł tego teraz obsłużyć. Spróbuj za chwilę.",

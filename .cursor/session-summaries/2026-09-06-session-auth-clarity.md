@@ -63,7 +63,7 @@ re-wrapping failures as `Exception(text)` — that wrap destroyed the status.
   unlocalized), `app_en.arb` / `app_pl.arb` (+10 strings each)
 - `frontend/lib/screens/auth_screen.dart`, `frontend/lib/widgets/auth_form.dart`,
   `frontend/lib/screens/settings_screen.dart`
-- `frontend/test/providers/auth_registration_outcome_test.dart` (new, 10 tests),
+- `frontend/test/providers/auth_registration_outcome_test.dart` (new, 11 tests),
   `frontend/test/screens/auth_screen_theme_test.dart` (the enum↔string pin, extended)
 
 ## Verification
@@ -76,9 +76,32 @@ re-wrapping failures as `Exception(text)` — that wrap destroyed the status.
   już zajęta. Jeśli to Ty założyłeś to konto, zaloguj się."* + *"Przejdź do logowania"* → login
   tab prefilled; a wrong password on the login tab → *"Nieprawidłowa nazwa użytkownika lub
   hasło."*; the right one → shell. Screenshot at each step.
-- `flutter analyze --no-fatal-infos` clean; **`flutter test` 1778 / 10 skipped** on master
-  (1768 + 10 new), count verifier OK; CLAUDE.md §3 updated.
+- `flutter analyze --no-fatal-infos` clean; **`flutter test` 1779 / 10 skipped** on master
+  (1768 + 11 new), count verifier re-run against the captured log; CLAUDE.md §3 updated.
 - Version bumped `0.2.16 → 0.2.17` (frontend-only release; **not deployed** — owner's call).
+
+## Post-review (two-axis review of `90f7056...HEAD` per `skill://code-review`)
+
+Both axes ran as parallel `reviewer` subagents, each pinned to the `fireplace-0a` worktree and
+asked to echo `git rev-parse HEAD` (both reported `6dfdb37`) — the sibling worktree shares one
+`.git`, so a wrong cwd would have reviewed `feat/passcode-lock` instead.
+
+- **Standards: no hard violations.** Three judgement-call smells recorded, none acted on: the
+  username rule now lives in three places (client regex, ARB wording, server `RegisterDto`), so a
+  rule change needs synchronized edits or the door lies; the 400-split still sniffs the English
+  word "password" (`auth_provider.dart:103`) — the one prose dependency left, documented, and
+  unreachable for login/credentialChange; the tab-jump mutation has two owners in
+  `auth_screen.dart` differing by one line (whether the status is cleared).
+- **Spec: one real finding, FIXED in this commit.** A wrong current password in Settings read
+  *"Nieprawidłowa nazwa użytkownika lub hasło."* — those dialogs never ask for a username.
+  `AuthStatusCode.wrongPassword` now takes `AuthAttempt.credentialChange` 401/403
+  ("Nieprawidłowe hasło." / "Wrong password."); a test pins that the SAME `ApiException`
+  classifies differently per door.
+- **Spec's second finding was a FALSE POSITIVE:** it attributed the tab `Semantics(selected:)` +
+  48 dp touch target and the `ElevatedButton` spinner-colour fix to this change. Both predate
+  `90f7056`; `git diff 90f7056...HEAD` over those files matches neither line. Nothing reverted.
+  Lesson: a review finding about "scope creep" is a claim about the DIFF — check it against the
+  diff before acting.
 
 ## Notes for next session
 
