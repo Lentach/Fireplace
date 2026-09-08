@@ -57,7 +57,15 @@ frontend/android/key.properties
 docs/superpowers/
 .planning/
 .tmp/
+# Ad-hoc drive/QA scratch: screenshots, probe pages, throwaway notes. Never a
+# release artifact — `git add -A` swept 51 of these into a staged release once.
+local/
 omp-session*.html
+
+# `flutter test` transcript that `scripts/verify-claude-frontend-test-counts.mjs
+# --log` reads. Regenerated on every run and machine-specific; it exists only to
+# let the verifier check the counts recorded in CLAUDE.md §3.
+frontend/test-output.txt
 
 # Local audit report — findings/backlog stay off the remote by choice, not visibility
 docs/audit/

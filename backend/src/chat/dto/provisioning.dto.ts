@@ -1,4 +1,10 @@
-import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import {
+  IsIn,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 
 /**
  * Provisioning ceremony wire payloads (Phase 2 T3, spec §5.1 + §12
@@ -6,12 +12,19 @@ import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
  *
  * Length caps are transport sanity only — the real gate is the stage lookup
  * (opener binding, TTL, pinned ephemeral) plus the signature/parse gauntlet
- * in ChatProvisioningService. `openProvisioning` carries no payload and
- * therefore has no DTO.
+ * in ChatProvisioningService. `openProvisioning` carries only the opener's
+ * ROLE (amendment (lxxvii)), defaulting to 'new' for byte-compatibility.
  *
  * `ephPubN` deliberately appears in NO payload (amendment (c)): it travels
  * out-of-band only, on the QR/manual code.
  */
+
+export class OpenProvisioningDto {
+  /** Which side of the ceremony the opener plays; omitted means 'new'. */
+  @IsOptional()
+  @IsIn(['new', 'primary'])
+  role?: 'new' | 'primary';
+}
 
 export class ProvisioningHelloDto {
   /** UUID minted by the server at openProvisioning. */

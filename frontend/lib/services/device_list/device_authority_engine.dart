@@ -199,9 +199,19 @@ class DeviceAuthorityEngine {
     );
   }
 
-  /// Builds the complete enrollment wire payload: fresh DAK, enrollment
-  /// record E signed by [identity], and the DAK-signed canonical list of the
-  /// CURRENT device set.
+  /// Mints and holds a fresh DAK WITHOUT signing anything ((lxxviii) clause
+  /// 4: the recovery backup blob must carry the DAK BEFORE any enrolment
+  /// exists, so the mint and the enrolment are separate steps).
+  /// [mintEnrollment] with `reuseHeldDak: true` signs E over exactly this
+  /// pair.
+  void mintDak() {
+    _dakPair = Curve.generateKeyPair();
+  }
+
+  /// Builds the complete enrollment wire payload: fresh DAK (or, with
+  /// [reuseHeldDak], the pair already held — minted by [mintDak] or restored
+  /// by [restoreDak]), enrollment record E signed by [identity], and the
+  /// DAK-signed canonical list of the CURRENT device set.
   ///
   /// [deviceId] and [version] both default to the first-enrollment case: the
   /// one device this account has, at version 1. A §6.2 recovery re-enrollment
@@ -216,8 +226,11 @@ class DeviceAuthorityEngine {
     String platform = 'android',
     int deviceId = 1,
     int version = 1,
+    bool reuseHeldDak = false,
   }) {
-    final dakPair = Curve.generateKeyPair();
+    final dakPair = reuseHeldDak && _dakPair != null
+        ? _dakPair!
+        : Curve.generateKeyPair();
     _dakPair = dakPair;
     final dakPub = dakPair.publicKey.serialize();
 

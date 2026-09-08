@@ -4,11 +4,13 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../l10n/app_localizations.dart';
 import '../services/device_link/link_ceremony_controller.dart';
+import '../services/device_link/link_code_extract.dart';
 import '../services/device_link/link_crypto.dart';
 import '../utils/link_fragment_stub.dart'
     if (dart.library.html) '../utils/link_fragment_web.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/glass/glass_top_bar.dart';
+import '../widgets/link_qr_scanner.dart';
 import '../widgets/top_snackbar.dart';
 
 /// The NEW-DEVICE side (N) of the §5.1 link ceremony (Phase 2 T3).
@@ -109,6 +111,7 @@ class LinkThisDeviceBody extends StatefulWidget {
     required this.controller,
     this.onDone,
     this.waitingLabel,
+    this.scannerBuilder,
   });
 
   final LinkCeremonyController controller;
@@ -120,12 +123,29 @@ class LinkThisDeviceBody extends StatefulWidget {
   /// "Czekam na urządzenie główne…" in its own words.
   final String? waitingLabel;
 
+  /// Scanner injection seam: tests hand a fake that fires [LinkQrScanner]'s
+  /// callbacks without a camera. Null = the real [LinkQrScanner].
+  final Widget Function({
+    required void Function(String code) onCode,
+    VoidCallback? onUnsupported,
+  })?
+  scannerBuilder;
+
   @override
   State<LinkThisDeviceBody> createState() => _LinkThisDeviceBodyState();
 }
 
 class _LinkThisDeviceBodyState extends State<LinkThisDeviceBody> {
   bool _doneFired = false;
+
+  /// Local surface state of the `showCode` step ((lxxvii) clause 3): the
+  /// scanner viewport (a `p` code from the primary runs the flipped flow),
+  /// the typed-field fallback, and the last refusal.
+  bool _scanning = false;
+  bool _manualEntry = false;
+  bool _scanUnsupported = false;
+  String? _codeError;
+  final TextEditingController _manualCode = TextEditingController();
 
   @override
   void initState() {
@@ -146,9 +166,45 @@ class _LinkThisDeviceBodyState extends State<LinkThisDeviceBody> {
     });
   }
 
+  Future<void> _submitCode(String raw) async {
+    final refusal = await widget.controller.startNewDeviceFromCode(
+      extractLinkCode(raw) ?? raw,
+      platform: linkPlatformLabel(),
+    );
+    if (!mounted) return;
+    setState(() => _codeError = refusal);
+  }
+
+  void _onScanned(String raw) {
+    if (!mounted) return;
+    setState(() => _scanning = false);
+    _submitCode(raw);
+  }
+
+  void _onScanUnsupported() {
+    if (!mounted) return;
+    setState(() {
+      _scanning = false;
+      _scanUnsupported = true;
+      _manualEntry = true;
+    });
+  }
+
+  Widget _buildScanner() {
+    final builder = widget.scannerBuilder;
+    if (builder != null) {
+      return builder(onCode: _onScanned, onUnsupported: _onScanUnsupported);
+    }
+    return LinkQrScanner(
+      onCode: _onScanned,
+      onUnsupported: _onScanUnsupported,
+    );
+  }
+
   @override
   void dispose() {
     widget.controller.removeListener(_onStep);
+    _manualCode.dispose();
     super.dispose();
   }
 
@@ -184,6 +240,21 @@ class _LinkThisDeviceBodyState extends State<LinkThisDeviceBody> {
       case NewDeviceLinkStep.showSas:
         final code = controller.oobCode ?? '';
         final sas = controller.newDeviceSas;
+        // FLIPPED flow ((lxxvii) clause 3): this device scanned the
+        // primary's `p` code — it has no code of its own to display, only
+        // the SAS once the hello is acked.
+        if (controller.oobCode == null) {
+          return sas == null
+              ? const [
+                  Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(32),
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                ]
+              : _sasSection(context, sas);
+        }
         return [
           Text(
             l10n.linkNewExplainer,
@@ -259,7 +330,7 @@ class _LinkThisDeviceBodyState extends State<LinkThisDeviceBody> {
             ),
           ),
           const SizedBox(height: 24),
-          if (sas == null)
+          if (sas == null) ...[
             Text(
               widget.waitingLabel ?? l10n.linkNewWaitingHello,
               key: const Key('link-new-waiting-hello'),
@@ -267,46 +338,107 @@ class _LinkThisDeviceBodyState extends State<LinkThisDeviceBody> {
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colors.onSurfaceVariant,
               ),
-            )
-          else ...[
-            Text(
-              l10n.linkSasHeading,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              l10n.linkSasExplainer,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colors.onSurfaceVariant,
-              ),
             ),
             const SizedBox(height: 16),
-            Semantics(
-              label: 'security code $sas',
-              child: Container(
-                key: const Key('link-new-sas-code'),
-                padding: const EdgeInsets.symmetric(vertical: 20),
-                decoration: BoxDecoration(
-                  color: colors.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: colors.outlineVariant),
-                ),
-                child: Text(
-                  sas,
-                  textAlign: TextAlign.center,
-                  style: RpgTheme.bodyFont(
-                    fontSize: 40,
-                    color: colors.onSurface,
-                    fontWeight: FontWeight.w700,
-                  ).copyWith(letterSpacing: 6),
+            if (_scanning) ...[
+              SizedBox(height: 280, child: _buildScanner()),
+              const SizedBox(height: 8),
+              Text(
+                l10n.linkScanHint,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colors.onSurfaceVariant,
                 ),
               ),
+              const SizedBox(height: 12),
+              OutlinedButton(
+                key: const Key('link-scan-cancel'),
+                onPressed: () => setState(() => _scanning = false),
+                child: Text(l10n.linkCancel),
+              ),
+            ] else ...[
+              Semantics(
+                label: l10n.linkScanAction,
+                button: true,
+                child: OutlinedButton.icon(
+                  key: const Key('link-scan'),
+                  onPressed: () => setState(() => _scanning = true),
+                  icon: const Icon(Icons.qr_code_scanner, size: 18),
+                  label: Text(l10n.linkScanAction),
+                ),
+              ),
+              const SizedBox(height: 8),
+              if (!_manualEntry)
+                TextButton(
+                  key: const Key('link-enter-manually'),
+                  onPressed: () => setState(() => _manualEntry = true),
+                  child: Text(l10n.linkEnterCodeManually),
+                ),
+            ],
+            if (_scanUnsupported) ...[
+              const SizedBox(height: 8),
+              Text(
+                l10n.linkScanUnsupported,
+                key: const Key('link-scan-unsupported'),
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+            ],
+            if (_manualEntry) ...[
+              const SizedBox(height: 12),
+              Semantics(
+                label: l10n.linkNewCodeLabel,
+                textField: true,
+                child: TextField(
+                  key: const Key('link-new-code-field'),
+                  controller: _manualCode,
+                  maxLines: 3,
+                  minLines: 1,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 14,
+                  ),
+                  decoration: InputDecoration(
+                    labelText: l10n.linkNewCodeLabel,
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Semantics(
+                label: l10n.linkPrimaryContinue,
+                button: true,
+                child: FilledButton(
+                  key: const Key('link-new-code-continue'),
+                  onPressed: () => _submitCode(_manualCode.text),
+                  child: Text(l10n.linkPrimaryContinue),
+                ),
+              ),
+            ],
+            if (_codeError != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                l10n.linkInvalidCode,
+                key: const Key('link-new-code-error'),
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colors.error,
+                ),
+              ),
+            ],
+          ] else
+            ..._sasSection(context, sas),
+        ];
+      case NewDeviceLinkStep.awaitingHelloAck:
+        return const [
+          Center(
+            child: Padding(
+              padding: EdgeInsets.all(32),
+              child: CircularProgressIndicator(strokeWidth: 2),
             ),
-          ],
+          ),
         ];
       case NewDeviceLinkStep.completing:
       case NewDeviceLinkStep.rebinding:
@@ -373,5 +505,52 @@ class _LinkThisDeviceBodyState extends State<LinkThisDeviceBody> {
           ),
         ];
     }
+  }
+
+  /// The SAS block, shared by the classic (under the code) and flipped
+  /// (stand-alone) shapes.
+  List<Widget> _sasSection(BuildContext context, String sas) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final l10n = AppLocalizations.of(context);
+    return [
+      Text(
+        l10n.linkSasHeading,
+        textAlign: TextAlign.center,
+        style: theme.textTheme.titleMedium?.copyWith(
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      const SizedBox(height: 8),
+      Text(
+        l10n.linkSasExplainer,
+        textAlign: TextAlign.center,
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: colors.onSurfaceVariant,
+        ),
+      ),
+      const SizedBox(height: 16),
+      Semantics(
+        label: 'security code $sas',
+        child: Container(
+          key: const Key('link-new-sas-code'),
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          decoration: BoxDecoration(
+            color: colors.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: colors.outlineVariant),
+          ),
+          child: Text(
+            sas,
+            textAlign: TextAlign.center,
+            style: RpgTheme.bodyFont(
+              fontSize: 40,
+              color: colors.onSurface,
+              fontWeight: FontWeight.w700,
+            ).copyWith(letterSpacing: 6),
+          ),
+        ),
+      ),
+    ];
   }
 }

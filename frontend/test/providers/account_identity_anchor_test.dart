@@ -105,6 +105,9 @@ void main() {
       }
     });
     await enc.initializeE2E(ownUserId);
+    // (lxxix) flipped the DEFAULT to demoted (auto-acknowledge). These tests
+    // assert the manual ceremony/refusal surface, so they opt back in.
+    enc.encryptionService.keyChangeWarnings = () => true;
   });
 
   /// First contact the honest way: pins the peer's real key as the ACCOUNT

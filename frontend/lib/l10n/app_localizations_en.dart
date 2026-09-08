@@ -747,7 +747,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get devicesEnableLinkingWebWarningBody =>
-      'Only the main device can add and remove other devices. If this browser\'s storage is cleared, getting that role back needs a reset: 72 hours, or 1 hour with a recovery key. We will offer to create one next.';
+      'Only the main device can add and remove other devices. If this browser\'s storage is cleared, getting that role back needs a reset: 72 hours, or 1 hour with a recovery key. You will create a recovery phrase next — without it linking stays off.';
 
   @override
   String get devicesEnableLinkingConfirmAction => 'Enable';
@@ -1965,4 +1965,117 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get passcodeTooWeakForKeys =>
       'Because the passcode encrypts this browser\'s keys, a custom code needs at least 6 characters and cannot be digits only.';
+
+  @override
+  String get passcodeEraseWarningEnrolled =>
+      'The only way out is to erase this app\'s data from this device. Messages stored only here are gone for good. After signing in again the account must be restored: with the recovery phrase (instantly), from another device, or by a 72-hour reset.';
+
+  @override
+  String get linkScanAction => 'Scan code';
+
+  @override
+  String get linkShowCodeAction => 'Show code';
+
+  @override
+  String get linkScanHint =>
+      'Point the camera at the QR code on the other device.';
+
+  @override
+  String get linkScanCameraDenied =>
+      'Camera access denied. Type the code instead.';
+
+  @override
+  String get linkScanUnsupported =>
+      'This browser cannot scan. Type the code instead.';
+
+  @override
+  String get linkEnterCodeManually => 'Type the code';
+
+  @override
+  String get linkNewCodeLabel => 'Code from the main device';
+
+  @override
+  String get linkPrimaryShowCodeExplainer =>
+      'On the new device, sign in and scan this code. You can also scan the code shown there.';
+
+  @override
+  String get linkGateScanBody =>
+      'Scan the QR code from your main device (Settings → Devices → Link a device), or show it this code. Nothing is lost.';
+
+  @override
+  String get recoveryKeyBackupExplainer =>
+      'These 12 words are a backup of your account keys. If this browser or phone loses its data, type them and get your account and contacts back instantly — no waiting. Whoever knows these words owns your account: keep them where only you can reach them.\n\nThe words are shown once and are not stored on this device.';
+
+  @override
+  String get recoveryKeyConfirmTitle => 'Confirm you saved the words';
+
+  @override
+  String recoveryKeyConfirmPrompt(int n) {
+    return 'Enter word #$n';
+  }
+
+  @override
+  String get recoveryKeyConfirmMismatch =>
+      'That is not the word. Check what you saved.';
+
+  @override
+  String get recoveryKeyConfirmAction => 'Confirm';
+
+  @override
+  String get recoveryKeyRequiredForLinking =>
+      'Linking cannot be enabled without a recovery phrase: losing the main device\'s data would lock the account for 72 hours.';
+
+  @override
+  String get recoveryKeyBackupFailed =>
+      'The key backup could not be saved — linking was not enabled. Try again.';
+
+  @override
+  String get linkGateRestoreAction => 'I have my recovery phrase';
+
+  @override
+  String get linkGateRestoreTitle => 'Restore from recovery phrase';
+
+  @override
+  String get linkGateRestoreBody =>
+      'Enter the 12 words. This device becomes the main device; the others are signed out and must be linked again.';
+
+  @override
+  String get linkGateRestoring => 'Restoring keys…';
+
+  @override
+  String get linkGateRestoreWrongPhrase =>
+      'The phrase does not match this account\'s key backup.';
+
+  @override
+  String get linkGateRestoreNoBackup =>
+      'This account has no key backup. Link this device from the main device, or start a reset.';
+
+  @override
+  String get linkGateRestoreFailed => 'Restore failed. Try again.';
+
+  @override
+  String get linkGateRestoreDone => 'Account restored.';
+
+  @override
+  String get devicesBackupMissing =>
+      'This account has no key backup yet. Create a recovery phrase so you can get the account back instantly if this device loses its data.';
+
+  @override
+  String get devicesCreateBackupAction => 'Create recovery phrase';
+
+  @override
+  String get deviceRevokedRestoredNotice =>
+      'The account was restored from the recovery phrase on another device. This device was signed out — link it again. If this was not you, change your password.';
+
+  @override
+  String peerIdentityChangedSystemLine(String name) {
+    return '$name is signing in from a new device or browser — security keys were updated.';
+  }
+
+  @override
+  String get settingsKeyChangeWarnings => 'Warn when a contact\'s keys change';
+
+  @override
+  String get settingsKeyChangeWarningsSubtitle =>
+      'Require manual confirmation of a new security number. By default new keys are accepted and a short note appears in the chat.';
 }

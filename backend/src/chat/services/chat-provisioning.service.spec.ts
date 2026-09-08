@@ -245,7 +245,7 @@ describe('ChatProvisioningService', () => {
       });
     });
 
-    it('acks the memoized deviceId and relays to the opener socket only', async () => {
+    it('acks the memoized deviceId and relays to the opener socket only (with the deviceId — amendment (lxxvii))', async () => {
       const { provisioningId } = await openStage();
       const primary = pinHello(provisioningId);
 
@@ -257,6 +257,7 @@ describe('ChatProvisioningService', () => {
       expect(roomEmit).toHaveBeenCalledWith('provisioningHello', {
         provisioningId,
         ephPubP: EPH_PUB_P,
+        deviceId: 2,
       });
     });
 
@@ -310,6 +311,28 @@ describe('ChatProvisioningService', () => {
       expect(lastEmit(primary, 'provisionDeviceAck')).toEqual({
         success: false,
         error: 'hello_not_pinned',
+      });
+    });
+
+    it("role 'new': a socket other than the hello party's is not the primary (amendment (lxxvii))", async () => {
+      const { provisioningId, opener } = await openStage();
+      pinHello(provisioningId);
+
+      // The new device itself (the opener) tries to stage the blob.
+      await service.handleProvisionDevice(
+        opener as unknown as Socket,
+        {
+          provisioningId,
+          blob: 'blob-b64',
+          listCanonical: stagedCanonical(),
+          listSignature: 'staged-sig',
+        },
+        server as unknown as Server,
+      );
+
+      expect(lastEmit(opener, 'provisionDeviceAck')).toEqual({
+        success: false,
+        error: 'not_primary',
       });
     });
 
@@ -736,6 +759,165 @@ describe('ChatProvisioningService', () => {
         success: false,
         error: 'unknown_stage',
       });
+    });
+  });
+
+  describe("role 'primary' opener (amendment (lxxvii), falsification F4)", () => {
+    /** The PRIMARY opens; the new device says hello from a second socket. */
+    async function openAsPrimary() {
+      const primary = makeClient('primary-socket');
+      await service.handleOpenProvisioning(primary as unknown as Socket, {
+        role: 'primary',
+      });
+      const answer = lastEmit(primary, 'provisioningOpened');
+      const provisioningId = answer?.provisioningId as string;
+      return { primary, provisioningId };
+    }
+
+    function helloFromNewDevice(provisioningId: string) {
+      const newDevice = makeClient('new-device-socket');
+      service.handleProvisioningHello(
+        newDevice as unknown as Socket,
+        { provisioningId, ephPubP: EPH_PUB_P },
+        server as unknown as Server,
+      );
+      return newDevice;
+    }
+
+    const provisionFrom = (
+      client: { id: string; emit: jest.Mock },
+      provisioningId: string,
+    ) =>
+      service.handleProvisionDevice(
+        client as unknown as Socket,
+        {
+          provisioningId,
+          blob: 'blob-b64',
+          listCanonical: stagedCanonical(),
+          listSignature: 'staged-sig',
+        },
+        server as unknown as Server,
+      );
+
+    it('rejects an unknown role at open', async () => {
+      const client = makeClient();
+
+      await service.handleOpenProvisioning(client as unknown as Socket, {
+        role: 'attacker',
+      });
+
+      expect(lastEmit(client, 'provisioningOpened')).toEqual({
+        success: false,
+        error: 'open_failed',
+      });
+      expect(devicesService.allocateDeviceId).not.toHaveBeenCalled();
+    });
+
+    it('relays hello (with deviceId) to the opener and the blob to the hello socket', async () => {
+      const { primary, provisioningId } = await openAsPrimary();
+      const newDevice = helloFromNewDevice(provisioningId);
+
+      expect(lastEmit(newDevice, 'provisioningHelloAck')).toEqual({
+        success: true,
+        deviceId: 2,
+      });
+      expect(server.to).toHaveBeenCalledWith('primary-socket');
+      expect(roomEmit).toHaveBeenCalledWith('provisioningHello', {
+        provisioningId,
+        ephPubP: EPH_PUB_P,
+        deviceId: 2,
+      });
+
+      await provisionFrom(primary, provisioningId);
+      expect(lastEmit(primary, 'provisionDeviceAck')).toEqual({
+        success: true,
+      });
+      // F4: role ignored server-side would relay the blob back to the
+      // primary — it must land on the hello (new device) socket.
+      expect(server.to).toHaveBeenCalledWith('new-device-socket');
+      expect(roomEmit).toHaveBeenCalledWith('provisioningBlob', {
+        provisioningId,
+        blob: 'blob-b64',
+      });
+    });
+
+    it('refuses provisionDevice from the hello (new device) socket', async () => {
+      const { provisioningId } = await openAsPrimary();
+      const newDevice = helloFromNewDevice(provisioningId);
+
+      await provisionFrom(newDevice, provisioningId);
+
+      expect(lastEmit(newDevice, 'provisionDeviceAck')).toEqual({
+        success: false,
+        error: 'not_primary',
+      });
+    });
+
+    it('blob fetch and complete bind to the new device, not the opener', async () => {
+      const { primary, provisioningId } = await openAsPrimary();
+      const newDevice = helloFromNewDevice(provisioningId);
+      await provisionFrom(primary, provisioningId);
+
+      service.handleFetchProvisioningBlob(primary as unknown as Socket, {
+        provisioningId,
+      });
+      expect(lastEmit(primary, 'provisioningBlob')).toEqual({
+        success: false,
+        error: 'not_opener',
+      });
+      service.handleFetchProvisioningBlob(newDevice as unknown as Socket, {
+        provisioningId,
+      });
+      expect(lastEmit(newDevice, 'provisioningBlob')).toEqual({
+        provisioningId,
+        blob: 'blob-b64',
+      });
+
+      await service.handleProvisioningComplete(
+        primary as unknown as Socket,
+        { provisioningId },
+        server as unknown as Server,
+      );
+      expect(lastEmit(primary, 'provisioningCompleted')).toEqual({
+        success: false,
+        error: 'not_opener',
+      });
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+
+      await service.handleProvisioningComplete(
+        newDevice as unknown as Socket,
+        { provisioningId },
+        server as unknown as Server,
+      );
+      expect(lastEmit(newDevice, 'provisioningCompleted')).toEqual({
+        success: true,
+        deviceId: 2,
+        access_token: 'access-jwt',
+        refresh_token: 'rt',
+      });
+    });
+
+    it('cancel from one party notifies the OTHER party', async () => {
+      const { primary, provisioningId } = await openAsPrimary();
+      helloFromNewDevice(provisioningId);
+
+      service.handleCancelProvisioning(
+        primary as unknown as Socket,
+        { provisioningId },
+        server as unknown as Server,
+      );
+
+      // The only 'new-device-socket' targeting in this ceremony is the
+      // cancel relay (no blob was ever staged).
+      expect(server.to).toHaveBeenCalledWith('new-device-socket');
+      expect(roomEmit).toHaveBeenCalledWith('provisioningCancelled', {
+        provisioningId,
+      });
+      expect(lastEmit(primary, 'provisioningCancelled')).toEqual({
+        success: true,
+        provisioningId,
+      });
+      expect(stages.get(provisioningId)).toBeNull();
     });
   });
 });

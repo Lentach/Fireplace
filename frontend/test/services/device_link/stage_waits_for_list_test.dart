@@ -112,7 +112,7 @@ void main() {
   Future<void> reachSasWithoutList() async {
     final code = LinkOobCode(
       provisioningId: '3f2c8a1e-9b7d-4c5a-8e2f-1a6b3c9d0e4f',
-      ephPubN: linkEphemeralPublicBytes(generateLinkEphemeral()),
+      ephPub: linkEphemeralPublicBytes(generateLinkEphemeral()),
       platform: 'web',
     ).encode();
     await controller.startPrimaryFlow(code);

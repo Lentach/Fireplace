@@ -70,7 +70,6 @@ class _DevicesScreenState extends State<DevicesScreen> {
     _connection = connection;
     connection.registerProvisioningSink(controller);
     controller.addListener(_maybeOpenPendingLink);
-    controller.addListener(_maybeOfferRecoveryKey);
     controller.refreshDeviceList();
   }
 
@@ -84,6 +83,12 @@ class _DevicesScreenState extends State<DevicesScreen> {
   /// itself waits for the list at staging (and fails with a reason if it
   /// never comes), so the user always sees a screen, never a silent no-op.
   /// Consumed exactly once; a stale slot never replays.
+  ///
+  /// Role routing ((lxxvii)): an `n` code here starts the classic paste
+  /// flow. A `p` code on a KEYLESS install is consumed by the gate before
+  /// this screen can exist; one that still reaches a DAK holder is fed
+  /// through the same door and refused on-screen with `wrong_code_role` —
+  /// visible feedback beats a silently parked slot.
   bool _openedPendingLink = false;
   void _maybeOpenPendingLink() {
     final controller = _controller;
@@ -104,26 +109,29 @@ class _DevicesScreenState extends State<DevicesScreen> {
     });
   }
 
-  /// (lxxiv) clause 1: after a WEB enable-linking confirm, the recovery-key
-  /// offer is pushed once the controller reports the enrollment took —
-  /// `listState` flips to `enrolled` via the post-ack list refresh. Armed
-  /// ONLY by the web confirm dialog; native enabling never routes here, and
-  /// the push is a plain route (skippable by back).
-  bool _awaitingEnrollRecoveryOffer = false;
-  void _maybeOfferRecoveryKey() {
-    final controller = _controller;
-    if (!_awaitingEnrollRecoveryOffer || controller == null || !mounted) {
+  /// (lxxviii) clause 4: "Włącz łączenie" = (web: warning dialog, already
+  /// confirmed by the caller) → [LinkCeremonyController.mintDak] (no server
+  /// call, idempotent) → MANDATORY [RecoveryKeyScreen] (the phrase + the
+  /// sealed identity backup upload) → ONLY THEN [enableLinking], which
+  /// enrols. Backing out of the phrase screen — or its upload failing —
+  /// aborts with NOTHING enrolled (falsification F9); the minted DAK merely
+  /// waits in the Keystore for the next attempt.
+  Future<void> _enableLinkingWithBackup(
+    LinkCeremonyController controller,
+  ) async {
+    try {
+      await controller.mintDak();
+    } catch (_) {
+      // An unpersistable DAK must not walk the user through a phrase whose
+      // enrolment can only fail afterwards.
       return;
     }
-    if (controller.listState != DeviceListState.enrolled) return;
-    _awaitingEnrollRecoveryOffer = false;
-    // Delivered from a controller notification, possibly mid-build.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const RecoveryKeyScreen()),
-      );
-    });
+    if (!mounted) return;
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const RecoveryKeyScreen()),
+    );
+    if (saved != true || !mounted) return;
+    await controller.enableLinking(platform: linkPlatformLabel());
   }
 
   @override
@@ -131,7 +139,6 @@ class _DevicesScreenState extends State<DevicesScreen> {
     final controller = _controller;
     if (controller != null) {
       controller.removeListener(_maybeOpenPendingLink);
-      controller.removeListener(_maybeOfferRecoveryKey);
       _connection?.unregisterProvisioningSink(controller);
       controller.dispose();
     }
@@ -390,8 +397,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
                   ? null
                   : web
                   ? () => _confirmEnableLinkingWeb(context, controller, l10n)
-                  : () =>
-                        controller.enableLinking(platform: linkPlatformLabel()),
+                  : () => _enableLinkingWithBackup(controller),
               child: controller.enrolling
                   ? const SizedBox(
                       height: 18,
@@ -441,6 +447,34 @@ class _DevicesScreenState extends State<DevicesScreen> {
               ),
             ),
           );
+          // (lxxviii) clause 4: an enrolled DAK-holding primary whose account
+          // has NO phrase-sealed backup (pre-(lxxviii) enrolments) is nudged
+          // — only on an EXPLICIT server false, never on unknown.
+          if (context.watch<EncryptionProvider>().hasIdentityBackup ==
+              false) {
+            actions.addAll([
+              const SizedBox(height: 16),
+              Text(
+                l10n.devicesBackupMissing,
+                key: const Key('devices-backup-missing'),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                key: const Key('devices-create-backup'),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const RecoveryKeyScreen(),
+                    ),
+                  );
+                },
+                child: Text(l10n.devicesCreateBackupAction),
+              ),
+            ]);
+          }
         case false:
           actions.add(
             Text(
@@ -477,10 +511,11 @@ class _DevicesScreenState extends State<DevicesScreen> {
     return actions;
   }
 
-  /// (lxxiv) clause 1: enabling linking on web mints the DAK into the sealed
-  /// `sig_` KV — evictable with the browser's storage — so the choice is
-  /// stated plainly first. Confirm arms the one-shot recovery-key offer
-  /// ([_maybeOfferRecoveryKey]); cancel changes nothing.
+  /// (lxxiv) clause 1 + (lxxviii) clause 4: enabling linking on web mints
+  /// the DAK into the sealed `sig_` KV — evictable with the browser's
+  /// storage — so the choice is stated plainly first, and the phrase is
+  /// named as MANDATORY. Confirm runs [_enableLinkingWithBackup]; cancel
+  /// changes nothing.
   Future<void> _confirmEnableLinkingWeb(
     BuildContext context,
     LinkCeremonyController controller,
@@ -490,7 +525,10 @@ class _DevicesScreenState extends State<DevicesScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(l10n.devicesEnableLinkingWebWarningTitle),
-        content: Text(l10n.devicesEnableLinkingWebWarningBody),
+        content: Text(
+          '${l10n.devicesEnableLinkingWebWarningBody}\n\n'
+          '${l10n.recoveryKeyRequiredForLinking}',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -507,8 +545,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    _awaitingEnrollRecoveryOffer = true;
-    await controller.enableLinking(platform: linkPlatformLabel());
+    await _enableLinkingWithBackup(controller);
   }
 }
 

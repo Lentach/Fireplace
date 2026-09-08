@@ -37,6 +37,10 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     service = EncryptionService();
     await service.initialize(17, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
+    // (lxxix) flipped the DEFAULT to demoted (auto-acknowledge). These tests
+    // assert the MANUAL ceremony moment, so they opt back in; the demoted
+    // default is proven in encryption_key_change_demotion_test.dart.
+    service.keyChangeWarnings = () => true;
     peerStore = SecureIdentityKeyStore(DualStorage(secure), 'e2e_17_');
   });
 

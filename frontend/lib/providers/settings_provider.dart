@@ -86,6 +86,7 @@ class SettingsProvider extends ChangeNotifier {
     _loadLocalePreference();
     _loadContactsListView();
     _loadAutoplayVideos();
+    _loadKeyChangeWarnings();
   }
 
   Future<void> _loadLocalePreference() async {
@@ -155,6 +156,31 @@ class SettingsProvider extends ChangeNotifier {
   }
 
   static const String _autoplayVideosKey = 'autoplay_videos';
+
+  /// Amendment (lxxix): peer key-change warnings are DEMOTED by default. OFF
+  /// (default) auto-acknowledges a peer identity change and leaves a muted
+  /// one-shot note in the timeline; ON keeps the manual-confirmation red pill.
+  bool _keyChangeWarnings = false;
+
+  bool get keyChangeWarnings => _keyChangeWarnings;
+
+  Future<void> _loadKeyChangeWarnings() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getBool(_keyChangeWarningsKey);
+    if (saved == null || saved == _keyChangeWarnings) return;
+    _keyChangeWarnings = saved;
+    notifyListeners();
+  }
+
+  Future<void> setKeyChangeWarnings(bool enabled) async {
+    if (_keyChangeWarnings == enabled) return;
+    _keyChangeWarnings = enabled;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyChangeWarningsKey, enabled);
+  }
+
+  static const String _keyChangeWarningsKey = 'key_change_warnings';
 
   Future<void> _loadThemePreference() async {
     final prefs = await SharedPreferences.getInstance();

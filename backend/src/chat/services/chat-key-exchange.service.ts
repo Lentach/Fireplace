@@ -5,6 +5,7 @@ import {
   DEFAULT_DEVICE_ID,
   DeviceMaterialConflictError,
   IdentityLockedError,
+  IdentityRestoreRefusedError,
   KeyBundlesService,
 } from '../../key-bundles/key-bundles.service';
 import { IdentityResetService } from '../../key-bundles/identity-reset.service';
@@ -156,6 +157,7 @@ export class ChatKeyExchangeService {
     revokedDeviceIds: number[],
     server: Server,
     exceptSocketId: string,
+    reason?: 'restored',
   ): void {
     let kicked = 0;
     for (const revokedDeviceId of revokedDeviceIds) {
@@ -163,7 +165,14 @@ export class ChatKeyExchangeService {
         server
           .to(deviceRoom(userId, revokedDeviceId))
           .except(exceptSocketId)
-          .emit('deviceRevoked', { userId, deviceId: revokedDeviceId });
+          .emit('deviceRevoked', {
+            userId,
+            deviceId: revokedDeviceId,
+            // (lxxviii): a restore is not a takeover — the revoked device's
+            // client words the logout accordingly. Absent on every other
+            // teardown, so the historic payload is byte-identical.
+            ...(reason ? { reason } : {}),
+          });
         const sockets = socketsForDevice(server, userId, revokedDeviceId);
         for (const socket of sockets) {
           // Never the recovering caller — see the call site.
@@ -262,8 +271,13 @@ export class ChatKeyExchangeService {
           signedPreKeyPublic: dto.signedPreKeyPublic,
           signedPreKeySignature: dto.signedPreKeySignature,
         },
-        nonce != null && dto.identitySignature != null
-          ? { signature: dto.identitySignature, nonce }
+        nonce != null &&
+          (dto.identitySignature != null || dto.restoreSignature != null)
+          ? {
+              signature: dto.identitySignature,
+              nonce,
+              restoreSignature: dto.restoreSignature,
+            }
           : undefined,
         deviceId,
       );
@@ -273,9 +287,23 @@ export class ChatKeyExchangeService {
       // and its session is re-issued because all the old ones were dropped. A
       // SIGNED rotation deliberately does not do this — that account still
       // holds its other devices.
+      //
+      // A RESTORE (amendment (lxxviii) clause 2) runs the SAME teardown — the
+      // restoring install is a fresh wipe, so every other device is presumed
+      // lost — but first drops the caller's pre-wipe one-time pre-keys: their
+      // private halves died with the wipe, and the teardown below MOVES this
+      // device's rows onto the fresh id, which would otherwise carry them
+      // along as unanswerable X3DH offers.
+      const restored = result.authorizedBy === 'restore';
       let roster: ResetRosterResult | null = null;
       let reissuedAccessToken: string | null = null;
-      if (result.authorizedBy === 'reset') {
+      if (result.authorizedBy === 'reset' || restored) {
+        if (restored) {
+          await this.keyBundlesService.purgeDeviceOneTimePreKeys(
+            userId,
+            deviceId,
+          );
+        }
         roster = await this.resetRosterService.applyAfterReset(
           userId,
           deviceId,
@@ -290,6 +318,11 @@ export class ChatKeyExchangeService {
             tag: user.tag,
             deviceId: roster.deviceId,
           });
+        }
+        if (restored) {
+          this.logger.log(
+            `[identity-restore] userId=${userId} from=${deviceId} to=${roster.deviceId}`,
+          );
         }
       }
       // `identityChanged` tells THIS device that its own upload is what
@@ -335,6 +368,11 @@ export class ChatKeyExchangeService {
               deviceId: roster.deviceId,
               access_token: reissuedAccessToken,
               refresh_token: roster.refreshToken,
+              // (lxxviii): the identity did NOT change, E still verifies the
+              // surviving enrollment — the client re-signs the list with its
+              // restored DAK at this version (`updateDeviceList`, not a
+              // re-enrolment).
+              ...(restored ? { restored: true } : {}),
               nextListVersion: roster.nextListVersion,
             }
           : {}),
@@ -350,6 +388,15 @@ export class ChatKeyExchangeService {
         void this.notifyIdentityChanged(client, userId, server);
       }
       if (roster) {
+        // (lxxviii): a content-free "your identity was restored elsewhere"
+        // push to every endpoint — BEFORE the rows are dropped below, or there
+        // is nothing left to deliver it to. Awaited for exactly that ordering;
+        // failure is logged, never fatal (the recovery already committed).
+        if (restored) {
+          await this.pushNotificationsService
+            .notifyIdentityReset(userId, 'identity_restored')
+            .catch(() => this.logger.warn('identity-restored push failed'));
+        }
         // Push endpoints belong to devices this teardown just revoked, and a
         // NULL-deviceId row cannot be attributed (amendment (xxiv)). The
         // recovering device re-registers on its next start.
@@ -382,6 +429,7 @@ export class ChatKeyExchangeService {
           roster.revokedDeviceIds,
           server,
           client.id,
+          restored ? 'restored' : undefined,
         );
       }
     } catch (error) {
@@ -408,6 +456,19 @@ export class ChatKeyExchangeService {
         client.emit('keyBundleUploaded', {
           success: false,
           error: 'device_material_conflict',
+        });
+        return;
+      }
+      if (error instanceof IdentityRestoreRefusedError) {
+        // (lxxviii) clause 2: the restore proof did not verify under the
+        // stored identity key. Nothing was written; the phrase (and the blob
+        // it unsealed) is not this account's. Never a retry.
+        this.logger.warn(
+          `uploadKeyBundle refused invalid restore proof userId=${userId}`,
+        );
+        client.emit('keyBundleUploaded', {
+          success: false,
+          error: 'restore_refused',
         });
         return;
       }
@@ -554,17 +615,23 @@ export class ChatKeyExchangeService {
       );
       // Additive fields: an older client ignores them, and a newer client
       // treats a missing payload as UNKNOWN rather than as "nothing pending".
-      const [reset, identityReplacedAt, linkingEnabled] = await Promise.all([
-        this.identityResetService.getStatusForUser(userId),
-        this.keyBundlesService.latestIdentityChangeAt(userId),
-        // (lxxiii) clause 2 — the client learns the lock state with the
-        // bundle answer. Additive; an absent field reads as `true` client-side
-        // (fail-closed to the pre-(lxxiii) gate, never to a refused mint).
-        this.keyBundlesService.isEnrolled(userId),
-      ]);
+      const [reset, identityReplacedAt, linkingEnabled, hasIdentityBackup] =
+        await Promise.all([
+          this.identityResetService.getStatusForUser(userId),
+          this.keyBundlesService.latestIdentityChangeAt(userId),
+          // (lxxiii) clause 2 — the client learns the lock state with the
+          // bundle answer. Additive; an absent field reads as `true`
+          // client-side (fail-closed to the pre-(lxxiii) gate, never to a
+          // refused mint).
+          this.keyBundlesService.isEnrolled(userId),
+          // (lxxviii) clause 1 — additive: drives the "create your backup"
+          // nudge on an enrolled primary without one.
+          this.identityResetService.hasIdentityBackup(userId),
+        ]);
       client.emit('ownKeyBundleStatus', {
         exists,
         linkingEnabled,
+        hasIdentityBackup,
         identityReset: reset
           ? {
               status: reset.status,
@@ -734,6 +801,8 @@ export class ChatKeyExchangeService {
       const replaced = await this.identityResetService.setRecoveryKey(
         userId,
         dto.phrase,
+        // (lxxviii) clause 1: verifier and sealed blob land atomically.
+        dto.backup,
       );
       client.emit('recoveryKeySet', { success: true });
       void this.notifyRecoveryKeyEnrolled(userId, replaced, server);
@@ -742,6 +811,40 @@ export class ChatKeyExchangeService {
         `setRecoveryKey failed userId=${userId}: ${errorMessage(error)}`,
       );
       client.emit('recoveryKeySet', { success: false });
+    }
+  }
+
+  /**
+   * Serves the caller's phrase-sealed identity backup (amendment (lxxviii)
+   * clause 1). Own account only, and harmless even so: the blob is AES-256-GCM
+   * under a key derived from the phrase, which the server never sees. The
+   * gateway throttles this like `setRecoveryKey` (10/15 min) — the blob is
+   * useless without the phrase, but there is no reason to serve it in a loop.
+   */
+  async handleGetIdentityBackup(client: Socket): Promise<void> {
+    const userId = socketData(client).user?.id;
+    if (!userId) return;
+
+    try {
+      const backup = await this.identityResetService.getIdentityBackup(userId);
+      client.emit('identityBackup', {
+        exists: backup != null,
+        ...(backup
+          ? {
+              blob: backup.blob,
+              salt: backup.salt,
+              iterations: backup.iterations,
+              version: backup.version,
+            }
+          : {}),
+      });
+    } catch (error) {
+      this.logger.error(
+        `getIdentityBackup failed userId=${userId}: ${errorMessage(error)}`,
+      );
+      // Same fail-closed convention as the bundle status: the client treats a
+      // missing answer as UNKNOWN, never as "no backup exists".
+      client.emit('identityBackup', { exists: false, error: 'backup_failed' });
     }
   }
 

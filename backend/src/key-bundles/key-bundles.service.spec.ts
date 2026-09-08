@@ -1,12 +1,14 @@
 import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { generateKeyPair, sign } from 'curve25519-js';
 import { KeyBundlesService, KeyBundleData } from './key-bundles.service';
 import { KeyBundle } from './key-bundle.entity';
 import { OneTimePreKey } from './one-time-pre-key.entity';
 import { IdentityChangeAudit } from './identity-change-audit.entity';
 import { AccountAuthorization } from './account-authorization.entity';
 import { IdentityResetService } from './identity-reset.service';
+import { buildIdentityChangeMessage } from './identity-signature.util';
 
 describe('KeyBundlesService', () => {
   let service: KeyBundlesService;
@@ -634,6 +636,123 @@ describe('KeyBundlesService', () => {
         // roster teardown on authorizedBy === 'reset'.
         expect(result.authorizedBy).toBe('reset');
       });
+    });
+  });
+
+  // Amendment (lxxviii) clause 2: a phrase-restored install re-uploads the
+  // account's UNCHANGED identity with a proof signed by that very key. Keys
+  // are generated here (deterministic seeds) because the proof must verify
+  // under the STORED key — a canned vector could not also produce the
+  // wrong-key twin.
+  describe('(lxxviii) identity restore proof', () => {
+    const USER_ID = 4242;
+    const ownKeys = generateKeyPair(
+      Uint8Array.from({ length: 32 }, (_, i) => i + 1),
+    );
+    const foreignKeys = generateKeyPair(
+      Uint8Array.from({ length: 32 }, (_, i) => i + 101),
+    );
+    const STORED_IDENTITY = Buffer.concat([
+      Buffer.from([0x05]),
+      Buffer.from(ownKeys.public),
+    ]).toString('base64');
+    const NONCE = Buffer.alloc(32, 7).toString('base64');
+    const message = Uint8Array.from(
+      buildIdentityChangeMessage(
+        Buffer.from(STORED_IDENTITY, 'base64'),
+        USER_ID,
+        Buffer.from(NONCE, 'base64'),
+      ),
+    );
+    const VALID_PROOF = Buffer.from(
+      sign(ownKeys.private, message, undefined),
+    ).toString('base64');
+    // F7's forgery: the same message signed by a key that is NOT the account's.
+    const FOREIGN_PROOF = Buffer.from(
+      sign(foreignKeys.private, message, undefined),
+    ).toString('base64');
+
+    beforeEach(() => {
+      keyBundleRepo.findOne.mockResolvedValue({
+        userId: USER_ID,
+        deviceId: 1,
+        ...mockKeyBundleData,
+        identityPublicKey: STORED_IDENTITY,
+      });
+      keyBundleRepo.upsert.mockResolvedValue({ raw: [] });
+    });
+
+    it('a proof under the STORED key authorizes as restore — no audit row, no churn', async () => {
+      const result = await service.upsertKeyBundle(
+        USER_ID,
+        { ...mockKeyBundleData, identityPublicKey: STORED_IDENTITY },
+        { restoreSignature: VALID_PROOF, nonce: NONCE },
+        1,
+      );
+
+      expect(result.identityChanged).toBe(false);
+      expect(result.authorizedBy).toBe('restore');
+      expect(keyBundleRepo.upsert).toHaveBeenCalledTimes(1);
+      // The identity did NOT change: no §6.0 audit row, no ceremony spent.
+      expect(auditRepo.insert).not.toHaveBeenCalled();
+      expect(identityResetService.consumeCompletedReset).not.toHaveBeenCalled();
+    });
+
+    // Falsification F7: a proof verified with the wrong key must be REFUSED,
+    // with nothing written — never degraded to a plain re-upload, because the
+    // gateway keys the roster teardown on this verdict.
+    it('F7: a proof signed by a DIFFERENT key is refused and NOTHING is written', async () => {
+      const warnSpy = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+
+      await expect(
+        service.upsertKeyBundle(
+          USER_ID,
+          { ...mockKeyBundleData, identityPublicKey: STORED_IDENTITY },
+          { restoreSignature: FOREIGN_PROOF, nonce: NONCE },
+          1,
+        ),
+      ).rejects.toThrow('restore_refused');
+
+      expect(keyBundleRepo.upsert).not.toHaveBeenCalled();
+      expect(purgeBuilder.execute).not.toHaveBeenCalled();
+      expect(auditRepo.insert).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[identity-restore] REFUSED'),
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('a stray restore field on an identity CHANGE is ignored — the normal lock adjudicates', async () => {
+      const foreignIdentity = Buffer.concat([
+        Buffer.from([0x05]),
+        Buffer.from(foreignKeys.public),
+      ]).toString('base64');
+
+      // Un-enrolled default + no ceremony: the change is admitted 'unlocked'.
+      // What the restore field must NOT buy is the 'restore' attribution.
+      const result = await service.upsertKeyBundle(
+        USER_ID,
+        { ...mockKeyBundleData, identityPublicKey: foreignIdentity },
+        { restoreSignature: VALID_PROOF, nonce: NONCE },
+        1,
+      );
+
+      expect(result.identityChanged).toBe(true);
+      expect(result.authorizedBy).toBe('unlocked');
+    });
+
+    it('the plain same-identity re-upload (no proof) stays unauthorized', async () => {
+      const result = await service.upsertKeyBundle(
+        USER_ID,
+        { ...mockKeyBundleData, identityPublicKey: STORED_IDENTITY },
+        undefined,
+        1,
+      );
+
+      expect(result.identityChanged).toBe(false);
+      expect(result.authorizedBy).toBeNull();
     });
   });
 

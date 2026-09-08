@@ -278,13 +278,13 @@ void main() {
     test('encode/parse roundtrip', () {
       final code = LinkOobCode(
         provisioningId: provisioningId,
-        ephPubN: ephPubN,
+        ephPub: ephPubN,
         platform: 'web',
       );
       final parsed = LinkOobCode.tryParse(code.encode());
       expect(parsed, isNotNull);
       expect(parsed!.provisioningId, provisioningId);
-      expect(parsed.ephPubN, ephPubN);
+      expect(parsed.ephPub, ephPubN);
       expect(parsed.platform, 'web');
       expect(code.encode().contains('='), isFalse);
     });
@@ -292,7 +292,7 @@ void main() {
     test('strict parser rejects every malformed segment', () {
       final good = LinkOobCode(
         provisioningId: provisioningId,
-        ephPubN: ephPubN,
+        ephPub: ephPubN,
         platform: 'web',
       ).encode();
       final parts = good.split('.');
@@ -301,9 +301,9 @@ void main() {
       final bad = <String>[
         '', // empty
         'fp-link.v1.$provisioningId.$keySegment', // 4 segments
-        '$good.extra', // 6 segments
+        '$good.extra', // 7 segments
         good.replaceFirst('fp-link', 'fp-lonk'), // wrong prefix
-        good.replaceFirst('.v1.', '.v2.'), // wrong version
+        good.replaceFirst('.v2.', '.v3.'), // wrong version
         'fp-link.v1.not-a-uuid.$keySegment.web', // non-UUID id
         'fp-link.v1.$provisioningId.${keySegment}AA.web', // 34-byte key
         'fp-link.v1.$provisioningId.${keySegment.substring(0, keySegment.length - 2)}.web', // short key
@@ -332,7 +332,7 @@ void main() {
     group('deep-link form', () {
       final code = LinkOobCode(
         provisioningId: provisioningId,
-        ephPubN: ephPubN,
+        ephPub: ephPubN,
         platform: 'web',
       );
 

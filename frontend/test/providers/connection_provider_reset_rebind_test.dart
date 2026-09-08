@@ -389,4 +389,28 @@ void main() {
 
     expect(socket.enrollments, isEmpty);
   });
+
+  test('a RESTORED rebind adopts + reconnects but NEVER re-enrolls', () async {
+    // (lxxviii): the restore kept its DAK and its enrollment — E still
+    // verifies under the unchanged identity, and the restore machine
+    // re-signs the list via `updateDeviceList`. Minting a replacement
+    // enrollment here would discard the very authority the backup preserved.
+    var adopted = 0;
+    conn.onSessionRebound = (_) async => adopted++;
+    final connectsBefore = socket.connects;
+
+    socket.emitServer('keyBundleUploaded', {
+      ...recoveryAck(),
+      'identityChanged': false,
+      'restored': true,
+      'nextListVersion': 4,
+    });
+    await pumpEventQueue();
+
+    expect(adopted, 1, reason: 'the rebind itself must still run');
+    expect(socket.connects, greaterThan(connectsBefore));
+    expect(order, contains('ack'));
+    expect(socket.enrollments, isEmpty,
+        reason: 'a restored account keeps its DAK — updateDeviceList, not enroll');
+  });
 }

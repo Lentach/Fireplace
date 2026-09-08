@@ -375,29 +375,45 @@ final RegExp _platformPattern = RegExp(r'^[A-Za-z0-9_-]{1,32}$');
 /// route. The payload rides the fragment, never the path or query.
 const String kLinkDeepLinkPath = '/link';
 
-/// The out-of-band code (spec item (i)): the exact ASCII string
-/// `fp-link.v1.<provisioningId>.<base64url(ephPubN), no padding>.<platform>`.
-/// This is the ONLY channel `ephPubN` ever travels (amendment (c)) — QR and
-/// manual paste are the same channel: N's screen → human → primary.
+/// Which ceremony side DISPLAYS a code (amendment (lxxvii) clause 2): the
+/// last v2 segment — `p` for the primary's code, `n` for the new device's.
+/// v1 codes carry no role segment and parse as [newDevice] (the only side
+/// that ever displayed a v1 code).
+enum LinkRole { primary, newDevice }
+
+/// The out-of-band code (spec item (i) + amendment (lxxvii) clause 2): the
+/// exact ASCII string
+/// `fp-link.v2.<provisioningId>.<base64url(ephPub), no padding>.<platform>.<p|n>`.
+/// This is the ONLY channel the DISPLAYING side's ephemeral ever travels
+/// (amendment (c)) — QR and manual paste are the same channel: one screen →
+/// human → the other device. [tryParse] still accepts the roleless v1 form.
 class LinkOobCode {
   const LinkOobCode({
     required this.provisioningId,
-    required this.ephPubN,
+    required this.ephPub,
     required this.platform,
+    this.role = LinkRole.newDevice,
   });
 
   final String provisioningId;
 
-  /// 33-byte serialized ephemeral public key of the NEW device.
-  final Uint8List ephPubN;
+  /// 33-byte serialized ephemeral public key of the device DISPLAYING the
+  /// code: `ephPubN` on an `n` code, `ephPubP` on a `p` code. The SAS
+  /// transcript order stays fixed N-then-P regardless — the role names which
+  /// slot this key fills.
+  final Uint8List ephPub;
 
-  /// N's self-reported platform label — informational metadata for the
-  /// signed list entry, ≤32 chars.
+  /// The displaying device's role (amendment (lxxvii) clause 2).
+  final LinkRole role;
+
+  /// The displaying device's self-reported platform label — informational
+  /// metadata for the signed list entry, ≤32 chars.
   final String platform;
 
   String encode() {
-    final b64url = base64UrlEncode(ephPubN).replaceAll('=', '');
-    return 'fp-link.v1.$provisioningId.$b64url.$platform';
+    final b64url = base64UrlEncode(ephPub).replaceAll('=', '');
+    final roleSegment = role == LinkRole.primary ? 'p' : 'n';
+    return 'fp-link.v2.$provisioningId.$b64url.$platform.$roleSegment';
   }
 
   /// The QR form: the code carried in the FRAGMENT of the app's own URL, so
@@ -416,6 +432,8 @@ class LinkOobCode {
   /// Strict parse; ANY violation returns null, never a partial result.
   /// Accepts the bare code or a [toDeepLink] URL (any origin: the fragment
   /// is the payload, the host is only what the camera needed to open us).
+  /// A v1 code (5 segments, no role) parses as [LinkRole.newDevice]; a v2
+  /// code MUST carry exactly the `p`/`n` role segment.
   static LinkOobCode? tryParse(String raw) {
     var text = raw.trim();
     if (!text.startsWith('fp-link.')) {
@@ -424,33 +442,49 @@ class LinkOobCode {
       text = uri.fragment;
     }
     final parts = text.split('.');
-    if (parts.length != 5) return null;
-    if (parts[0] != 'fp-link' || parts[1] != 'v1') return null;
+    if (parts.length != 5 && parts.length != 6) return null;
+    if (parts[0] != 'fp-link') return null;
+    final LinkRole role;
+    if (parts.length == 5) {
+      if (parts[1] != 'v1') return null;
+      role = LinkRole.newDevice;
+    } else {
+      if (parts[1] != 'v2') return null;
+      switch (parts[5]) {
+        case 'p':
+          role = LinkRole.primary;
+        case 'n':
+          role = LinkRole.newDevice;
+        default:
+          return null;
+      }
+    }
     final provisioningId = parts[2];
     if (!_uuidPattern.hasMatch(provisioningId)) return null;
     final keySegment = parts[3];
     // No padding by construction; '=' anywhere means a non-canonical form.
     if (keySegment.isEmpty || keySegment.contains('=')) return null;
-    final Uint8List ephPubN;
+    final Uint8List ephPub;
     try {
       final padded = keySegment + '=' * ((4 - keySegment.length % 4) % 4);
-      ephPubN = base64Url.decode(padded);
+      ephPub = base64Url.decode(padded);
     } catch (_) {
       return null;
     }
-    if (ephPubN.length != kLinkEphemeralPublicKeyLength) return null;
+    if (ephPub.length != kLinkEphemeralPublicKeyLength) return null;
     // Canonical form: re-encoding must reproduce the segment exactly.
-    if (base64UrlEncode(ephPubN).replaceAll('=', '') != keySegment) {
+    if (base64UrlEncode(ephPub).replaceAll('=', '') != keySegment) {
       return null;
     }
     // Leading type byte of a serialized Curve25519 public key.
-    if (ephPubN[0] != 0x05) return null;
+    if (ephPub[0] != 0x05) return null;
     final platform = parts[4];
     if (!_platformPattern.hasMatch(platform)) return null;
     return LinkOobCode(
       provisioningId: provisioningId,
-      ephPubN: ephPubN,
+      ephPub: ephPub,
       platform: platform,
+      role: role,
     );
   }
 }

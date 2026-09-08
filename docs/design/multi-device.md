@@ -2593,6 +2593,101 @@ that is the designed outcome).
     addressability assertions that never executed while the group died on its stale
     `identity_locked` premise.
 
+- **Amendment 2026-09-08 (D26, owner-ratified in one sentence — "agree on everything, green light";
+  brainstorm recorded in `.planning/multi-device/OPEN-QUESTIONS.md`; prod facts that drove it: 114
+  users, 2 enrolled, 0 linked devices, 3 identity replacements ever — all `via=unlocked` wipes):**
+  - **(lxxvi) — the passcode lock and the ceremony.** Clause 1: `passcodeEraseWarning` is
+    enrolment-aware. The lock screen cannot read E2E state (on web the store is wrapped), so the
+    client persists a CLEARTEXT hint `account_enrolled_hint_<uid>` (prefs) from every
+    `ownKeyBundleStatus.linkingEnabled == false` / enrolment observation, and the erase panel renders
+    `passcodeEraseWarningEnrolled` when the hint is true — it names the three doors (phrase, other
+    device, 72 h) instead of "log in again". Clause 2: a link ceremony or an enrolment in progress
+    is a departure exemption exactly like the attach picker: `linkCeremonyActive`
+    (`composer_keyboard_signals.dart`, same shape as `composerNativePickerActive`) is raised by
+    `LinkCeremonyController` from the first emit until terminal state, and `PasscodeProvider`
+    treats it as the picker for the immediate lock, the foreground verdict and the DOM curtain
+    — a background during `adoptProvisionedIdentity`'s writes must not relaunch the page. Clause 3:
+    after `adoptProvisionedIdentity` / `adoptRestoredIdentity` land raw keys while wrapping is ON,
+    the service calls `PasscodeProvider.wrapRawKeysNow()` (idempotent `wrapRawKeys`) so a crash in
+    that window does not leave key material raw on a "protected" device.
+    Falsification: (F1) hint never written → enrolled copy absent; (F2) exemption removed → a
+    0 s auto-lock during `adopt` calls `_lock()`; (F3) wrap hook removed → `fpwk1:` absent after adopt.
+  - **(lxxvii) — the QR is real: either side may scan, no in-app copy of a 96-char code.** Clause 1
+    (server): `openProvisioning { role?: 'new' | 'primary' }`, default `'new'` (byte-compatible).
+    With `role: 'primary'` the OPENER is the primary; the stage records `primarySocketId` and
+    `newDeviceSocketId` explicitly (today both are implied by `openerSocketId`). `provisioningHello`
+    from the OTHER party pins its ephemeral, answers `provisioningHelloAck { success, deviceId }` to
+    the caller and relays `provisioningHello { provisioningId, ephPubP, deviceId }` to the opener
+    (the field name stays `ephPubP` from v1 even though it now means "the hello party's ephemeral",
+    and `deviceId` is new in the relay: the primary must build the blob for it). `provisionDevice` is
+    accepted from `primarySocketId` only and relays the blob to `newDeviceSocketId`;
+    `provisioningBlob` fetch, `provisioningComplete` and the cancel relay use the same explicit
+    roles. The SAS derivation is unchanged (DH-bound, both ephemerals) — which socket said hello is
+    not a crypto input. Clause 2 (code): `fp-link.v2.<provisioningId>.<base64url ephPub>.<platform>.<p|n>`
+    — the last segment names the ROLE of the device that displays it; v1 codes (no role segment)
+    parse as `n`. Clause 3 (client): both screens show a QR AND a "Zeskanuj kod" button
+    (`link_qr_scanner.dart`: `mobile_scanner` on Android/iOS, `BarcodeDetector` → vendored jsQR
+    fallback on web, never a runtime CDN; camera denied/unsupported falls back to the typed field,
+    which stays). The gate (`LinkThisDeviceBody`) still auto-opens as `new` and shows its v1/v2-n
+    code; scanning a `p` code there cancels its own stage and runs the hello-side flow. The primary's
+    `LinkDeviceScreen` opens as `primary`, shows its `p` code, and its scanner accepts an `n` code
+    (classic flow). Clause 4: `AndroidManifest.xml` gains an `https://fireplace.ignorelist.com/link`
+    `VIEW` intent-filter (auto-verify), and the native build consumes the fragment via a platform
+    channel replacing `link_fragment_stub.dart`'s null. I3 unchanged: password login on N, SAS
+    compare, approve on P. Falsification: (F4) role ignored server-side → blob relayed to the
+    primary; (F5) v2 `p` code parsed as `n` → SAS mismatch; (F6) scanner result not fed to the
+    controller → field stays empty.
+  - **(lxxviii) — the recovery phrase is a KEY BACKUP; restore is instant and identity-preserving.**
+    I1 is amended: the server may hold `IK`, `registrationId` and `DAK` ONLY as an AES-256-GCM blob
+    sealed under a key derived from the 12-word phrase (128-bit CSPRNG entropy, BIP39 checksum;
+    PBKDF2-HMAC-SHA256 600k over the NFKD-normalized phrase with a 16-byte random salt — the KDF is
+    belt-and-braces, the entropy is the guarantee). Signed/one-time prekeys are NOT in the blob:
+    they are regenerated on restore and peers re-key. Clause 1 (wire): `setRecoveryKey { phrase,
+    backup: { blob, salt, iterations, version: 1 } }` writes the Argon2id verifier AND the blob in
+    one transaction (columns on `recovery_keys`, migration 0017); `getIdentityBackup {}` →
+    `identityBackup { exists, blob?, salt?, iterations?, version? }`, and `{ exists: false, error }`
+    on a read failure so an unknown never reads as "you have no backup" (JWT socket, 10/15 min — the blob is
+    useless without the phrase). `ownKeyBundleStatus` gains additive `hasIdentityBackup`. Clause 2
+    (restore): `uploadKeyBundle` additionally accepts `restoreSignature` + `nonce` (from
+    `getRegistrationLockNonce`): XEdDSA by the account's CURRENT published IK over
+    `identityPublicKey ‖ userId ‖ nonce`, valid only when the uploaded identity EQUALS the stored one.
+    `upsertKeyBundle` answers `authorizedBy: 'restore'`; the gateway then purges the one-time
+    pre-keys of the login-resolved device (their private halves died with the wipe), runs the
+    (xxviii) roster teardown (`applyAfterReset`: fresh deviceId, `isPrimary`, every other device
+    revoked with reason `restored`, sessions dropped, one reissued), and acks
+    `keyBundleUploaded { success, deviceId, access_token, refresh_token, restored: true,
+    nextListVersion }`. No `identity_change_audit` row, no §6.0 alarm (the identity did not change);
+    a content-free `{ type: 'identity_restored' }` push goes to every endpoint BEFORE the push rows
+    are dropped, and revoked sockets receive `deviceRevoked { reason: 'restored' }`
+    (`deviceRevokedRestoredNotice`). Clause 3 (client): the gate gains a third door
+    `linkGateRestoreAction` → 12-word prompt → `getIdentityBackup` → unseal (GCM failure =
+    `linkGateRestoreWrongPhrase`, no server attempt spent) → `adoptRestoredIdentity` (residue wipe
+    as (lxxiii) clause 3, installs IK + registrationId + DAK, mints signed prekey + OTPs) →
+    upload with proof → rebind (existing `onSessionRebound`) → OTP upload → DAK-signed list
+    `nextListVersion` (old devices revoked, new device added; `updateDeviceList`, NOT a
+    re-enrolment — E still verifies) → `requestSessionRebuild` to every conversation peer (so the
+    first message after restore is not lost) → shell. Clause 4 (enrolment order): "Włącz łączenie"
+    = warning (web) → phrase generated → `RecoveryKeyScreen` MANDATORY with a random-word
+    confirmation (`recoveryKeyConfirmPrompt`) → DAK minted → `setRecoveryKey` with the blob → ONLY
+    THEN `enrollDeviceAuthority`; a failed backup upload aborts before enrolment
+    (`recoveryKeyBackupFailed`). Every later phrase (re)generation re-uploads the blob — invariant:
+    the blob is always sealed under the latest phrase. An enrolled `holdsDak` primary with
+    `hasIdentityBackup == false` sees `devicesBackupMissing` + `devicesCreateBackupAction`. Threat
+    posture accepted by the owner: phrase possession = instant account takeover (Signal PIN/SVR
+    posture); the 72 h reset remains for accounts without a phrase. Falsification: (F7) restore
+    proof verified with the wrong key → accepted; (F8) OTP purge skipped → old keyIds served;
+    (F9) enrolment before backup upload → enrolled with `hasIdentityBackup == false`; (F10) wrong
+    phrase → `restoreSignature` emitted.
+  - **(lxxix) — the peer key-change surface is DEMOTED by default.** `SettingsProvider.keyChangeWarnings`
+    (prefs `key_change_warnings`, default false; Settings → Privacy row `settingsKeyChangeWarnings`).
+    With it OFF, a peer identity change (either detection path) auto-acknowledges: the I7 anchor
+    advances to the new key at once and the timeline renders ONE muted system line
+    (`peerIdentityChangedSystemLine`, `DevicesSyncingNote` styling, no error palette, no required
+    tap; tapping still opens the fingerprint dialog). With it ON, today's `PeerIdentityChangedRow`
+    + manual confirm is unchanged. The OWN-account banner (`ownIdentityReplaced`) is NOT demoted.
+    Falsification: (F11) toggle ignored → red pill with the setting off; (F12) auto-ack removed → the
+    muted line persists across reload.
+
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the
   test-integrity findings are folded at `4c0e0bf`; the four security findings were T9. **T10 (xlv)

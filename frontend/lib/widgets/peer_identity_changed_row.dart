@@ -73,3 +73,49 @@ class PeerIdentityChangedRow extends StatelessWidget {
     );
   }
 }
+
+/// The DEMOTED key-change surface (amendment (lxxix)): with
+/// `SettingsProvider.keyChangeWarnings` OFF (the default) a peer identity
+/// change is auto-acknowledged and the timeline gets this ONE muted system
+/// line instead of the [PeerIdentityChangedRow] pill.
+///
+/// Styled after [DevicesSyncingNote] on purpose: muted body-small text, no
+/// error palette, no security icon — a routine "new device" note, not an
+/// alarm. No tap is required, but tapping still opens the fingerprint dialog
+/// so a curious user can verify.
+class PeerIdentityChangedNote extends StatelessWidget {
+  final int peerId;
+  final String peerName;
+
+  const PeerIdentityChangedNote({
+    super.key,
+    required this.peerId,
+    required this.peerName,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final mutedColor = RpgTheme.isDark(context)
+        ? RpgTheme.mutedDark
+        : RpgTheme.textSecondaryLight;
+    return GestureDetector(
+      key: const ValueKey('peer-identity-changed-note'),
+      behavior: HitTestBehavior.opaque,
+      onTap: () => showPeerIdentityFingerprintDialog(
+        context: context,
+        peerId: peerId,
+        peerName: peerName,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: Text(
+          AppLocalizations.of(context).peerIdentityChangedSystemLine(peerName),
+          textAlign: TextAlign.center,
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: mutedColor),
+        ),
+      ),
+    );
+  }
+}

@@ -57,6 +57,20 @@ export class UploadKeyBundleDto {
   @MaxLength(128)
   identitySignature?: string;
 
+  /**
+   * Restore proof (amendment (lxxviii) clause 2). Present when this upload
+   * RE-INSTALLS the account's stored identity from a phrase-sealed backup:
+   * base64 XEdDSA signature by the STORED (= uploaded) identity key over
+   * identityPublicKey ‖ userId ‖ nonce — same byte layout as
+   * `identitySignature`, verified under the current IK. Ignored when the
+   * uploaded identity differs from the stored one.
+   */
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(128)
+  restoreSignature?: string;
+
   /** base64 nonce issued to this socket session, echoed back with the proof. */
   @IsOptional()
   @IsString()

@@ -67,6 +67,10 @@ void main() {
       }
     });
     await provider.initializeE2E(ownUserId);
+    // (lxxix) flipped the DEFAULT to demoted (auto-acknowledge). This file
+    // asserts the MANUAL warning wire, so it opts back in; the demoted default
+    // is proven in test/services/encryption_key_change_demotion_test.dart.
+    provider.encryptionService.keyChangeWarnings = () => true;
     expect(
       provider.isE2EReady,
       isTrue,

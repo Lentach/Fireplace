@@ -96,7 +96,10 @@ class ConnectionProvider extends ChangeNotifier {
   /// Invoked when the server reports that THIS device was revoked (spec §5.5).
   /// Set by the widget that owns both this provider and the auth session — the
   /// notice text needs a locale, and only the auth layer may end a session.
-  void Function()? onDeviceRevoked;
+  /// [reason] is the server's rider: `'restored'` means a (lxxviii) phrase
+  /// restore elsewhere signed this device out — a different sentence than a
+  /// deliberate revocation.
+  void Function(String? reason)? onDeviceRevoked;
 
   /// Invoked when a §6.2 reset teardown re-homes this account onto a NEWLY
   /// allocated device and hands back the session bound to it. Set by the
@@ -126,6 +129,18 @@ class ConnectionProvider extends ChangeNotifier {
     _friendsProvider = friends;
     _conversationsProvider = conversations;
     _messagingProvider = messaging;
+    // (lxxviii): the restore machine's post-rebind `requestSessionRebuild`
+    // sweep needs the conversation peers, and a provider must not read
+    // another provider directly.
+    encryption.sessionRebuildPeers = () {
+      final uid = _currentUserId;
+      if (uid == null) return const <int>[];
+      final convs = _conversationsProvider?.conversations ?? const [];
+      return [
+        for (final c in convs)
+          c.userOne.id == uid ? c.userTwo.id : c.userOne.id,
+      ];
+    };
   }
 
   /// Registers the screen-scoped §5.1 ceremony controller as the receiver of
@@ -802,6 +817,10 @@ class ConnectionProvider extends ChangeNotifier {
     // revoked. Strictly after the ack for the same reason the ack is delivered
     // late: the one-time pre-key upload it triggers is the more urgent of the
     // two, and a re-enrollment that fails must not strand it.
+    // (lxxviii): a RESTORED rebind keeps its DAK and E — the restore machine
+    // re-signs the list via `updateDeviceList`; minting a replacement
+    // enrollment here would discard the very authority the backup preserved.
+    if (data is Map && data['restored'] == true) return;
     if (rebound && userId != null) {
       final deviceId = data is Map ? data['deviceId'] : null;
       final version = data is Map ? data['nextListVersion'] : null;
@@ -961,6 +980,10 @@ class ConnectionProvider extends ChangeNotifier {
       // died with a dropped socket or a killed app, and the roster block that
       // started it runs only once, on the upload that consumed the ceremony.
       // The offer rides every authenticated upload until it is taken.
+      // (lxxviii): same exemption as the rebind branch above — a RESTORED
+      // upload preserved its DAK, and the restore machine re-signs the list
+      // itself. A replacement enrollment would throw that authority away.
+      if (data is Map && data['restored'] == true) return;
       final owedDeviceId = data is Map ? data['deviceId'] : null;
       final owedVersion = data is Map ? data['nextListVersion'] : null;
       final userId = _currentUserId;
@@ -1013,6 +1036,16 @@ class ConnectionProvider extends ChangeNotifier {
     });
     _socketService.on('recoveryKeySet', (data) {
       _encryptionProvider?.onRecoveryKeySet(data);
+    });
+    // --- (lxxviii) phrase backup + restore ---
+    _socketService.on('identityBackup', (data) {
+      _encryptionProvider?.onIdentityBackup(data);
+    });
+    _socketService.on('registrationLockNonce', (data) {
+      _encryptionProvider?.onRegistrationLockNonce(data);
+    });
+    _socketService.on('deviceListUpdated', (data) {
+      _encryptionProvider?.onDeviceListUpdated(data);
     });
 
     // --- Device list + §5.1 provisioning ceremony (Phase 2 T3) ---
@@ -1235,13 +1268,16 @@ class ConnectionProvider extends ChangeNotifier {
   /// the notice.
   void _onOwnDeviceRevoked(Object? data) {
     final deviceId = data is Map ? data['deviceId'] : null;
-    E2eDiagLog.add('DEVICE_REVOKED', {'deviceId': deviceId});
+    final reason = data is Map && data['reason'] is String
+        ? data['reason'] as String
+        : null;
+    E2eDiagLog.add('DEVICE_REVOKED', {'deviceId': deviceId, 'reason': reason});
     _intentionalDisconnect = true;
     _reconnectManager.resetAttempts();
     _socketService.disconnect();
     _isConnected = false;
     notifyListeners();
-    onDeviceRevoked?.call();
+    onDeviceRevoked?.call(reason);
   }
 
   // ---------- Dispose ----------

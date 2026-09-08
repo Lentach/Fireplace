@@ -1,22 +1,32 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../l10n/app_localizations.dart';
 import '../services/device_link/link_ceremony_controller.dart';
+import '../services/device_link/link_code_extract.dart';
+import '../services/device_link/link_crypto.dart';
+import '../utils/link_fragment_stub.dart'
+    if (dart.library.html) '../utils/link_fragment_web.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/glass/glass_top_bar.dart';
+import '../widgets/link_qr_scanner.dart';
 import '../widgets/top_snackbar.dart';
 
-/// The PRIMARY side of the §5.1 link ceremony (Phase 2 T3).
+/// The PRIMARY side of the §5.1 link ceremony (Phase 2 T3 + amendment
+/// (lxxvii)).
 ///
-/// Manual paste is the REQUIRED out-of-band path (spec §12 item (i)): the
-/// human carries the code from the new device's screen to this field. The
-/// SAS is displayed large; the IK-bearing blob is built ONLY after Approve
-/// (secrets-last, I3).
+/// Opens as `role: 'primary'` on mount and DISPLAYS a `p` code (QR + copyable
+/// text) the new device can scan; the classic direction stays: the scanner
+/// (`link-scan`) or the typed field (`link-enter-manually`) accepts the new
+/// device's `n` code. The SAS is displayed large; the IK-bearing blob is
+/// built ONLY after Approve (secrets-last, I3).
 class LinkDeviceScreen extends StatefulWidget {
   const LinkDeviceScreen({
     super.key,
     required this.controller,
     this.initialCode,
+    this.scannerBuilder,
   });
 
   final LinkCeremonyController controller;
@@ -26,6 +36,14 @@ class LinkDeviceScreen extends StatefulWidget {
   /// (prefilled) if the start fails, so a bad scan can be corrected by hand.
   final String? initialCode;
 
+  /// Scanner injection seam: tests hand a fake that fires [LinkQrScanner]'s
+  /// callbacks without a camera. Null = the real [LinkQrScanner].
+  final Widget Function({
+    required void Function(String code) onCode,
+    VoidCallback? onUnsupported,
+  })?
+  scannerBuilder;
+
   @override
   State<LinkDeviceScreen> createState() => _LinkDeviceScreenState();
 }
@@ -34,19 +52,59 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
   final TextEditingController _code = TextEditingController();
   bool _popped = false;
 
+  /// Local surface state of the `showCode` step: the scanner viewport, the
+  /// typed-field fallback, and the unsupported-scanner notice.
+  bool _scanning = false;
+  bool _manualEntry = false;
+  bool _scanUnsupported = false;
+
   @override
   void initState() {
     super.initState();
     widget.controller.addListener(_onStep);
     final initial = widget.initialCode;
+    // The controller notifies synchronously; starting inside the first
+    // build would mark this route's AnimatedBuilder dirty mid-build.
     if (initial != null) {
       _code.text = initial;
-      // The controller notifies synchronously; starting inside the first
-      // build would mark this route's AnimatedBuilder dirty mid-build.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) widget.controller.startPrimaryFlow(initial);
       });
+    } else {
+      // (lxxvii): open as the primary at once and display the `p` code —
+      // scanning stays one tap away.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          widget.controller.startPrimaryShowFlow(platform: linkPlatformLabel());
+        }
+      });
     }
+  }
+
+  void _onScanned(String raw) {
+    if (!mounted) return;
+    setState(() => _scanning = false);
+    widget.controller.startPrimaryFlow(extractLinkCode(raw) ?? raw);
+  }
+
+  void _onScanUnsupported() {
+    if (!mounted) return;
+    setState(() {
+      _scanning = false;
+      _scanUnsupported = true;
+      _manualEntry = true;
+    });
+  }
+
+  Widget _buildScanner() {
+    final builder = widget.scannerBuilder;
+    if (builder != null) {
+      return builder(onCode: _onScanned, onUnsupported: _onScanUnsupported);
+    }
+    return LinkQrScanner(
+      onCode: _onScanned,
+      onUnsupported: _onScanUnsupported,
+    );
   }
 
   /// The ceremony's end is the DEVICES screen, not a checkmark waiting for a
@@ -170,6 +228,9 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
             ),
           ),
         ];
+      case PrimaryLinkStep.showCode:
+        return _buildShowCode(context);
+      case PrimaryLinkStep.opening:
       case PrimaryLinkStep.awaitingHelloAck:
       case PrimaryLinkStep.staging:
         return const [
@@ -262,6 +323,8 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
           Text(
             controller.primaryError == 'invalid_code'
                 ? l10n.linkInvalidCode
+                : controller.primaryError == 'wrong_code_role'
+                ? l10n.linkInvalidCode
                 : controller.primaryError == 'no_dak'
                 ? l10n.linkNoDak
                 : '${l10n.linkFailed} (${controller.primaryError})',
@@ -277,12 +340,171 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
               key: const Key('link-primary-retry'),
               onPressed: () {
                 controller.cancelPrimary();
+                if (widget.initialCode == null) {
+                  // The screen mounted in the flipped shape — restart it
+                  // rather than dropping to the bare typed field.
+                  setState(() {
+                    _scanning = false;
+                    _manualEntry = false;
+                  });
+                  controller.startPrimaryShowFlow(
+                    platform: linkPlatformLabel(),
+                  );
+                }
               },
               child: Text(l10n.linkNewRetry),
             ),
           ),
         ];
     }
+  }
+
+  /// The flipped-flow `showCode` step ((lxxvii) clauses 2–3): this primary's
+  /// `p` code as QR + copyable text, with the classic direction one tap away
+  /// (scan or type the new device's `n` code).
+  List<Widget> _buildShowCode(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final l10n = AppLocalizations.of(context);
+    final controller = widget.controller;
+    final code = controller.primaryOobCode ?? '';
+    final qrPayload =
+        LinkOobCode.tryParse(code)?.toDeepLink(linkDeepLinkOrigin()) ?? code;
+    return [
+      Text(
+        l10n.linkPrimaryShowCodeExplainer,
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: colors.onSurfaceVariant,
+        ),
+      ),
+      const SizedBox(height: 20),
+      Center(
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            // A QR quiet zone must be light for scanability on every theme —
+            // functional, not styling (playbook literal-color exception).
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: QrImageView(
+            data: qrPayload,
+            semanticsLabel: 'link qr $qrPayload',
+            version: QrVersions.auto,
+            size: 200,
+            backgroundColor: Colors.white,
+          ),
+        ),
+      ),
+      const SizedBox(height: 16),
+      Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: colors.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: colors.outlineVariant),
+        ),
+        child: Semantics(
+          label: 'link code',
+          child: SelectableText(
+            code,
+            key: const Key('link-primary-oob-code'),
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+          ),
+        ),
+      ),
+      const SizedBox(height: 12),
+      Semantics(
+        label: l10n.linkNewCopy,
+        button: true,
+        child: OutlinedButton.icon(
+          key: const Key('link-primary-copy-code'),
+          onPressed: () async {
+            await Clipboard.setData(ClipboardData(text: code));
+            if (context.mounted) {
+              showTopSnackBar(context, l10n.linkNewCopied);
+            }
+          },
+          icon: const Icon(Icons.copy_outlined, size: 18),
+          label: Text(l10n.linkNewCopy),
+        ),
+      ),
+      const SizedBox(height: 24),
+      if (_scanning) ...[
+        SizedBox(height: 280, child: _buildScanner()),
+        const SizedBox(height: 8),
+        Text(
+          l10n.linkScanHint,
+          textAlign: TextAlign.center,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: colors.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton(
+          key: const Key('link-scan-cancel'),
+          onPressed: () => setState(() => _scanning = false),
+          child: Text(l10n.linkCancel),
+        ),
+      ] else ...[
+        Semantics(
+          label: l10n.linkScanAction,
+          button: true,
+          child: FilledButton.icon(
+            key: const Key('link-scan'),
+            onPressed: () => setState(() => _scanning = true),
+            icon: const Icon(Icons.qr_code_scanner, size: 18),
+            label: Text(l10n.linkScanAction),
+          ),
+        ),
+        const SizedBox(height: 8),
+        if (!_manualEntry)
+          TextButton(
+            key: const Key('link-enter-manually'),
+            onPressed: () => setState(() => _manualEntry = true),
+            child: Text(l10n.linkEnterCodeManually),
+          ),
+      ],
+      if (_scanUnsupported) ...[
+        const SizedBox(height: 8),
+        Text(
+          l10n.linkScanUnsupported,
+          key: const Key('link-scan-unsupported'),
+          textAlign: TextAlign.center,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: colors.onSurfaceVariant,
+          ),
+        ),
+      ],
+      if (_manualEntry) ...[
+        const SizedBox(height: 12),
+        Semantics(
+          label: l10n.linkPrimaryCodeLabel,
+          textField: true,
+          child: TextField(
+            key: const Key('link-code-field'),
+            controller: _code,
+            maxLines: 3,
+            minLines: 1,
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 14),
+            decoration: InputDecoration(
+              labelText: l10n.linkPrimaryCodeLabel,
+              border: const OutlineInputBorder(),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Semantics(
+          label: l10n.linkPrimaryContinue,
+          button: true,
+          child: FilledButton(
+            key: const Key('link-code-continue'),
+            onPressed: () => controller.startPrimaryFlow(_code.text),
+            child: Text(l10n.linkPrimaryContinue),
+          ),
+        ),
+      ],
+    ];
   }
 }
 

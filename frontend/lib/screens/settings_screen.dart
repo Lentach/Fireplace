@@ -555,6 +555,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       );
                     },
                   ),
+                  // (lxxix): key-change warnings are demoted by default; this
+                  // switch restores the manual-confirmation red pill.
+                  SettingsConsoleRow(
+                    key: const ValueKey('settings-key-change-warnings-row'),
+                    glyph: ConsoleGlyph.keys,
+                    title: l10n.settingsKeyChangeWarnings,
+                    subtitle: l10n.settingsKeyChangeWarningsSubtitle,
+                    trailing: Switch(
+                      value: settings.keyChangeWarnings,
+                      onChanged: (v) => settings.setKeyChangeWarnings(v),
+                    ),
+                    onTap: () => settings.setKeyChangeWarnings(
+                      !settings.keyChangeWarnings,
+                    ),
+                  ),
                   Consumer<PasscodeProvider>(
                     builder: (context, passcode, _) => SettingsConsoleRow(
                       key: const Key('settings-passcode-row'),

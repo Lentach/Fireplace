@@ -151,6 +151,11 @@
       <path d="M27 26 V21 a5 5 0 0 1 10 0 V26"/>
     </svg>
   </div>
+  <!-- Vendored jsQR (Apache-2.0) — fallback QR decoder for the link scanner
+       (lib/widgets/link_qr_scanner_web.dart) when the browser lacks
+       BarcodeDetector. Local by design: never a runtime CDN. `defer` keeps it
+       off the critical path; the scanner probes `window.jsQR` before use. -->
+  <script src="jsqr.js" defer></script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

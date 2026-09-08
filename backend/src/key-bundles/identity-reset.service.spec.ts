@@ -826,4 +826,103 @@ describe('IdentityResetService (reset ceremony §6.2 / recovery key §6.2.1)', (
       await expect(service.setRecoveryKey(7, phrase)).resolves.toBe(true);
     });
   });
+
+  describe('setRecoveryKey identity backup (amendment (lxxviii))', () => {
+    const phrase =
+      'legal winner thank year wave sausage worth useful legal winner thank yellow';
+    // Clause 1: the sealed blob rides the enrolment.
+    const backup = {
+      blob: 'c2VhbGVkLWJsb2I=',
+      salt: 'c2FsdC1zaXh0ZWVuLWI=',
+      iterations: 600000,
+      version: 1,
+    };
+
+    it('writes the sealed backup IN THE SAME statement as the verifier', async () => {
+      // One statement is the atomicity guarantee: a blob sealed under a
+      // phrase whose verifier never landed (or vice versa) must be
+      // unrepresentable. Without the backup wiring this row carries no
+      // backup* columns at all and every assertion below fails.
+      await service.setRecoveryKey(7, phrase, backup);
+
+      const row = rowArg(recoveryRepo.insert);
+      expect(row.backupBlob).toBe(backup.blob);
+      expect(row.backupSalt).toBe(backup.salt);
+      expect(row.backupIterations).toBe(backup.iterations);
+      expect(row.backupVersion).toBe(backup.version);
+      expect(row.backupUpdatedAt).toBeInstanceOf(Date);
+      expect(typeof row.verifierHash).toBe('string');
+    });
+
+    it('a replacement carries the backup in the SAME update as the verifier', async () => {
+      recoveryRepo.findOne.mockResolvedValue({ id: 3, userId: 7 });
+
+      await service.setRecoveryKey(7, phrase, backup);
+
+      expect(recoveryRepo.update).toHaveBeenCalledWith(
+        { id: 3 },
+        expect.objectContaining({
+          backupBlob: backup.blob,
+          backupSalt: backup.salt,
+          backupIterations: backup.iterations,
+          backupVersion: backup.version,
+        }),
+      );
+    });
+
+    it('an enrolment WITHOUT a backup never touches the stored blob (older client)', async () => {
+      recoveryRepo.findOne.mockResolvedValue({ id: 3, userId: 7 });
+
+      await service.setRecoveryKey(7, phrase);
+
+      const calls = recoveryRepo.update.mock.calls as Array<
+        [unknown, Record<string, unknown>]
+      >;
+      expect('backupBlob' in calls[0][1]).toBe(false);
+    });
+  });
+
+  describe('getIdentityBackup / hasIdentityBackup (amendment (lxxviii))', () => {
+    const storedRow = {
+      id: 3,
+      userId: 7,
+      backupBlob: 'c2VhbGVkLWJsb2I=',
+      backupSalt: 'c2FsdC1zaXh0ZWVuLWI=',
+      backupIterations: 600000,
+      backupVersion: 1,
+    };
+
+    it('serves the stored backup exactly as written (round trip)', async () => {
+      recoveryRepo.findOne.mockResolvedValue(storedRow);
+
+      await expect(service.getIdentityBackup(7)).resolves.toEqual({
+        blob: storedRow.backupBlob,
+        salt: storedRow.backupSalt,
+        iterations: storedRow.backupIterations,
+        version: storedRow.backupVersion,
+      });
+      await expect(service.hasIdentityBackup(7)).resolves.toBe(true);
+    });
+
+    it('a verifier-only row (pre-(lxxviii) enrolment) has NO backup', async () => {
+      recoveryRepo.findOne.mockResolvedValue({
+        id: 3,
+        userId: 7,
+        backupBlob: null,
+        backupSalt: null,
+        backupIterations: null,
+        backupVersion: null,
+      });
+
+      await expect(service.getIdentityBackup(7)).resolves.toBeNull();
+      await expect(service.hasIdentityBackup(7)).resolves.toBe(false);
+    });
+
+    it('no recovery row at all means no backup', async () => {
+      recoveryRepo.findOne.mockResolvedValue(null);
+
+      await expect(service.getIdentityBackup(7)).resolves.toBeNull();
+      await expect(service.hasIdentityBackup(7)).resolves.toBe(false);
+    });
+  });
 });

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fireplace/l10n/app_localizations.dart';
@@ -9,6 +11,7 @@ import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/input/composer_keyboard_signals.dart';
 import 'package:fireplace/widgets/passcode_gate.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../support/passcode_fakes.dart';
 
@@ -354,6 +357,90 @@ void main() {
     expect(subtitle.data, contains('2'));
   });
 
+
+  testWidgets('a departure during the link ceremony does NOT curtain — '
+      '(lxxvi) clause 2: the scanner/permission surface is the cover, and a '
+      'curtain would flash over the QR when it closes', (tester) async {
+    // `passcode` from setUp leaves `ceremonyActive` at its default, so this
+    // proves the real wiring to the `linkCeremonyActive` global.
+    await passcode.initialize();
+    await passcode.enable(passcode: '1234', mode: PasscodeMode.digits4);
+    await tester.pumpWidget(_host(passcode));
+    await tester.pumpAndSettle();
+
+    linkCeremonyActive.value = true;
+    try {
+      await passcode.noteBackgrounded();
+      await tester.pump();
+
+      expect(find.byKey(const Key('passcode-curtain')), findsNothing);
+      expect(find.text('SECRET CHATS').hitTestable(), findsOneWidget);
+    } finally {
+      linkCeremonyActive.value = false;
+    }
+  });
+
+  // (lxxvi) clause 1: the erase warning is enrolment-aware. An enrolled
+  // account is NOT "log in again and start over" — the identity survives the
+  // erase (recovery phrase, another device, or the 72 h reset), and telling
+  // an enrolled user their safety number will change is simply false.
+  group('enrolment-aware erase copy', () {
+    String jwtFor(int uid) {
+      String enc(Map<String, dynamic> claims) =>
+          base64Url.encode(utf8.encode(jsonEncode(claims)));
+      return '${enc({'alg': 'HS256', 'typ': 'JWT'})}.'
+          '${enc({'sub': uid, 'username': 'u', 'tag': '0001'})}.sig';
+    }
+
+    Future<void> openErasePanel(WidgetTester tester) async {
+      await passcode.initialize();
+      await passcode.enable(passcode: '1234', mode: PasscodeMode.digits4);
+      passcode.lockNow();
+      await pumpLockScreen(
+        tester,
+        onErase: FakeLocalDataEraser().eraseEverything,
+      );
+      await tester.tap(find.byKey(const Key('passcode-forgot-link')));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('hint TRUE for the last-logged-in account: the enrolled copy, '
+        'naming the three doors', (tester) async {
+      // The lock screen has no AuthProvider (deliberately); the account comes
+      // from the stored access JWT — the same claim AuthProvider restores.
+      SharedPreferences.setMockInitialValues({
+        'jwt_token': jwtFor(7),
+        'account_enrolled_hint_7': true,
+      });
+      await openErasePanel(tester);
+
+      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+      expect(find.text(l10n.passcodeEraseWarningEnrolled), findsOneWidget);
+      expect(find.text(l10n.passcodeEraseWarning), findsNothing);
+    });
+
+    testWidgets('hint absent: the un-enrolled copy (FALSIFICATION control — '
+        'fails if the panel always renders the enrolled text)', (tester) async {
+      SharedPreferences.setMockInitialValues({'jwt_token': jwtFor(7)});
+      await openErasePanel(tester);
+
+      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+      expect(find.text(l10n.passcodeEraseWarning), findsOneWidget);
+      expect(find.text(l10n.passcodeEraseWarningEnrolled), findsNothing);
+    });
+
+    testWidgets('hint true for a DIFFERENT account stays un-enrolled copy',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({
+        'jwt_token': jwtFor(7),
+        'account_enrolled_hint_9': true,
+      });
+      await openErasePanel(tester);
+
+      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+      expect(find.text(l10n.passcodeEraseWarning), findsOneWidget);
+    });
+  });
 }
 
 class _Counter extends StatefulWidget {

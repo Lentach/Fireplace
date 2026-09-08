@@ -127,10 +127,18 @@ export class PushNotificationsService implements OnModuleInit {
    * long. Bypasses the message coalescer (not conversation-scoped, must never
    * debounce) and carries only a type; the client renders its own copy and
    * offers the one-tap cancel.
+   *
+   * `identity_restored` (amendment (lxxviii) clause 2) rides the same channel:
+   * content-free "your identity was restored on another install", sent to
+   * every endpoint BEFORE the §6.2 teardown drops the push rows.
    */
   async notifyIdentityReset(
     userId: number,
-    type: 'identity_reset_pending' | 'identity_reset_cancelled' | 'recovery_key_enrolled',
+    type:
+      | 'identity_reset_pending'
+      | 'identity_reset_cancelled'
+      | 'recovery_key_enrolled'
+      | 'identity_restored',
   ): Promise<void> {
     await Promise.all([
       this.notifyIdentityResetFcm(userId, type),
@@ -140,7 +148,11 @@ export class PushNotificationsService implements OnModuleInit {
 
   private async notifyIdentityResetFcm(
     userId: number,
-    type: 'identity_reset_pending' | 'identity_reset_cancelled' | 'recovery_key_enrolled',
+    type:
+      | 'identity_reset_pending'
+      | 'identity_reset_cancelled'
+      | 'recovery_key_enrolled'
+      | 'identity_restored',
   ): Promise<void> {
     if (!this.fcmInitialized) return;
     const tokens = await this.fcmTokensService.findTokensByUserId(userId, [
