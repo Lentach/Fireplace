@@ -2063,10 +2063,27 @@ class EncryptionProvider extends ChangeNotifier {
   bool get linkDisposesStaleMaterial =>
       deviceMaterialMismatch || identityUploadLocked;
 
+  /// True while a (lxxviii) phrase restore has started and not finished —
+  /// including a FAILED one, which is exactly the state the user has to be
+  /// able to see and retry.
+  ///
+  /// This is a SECOND reason to hold the gate, not a duplicate of
+  /// `identityIncomplete`: the restore's own rebind reconnect re-runs E2E init,
+  /// and the init success path clears `identityIncomplete` (`:1384`). So a
+  /// failure at the LISTING or session-rebuild stages — both of which happen
+  /// after the rebind — would otherwise drop the gate that hosts this
+  /// machine's progress and errors, which is the (lxxx) clause-6 defect one
+  /// step later in the sequence.
+  bool get restoreUnfinished =>
+      _restoreStage != IdentityRestoreStage.idle &&
+      _restoreStage != IdentityRestoreStage.done;
+
   /// True while this install cannot do E2E duty under its session's device id
-  /// and the §5.1 device-side flow is its way out: no identity at all, or
-  /// stale material per [linkDisposesStaleMaterial].
-  bool get needsDeviceLink => identityIncomplete || linkDisposesStaleMaterial;
+  /// and the §5.1 device-side flow is its way out: no identity at all,
+  /// stale material per [linkDisposesStaleMaterial], or a restore that has
+  /// not finished.
+  bool get needsDeviceLink =>
+      identityIncomplete || linkDisposesStaleMaterial || restoreUnfinished;
 
   // ---------- Identity reset ceremony (Phase 0b, spec §6.2) ----------
 

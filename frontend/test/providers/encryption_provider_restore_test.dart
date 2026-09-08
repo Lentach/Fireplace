@@ -396,4 +396,37 @@ void main() {
     );
     expect(log.where((e) => e == 'uploadKeyBundle'), hasLength(2));
   });
+
+  // The case the FIRST version of the clause-6 fix still got wrong. Stages
+  // after the rebind (`listing`, the session rebuilds) run once the reconnect
+  // has re-run E2E init, and the init success path clears `identityIncomplete`
+  // (:1384) behind the machine's back — so that flag alone cannot be what
+  // holds the gate. This drives the predicate directly: a provider whose init
+  // SUCCEEDED (so `identityIncomplete` is false) must still be gated while a
+  // restore sits unfinished.
+  test('an unfinished restore holds the gate even when init cleared the flag',
+      () async {
+    await arrangeSealedBackup();
+    final provider = await buildProvider();
+    expect(
+      provider.needsDeviceLink,
+      isFalse,
+      reason: 'precondition: nothing else is holding the gate',
+    );
+
+    provider.setEmitCallback((event, data) {
+      if (event == 'getIdentityBackup') {
+        scheduleMicrotask(() => provider.onIdentityBackup({'exists': false}));
+      }
+    });
+    await provider.restoreFromPhrase(phrase);
+
+    expect(provider.restoreStage, IdentityRestoreStage.failed);
+    expect(
+      provider.needsDeviceLink,
+      isTrue,
+      reason: 'an unfinished restore is itself a reason to keep the gate — the '
+          'user has to see the failure and retry it',
+    );
+  });
 }

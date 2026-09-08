@@ -2800,6 +2800,18 @@ that is the designed outcome).
     starts from the REAL gated state (no local identity + a server that says a bundle exists);
     an earlier version asserted on the diag marker instead and the (F20) mutant SURVIVED it, which
     is why the assertion is on `needsDeviceLink` itself.
+    **A THIRD change was needed, and the first two were not enough.** Clearing the flag late only
+    covers failures BEFORE the rebind. The rebind's reconnect re-runs E2E init, and the init success
+    path clears `identityIncomplete` itself — so a failure at `listing` or in the session-rebuild
+    sweep, both of which run after the rebind, dismissed the gate again. `needsDeviceLink` therefore
+    gains `restoreUnfinished` (`_restoreStage` neither `idle` nor `done`) as an INDEPENDENT reason
+    to hold the gate, which also covers a `failed` restore — precisely the state the user must be
+    able to see and retry. Falsification (F22): drop the `restoreUnfinished` term and a provider
+    whose init SUCCEEDED (so `identityIncomplete` is false) stops being gated by an unfinished
+    restore. A first attempt to test this by modelling the rebind inside the upload branch
+    DEADLOCKED the harness (the machine awaits the upload ack, which awaited an init that awaited
+    its own `checkOwnKeyBundle` answer from the same callback) — the kept test drives the predicate
+    directly instead, which is both faster and non-vacuous.
 
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the
