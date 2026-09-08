@@ -783,7 +783,7 @@
   "peerIdentityChangedSystemLine": "{name} is signing in from a new device or browser — security keys were updated.",
   "@peerIdentityChangedSystemLine": {"placeholders": {"name": {"type": "String"}}},
   "settingsKeyChangeWarnings": "Warn when a contact's keys change",
-  "settingsKeyChangeWarningsSubtitle": "Require manual confirmation of a new security number. By default new keys are accepted and a short note appears in the chat.",
+  "settingsKeyChangeWarningsSubtitle": "By default new keys are accepted and a short note appears in the chat.",
   "devicesRenameAction": "Rename",
   "@devicesRenameAction": {
     "description": "Button/tooltip that opens the rename sheet for one device row ((lxxx) clause 1)."

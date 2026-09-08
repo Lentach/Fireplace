@@ -3629,7 +3629,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsKeyChangeWarningsSubtitle.
   ///
   /// In pl, this message translates to:
-  /// **'Wymagaj ręcznego potwierdzenia nowego numeru bezpieczeństwa. Domyślnie nowe klucze są przyjmowane, a w rozmowie pojawia się krótka notatka.'**
+  /// **'Domyślnie nowe klucze są przyjmowane, a w czacie pojawia się krótka notatka.'**
   String get settingsKeyChangeWarningsSubtitle;
 
   /// Button/tooltip that opens the rename sheet for one device row ((lxxx) clause 1).

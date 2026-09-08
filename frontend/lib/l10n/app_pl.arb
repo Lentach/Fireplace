@@ -774,7 +774,7 @@
   "peerIdentityChangedSystemLine": "{name} loguje się z nowego urządzenia lub przeglądarki — klucze bezpieczeństwa zostały zaktualizowane.",
   "@peerIdentityChangedSystemLine": {"placeholders": {"name": {"type": "String"}}},
   "settingsKeyChangeWarnings": "Ostrzegaj o zmianie kluczy kontaktów",
-  "settingsKeyChangeWarningsSubtitle": "Wymagaj ręcznego potwierdzenia nowego numeru bezpieczeństwa. Domyślnie nowe klucze są przyjmowane, a w rozmowie pojawia się krótka notatka.",
+  "settingsKeyChangeWarningsSubtitle": "Domyślnie nowe klucze są przyjmowane, a w czacie pojawia się krótka notatka.",
   "devicesRenameAction": "Zmień nazwę",
   "@devicesRenameAction": {
     "description": "Button/tooltip that opens the rename sheet for one device row ((lxxx) clause 1)."

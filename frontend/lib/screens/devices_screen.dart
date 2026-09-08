@@ -12,6 +12,7 @@ import '../services/device_list/device_list_canonical.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/glass/glass_top_bar.dart';
 import '../utils/web_display_mode.dart';
+import '../utils/web_ios_viewport_pin.dart';
 import 'link_device_screen.dart';
 import 'recovery_key_screen.dart';
 
@@ -612,9 +613,28 @@ class _RenameDialogState extends State<_RenameDialog> {
   late final TextEditingController _field = TextEditingController(
     text: widget.initialName,
   );
+  // iOS WebKit keeps the LAYOUT viewport at full height when the keyboard
+  // opens and scrolls the host document to reveal the focused input, so a
+  // centred dialog was shoved off the top of the screen (owner's iPhone,
+  // 2026-09-08). Same scoped pin the composer uses: while this field has
+  // focus, `<flutter-view>` is pinned to the VISUAL viewport, the dialog
+  // re-centres above the keyboard, and the document has no overflow to
+  // scroll. Fully reverted on blur/dispose; no-op off iOS WebKit.
+  final FocusNode _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(_onFocusChanged);
+  }
+
+  void _onFocusChanged() => setIOSComposerViewportPin(_focus.hasFocus);
 
   @override
   void dispose() {
+    _focus.removeListener(_onFocusChanged);
+    setIOSComposerViewportPin(false);
+    _focus.dispose();
     _field.dispose();
     super.dispose();
   }
@@ -627,6 +647,7 @@ class _RenameDialogState extends State<_RenameDialog> {
       content: TextField(
         key: const Key('device-rename-field'),
         controller: _field,
+        focusNode: _focus,
         autofocus: true,
         maxLength: kDeviceNameMaxLength,
         textInputAction: TextInputAction.done,

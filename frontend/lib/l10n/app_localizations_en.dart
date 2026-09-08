@@ -2065,7 +2065,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsKeyChangeWarningsSubtitle =>
-      'Require manual confirmation of a new security number. By default new keys are accepted and a short note appears in the chat.';
+      'By default new keys are accepted and a short note appears in the chat.';
 
   @override
   String get devicesRenameAction => 'Rename';

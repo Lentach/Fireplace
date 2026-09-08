@@ -2093,7 +2093,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get settingsKeyChangeWarningsSubtitle =>
-      'Wymagaj ręcznego potwierdzenia nowego numeru bezpieczeństwa. Domyślnie nowe klucze są przyjmowane, a w rozmowie pojawia się krótka notatka.';
+      'Domyślnie nowe klucze są przyjmowane, a w czacie pojawia się krótka notatka.';
 
   @override
   String get devicesRenameAction => 'Zmień nazwę';
