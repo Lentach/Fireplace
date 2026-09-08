@@ -32,11 +32,24 @@ class PasscodeGate extends StatelessWidget {
     final passcode = context.watch<PasscodeProvider>();
     return ValueListenableBuilder<bool>(
       valueListenable: composerNativePickerActive,
-      builder: (context, pickerActive, _) => _body(context, passcode, pickerActive),
+      builder: (context, pickerActive, _) => ValueListenableBuilder<bool>(
+        // The link ceremony is the picker's twin (amendment (lxxvi) clause 2):
+        // its scanner/permission surfaces hide the page, and a DOM curtain
+        // over the QR would flash mid-ceremony exactly like one over the
+        // composer. Listened here so an arm/disarm happens on the flip, not
+        // on the next unrelated rebuild.
+        valueListenable: linkCeremonyActive,
+        builder: (context, ceremonyActive, _) =>
+            _body(context, passcode, pickerActive || ceremonyActive),
+      ),
     );
   }
 
-  Widget _body(BuildContext context, PasscodeProvider passcode, bool pickerActive) {
+  Widget _body(
+    BuildContext context,
+    PasscodeProvider passcode,
+    bool departureExempt,
+  ) {
     final state = passcode.state;
     // `unknown` counts as covered: the credential has not been read yet, and
     // painting the shell for one frame on every cold start of a locked app
@@ -53,10 +66,11 @@ class PasscodeGate extends StatelessWidget {
     // lifted HERE, after a frame that paints the state replacing it: the lock
     // screen, or the app once the return verdict said "still inside the
     // window". Lifting any earlier is the chat-for-one-frame flash again.
-    // Disarmed for the attach picker span (`composerNativePickerActive`): the
-    // OS sheet hides the page, and a curtain over the composer would flash
-    // when it closes — the same exemption the immediate lock has.
-    armDomCurtain(passcode.isEnabled && !pickerActive);
+    // Disarmed for the attach picker span (`composerNativePickerActive`) and
+    // for a live link ceremony (`linkCeremonyActive`): the OS sheet / scanner
+    // hides the page, and a curtain would flash when it closes — the same
+    // exemption the immediate lock has.
+    armDomCurtain(passcode.isEnabled && !departureExempt);
     if (state != PasscodeLockState.unknown && !curtained) {
       WidgetsBinding.instance.addPostFrameCallback((_) => hideDomCurtain());
     }

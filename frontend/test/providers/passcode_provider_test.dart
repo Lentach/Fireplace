@@ -8,7 +8,9 @@ import 'package:fireplace/services/encryption/content_key_wrap.dart';
 import 'package:fireplace/services/passcode_unlock_gate.dart';
 import 'package:fireplace/services/passcode_kdf.dart';
 import 'package:fireplace/services/passcode_store.dart';
+import 'package:fireplace/services/passcode_wrap_hook.dart';
 import 'package:fireplace/utils/passcode_autolock.dart';
+import 'package:fireplace/widgets/input/composer_keyboard_signals.dart';
 
 import '../support/passcode_fakes.dart';
 
@@ -1151,6 +1153,109 @@ void main() {
         ),
         isFalse,
       );
+    });
+  });
+
+  group('link ceremony exemption — (lxxvi) clause 2', () {
+    // Built with build(), which leaves `ceremonyActive` at its DEFAULT, so
+    // these tests prove the real wiring to the `linkCeremonyActive` global —
+    // not just an injected predicate.
+    setUp(() async {
+      await passcode.initialize();
+      await passcode.enable(passcode: '1234', mode: PasscodeMode.digits4);
+      await passcode.setAutoLockSeconds(0);
+    });
+
+    tearDown(() {
+      linkCeremonyActive.value = false;
+    });
+
+    test('at 0 s a background during the ceremony neither locks nor curtains: '
+        'a lock there revokes keys mid-adopt and (web) relaunches the page',
+        () async {
+      linkCeremonyActive.value = true;
+
+      await passcode.noteBackgrounded();
+
+      expect(passcode.state, PasscodeLockState.unlocked);
+      expect(passcode.curtained, isFalse,
+          reason: 'the scanner/permission sheet is the cover, not ours');
+    });
+
+    test('the foreground verdict is exempt too', () async {
+      linkCeremonyActive.value = true;
+      await passcode.noteBackgrounded();
+
+      await passcode.evaluateOnForeground();
+
+      expect(passcode.state, PasscodeLockState.unlocked);
+    });
+
+    test('FALSIFICATION control: the same background with no ceremony locks',
+        () async {
+      linkCeremonyActive.value = false;
+
+      await passcode.noteBackgrounded();
+
+      expect(passcode.state, PasscodeLockState.locked);
+    });
+  });
+
+  group('PasscodeWrapHook — (lxxvi) clause 3', () {
+    // The provider CONSTRUCTOR wires the static seam, so these tests go
+    // through `PasscodeWrapHook.run()` — the exact call the adopt paths make
+    // — not through `wrapRawKeysNow()` directly.
+    tearDown(() {
+      PasscodeWrapHook.afterRawKeysLanded = null;
+    });
+
+    test('raw keys landed by an adopt are wrapped by run() while wrapping is '
+        'on and the vault is open', () async {
+      final wrapping = build(wrapKeys: true);
+      await wrapping.initialize();
+      await wrapping.enable(passcode: '123456', mode: PasscodeMode.digits6);
+      // adoptProvisionedIdentity/adoptRestoredIdentity land a RAW key after
+      // the enable pass already wrapped everything else.
+      vaultStore.store['fp_sig_key_adopted'] = hex(3);
+
+      await PasscodeWrapHook.run();
+
+      expect(
+        WrappedContentKey.isEnvelope(vaultStore.store['fp_sig_key_adopted']!),
+        isTrue,
+        reason: 'a crash after adopt must not leave key material raw on a '
+            'device whose passcode is key material',
+      );
+    });
+
+    test('a no-op while the vault is LOCKED: no KEK in RAM means nothing can '
+        'be wrapped; the next unlock resumes instead', () async {
+      final wrapping = build(wrapKeys: true);
+      await wrapping.initialize();
+      await wrapping.enable(passcode: '123456', mode: PasscodeMode.digits6);
+      vault.lock();
+      vaultStore.store['fp_sig_key_adopted'] = hex(3);
+
+      await PasscodeWrapHook.run();
+
+      expect(vaultStore.store['fp_sig_key_adopted'], hex(3));
+    });
+
+    test('a no-op with wrapping off: nothing to protect, nothing converted',
+        () async {
+      final plain = build();
+      await plain.initialize();
+      await plain.enable(passcode: '1234', mode: PasscodeMode.digits4);
+      vaultStore.store['fp_sig_key_adopted'] = hex(3);
+
+      await PasscodeWrapHook.run();
+
+      expect(vaultStore.store['fp_sig_key_adopted'], hex(3));
+    });
+
+    test('with no provider constructed, run() is a safe no-op', () async {
+      PasscodeWrapHook.afterRawKeysLanded = null;
+      await PasscodeWrapHook.run();
     });
   });
 }

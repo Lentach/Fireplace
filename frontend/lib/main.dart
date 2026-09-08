@@ -221,8 +221,13 @@ class _AuthGateState extends State<AuthGate> {
     // the connection, the auth session and the locale at once. Logout
     // semantics — the local history and Signal keys stay (spec §1 non-goal).
     final l10n = AppLocalizations.of(context);
-    conn.onDeviceRevoked = () =>
-        auth.logoutBecauseDeviceRevoked(l10n.deviceRevokedNotice);
+    conn.onDeviceRevoked = (reason) => auth.logoutBecauseDeviceRevoked(
+      // (lxxviii): a phrase restore elsewhere is not a takeover and not a
+      // deliberate revocation — word the sign-out accordingly.
+      reason == 'restored'
+          ? l10n.deviceRevokedRestoredNotice
+          : l10n.deviceRevokedNotice,
+    );
 
     // The mirror case (spec §6.2): a reset teardown re-homed this account onto
     // a NEWLY allocated device and handed back the session bound to it. Same

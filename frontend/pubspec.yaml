@@ -6,7 +6,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 
 # App version: semver only (0.0.1, 0.0.2, 0.0.3, …). Bump PATCH by +1 on each release (see root CLAUDE.md §5).
 # Do not add a +suffix here — that is Flutter build metadata, not our user-visible version.
-version: 0.2.22
+version: 0.2.23
 
 environment:
   sdk: ^3.10.7
@@ -89,6 +89,11 @@ dependencies:
   crypto: ^3.0.0
   pointycastle: ^4.0.0
   qr_flutter: ^4.1.0
+  # (lxxvii) clause 3: native QR scanning (CameraX/ML Kit on Android). Web
+  # deliberately does NOT use this package's scanner — its web impl fetches
+  # ZXing at runtime; the web path is lib/widgets/link_qr_scanner_web.dart
+  # (BarcodeDetector → vendored web/jsqr.js), never a runtime CDN.
+  mobile_scanner: ^7.4.0
   light_compressor_v2: ^1.9.1
   pointer_interceptor: ^0.10.1+2
 

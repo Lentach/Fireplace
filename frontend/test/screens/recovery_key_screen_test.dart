@@ -1,0 +1,219 @@
+import 'package:fireplace/l10n/app_localizations.dart';
+import 'package:fireplace/providers/encryption_provider.dart';
+import 'package:fireplace/screens/recovery_key_screen.dart';
+import 'package:fireplace/services/device_link/identity_backup.dart';
+import 'package:fireplace/services/encryption_service.dart';
+import 'package:fireplace/services/recovery_phrase.dart';
+import 'package:flutter/material.dart';
+import 'package:fireplace/theme/rpg_theme.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../support/passcode_fakes.dart';
+
+/// The (lxxviii) clause-4 enrolment screen: words → one-random-word confirm
+/// → export + seal + `setRecoveryKey {phrase, backup}` → pop(true) ONLY on
+/// the server's success. The pop contract is what F9 rides on: the devices
+/// screen calls `enableLinking` only on a `true` result.
+void main() {
+  const userId = 9;
+
+  late EncryptionProvider provider;
+  late List<(String, dynamic)> emitted;
+
+  Future<void> pumpScreen(
+    WidgetTester tester, {
+    required List<bool?> results,
+    void Function(String event, dynamic data)? onEmit,
+  }) async {
+    FlutterSecureStorage.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({});
+    final service = EncryptionService();
+    await service.initialize(
+      userId,
+      checkServerIdentity: () async =>
+          const ServerIdentityGuard(exists: false),
+    );
+    provider = EncryptionProvider(service: service);
+    emitted = [];
+    provider.setEmitCallback((event, data) {
+      emitted.add((event, data));
+      onEmit?.call(event, data);
+    });
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<EncryptionProvider>.value(
+        value: provider,
+        child: MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: RpgTheme.themeDataLight,
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: ElevatedButton(
+                  key: const Key('open-screen'),
+                  onPressed: () async {
+                    final saved = await Navigator.of(context).push<bool>(
+                      MaterialPageRoute(
+                        builder: (_) => RecoveryKeyScreen(
+                          codec: IdentityBackupCodec(
+                            kdf: FakePasscodeKdf(),
+                            sealer: FakeContentSealer(),
+                          ),
+                        ),
+                      ),
+                    );
+                    results.add(saved);
+                  },
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const Key('open-screen')));
+    await tester.pumpAndSettle();
+  }
+
+  /// Generates the phrase and walks to the confirm step; returns the words.
+  Future<List<String>> walkToConfirm(WidgetTester tester) async {
+    final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+    await tester.tap(find.text(l10n.recoveryKeyGenerateAction));
+    await tester.pumpAndSettle();
+    final words = tester
+        .widget<SelectableText>(find.byType(SelectableText))
+        .data!
+        .split(RegExp(r'\s+'));
+    expect(words, hasLength(12));
+    await tester.tap(find.text(l10n.recoveryKeySavedAction));
+    await tester.pumpAndSettle();
+    return words;
+  }
+
+  int promptedIndex(WidgetTester tester) {
+    final prompt = tester
+        .widgetList<Text>(find.textContaining('#'))
+        .map((t) => t.data!)
+        .firstWhere((t) => t.contains('#'));
+    return int.parse(RegExp(r'#(\d+)').firstMatch(prompt)!.group(1)!) - 1;
+  }
+
+  testWidgets('shows no phrase until one is explicitly generated; generating '
+      'shows twelve real BIP39 words', (tester) async {
+    await pumpScreen(tester, results: <bool?>[]);
+    expect(find.byType(SelectableText), findsNothing);
+
+    final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+    await tester.tap(find.text(l10n.recoveryKeyGenerateAction));
+    await tester.pumpAndSettle();
+    final shown = tester.widget<SelectableText>(find.byType(SelectableText));
+    final phrase = RecoveryPhrase.normalize(shown.data ?? '');
+    expect(phrase.split(' ').length, 12);
+    expect(
+      RecoveryPhrase.isValid(phrase),
+      isTrue,
+      reason: 'a phrase the server cannot verify is worse than none',
+    );
+  });
+
+  testWidgets('a wrong confirm word shows the mismatch and uploads NOTHING',
+      (tester) async {
+    final results = <bool?>[];
+    await pumpScreen(tester, results: results);
+    final words = await walkToConfirm(tester);
+    final index = promptedIndex(tester);
+
+    // Any word that is guaranteed not to be the demanded one.
+    final wrong = words[(index + 1) % words.length] == words[index]
+        ? 'zebra'
+        : words[(index + 1) % words.length];
+    await tester.enterText(
+      find.byKey(const Key('recovery-key-confirm-field')),
+      wrong,
+    );
+    await tester.tap(find.byKey(const Key('recovery-key-confirm-action')));
+    await tester.pumpAndSettle();
+
+    final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+    expect(find.text(l10n.recoveryKeyConfirmMismatch), findsOneWidget);
+    expect(emitted, isEmpty, reason: 'no upload before a passed confirm');
+
+    // Retry with the RIGHT word from the same prompt succeeds.
+    provider.onOwnKeyBundleStatus(const {'exists': true});
+    await tester.enterText(
+      find.byKey(const Key('recovery-key-confirm-field')),
+      words[index],
+    );
+    await tester.tap(find.byKey(const Key('recovery-key-confirm-action')));
+    await tester.pump();
+    // Let export + seal run, then answer the server ack and drain the poll.
+    for (var i = 0; i < 5 && emitted.isEmpty; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(emitted.map((e) => e.$1), contains('setRecoveryKey'));
+    provider.onRecoveryKeySet(const {'success': true});
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+
+    final payload =
+        emitted.firstWhere((e) => e.$1 == 'setRecoveryKey').$2 as Map;
+    expect(payload['phrase'], words.join(' '));
+    final backup = payload['backup'] as Map;
+    expect(backup['version'], 1);
+    expect(backup['iterations'], kIdentityBackupKdfIterations);
+    expect(backup['blob'], isA<String>());
+    expect(backup['salt'], isA<String>());
+    expect(results, [true], reason: 'a landed backup pops true');
+    // The phrase is never written to local storage: it would be destroyed by
+    // exactly the event it exists to recover from.
+    final prefs = await SharedPreferences.getInstance();
+    for (final key in prefs.getKeys()) {
+      expect(
+        prefs.get(key).toString(),
+        isNot(contains(words.join(' '))),
+        reason: 'storing the phrase loses it with the device',
+      );
+    }
+    // Drain the success snackbar's auto-dismiss timer.
+    await tester.pump(const Duration(seconds: 3));
+  });
+
+  testWidgets('F9: a refused backup upload stays on screen and never pops true',
+      (tester) async {
+    final results = <bool?>[];
+    await pumpScreen(
+      tester,
+      results: results,
+      onEmit: (event, data) {
+        if (event == 'setRecoveryKey') {
+          provider.onRecoveryKeySet(const {'success': false});
+        }
+      },
+    );
+    final words = await walkToConfirm(tester);
+    final index = promptedIndex(tester);
+    await tester.enterText(
+      find.byKey(const Key('recovery-key-confirm-field')),
+      words[index],
+    );
+    await tester.tap(find.byKey(const Key('recovery-key-confirm-action')));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+
+    final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+    expect(find.text(l10n.recoveryKeyBackupFailed), findsOneWidget);
+    expect(find.byType(RecoveryKeyScreen), findsOneWidget,
+        reason: 'the screen must not pretend success');
+    expect(results, isEmpty,
+        reason: 'no result yet — and never true, so enableLinking stays uncalled');
+    // Drain the failure snackbar's auto-dismiss timer.
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+  });
+}

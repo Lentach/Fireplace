@@ -23,6 +23,7 @@ import { UsersService } from '../../users/users.service';
 import {
   CancelProvisioningDto,
   FetchProvisioningBlobDto,
+  OpenProvisioningDto,
   ProvisionDeviceDto,
   ProvisioningCompleteDto,
   ProvisioningHelloDto,
@@ -72,15 +73,20 @@ export class ChatProvisioningService {
   ) {}
 
   /**
-   * N opens a ceremony. The deviceId is allocated exactly once HERE and
-   * memoized on the stage (amendment (a)); it is deliberately NOT in the
-   * answer — N learns its id from the decrypted blob only, the primary from
-   * `provisioningHelloAck`.
+   * Either side opens a ceremony (amendment (lxxvii)): `role` defaults to
+   * 'new' (the joining device — byte-compatible with the roleless v1 open),
+   * 'primary' means the enrolled device opened and the joining device says
+   * hello. The deviceId is allocated exactly once HERE and memoized on the
+   * stage (amendment (a)); it is deliberately NOT in the answer — N learns
+   * its id from the decrypted blob only, the primary from
+   * `provisioningHelloAck` or the hello relay.
    */
-  async handleOpenProvisioning(client: Socket): Promise<void> {
+  async handleOpenProvisioning(client: Socket, data?: unknown): Promise<void> {
     const userId = socketUserId(client);
     if (!userId) return;
     try {
+      const dto = validateDto(OpenProvisioningDto, data ?? {});
+      const role = dto.role ?? 'new';
       const authorization =
         await this.deviceListService.getAuthorization(userId);
       if (!authorization) {
@@ -91,7 +97,7 @@ export class ChatProvisioningService {
         return;
       }
       const deviceId = await this.devicesService.allocateDeviceId(userId);
-      const stage = this.stages.open(userId, client.id, deviceId);
+      const stage = this.stages.open(userId, client.id, deviceId, role);
       client.emit('provisioningOpened', {
         success: true,
         provisioningId: stage.provisioningId,
@@ -108,11 +114,15 @@ export class ChatProvisioningService {
   }
 
   /**
-   * The primary presents its ephemeral. The FIRST `ephPubP` is pinned
-   * (amendment (c)); an identical retry re-answers success and re-relays
-   * (idempotent — the first relay may have raced N's listener), a different
-   * one is refused. The ack carries the memoized deviceId: this is how the
-   * primary learns the id it must sign (amendment (a)).
+   * The OTHER party (the primary when the opener is 'new', the joining
+   * device when the opener is 'primary') presents its ephemeral. The FIRST
+   * one is pinned (amendment (c)); an identical retry re-answers success and
+   * re-relays (idempotent — the first relay may have raced the opener's
+   * listener), a different one is refused. The ack AND the relay carry the
+   * memoized deviceId (amendment (lxxvii)): this is how the primary learns
+   * the id it must sign, whichever socket it sits on. The wire field stays
+   * `ephPubP` for v1 compatibility even though it is simply "the hello
+   * party's ephemeral".
    */
   handleProvisioningHello(client: Socket, data: unknown, server: Server): void {
     const userId = socketUserId(client);
@@ -146,6 +156,13 @@ export class ChatProvisioningService {
         return;
       }
       stage.ephPubP = dto.ephPubP;
+      // Record which socket the hello side speaks from: it fills whichever
+      // role slot the opener did not take.
+      if (stage.openerRole === 'new') {
+        stage.primarySocketId = client.id;
+      } else {
+        stage.newDeviceSocketId = client.id;
+      }
       client.emit('provisioningHelloAck', {
         success: true,
         deviceId: stage.deviceId,
@@ -153,6 +170,7 @@ export class ChatProvisioningService {
       server.to(stage.openerSocketId).emit('provisioningHello', {
         provisioningId: stage.provisioningId,
         ephPubP: dto.ephPubP,
+        deviceId: stage.deviceId,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -167,9 +185,11 @@ export class ChatProvisioningService {
   }
 
   /**
-   * The primary stages the blob + signed v+1 mutation (§5.1 two-phase
-   * commit). Everything is verified BEFORE staging; a retry OVERWRITES the
-   * staged payload (the stage is not consumed until completion).
+   * The PRIMARY stages the blob + signed v+1 mutation (§5.1 two-phase
+   * commit) — explicitly `primarySocketId` only (amendment (lxxvii),
+   * falsification F4). Everything is verified BEFORE staging; a retry
+   * OVERWRITES the staged payload (the stage is not consumed until
+   * completion).
    */
   async handleProvisionDevice(
     client: Socket,
@@ -188,12 +208,25 @@ export class ChatProvisioningService {
         });
         return;
       }
-      if (stage.ephPubP === null) {
+      if (
+        stage.ephPubP === null ||
+        stage.primarySocketId === null ||
+        stage.newDeviceSocketId === null
+      ) {
         // Secrets-last (I3): a blob before the SAS round even started is a
         // protocol violation, not a race.
         client.emit('provisionDeviceAck', {
           success: false,
           error: 'hello_not_pinned',
+        });
+        return;
+      }
+      if (client.id !== stage.primarySocketId) {
+        // Only the primary holds the DAK; a blob from any other socket —
+        // including the new device itself — is refused (F4).
+        client.emit('provisionDeviceAck', {
+          success: false,
+          error: 'not_primary',
         });
         return;
       }
@@ -269,7 +302,7 @@ export class ChatProvisioningService {
       stage.stagedListSignature = dto.listSignature;
       stage.platform = added.platform;
       client.emit('provisionDeviceAck', { success: true });
-      server.to(stage.openerSocketId).emit('provisioningBlob', {
+      server.to(stage.newDeviceSocketId).emit('provisioningBlob', {
         provisioningId: stage.provisioningId,
         blob: dto.blob,
       });
@@ -285,8 +318,10 @@ export class ChatProvisioningService {
 
   /**
    * Blob re-fetch until TTL or completion (§5.1; falsification 18: a ceremony
-   * killed between blob and complete leaves the blob re-fetchable). Opener
-   * socket only — knowledge of the provisioningId alone drives nothing.
+   * killed between blob and complete leaves the blob re-fetchable). The NEW
+   * device's socket only — knowledge of the provisioningId alone drives
+   * nothing. The refusal keeps the v1 `not_opener` code (the new device IS
+   * the opener in the default role).
    */
   handleFetchProvisioningBlob(client: Socket, data: unknown): void {
     const userId = socketUserId(client);
@@ -301,7 +336,7 @@ export class ChatProvisioningService {
         });
         return;
       }
-      if (client.id !== stage.openerSocketId) {
+      if (client.id !== stage.newDeviceSocketId) {
         client.emit('provisioningBlob', {
           success: false,
           error: 'not_opener',
@@ -331,11 +366,12 @@ export class ChatProvisioningService {
   }
 
   /**
-   * Two-phase commit, phase two (§5.1). Opener socket ONLY (falsification 8),
-   * one-shot via the stage's synchronous CAS (amendment (a)), then ONE
-   * transaction: devices row + signed list mutation + refresh session. The
-   * re-issued tokens travel in the success answer on the opener socket
-   * (amendment (iii)) — same trust surface as login's answer.
+   * Two-phase commit, phase two (§5.1). The NEW device's socket ONLY
+   * (falsification 8; refusal keeps the v1 `not_opener` code), one-shot via
+   * the stage's synchronous CAS (amendment (a)), then ONE transaction:
+   * devices row + signed list mutation + refresh session. The re-issued
+   * tokens travel in the success answer on that socket (amendment (iii)) —
+   * same trust surface as login's answer.
    */
   async handleProvisioningComplete(
     client: Socket,
@@ -354,9 +390,9 @@ export class ChatProvisioningService {
         });
         return;
       }
-      if (client.id !== stage.openerSocketId) {
-        // Falsification 8: any session other than the opener's — even of the
-        // same account — is rejected.
+      if (client.id !== stage.newDeviceSocketId) {
+        // Falsification 8: any session other than the new device's — even of
+        // the same account — is rejected.
         client.emit('provisioningCompleted', {
           success: false,
           error: 'not_opener',
@@ -492,8 +528,10 @@ export class ChatProvisioningService {
   /**
    * Cancel, accepted from ANY authenticated session of the account: the
    * server cannot cryptographically identify the primary (the DAK never
-   * touches it), and the opener cancelling its own ceremony is harmless —
-   * the protective action stays generously available (I4 spirit).
+   * touches it), and a party cancelling its own ceremony is harmless — the
+   * protective action stays generously available (I4 spirit). The relay
+   * notifies every recorded party OTHER than the caller (amendment
+   * (lxxvii)).
    */
   handleCancelProvisioning(
     client: Socket,
@@ -513,9 +551,17 @@ export class ChatProvisioningService {
         return;
       }
       this.stages.discard(stage.provisioningId);
-      server.to(stage.openerSocketId).emit('provisioningCancelled', {
-        provisioningId: stage.provisioningId,
-      });
+      const others = new Set(
+        [stage.primarySocketId, stage.newDeviceSocketId].filter(
+          (socketId): socketId is string =>
+            socketId !== null && socketId !== client.id,
+        ),
+      );
+      for (const socketId of others) {
+        server.to(socketId).emit('provisioningCancelled', {
+          provisioningId: stage.provisioningId,
+        });
+      }
       client.emit('provisioningCancelled', {
         success: true,
         provisioningId: stage.provisioningId,

@@ -56,6 +56,10 @@ void main() {
     await alice.initialize(aliceId, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
     await bob.initialize(bobId, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
     await mallory.initialize(malloryId, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
+    // (lxxix) flipped the DEFAULT to demoted (auto-acknowledge + muted note).
+    // These tests assert the MANUAL warning surface, so they opt back in; the
+    // demoted default is proven in encryption_key_change_demotion_test.dart.
+    alice.keyChangeWarnings = () => true;
   });
 
   group('peer identity substitution', () {

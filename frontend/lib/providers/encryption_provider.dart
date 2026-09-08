@@ -4,11 +4,17 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import '../models/message_model.dart';
+import '../services/account_enrolled_hint.dart';
 import '../services/audio_cache_store.dart';
 import '../services/e2e_lock_revoker.dart';
 import '../services/encryption_service.dart';
+import '../services/device_link/dak_store.dart';
+import '../services/device_link/identity_backup.dart';
+import '../services/device_link/link_ceremony_controller.dart'
+    show linkPlatformLabel;
 import '../services/device_list/device_list_cache.dart';
 import '../services/device_list/device_list_canonical.dart';
+import '../services/device_list/device_authority_engine.dart';
 import '../services/passcode_unlock_gate.dart';
 import '../services/server_clock.dart';
 import '../utils/e2e_diag_log.dart';
@@ -19,8 +25,13 @@ import '../utils/boot_markers.dart';
 
 /// EncryptionProvider — owns all E2E encryption state, initialization,
 class EncryptionProvider extends ChangeNotifier {
-  EncryptionProvider({EncryptionService? service})
-    : _encryptionService = service ?? EncryptionService() {
+  EncryptionProvider({
+    EncryptionService? service,
+    IdentityBackupCodec? backupCodec,
+    DakStore? dakStore,
+  }) : _encryptionService = service ?? EncryptionService(),
+       _backupCodec = backupCodec ?? IdentityBackupCodec(),
+       _dakStore = dakStore ?? DakStore() {
     // Register on the process-wide lock seam. Last one built wins, which in
     // production means the only one; [dispose] deregisters itself so a widget
     // test cannot leave a torn-down provider wired to the next test's lock.
@@ -30,6 +41,14 @@ class EncryptionProvider extends ChangeNotifier {
   }
 
   final E2eLockRevoker _revoker = E2eLockRevoker.instance;
+
+  /// Seals/unseals the (lxxviii) phrase backup. Injectable: the test binding
+  /// has no webcrypto native, and the restore tests are about the state
+  /// machine, not the cipher.
+  final IdentityBackupCodec _backupCodec;
+
+  /// The persisted DAK, for the restore's post-rebind list re-sign.
+  final DakStore _dakStore;
 
   static void _e2eFlowLog(String step, [Map<String, dynamic>? data]) {
     E2eDiagLog.add(step, data ?? {});
@@ -137,6 +156,27 @@ class EncryptionProvider extends ChangeNotifier {
   /// than silently re-trusted.
   Set<int> get peersWithChangedIdentity =>
       _encryptionService.peersWithChangedIdentity;
+
+  /// Peers whose session build the (xxxix)/(lv) account-anchor gate REFUSED
+  /// this run. Renders the red pill regardless of the (lxxix) demotion
+  /// setting: a refusal blocks sending, so it must always have a visible
+  /// door to the ceremony. Change notifications ride the service's
+  /// onPeerIdentityChanged wire, same as the warning set.
+  Set<int> get peersRefusedIdentity =>
+      _encryptionService.peersRefusedIdentity;
+
+  /// One-shot muted key-change notes (amendment (lxxix)): peerId → ISO-8601
+  /// instant of the auto-acknowledged change. Rendered as a calm system line
+  /// while [keyChangeWarnings] is off; persisted so it survives a reload.
+  Map<int, String> get peerKeyChangeNotes =>
+      _encryptionService.peerKeyChangeNotes;
+
+  /// (lxxix): whether the user opted back into manual key-change
+  /// confirmation. Wired from `SettingsProvider` (ConversationsScreen
+  /// initState); default matches the spec default (warnings demoted).
+  set keyChangeWarnings(bool Function() predicate) {
+    _encryptionService.keyChangeWarnings = predicate;
+  }
 
   /// ISO-8601 instant of the last server-reported replacement of this
   /// account's key bundle by ANOTHER session (Phase 0a takeover alarm), or
@@ -1433,12 +1473,7 @@ class EncryptionProvider extends ChangeNotifier {
           // never have to judge them before this device's own bundle landed.
           // Emitting both back to back raced them — the keys frequently
           // arrived first.
-          _stashOneTimePreKeyUpload(
-            (keys['oneTimePreKeys'] as List).cast<Map<String, dynamic>>(),
-            identity,
-            registrationId: keyBundle['registrationId'] as int?,
-          );
-          _emit?.call('uploadKeyBundle', keyBundle);
+          _publishKeyBundle(keys, identity);
           debugPrint('[E2E] Key bundle emitted; pre-keys wait for its ack');
           _e2eFlowLog('E2E_KEYS_UPLOADED', {});
         }
@@ -1511,6 +1546,11 @@ class EncryptionProvider extends ChangeNotifier {
   /// reconnect re-upload spending a completed ceremony, not the refused
   /// self-publish that started it.
   void onKeyBundleUploaded(dynamic data) {
+    // (lxxviii): the restore machine, when one is waiting, reads this ack
+    // too — a `restored:true` advances it, a refusal fails it. Observed
+    // BEFORE the generic handling so a refusal is attributed even though the
+    // generic path returns early.
+    _restoreObserveUploadAck(data);
     if (data is Map && data['success'] == false) {
       final error = data['error'];
       if (error == 'identity_locked') {
@@ -1619,6 +1659,381 @@ class EncryptionProvider extends ChangeNotifier {
     List<Map<String, dynamic>> keys,
     String identityPublicKey,
   ) => _stashOneTimePreKeyUpload(keys, identityPublicKey);
+
+  // ---------- Identity restore ((lxxviii) clause 3) ----------
+
+  IdentityRestoreStage _restoreStage = IdentityRestoreStage.idle;
+  IdentityRestoreFailure? _restoreFailure;
+
+  /// Where the phrase restore currently stands. Drives the gate's restore
+  /// section; a terminal state may be retried by calling [restoreFromPhrase]
+  /// again.
+  IdentityRestoreStage get restoreStage => _restoreStage;
+
+  /// Why the last restore failed, while [restoreStage] is `failed`.
+  IdentityRestoreFailure? get restoreFailure => _restoreFailure;
+
+  /// Conversation peer ids for the post-restore `requestSessionRebuild`
+  /// sweep. Wired by ConnectionProvider (which holds ConversationsProvider);
+  /// a provider must not read another provider directly.
+  List<int> Function()? sessionRebuildPeers;
+
+  Completer<Map<String, dynamic>>? _pendingIdentityBackupAnswer;
+  Completer<String>? _pendingLockNonce;
+  Completer<Map<String, dynamic>>? _pendingRestoreUploadAck;
+  Completer<Map<String, dynamic>>? _pendingDeviceListUpdateAck;
+
+  void _setRestoreStage(IdentityRestoreStage stage) {
+    if (_restoreStage == stage) return;
+    _restoreStage = stage;
+    notifyListeners();
+  }
+
+  void _failRestore(IdentityRestoreFailure failure, String why) {
+    E2ePersistentDiag.record('RESTORE_FAILED', {
+      'stage': _restoreStage.name,
+      'why': why,
+    });
+    _e2eFlowLog('RESTORE_FAILED', {'stage': _restoreStage.name, 'why': why});
+    _restoreFailure = failure;
+    _setRestoreStage(IdentityRestoreStage.failed);
+  }
+
+  /// The (lxxviii) clause-3 restore: fetch the phrase-sealed backup, unseal
+  /// it locally, reinstall identity + DAK, upload the bundle with the restore
+  /// proof, ride the (xxviii) rebind, re-sign the device list at the
+  /// server-named version and ask every conversation peer to re-key.
+  ///
+  /// A GCM open failure stops the machine BEFORE any nonce request or upload
+  /// (falsification F10): a wrong phrase spends nothing server-side.
+  Future<void> restoreFromPhrase(String phrase) async {
+    if (_restoreStage != IdentityRestoreStage.idle &&
+        _restoreStage != IdentityRestoreStage.done &&
+        _restoreStage != IdentityRestoreStage.failed) {
+      return;
+    }
+    final userId = _currentUserId;
+    if (userId == null || _emit == null) {
+      return _failRestore(IdentityRestoreFailure.failed, 'no_session');
+    }
+    _restoreFailure = null;
+    _setRestoreStage(IdentityRestoreStage.fetching);
+    final answer = await requestIdentityBackup();
+    if (answer == null) {
+      return _failRestore(IdentityRestoreFailure.failed, 'backup_fetch');
+    }
+    if (answer['exists'] != true) {
+      // `exists:false` with an error rider is the fail-closed UNKNOWN — never
+      // tell the user they have no backup on the server's bad day.
+      return _failRestore(
+        answer['error'] == null
+            ? IdentityRestoreFailure.noBackup
+            : IdentityRestoreFailure.failed,
+        'no_backup',
+      );
+    }
+    final blob = answer['blob'];
+    final salt = answer['salt'];
+    final iterations = answer['iterations'];
+    if (blob is! String || salt is! String || iterations is! int) {
+      return _failRestore(IdentityRestoreFailure.failed, 'backup_shape');
+    }
+    _setRestoreStage(IdentityRestoreStage.unsealing);
+    final IdentityBackupPayload payload;
+    try {
+      payload = await _backupCodec.unseal(
+        blob: blob,
+        salt: salt,
+        iterations: iterations,
+        phrase: phrase,
+      );
+    } on IdentityBackupWrongPhrase {
+      return _failRestore(IdentityRestoreFailure.wrongPhrase, 'wrong_phrase');
+    } catch (_) {
+      return _failRestore(IdentityRestoreFailure.failed, 'backup_corrupt');
+    }
+    _setRestoreStage(IdentityRestoreStage.adopting);
+    try {
+      await _encryptionService.adoptRestoredIdentity(
+        userId: userId,
+        payload: payload,
+        // Same authorization as the §5.1 ceremony's disposal: a held identity
+        // is only disposed when the server already stated it will never serve
+        // ((lxv)/(lxvii)); with no identity there is nothing to authorize.
+        disposeStaleMaterial: linkDisposesStaleMaterial,
+      );
+    } catch (e) {
+      return _failRestore(
+        IdentityRestoreFailure.failed,
+        'adopt:${e.runtimeType}',
+      );
+    }
+    _identityIncomplete = false;
+    _setRestoreStage(IdentityRestoreStage.uploading);
+    final nonce = await _requestLockNonce();
+    if (nonce == null) {
+      return _failRestore(IdentityRestoreFailure.failed, 'nonce');
+    }
+    final String proof;
+    try {
+      proof = await _encryptionService.signRestoreProof(nonce);
+    } catch (_) {
+      return _failRestore(IdentityRestoreFailure.failed, 'sign');
+    }
+    final keys = _encryptionService.getKeysForUpload();
+    final keyBundle = keys?['keyBundle'];
+    final identity = keyBundle is Map<String, dynamic>
+        ? keyBundle['identityPublicKey']
+        : null;
+    if (keys == null || identity is! String || identity.isEmpty) {
+      return _failRestore(IdentityRestoreFailure.failed, 'no_keys');
+    }
+    final ack = Completer<Map<String, dynamic>>();
+    _pendingRestoreUploadAck = ack;
+    // Same builder as the init upload: OTPs are STASHED and released by the
+    // ack — which ConnectionProvider delivers only AFTER adopting the rebound
+    // session and reconnecting, so they ride the fresh device id.
+    _publishKeyBundle(
+      keys,
+      identity,
+      proof: {'restoreSignature': proof, 'nonce': nonce},
+    );
+    _setRestoreStage(IdentityRestoreStage.rebinding);
+    final Map<String, dynamic> uploaded;
+    try {
+      uploaded = await ack.future.timeout(const Duration(seconds: 45));
+    } on TimeoutException {
+      _pendingRestoreUploadAck = null;
+      return _failRestore(IdentityRestoreFailure.failed, 'ack_timeout');
+    }
+    if (uploaded['restored'] != true) {
+      return _failRestore(
+        uploaded['error'] == 'restore_refused'
+            ? IdentityRestoreFailure.refused
+            : IdentityRestoreFailure.failed,
+        'upload:${uploaded['error']}',
+      );
+    }
+    E2ePersistentDiag.record('RESTORE_REBOUND', {
+      'deviceId': '${uploaded['deviceId']}',
+    });
+    _setRestoreStage(IdentityRestoreStage.listing);
+    try {
+      await _publishRestoredDeviceList(
+        userId: userId,
+        deviceId: uploaded['deviceId'] is int
+            ? uploaded['deviceId'] as int
+            : null,
+        version: uploaded['nextListVersion'] is int
+            ? uploaded['nextListVersion'] as int
+            : null,
+        hadDak: payload.dak != null,
+      );
+    } catch (e) {
+      return _failRestore(IdentityRestoreFailure.failed, 'list:$e');
+    }
+    await _requestSessionRebuilds();
+    _setRestoreStage(IdentityRestoreStage.done);
+    // The adopt left the service initialized but this provider's init flag is
+    // still whatever the gate saw; the rebind reconnect usually re-runs the
+    // init, but nudge it in case that pass raced the adopt.
+    if (!_e2eInitialized) unawaited(retryE2EInit());
+  }
+
+  /// Emits `getIdentityBackup` and awaits the `identityBackup` answer, or
+  /// null on timeout / no socket. The answer map is returned raw; the blob is
+  /// useless without the phrase, so nothing here is trust-bearing.
+  Future<Map<String, dynamic>?> requestIdentityBackup() async {
+    final emit = _emit;
+    if (emit == null) return null;
+    final completer = Completer<Map<String, dynamic>>();
+    _pendingIdentityBackupAnswer = completer;
+    emit('getIdentityBackup', const <String, dynamic>{});
+    try {
+      return await completer.future.timeout(const Duration(seconds: 20));
+    } on TimeoutException {
+      return null;
+    } finally {
+      _pendingIdentityBackupAnswer = null;
+    }
+  }
+
+  /// Handler for the `identityBackup` server event.
+  void onIdentityBackup(dynamic data) {
+    final pending = _pendingIdentityBackupAnswer;
+    if (pending == null || pending.isCompleted) return;
+    pending.complete(
+      data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{},
+    );
+  }
+
+  /// Emits `getRegistrationLockNonce` and awaits `registrationLockNonce`.
+  Future<String?> _requestLockNonce() async {
+    final emit = _emit;
+    if (emit == null) return null;
+    final completer = Completer<String>();
+    _pendingLockNonce = completer;
+    emit('getRegistrationLockNonce', const <String, dynamic>{});
+    try {
+      return await completer.future.timeout(const Duration(seconds: 20));
+    } on TimeoutException {
+      return null;
+    } finally {
+      _pendingLockNonce = null;
+    }
+  }
+
+  /// Handler for the `registrationLockNonce` server event.
+  void onRegistrationLockNonce(dynamic data) {
+    final pending = _pendingLockNonce;
+    if (pending == null || pending.isCompleted) return;
+    final nonce = data is Map ? data['nonce'] : null;
+    if (nonce is String && nonce.isNotEmpty) pending.complete(nonce);
+  }
+
+  /// Resolves the restore machine's pending upload ack, when one is waiting.
+  /// A plain same-identity re-upload ack (`success:true` without `restored`)
+  /// is NOT the restore's answer — the reconnect init can race one in.
+  void _restoreObserveUploadAck(dynamic data) {
+    final pending = _pendingRestoreUploadAck;
+    if (pending == null || pending.isCompleted || data is! Map) return;
+    if (data['success'] == true && data['restored'] != true) return;
+    _pendingRestoreUploadAck = null;
+    pending.complete(Map<String, dynamic>.from(data));
+  }
+
+  /// Re-signs the account's device list after the restore rebind: every
+  /// previously listed device is tombstoned (the teardown already revoked
+  /// them server-side; the SIGNED list is what tells peers) and this device
+  /// is added, at the server-named [version]. `updateDeviceList`, not a
+  /// re-enrolment — the identity did not change, so E still verifies.
+  Future<void> _publishRestoredDeviceList({
+    required int userId,
+    required int? deviceId,
+    required int? version,
+    required bool hadDak,
+  }) async {
+    if (!hadDak) {
+      // A never-enrolled account has no DAK and no list to re-sign.
+      E2ePersistentDiag.record('RESTORE_LIST_SKIPPED', {'why': 'no_dak'});
+      return;
+    }
+    if (deviceId == null ||
+        version == null ||
+        version < 1 ||
+        version > 1000000) {
+      // Same plausibility ceiling as the §6.2 re-enrollment: a hostile server
+      // naming a number near the integer ceiling would freeze the list.
+      throw StateError('implausible restore roster ($deviceId@$version)');
+    }
+    final dak = await _dakStore.read(userId: userId);
+    if (dak == null) {
+      throw StateError('restored dak record missing');
+    }
+    // The OLD list names the devices to tombstone. Best-effort: an unanswered
+    // fetch cannot name rows, and the teardown already revoked them
+    // server-side, so the new list simply starts from this device alone.
+    List<DeviceListEntry> previous = const [];
+    try {
+      final answer = await _fetchDeviceListAnswer(
+        userId,
+        const Duration(seconds: 15),
+      );
+      final canonical = answer?['listCanonical'];
+      if (canonical is String) {
+        previous = parseCanonicalDeviceList(base64Decode(canonical)).devices;
+      }
+    } catch (_) {}
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final devices = [
+      for (final d in previous)
+        if (d.deviceId != deviceId)
+          DeviceListEntry(
+            deviceId: d.deviceId,
+            platform: d.platform,
+            addedAtMs: d.addedAtMs,
+            name: d.name,
+            revokedAtMs: d.revokedAtMs ?? now,
+          ),
+      DeviceListEntry(
+        deviceId: deviceId,
+        platform: linkPlatformLabel(),
+        addedAtMs: now,
+      ),
+    ]..sort((a, b) => a.deviceId.compareTo(b.deviceId));
+    final engine = DeviceAuthorityEngine()
+      ..restoreDak(dakPubBase64: dak.dakPub, dakPrivBase64: dak.dakPriv);
+    final signed = engine.signList(
+      DeviceList(userId: userId, version: version, devices: devices),
+    );
+    final ack = Completer<Map<String, dynamic>>();
+    _pendingDeviceListUpdateAck = ack;
+    _emit?.call('updateDeviceList', signed);
+    try {
+      final answer = await ack.future.timeout(const Duration(seconds: 20));
+      if (answer['success'] != true) {
+        throw StateError('updateDeviceList refused: ${answer['error']}');
+      }
+    } on TimeoutException {
+      throw StateError('updateDeviceList unanswered');
+    } finally {
+      _pendingDeviceListUpdateAck = null;
+    }
+    invalidateDeviceList(userId);
+    E2ePersistentDiag.record('RESTORE_LIST_PUBLISHED', {
+      'version': '$version',
+      'revoked': '${devices.length - 1}',
+    });
+  }
+
+  /// Handler for the `deviceListUpdated` server event (answer to
+  /// `updateDeviceList`). Only the restore machine emits that request from
+  /// this provider; the ceremony controller's mutations answer on their own
+  /// events.
+  void onDeviceListUpdated(dynamic data) {
+    final pending = _pendingDeviceListUpdateAck;
+    if (pending == null || pending.isCompleted) return;
+    pending.complete(
+      data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{},
+    );
+  }
+
+  /// Asks every conversation peer to rebuild its sessions to this account —
+  /// paced and capped under the handler's 30/15 min throttle, so the first
+  /// message after a restore is not lost.
+  Future<void> _requestSessionRebuilds() async {
+    final peers = sessionRebuildPeers?.call() ?? const <int>[];
+    final capped = peers.take(25).toList();
+    for (var i = 0; i < capped.length; i++) {
+      if (i > 0) {
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+      }
+      _emit?.call('requestSessionRebuild', {'recipientId': capped[i]});
+    }
+    E2ePersistentDiag.record('RESTORE_SESSION_REBUILDS', {
+      'count': '${capped.length}',
+    });
+  }
+
+  /// Stashes the one-time pre-keys and emits the key bundle — the shared
+  /// publisher of the init upload and the restore upload. [proof] rides extra
+  /// wire fields on the bundle (the (lxxviii) restore proof).
+  void _publishKeyBundle(
+    Map<String, dynamic> keys,
+    String identityPublicKey, {
+    Map<String, dynamic> proof = const {},
+  }) {
+    final keyBundle = keys['keyBundle'] as Map<String, dynamic>;
+    _stashOneTimePreKeyUpload(
+      (keys['oneTimePreKeys'] as List).cast<Map<String, dynamic>>(),
+      identityPublicKey,
+      registrationId: keyBundle['registrationId'] as int?,
+    );
+    _emit?.call(
+      'uploadKeyBundle',
+      proof.isEmpty ? keyBundle : <String, dynamic>{...keyBundle, ...proof},
+    );
+  }
 
   /// True once the server refused an identity replacement for this account.
   /// Cleared by a successful upload (which a completed ceremony enables).
@@ -1765,8 +2180,13 @@ class EncryptionProvider extends ChangeNotifier {
 
   /// Enrolls or replaces the recovery phrase. The phrase is generated on this
   /// device, shown once, and never stored locally.
-  void setRecoveryKey(String phrase) {
-    _emit?.call('setRecoveryKey', <String, dynamic>{'phrase': phrase});
+  void setRecoveryKey(String phrase, {SealedIdentityBackup? backup}) {
+    _emit?.call('setRecoveryKey', <String, dynamic>{
+      'phrase': phrase,
+      // (lxxviii) clause 1: the phrase-sealed identity backup, written with
+      // the verifier in one transaction. Absent only on legacy callers.
+      if (backup != null) 'backup': backup.toWire(),
+    });
   }
 
   /// Handler for `identityResetStatus` — the answer to our own request.
@@ -1828,8 +2248,17 @@ class EncryptionProvider extends ChangeNotifier {
   bool? _recoveryKeySetResult;
   bool? get recoveryKeySetResult => _recoveryKeySetResult;
 
+  /// (lxxviii): whether the server holds a phrase-sealed identity backup for
+  /// this account. Null until an `ownKeyBundleStatus` said either way.
+  bool? get hasIdentityBackup => _hasIdentityBackup;
+  bool? _hasIdentityBackup;
+
   void onRecoveryKeySet(dynamic data) {
     _recoveryKeySetResult = data is Map && data['success'] == true;
+    // A phrase (re)enrolment always carries the freshly sealed blob now, so a
+    // success means the server holds a backup — flip the nudge without
+    // waiting for the next `ownKeyBundleStatus`.
+    if (_recoveryKeySetResult == true) _hasIdentityBackup = true;
     notifyListeners();
   }
 
@@ -1970,6 +2399,25 @@ class EncryptionProvider extends ChangeNotifier {
       'exists': exists,
       'linkingEnabled': linkingEnabled,
     });
+    // (lxxviii): additive `hasIdentityBackup`. Only an EXPLICIT bool is
+    // recorded — absent (older server) stays UNKNOWN, and the devices
+    // screen's backup nudge renders only on an explicit false.
+    if (data is Map && data['hasIdentityBackup'] is bool) {
+      final hasBackup = data['hasIdentityBackup'] as bool;
+      if (hasBackup != _hasIdentityBackup) {
+        _hasIdentityBackup = hasBackup;
+        notifyListeners();
+      }
+    }
+    // (lxxvi) clause 1: persist the CLEARTEXT enrolment hint the LOCK SCREEN
+    // reads (`account_enrolled_hint_<uid>` — the erase panel cannot read E2E
+    // state; on web the store is wrapped while locked). Only an EXPLICIT
+    // server bool is recorded: the fail-closed default above (absent ⇒ true)
+    // guards key minting and must not claim enrolment for copy.
+    final uid = _currentUserId;
+    if (uid != null && data is Map && data['linkingEnabled'] is bool) {
+      unawaited(AccountEnrolledHint.write(userId: uid, enrolled: linkingEnabled));
+    }
     if (data is Map) {
       _hydrateIdentityResetState(data);
       final replacedAt = data['identityReplacedAt'];
@@ -2530,3 +2978,21 @@ class EncryptionProvider extends ChangeNotifier {
     _pendingDeviceListFetches.clear();
   }
 }
+
+/// Where the (lxxviii) clause-3 phrase restore stands.
+enum IdentityRestoreStage {
+  idle,
+  fetching,
+  unsealing,
+  adopting,
+  uploading,
+  rebinding,
+  listing,
+  done,
+  failed,
+}
+
+/// Why a phrase restore failed (while [EncryptionProvider.restoreStage] is
+/// `failed`). `wrongPhrase` is ONLY the local GCM open failure — it spends no
+/// server attempt; `refused` is the server's `restore_refused`.
+enum IdentityRestoreFailure { wrongPhrase, noBackup, refused, failed }

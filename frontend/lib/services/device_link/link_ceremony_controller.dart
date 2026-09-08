@@ -27,7 +27,9 @@ import 'package:flutter/foundation.dart';
 import '../device_list/device_authority_engine.dart';
 import '../device_list/device_list_canonical.dart';
 import '../encryption_service.dart';
+import '../passcode_wrap_hook.dart';
 import '../../utils/e2e_persistent_diag.dart';
+import '../../widgets/input/composer_keyboard_signals.dart';
 import 'dak_store.dart';
 import 'link_crypto.dart';
 
@@ -123,9 +125,14 @@ class EncryptionServiceLinkGateway implements LinkIdentityGateway {
 /// Where the devices surface stands for THIS device/account.
 enum DeviceListState { loading, notEnrolled, enrolled, chainInvalid }
 
-/// Primary-flow steps, in ceremony order.
+/// Primary-flow steps, in ceremony order. `opening`/`showCode` belong to the
+/// FLIPPED flow (amendment (lxxvii): the primary opens with role 'primary'
+/// and displays a `p` code); the classic paste flow enters at
+/// [awaitingHelloAck].
 enum PrimaryLinkStep {
   idle,
+  opening,
+  showCode,
   awaitingHelloAck,
   showSas,
   staging,
@@ -134,11 +141,14 @@ enum PrimaryLinkStep {
   failed,
 }
 
-/// New-device-flow steps, in ceremony order.
+/// New-device-flow steps, in ceremony order. `awaitingHelloAck` belongs to
+/// the FLIPPED flow (this device scanned the primary's `p` code and said
+/// hello); the classic flow goes opening → showCode.
 enum NewDeviceLinkStep {
   idle,
   opening,
   showCode,
+  awaitingHelloAck,
   showSas,
   completing,
   rebinding,
@@ -212,6 +222,14 @@ class LinkCeremonyController extends ChangeNotifier
   dynamic _ephP; // ECKeyPair — dynamic to keep the gateway seam narrow
   Uint8List? _ephPubP;
   String? _primaryProvisioningId;
+
+  /// The `p` code this primary DISPLAYS in the flipped flow ((lxxvii)
+  /// clause 2), or null outside it.
+  String? primaryOobCode;
+
+  /// The hello party's ephemeral relayed to this flipped-flow primary (the
+  /// N slot of the fixed N-then-P transcript).
+  Uint8List? _relayedEphPubN;
   int _resignRetries = 0;
   bool _resignPending = false;
 
@@ -245,6 +263,27 @@ class LinkCeremonyController extends ChangeNotifier
   }
 
   bool _disposed = false;
+
+  /// (lxxvi) clause 2: `linkCeremonyActive` is raised from the first emit of
+  /// either flow (or an enrolment) until the terminal state. Every mutation
+  /// funnels through [notifyListeners], so syncing there is the ONE setter —
+  /// a new step or failure path cannot forget to lower it.
+  void _syncCeremonyActive() {
+    linkCeremonyActive.value =
+        enrolling ||
+        (primaryStep != PrimaryLinkStep.idle &&
+            primaryStep != PrimaryLinkStep.done &&
+            primaryStep != PrimaryLinkStep.failed) ||
+        (newDeviceStep != NewDeviceLinkStep.idle &&
+            newDeviceStep != NewDeviceLinkStep.done &&
+            newDeviceStep != NewDeviceLinkStep.aborted);
+  }
+
+  @override
+  void notifyListeners() {
+    _syncCeremonyActive();
+    super.notifyListeners();
+  }
 
   /// A staging that waited for the list ((lxx) clause 3) cannot proceed
   /// without one: every exit of the list answer that does not end in a
@@ -348,13 +387,45 @@ class LinkCeremonyController extends ChangeNotifier
 
   // ---------- Enable linking (primary enrollment) ----------
 
-  /// Rider order (T3): mint → persist DAK armed → ONLY THEN emit enroll.
+  /// (lxxviii) clause 4: the DAK must exist BEFORE the recovery backup blob
+  /// is sealed (the blob carries it) and BEFORE any enrolment. Mint + armed
+  /// persist only — NO server call. Idempotent: a persisted DAK is restored
+  /// into the engine and kept, never re-minted (re-minting would orphan a
+  /// blob already sealed over the old pair).
+  Future<void> mintDak() async {
+    if (await _readDak() != null) return;
+    try {
+      _engine.mintDak();
+      final exported = _engine.exportDakForPersistence();
+      await _dakStore.persistArmed(
+        DakRecord(
+          userId: userId,
+          dakPub: exported['dakPub']!,
+          dakPriv: exported['dakPriv']!,
+          createdAtMs: DateTime.now().millisecondsSinceEpoch,
+        ),
+      );
+    } catch (_) {
+      // The caller aborts, so without this the user taps "enable" and sees
+      // NOTHING happen — the pre-(lxxviii) order at least rendered the enroll
+      // error. Rethrown: an unpersisted DAK must not reach the phrase screen.
+      enrollError = 'enroll_failed';
+      enrolling = false;
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  /// Rider order (T3 + (lxxviii) clause 4): mint → persist DAK armed → ONLY
+  /// THEN emit enroll, over the SAME held pair ([mintDak] is a no-op when
+  /// the backup flow already minted one).
   Future<void> enableLinking({required String platform}) async {
     if (enrolling) return;
     enrolling = true;
     enrollError = null;
     notifyListeners();
     try {
+      await mintDak();
       final identity = await _identity.ownIdentityKeyPair();
       final payload = _engine.mintEnrollment(
         userId: userId,
@@ -363,15 +434,7 @@ class LinkCeremonyController extends ChangeNotifier
         identity: identity,
         createdAtMs: DateTime.now().millisecondsSinceEpoch,
         platform: platform,
-      );
-      final exported = _engine.exportDakForPersistence();
-      await _dakStore.persistArmed(
-        DakRecord(
-          userId: userId,
-          dakPub: exported['dakPub']!,
-          dakPriv: exported['dakPriv']!,
-          createdAtMs: payload['createdAt'] as int,
-        ),
+        reuseHeldDak: true,
       );
       _emit('enrollDeviceAuthority', payload);
     } catch (e) {
@@ -412,6 +475,14 @@ class LinkCeremonyController extends ChangeNotifier
       notifyListeners();
       return;
     }
+    if (code.role != LinkRole.newDevice) {
+      // (lxxvii) F5: a `p` code names the PRIMARY's ephemeral — feeding it
+      // into the N slot would derive a SAS the other side can never match.
+      primaryError = 'wrong_code_role';
+      primaryStep = PrimaryLinkStep.failed;
+      notifyListeners();
+      return;
+    }
     final dak = await _readDak();
     if (dak == null) {
       primaryError = 'no_dak';
@@ -436,6 +507,34 @@ class LinkCeremonyController extends ChangeNotifier
     });
   }
 
+  /// FLIPPED primary flow ((lxxvii) clauses 1–2): this enrolled device opens
+  /// the stage with `role: 'primary'` and DISPLAYS a `p` code; the new
+  /// device scans it and says hello. [platform] labels the displayed code
+  /// (the displaying device's own platform, informational).
+  Future<void> startPrimaryShowFlow({required String platform}) async {
+    final dak = await _readDak();
+    if (dak == null) {
+      primaryError = 'no_dak';
+      primaryStep = PrimaryLinkStep.failed;
+      notifyListeners();
+      return;
+    }
+    _platform = platform;
+    final eph = generateLinkEphemeral();
+    _ephP = eph;
+    _ephPubP = linkEphemeralPublicBytes(eph);
+    _parsedCode = null;
+    primaryError = null;
+    primarySas = null;
+    primaryOobCode = null;
+    assignedDeviceId = null;
+    _relayedEphPubN = null;
+    _resignRetries = 0;
+    primaryStep = PrimaryLinkStep.opening;
+    notifyListeners();
+    _emit('openProvisioning', {'role': 'primary'});
+  }
+
   Future<DakRecord?> _readDak() async {
     try {
       final record = await _dakStore.read(userId: userId);
@@ -453,6 +552,13 @@ class LinkCeremonyController extends ChangeNotifier
 
   @override
   void onProvisioningHelloAck(dynamic data) {
+    // FLIPPED flow: this device is the hello CALLER (it scanned a `p`
+    // code) — the ack confirms the pin and carries the assigned deviceId
+    // (informational here; the blob stays authoritative for N's id).
+    if (newDeviceStep == NewDeviceLinkStep.awaitingHelloAck) {
+      _onNewDeviceHelloAck(data);
+      return;
+    }
     if (primaryStep != PrimaryLinkStep.awaitingHelloAck) return;
     if (data is! Map || data['success'] != true || data['deviceId'] is! int) {
       primaryError = data is Map && data['error'] is String
@@ -468,11 +574,11 @@ class LinkCeremonyController extends ChangeNotifier
     assignedDeviceId = data['deviceId'] as int;
     final transcript = linkTranscript(
       provisioningId: code.provisioningId,
-      ephPubN: code.ephPubN,
+      ephPubN: code.ephPub,
       ephPubP: _ephPubP!,
     );
     final sharedSecret = linkSharedSecret(
-      theirEphPub: code.ephPubN,
+      theirEphPub: code.ephPub,
       // ignore: avoid_dynamic_calls
       ownEphPriv: eph.privateKey,
     );
@@ -481,6 +587,38 @@ class LinkCeremonyController extends ChangeNotifier
       transcript: transcript,
     );
     primaryStep = PrimaryLinkStep.showSas;
+    notifyListeners();
+  }
+
+  void _onNewDeviceHelloAck(dynamic data) {
+    if (data is! Map || data['success'] != true) {
+      unawaited(
+        abortNewDevice(
+          data is Map && data['error'] is String
+              ? data['error'] as String
+              : 'hello_failed',
+        ),
+      );
+      return;
+    }
+    final ephPubP = _relayedEphPubP;
+    final eph = _ephN;
+    if (ephPubP == null || eph == null || _ephPubNBytes == null) return;
+    final transcript = linkTranscript(
+      provisioningId: _openProvisioningId!,
+      ephPubN: _ephPubNBytes!,
+      ephPubP: ephPubP,
+    );
+    final sharedSecret = linkSharedSecret(
+      theirEphPub: ephPubP,
+      // ignore: avoid_dynamic_calls
+      ownEphPriv: eph.privateKey,
+    );
+    newDeviceSas = deriveLinkSas(
+      sharedSecret: sharedSecret,
+      transcript: transcript,
+    );
+    newDeviceStep = NewDeviceLinkStep.showSas;
     notifyListeners();
   }
 
@@ -497,9 +635,18 @@ class LinkCeremonyController extends ChangeNotifier
     final code = _parsedCode;
     final eph = _ephP;
     final deviceId = assignedDeviceId;
+    final provisioningId = _primaryProvisioningId;
     final authorization = _authorization;
     final list = verifiedList;
-    if (code == null || eph == null || deviceId == null) return;
+    // Classic flow: N's ephemeral came in the pasted code. Flipped flow:
+    // it arrived on the hello relay. Same slot either way (fixed N-then-P).
+    final ephPubN = code?.ephPub ?? _relayedEphPubN;
+    if (provisioningId == null ||
+        eph == null ||
+        deviceId == null ||
+        ephPubN == null) {
+      return;
+    }
     if (authorization == null || list == null) {
       // The list is not in hand — on a cold boot the Keystore read can win
       // the race against the list fetch, and a deep-linked code starts the
@@ -521,12 +668,12 @@ class LinkCeremonyController extends ChangeNotifier
     try {
       final identity = await _identity.ownIdentityKeyPair();
       final transcript = linkTranscript(
-        provisioningId: code.provisioningId,
-        ephPubN: code.ephPubN,
+        provisioningId: provisioningId,
+        ephPubN: ephPubN,
         ephPubP: _ephPubP!,
       );
       final sharedSecret = linkSharedSecret(
-        theirEphPub: code.ephPubN,
+        theirEphPub: ephPubN,
         // ignore: avoid_dynamic_calls
         ownEphPriv: eph.privateKey,
       );
@@ -551,7 +698,9 @@ class LinkCeremonyController extends ChangeNotifier
         ),
       );
       // The staged v+1 list: current entries + EXACTLY the assigned device,
-      // platform from the code, NO name (amendment (i)).
+      // platform from the code, NO name (amendment (i)). The flipped flow
+      // has no code from N and the hello relay carries no platform — the
+      // entry is labelled 'unknown' (informational metadata only).
       final staged = DeviceList(
         userId: userId,
         version: list.version + 1,
@@ -559,14 +708,14 @@ class LinkCeremonyController extends ChangeNotifier
           ...list.devices,
           DeviceListEntry(
             deviceId: deviceId,
-            platform: code.platform,
+            platform: code?.platform ?? 'unknown',
             addedAtMs: DateTime.now().millisecondsSinceEpoch,
           ),
         ],
       );
       final signed = _engine.signList(staged);
       _emit('provisionDevice', {
-        'provisioningId': code.provisioningId,
+        'provisioningId': provisioningId,
         'blob': base64Encode(blob),
         'listCanonical': signed['listCanonical'],
         'listSignature': signed['listSignature'],
@@ -706,10 +855,12 @@ class LinkCeremonyController extends ChangeNotifier
     primaryStep = PrimaryLinkStep.idle;
     primaryError = null;
     primarySas = null;
+    primaryOobCode = null;
     assignedDeviceId = null;
     _parsedCode = null;
     _ephP = null;
     _ephPubP = null;
+    _relayedEphPubN = null;
     _primaryProvisioningId = null;
     _resignRetries = 0;
     _resignPending = false;
@@ -729,11 +880,58 @@ class LinkCeremonyController extends ChangeNotifier
     _identityAdopted = false;
     newDeviceStep = NewDeviceLinkStep.opening;
     notifyListeners();
-    _emit('openProvisioning', <String, dynamic>{});
+    _emit('openProvisioning', {'role': 'new'});
+  }
+
+  /// FLIPPED new-device flow ((lxxvii) clause 3): this keyless device
+  /// scanned the primary's `p` code. Refusals return a stable code WITHOUT
+  /// touching a flow already in progress (the gate keeps showing its own
+  /// `n` code after a bad scan); a valid `p` code cancels this device's own
+  /// open stage and runs the hello side.
+  Future<String?> startNewDeviceFromCode(
+    String rawCode, {
+    required String platform,
+  }) async {
+    final code = LinkOobCode.tryParse(rawCode.trim());
+    if (code == null) return 'invalid_code';
+    if (code.role != LinkRole.primary) {
+      // (lxxvii) F5's mirror: an `n` code names a NEW device's ephemeral —
+      // this device IS the new device, so the code belongs in
+      // [startNewDeviceFlow]'s display, never fed back in here.
+      return 'wrong_code_role';
+    }
+    final ownStage = _openProvisioningId;
+    if (ownStage != null && ownStage != code.provisioningId) {
+      _emit('cancelProvisioning', {'provisioningId': ownStage});
+    }
+    _expiryTimer?.cancel();
+    _platform = platform;
+    final eph = generateLinkEphemeral();
+    _ephN = eph;
+    _ephPubNBytes = linkEphemeralPublicBytes(eph);
+    _relayedEphPubP = Uint8List.fromList(code.ephPub);
+    _openProvisioningId = code.provisioningId;
+    oobCode = null;
+    newDeviceSas = null;
+    newDeviceError = null;
+    _identityAdopted = false;
+    newDeviceStep = NewDeviceLinkStep.awaitingHelloAck;
+    notifyListeners();
+    // The wire field stays `ephPubP` for v1 compatibility — it is simply
+    // "the hello party's ephemeral", filling the N slot in this flow.
+    _emit('provisioningHello', {
+      'provisioningId': code.provisioningId,
+      'ephPubP': base64Encode(_ephPubNBytes!),
+    });
+    return null;
   }
 
   @override
   void onProvisioningOpened(dynamic data) {
+    if (primaryStep == PrimaryLinkStep.opening) {
+      _onPrimaryShowOpened(data);
+      return;
+    }
     if (newDeviceStep != NewDeviceLinkStep.opening) return;
     if (data is! Map || data['success'] != true) {
       newDeviceError = data is Map && data['error'] is String
@@ -749,7 +947,7 @@ class LinkCeremonyController extends ChangeNotifier
     _openProvisioningId = id;
     oobCode = LinkOobCode(
       provisioningId: id,
-      ephPubN: _ephPubNBytes!,
+      ephPub: _ephPubNBytes!,
       platform: _platform,
     ).encode();
     newDeviceStep = NewDeviceLinkStep.showCode;
@@ -769,13 +967,58 @@ class LinkCeremonyController extends ChangeNotifier
     notifyListeners();
   }
 
-  @override
-  void onProvisioningHelloRelay(dynamic data) {
-    if (data is! Map ||
-        data['provisioningId'] != _openProvisioningId ||
-        data['ephPubP'] is! String) {
+  /// FLIPPED flow, primary side: the stage is open — display the `p` code.
+  void _onPrimaryShowOpened(dynamic data) {
+    if (data is! Map || data['success'] != true) {
+      primaryError = data is Map && data['error'] is String
+          ? data['error'] as String
+          : 'open_failed';
+      primaryStep = PrimaryLinkStep.failed;
+      notifyListeners();
       return;
     }
+    final id = data['provisioningId'];
+    final expiresAt = data['expiresAt'];
+    if (id is! String || _ephPubP == null) return;
+    _primaryProvisioningId = id;
+    primaryOobCode = LinkOobCode(
+      provisioningId: id,
+      ephPub: _ephPubP!,
+      platform: _platform,
+      role: LinkRole.primary,
+    ).encode();
+    primaryStep = PrimaryLinkStep.showCode;
+    if (expiresAt is int) {
+      final remaining = DateTime.fromMillisecondsSinceEpoch(
+        expiresAt,
+      ).difference(DateTime.now());
+      _expiryTimer?.cancel();
+      if (remaining > Duration.zero) {
+        _expiryTimer = Timer(remaining, () {
+          // TTL expiry: the server forgot the stage. Nothing secret was
+          // handed out — fail with a reason, no cancel emit needed.
+          if (primaryStep == PrimaryLinkStep.showCode) {
+            primaryError = 'expired';
+            primaryStep = PrimaryLinkStep.failed;
+            notifyListeners();
+          }
+        });
+      }
+    }
+    notifyListeners();
+  }
+
+  @override
+  void onProvisioningHelloRelay(dynamic data) {
+    if (data is! Map || data['ephPubP'] is! String) return;
+    // FLIPPED flow, primary side: the relay carries the hello party's
+    // ephemeral (N slot) plus the deviceId this primary must sign for.
+    if (primaryStep == PrimaryLinkStep.showCode &&
+        data['provisioningId'] == _primaryProvisioningId) {
+      _onPrimaryHelloRelay(data);
+      return;
+    }
+    if (data['provisioningId'] != _openProvisioningId) return;
     if (newDeviceStep != NewDeviceLinkStep.showCode &&
         newDeviceStep != NewDeviceLinkStep.showSas) {
       return;
@@ -803,6 +1046,37 @@ class LinkCeremonyController extends ChangeNotifier
       transcript: transcript,
     );
     newDeviceStep = NewDeviceLinkStep.showSas;
+    notifyListeners();
+  }
+
+  void _onPrimaryHelloRelay(dynamic data) {
+    if (data['deviceId'] is! int) return;
+    final Uint8List ephPubN;
+    try {
+      ephPubN = base64Decode(data['ephPubP'] as String);
+    } catch (_) {
+      return;
+    }
+    if (ephPubN.length != kLinkEphemeralPublicKeyLength) return;
+    final eph = _ephP;
+    if (eph == null) return;
+    _relayedEphPubN = ephPubN;
+    assignedDeviceId = data['deviceId'] as int;
+    final transcript = linkTranscript(
+      provisioningId: _primaryProvisioningId!,
+      ephPubN: ephPubN,
+      ephPubP: _ephPubP!,
+    );
+    final sharedSecret = linkSharedSecret(
+      theirEphPub: ephPubN,
+      // ignore: avoid_dynamic_calls
+      ownEphPriv: eph.privateKey,
+    );
+    primarySas = deriveLinkSas(
+      sharedSecret: sharedSecret,
+      transcript: transcript,
+    );
+    primaryStep = PrimaryLinkStep.showSas;
     notifyListeners();
   }
 
@@ -852,6 +1126,10 @@ class LinkCeremonyController extends ChangeNotifier
         // is its authorized disposal.
         disposeStaleMaterial: _staleDisposalAuthorized?.call() ?? false,
       );
+      // (lxxvi) clause 3: the adopt just landed RAW key material — with
+      // wrapping ON a crash before the next unlock would leave it raw on a
+      // "protected" device, so wrap it NOW (idempotent; no-op unwired).
+      await PasscodeWrapHook.run();
       _identityAdopted = true;
       newDeviceStep = NewDeviceLinkStep.completing;
       notifyListeners();
@@ -919,8 +1197,21 @@ class LinkCeremonyController extends ChangeNotifier
   void onProvisioningCancelled(dynamic data) {
     if (data is! Map) return;
     // The caller-ack shape carries `success`; the opener notification is the
-    // bare `{provisioningId}` push — only the latter aborts this flow.
+    // bare `{provisioningId}` push — only the latter aborts a flow.
     if (data['success'] != null) return;
+    // FLIPPED flow, primary side: this primary is the OPENER — the new
+    // device walking away lands here. Nothing secret was handed out before
+    // Approve; past staging the cancel can no longer reach the stage.
+    if (data['provisioningId'] == _primaryProvisioningId &&
+        (primaryStep == PrimaryLinkStep.showCode ||
+            primaryStep == PrimaryLinkStep.showSas ||
+            primaryStep == PrimaryLinkStep.staging)) {
+      _expiryTimer?.cancel();
+      primaryError = 'cancelled';
+      primaryStep = PrimaryLinkStep.failed;
+      notifyListeners();
+      return;
+    }
     if (data['provisioningId'] != _openProvisioningId) return;
     if (newDeviceStep == NewDeviceLinkStep.idle ||
         newDeviceStep == NewDeviceLinkStep.done) {
@@ -961,6 +1252,9 @@ class LinkCeremonyController extends ChangeNotifier
   void dispose() {
     _disposed = true;
     _expiryTimer?.cancel();
+    // A controller torn down mid-flow (screen disposed) must not leave the
+    // passcode exemption raised: no further notify will ever run.
+    linkCeremonyActive.value = false;
     super.dispose();
   }
 }

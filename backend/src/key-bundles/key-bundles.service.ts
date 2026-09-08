@@ -60,11 +60,19 @@ export interface PreKeyBundleResponse {
  * and the replacement is admitted with credentials alone — loudly, through
  * the same audit/notification path as the other two, and never tearing any
  * roster down (there is none).
+ *
+ * `'restore'` is amendment (lxxviii) clause 2: the uploaded identity EQUALS
+ * the stored one and the caller proved possession of its private half (an
+ * XEdDSA signature under the CURRENT IK, restored from the phrase-sealed
+ * backup). Not an identity change at all — no audit row, no §6.0 alarm — but
+ * it DOES run the §6.2 roster teardown: the restoring install is a fresh
+ * wipe, so every other device is presumed lost.
  */
 export type IdentityChangeAuthorization =
   | 'signature'
   | 'reset'
   | 'unlocked'
+  | 'restore'
   | null;
 
 export interface UpsertKeyBundleResult {
@@ -86,6 +94,12 @@ export interface IdentityChangeProof {
   signature?: string;
   /** base64 nonce this socket session was issued, echoed back. */
   nonce?: string;
+  /**
+   * base64 XEdDSA signature by the CURRENT (stored) identity key over
+   * identityPublicKey ‖ userId ‖ nonce — the (lxxviii) restore proof.
+   * Considered only when the uploaded identity equals the stored one.
+   */
+  restoreSignature?: string;
 }
 
 /**
@@ -97,6 +111,20 @@ export class IdentityLockedError extends Error {
   constructor() {
     super('identity_locked');
     this.name = 'IdentityLockedError';
+  }
+}
+
+/**
+ * Thrown when an upload carries a restore proof for the account's UNCHANGED
+ * identity that does not verify under the stored identity key (amendment
+ * (lxxviii) clause 2). Nothing is written when this is thrown: an invalid
+ * proof must not degrade into an ordinary same-identity re-upload, because
+ * the gateway runs the roster teardown on the verdict.
+ */
+export class IdentityRestoreRefusedError extends Error {
+  constructor() {
+    super('restore_refused');
+    this.name = 'IdentityRestoreRefusedError';
   }
 }
 
@@ -196,6 +224,39 @@ export class KeyBundlesService {
       }
       this.logger.warn(
         `[identity-churn] userId=${userId} deviceId=${deviceId} via=${authorizedBy} oldIdentityPrefix=${existingBundle.identityPublicKey.slice(0, 12)} newIdentityPrefix=${data.identityPublicKey.slice(0, 12)}`,
+      );
+    }
+    // Amendment (lxxviii) clause 2 — restore proof, valid ONLY when the
+    // uploaded identity EQUALS the stored one (an identity CHANGE with a
+    // stray restore field was adjudicated above and never reaches here). The
+    // proof is the §6.1 byte layout verified under the CURRENT identity key:
+    // only the holder of `ikPriv` — restored from the phrase-sealed backup —
+    // can produce it. Adjudicated BEFORE any write, and an invalid proof is a
+    // refusal rather than a silent downgrade to the plain re-upload path,
+    // because the caller's next step (the roster teardown) hangs on this
+    // verdict.
+    if (
+      !identityChanged &&
+      existingBundle != null &&
+      proof?.restoreSignature &&
+      proof?.nonce
+    ) {
+      const proofValid = verifyIdentityChangeSignature({
+        storedIdentityPublicKey: existingBundle.identityPublicKey,
+        newIdentityPublicKey: data.identityPublicKey,
+        userId,
+        nonce: proof.nonce,
+        signature: proof.restoreSignature,
+      });
+      if (!proofValid) {
+        this.logger.warn(
+          `[identity-restore] REFUSED invalid restore proof userId=${userId} deviceId=${deviceId} storedPrefix=${existingBundle.identityPublicKey.slice(0, 12)}`,
+        );
+        throw new IdentityRestoreRefusedError();
+      }
+      authorizedBy = 'restore';
+      this.logger.log(
+        `[identity-restore] proof verified userId=${userId} deviceId=${deviceId}`,
       );
     }
     // (lxiv) clause 1 — refuse a foreign install's write BEFORE any mutation.
@@ -355,6 +416,25 @@ export class KeyBundlesService {
     await otpRepo.delete({ userId, deviceId });
     this.logger.log(
       `[devices] purged key material userId=${userId} deviceId=${deviceId}`,
+    );
+  }
+
+  /**
+   * Drops ONE device's one-time pre-keys and NOTHING else (amendment
+   * (lxxviii) clause 2). After a restore the caller's freshly uploaded bundle
+   * is real — the blob carried `ikPriv` and the signed prekey was re-minted —
+   * but every OTP row under its device id predates the wipe, so the private
+   * halves are gone and serving one would hand a peer an unanswerable X3DH.
+   * Deliberately NOT {@link purgeDeviceMaterial}: the bundle row must
+   * survive, because the §6.2 teardown MOVES it onto the fresh device id.
+   */
+  async purgeDeviceOneTimePreKeys(
+    userId: number,
+    deviceId: number,
+  ): Promise<void> {
+    const removed = await this.otpRepo.delete({ userId, deviceId });
+    this.logger.log(
+      `[identity-restore] purged ${removed.affected ?? 0} one-time pre-key(s) userId=${userId} deviceId=${deviceId}`,
     );
   }
 

@@ -1337,7 +1337,7 @@ abstract class AppLocalizations {
   /// No description provided for @devicesEnableLinkingWebWarningBody.
   ///
   /// In pl, this message translates to:
-  /// **'Tylko urządzenie główne może dodawać i usuwać inne urządzenia. Jeśli pamięć tej przeglądarki zostanie wyczyszczona, odzyskanie tej roli wymaga resetu: 72 godziny, albo 1 godzina z kluczem odzyskiwania. Za chwilę zaproponujemy jego utworzenie.'**
+  /// **'Tylko urządzenie główne może dodawać i usuwać inne urządzenia. Jeśli pamięć tej przeglądarki zostanie wyczyszczona, odzyskanie tej roli wymaga resetu: 72 godziny, albo 1 godzina z kluczem odzyskiwania. Za chwilę utworzysz frazę odzyskiwania — bez niej nie włączymy łączenia.'**
   String get devicesEnableLinkingWebWarningBody;
 
   /// No description provided for @devicesEnableLinkingConfirmAction.
@@ -3463,6 +3463,192 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Kod szyfruje klucze w tej przeglądarce, więc własny kod musi mieć co najmniej 6 znaków i nie może składać się tylko z cyfr.'**
   String get passcodeTooWeakForKeys;
+
+  /// No description provided for @passcodeEraseWarningEnrolled.
+  ///
+  /// In pl, this message translates to:
+  /// **'Jedyne wyjście to usunięcie danych tej aplikacji z tego urządzenia. Wiadomości przechowywane tylko tutaj znikną na zawsze. Po ponownym zalogowaniu konto trzeba będzie przywrócić: frazą odzyskiwania (od razu), z innego urządzenia albo resetem (72 godziny).'**
+  String get passcodeEraseWarningEnrolled;
+
+  /// No description provided for @linkScanAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zeskanuj kod'**
+  String get linkScanAction;
+
+  /// No description provided for @linkShowCodeAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Pokaż kod'**
+  String get linkShowCodeAction;
+
+  /// No description provided for @linkScanHint.
+  ///
+  /// In pl, this message translates to:
+  /// **'Skieruj aparat na kod QR z drugiego urządzenia.'**
+  String get linkScanHint;
+
+  /// No description provided for @linkScanCameraDenied.
+  ///
+  /// In pl, this message translates to:
+  /// **'Brak dostępu do aparatu. Wpisz kod ręcznie.'**
+  String get linkScanCameraDenied;
+
+  /// No description provided for @linkScanUnsupported.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ta przeglądarka nie obsługuje skanowania. Wpisz kod ręcznie.'**
+  String get linkScanUnsupported;
+
+  /// No description provided for @linkEnterCodeManually.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wpisz kod ręcznie'**
+  String get linkEnterCodeManually;
+
+  /// No description provided for @linkNewCodeLabel.
+  ///
+  /// In pl, this message translates to:
+  /// **'Kod z urządzenia głównego'**
+  String get linkNewCodeLabel;
+
+  /// No description provided for @linkPrimaryShowCodeExplainer.
+  ///
+  /// In pl, this message translates to:
+  /// **'Na nowym urządzeniu zaloguj się i zeskanuj ten kod. Możesz też zeskanować kod pokazany tam.'**
+  String get linkPrimaryShowCodeExplainer;
+
+  /// No description provided for @linkGateScanBody.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zeskanuj kod QR z urządzenia głównego (Ustawienia → Urządzenia → Połącz urządzenie) albo pokaż mu ten kod. Nic nie przepadnie.'**
+  String get linkGateScanBody;
+
+  /// No description provided for @recoveryKeyBackupExplainer.
+  ///
+  /// In pl, this message translates to:
+  /// **'Te 12 słów to kopia kluczy Twojego konta. Jeśli ta przeglądarka lub telefon straci dane, wpiszesz je i od razu odzyskasz konto i kontakty — bez czekania. Kto zna te słowa, ma Twoje konto: zapisz je tam, gdzie tylko Ty masz dostęp.\n\nSłowa pokazujemy tylko raz i nie zapisujemy ich na tym urządzeniu.'**
+  String get recoveryKeyBackupExplainer;
+
+  /// No description provided for @recoveryKeyConfirmTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Potwierdź, że masz słowa zapisane'**
+  String get recoveryKeyConfirmTitle;
+
+  /// No description provided for @recoveryKeyConfirmPrompt.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wpisz słowo nr {n}'**
+  String recoveryKeyConfirmPrompt(int n);
+
+  /// No description provided for @recoveryKeyConfirmMismatch.
+  ///
+  /// In pl, this message translates to:
+  /// **'To nie to słowo. Sprawdź zapisane słowa.'**
+  String get recoveryKeyConfirmMismatch;
+
+  /// No description provided for @recoveryKeyConfirmAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Potwierdź'**
+  String get recoveryKeyConfirmAction;
+
+  /// No description provided for @recoveryKeyRequiredForLinking.
+  ///
+  /// In pl, this message translates to:
+  /// **'Bez frazy odzyskiwania nie włączymy łączenia: po utracie danych urządzenia głównego konto byłoby zablokowane na 72 godziny.'**
+  String get recoveryKeyRequiredForLinking;
+
+  /// No description provided for @recoveryKeyBackupFailed.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się zapisać kopii kluczy — łączenie nie zostało włączone. Spróbuj ponownie.'**
+  String get recoveryKeyBackupFailed;
+
+  /// No description provided for @linkGateRestoreAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Mam frazę odzyskiwania'**
+  String get linkGateRestoreAction;
+
+  /// No description provided for @linkGateRestoreTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Przywróć konto z frazy'**
+  String get linkGateRestoreTitle;
+
+  /// No description provided for @linkGateRestoreBody.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wpisz 12 słów. To urządzenie stanie się urządzeniem głównym; pozostałe zostaną wylogowane i trzeba je połączyć ponownie.'**
+  String get linkGateRestoreBody;
+
+  /// No description provided for @linkGateRestoring.
+  ///
+  /// In pl, this message translates to:
+  /// **'Przywracam klucze…'**
+  String get linkGateRestoring;
+
+  /// No description provided for @linkGateRestoreWrongPhrase.
+  ///
+  /// In pl, this message translates to:
+  /// **'Fraza nie pasuje do kopii kluczy tego konta.'**
+  String get linkGateRestoreWrongPhrase;
+
+  /// No description provided for @linkGateRestoreNoBackup.
+  ///
+  /// In pl, this message translates to:
+  /// **'To konto nie ma kopii kluczy. Połącz to urządzenie z urządzenia głównego albo rozpocznij reset.'**
+  String get linkGateRestoreNoBackup;
+
+  /// No description provided for @linkGateRestoreFailed.
+  ///
+  /// In pl, this message translates to:
+  /// **'Przywracanie nie powiodło się. Spróbuj ponownie.'**
+  String get linkGateRestoreFailed;
+
+  /// No description provided for @linkGateRestoreDone.
+  ///
+  /// In pl, this message translates to:
+  /// **'Konto przywrócone.'**
+  String get linkGateRestoreDone;
+
+  /// No description provided for @devicesBackupMissing.
+  ///
+  /// In pl, this message translates to:
+  /// **'To konto nie ma jeszcze kopii kluczy. Utwórz frazę odzyskiwania, żeby po utracie danych tego urządzenia odzyskać konto od razu.'**
+  String get devicesBackupMissing;
+
+  /// No description provided for @devicesCreateBackupAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Utwórz frazę odzyskiwania'**
+  String get devicesCreateBackupAction;
+
+  /// No description provided for @deviceRevokedRestoredNotice.
+  ///
+  /// In pl, this message translates to:
+  /// **'Konto zostało przywrócone z frazy odzyskiwania na innym urządzeniu. To urządzenie wylogowano — połącz je ponownie. Jeśli to nie Ty, zmień hasło.'**
+  String get deviceRevokedRestoredNotice;
+
+  /// No description provided for @peerIdentityChangedSystemLine.
+  ///
+  /// In pl, this message translates to:
+  /// **'{name} loguje się z nowego urządzenia lub przeglądarki — klucze bezpieczeństwa zostały zaktualizowane.'**
+  String peerIdentityChangedSystemLine(String name);
+
+  /// No description provided for @settingsKeyChangeWarnings.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ostrzegaj o zmianie kluczy kontaktów'**
+  String get settingsKeyChangeWarnings;
+
+  /// No description provided for @settingsKeyChangeWarningsSubtitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wymagaj ręcznego potwierdzenia nowego numeru bezpieczeństwa. Domyślnie nowe klucze są przyjmowane, a w rozmowie pojawia się krótka notatka.'**
+  String get settingsKeyChangeWarningsSubtitle;
 }
 
 class _AppLocalizationsDelegate

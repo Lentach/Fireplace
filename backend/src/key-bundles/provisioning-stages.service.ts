@@ -19,8 +19,22 @@ const SWEEP_INTERVAL_MS = 60 * 1000;
 export interface ProvisioningStage {
   readonly provisioningId: string;
   readonly userId: number;
-  /** The exact socket that opened the ceremony; blob + completion bind to it. */
+  /** The exact socket that opened the ceremony; the hello relay targets it. */
   readonly openerSocketId: string;
+  /** Which role the opener plays (amendment (lxxvii): default 'new'). */
+  readonly openerRole: 'new' | 'primary';
+  /**
+   * Socket of the enrolled primary: the opener when `openerRole` is
+   * 'primary', otherwise recorded at `provisioningHello`. Only this socket
+   * may stage the blob (`provisionDevice`).
+   */
+  primarySocketId: string | null;
+  /**
+   * Socket of the joining device: the opener when `openerRole` is 'new',
+   * otherwise recorded at `provisioningHello`. Blob fetch and completion
+   * bind to it.
+   */
+  newDeviceSocketId: string | null;
   /** Memoized allocation from `users.nextDeviceId` (amendment (a)). */
   readonly deviceId: number;
   /** First `provisioningHello` ephemeral, base64 of 33 bytes. */
@@ -75,11 +89,15 @@ export class ProvisioningStagesService implements OnModuleDestroy {
     userId: number,
     openerSocketId: string,
     deviceId: number,
+    openerRole: 'new' | 'primary' = 'new',
   ): ProvisioningStage {
     const stage: ProvisioningStage = {
       provisioningId: randomUUID(),
       userId,
       openerSocketId,
+      openerRole,
+      primarySocketId: openerRole === 'primary' ? openerSocketId : null,
+      newDeviceSocketId: openerRole === 'new' ? openerSocketId : null,
       deviceId,
       ephPubP: null,
       blob: null,

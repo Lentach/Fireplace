@@ -49,6 +49,19 @@ final ValueNotifier<bool> composerNativePickerActive = ValueNotifier<bool>(
   false,
 );
 
+/// True while a link ceremony or an enrolment is in progress — from the first
+/// emit until the terminal state (amendment (lxxvi) clause 2, raised by
+/// `LinkCeremonyController`). A visibility loss in that window is CAUSED by
+/// the ceremony (the QR scanner, the camera permission sheet, glancing at the
+/// other device), not by the user leaving, so `PasscodeProvider` treats it
+/// exactly like [composerNativePickerActive]: no immediate lock, no curtain,
+/// no DOM curtain — a background during `adoptProvisionedIdentity`'s writes
+/// must not relaunch the page mid-adopt. No self-cap timer, deliberately: the
+/// ceremony has its own 10-minute server TTL and a terminal state on every
+/// path, and force-clearing under a slow human SAS compare would lock the
+/// device in the middle of the one flow that must not be interrupted.
+final ValueNotifier<bool> linkCeremonyActive = ValueNotifier<bool>(false);
+
 const Duration _kNativePickerSpanCap = Duration(minutes: 3);
 
 int _nativePickerDepth = 0;

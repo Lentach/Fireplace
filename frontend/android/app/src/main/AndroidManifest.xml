@@ -4,6 +4,10 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Required for push notifications on Android 13+ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Link-QR scanner ((lxxvii) clause 3, mobile_scanner/CameraX). Explicit
+         for the same reason as INTERNET above: release must never depend on a
+         library manifest merging it in. Requested at runtime by the plugin. -->
+    <uses-permission android:name="android.permission.CAMERA"/>
     <!-- allowBackup=false is DUAL-PURPOSE, do not relax it:
          1) Auto-Backup would upload the decrypted-message SharedPreferences cache
             to the user's Google Drive in plaintext.
@@ -44,6 +48,19 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <!-- (lxxvii) clause 4: a link QR scanned by the phone CAMERA app
+                 opens this app instead of the browser. The fp-link code rides
+                 the URL FRAGMENT, which never reaches any server; MainActivity
+                 hands it to Dart over the fireplace/link channel. autoVerify
+                 needs /.well-known/assetlinks.json served by the site. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https"
+                      android:host="fireplace.ignorelist.com"
+                      android:path="/link"/>
             </intent-filter>
         </activity>
         <!-- FCM default notification icon + accent. Fireplace delivers data-only

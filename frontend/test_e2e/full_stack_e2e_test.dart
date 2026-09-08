@@ -1416,16 +1416,19 @@ void main() {
         expect(opened.containsKey('deviceId'), isFalse);
         final provisioningId = opened['provisioningId'] as String;
 
-        // The OOB code round-trips ephPubN WITHOUT the server (amendment
-        // (c)): this string is the only channel it ever travels.
+        // The OOB code round-trips the new device's ephemeral WITHOUT the
+        // server (amendment (c)): this string is the only channel it ever
+        // travels. The role segment names the DISPLAYING side — here `n`,
+        // the default, i.e. the classic v1-shaped ceremony ((lxxvii) cl. 2).
         final code = LinkOobCode(
           provisioningId: provisioningId,
-          ephPubN: linkEphemeralPublicBytes(ephN),
+          ephPub: linkEphemeralPublicBytes(ephN),
           platform: 'harness',
         ).encode();
         final scanned = LinkOobCode.tryParse(code);
         expect(scanned, isNotNull);
         expect(scanned!.provisioningId, provisioningId);
+        expect(scanned.role, LinkRole.newDevice);
 
         // Primary hello: the ack is how the primary learns the id it must
         // sign; the relay reaches N's opener socket.
@@ -1466,11 +1469,11 @@ void main() {
         // pinned transcript — equal, and formatted for humans (§12 (ii)).
         final transcript = linkTranscript(
           provisioningId: provisioningId,
-          ephPubN: scanned.ephPubN,
+          ephPubN: scanned.ephPub,
           ephPubP: base64Decode(ephPubP),
         );
         final sdhP = linkSharedSecret(
-          theirEphPub: scanned.ephPubN,
+          theirEphPub: scanned.ephPub,
           ownEphPriv: ephP.privateKey,
         );
         final sdhN = linkSharedSecret(
@@ -1710,6 +1713,184 @@ void main() {
         );
         final gone = await n.fetchProvisioningBlobAnswer(provisioningId);
         expect(gone['error'], 'unknown_stage');
+      }, timeout: const Timeout(Duration(minutes: 3)));
+
+      test('(lxxvii) flipped ceremony: the PRIMARY opens, the NEW device says '
+          'hello, the relay carries the assigned deviceId, and only the '
+          'primary may stage the blob (falsification F4)', () async {
+        final n = E2eClient('linkFlipN', baseUrl)..adoptAccountFrom(alice);
+        await n.connectSocket();
+        addTearDown(n.dispose);
+
+        // Alice — the enrolled primary — holds the ceremony open. Answer
+        // shape is unchanged: still no deviceId (amendment (a)).
+        alice.events.discard('provisioningHello');
+        final ephP = generateLinkEphemeral();
+        final opened = await alice.openProvisioning(role: 'primary');
+        expect(opened['success'], isTrue, reason: '$opened');
+        expect(opened.containsKey('deviceId'), isFalse);
+        final provisioningId = opened['provisioningId'] as String;
+
+        // The primary's code carries ITS ephemeral out of band, tagged `p` —
+        // the whole point of (lxxvii) clause 2: either side may scan.
+        final scanned = LinkOobCode.tryParse(
+          LinkOobCode(
+            provisioningId: provisioningId,
+            ephPub: linkEphemeralPublicBytes(ephP),
+            platform: 'harness',
+            role: LinkRole.primary,
+          ).encode(),
+        );
+        expect(scanned, isNotNull);
+        expect(scanned!.role, LinkRole.primary);
+
+        // The NEW device says hello. Its ack AND the relay to the opener
+        // carry the allocated deviceId — with the primary on the opener
+        // socket, the relay is the ONLY way it learns the id it must sign.
+        final ephN = generateLinkEphemeral();
+        final ephPubN = base64Encode(linkEphemeralPublicBytes(ephN));
+        final ack = await n.provisioningHello(
+          provisioningId: provisioningId,
+          ephPubP: ephPubN,
+        );
+        expect(ack['success'], isTrue, reason: '$ack');
+        final assignedId = ack['deviceId'] as int;
+        expect(assignedId, greaterThanOrEqualTo(2));
+        final relayed = await alice.awaitProvisioningHelloRelay();
+        expect(relayed['provisioningId'], provisioningId);
+        expect(relayed['ephPubP'], ephPubN);
+        expect(
+          relayed['deviceId'],
+          assignedId,
+          reason: 'the primary signs the list for exactly this id',
+        );
+
+        // The SAS stays DH-bound to both ephemerals: which socket said hello
+        // is not a crypto input, which is what makes the flip safe.
+        final transcript = linkTranscript(
+          provisioningId: provisioningId,
+          ephPubN: base64Decode(relayed['ephPubP'] as String),
+          ephPubP: linkEphemeralPublicBytes(ephP),
+        );
+        final sdhP = linkSharedSecret(
+          theirEphPub: base64Decode(relayed['ephPubP'] as String),
+          ownEphPriv: ephP.privateKey,
+        );
+        final sdhN = linkSharedSecret(
+          theirEphPub: scanned.ephPub,
+          ownEphPriv: ephN.privateKey,
+        );
+        expect(
+          deriveLinkSas(sharedSecret: sdhN, transcript: transcript),
+          deriveLinkSas(sharedSecret: sdhP, transcript: transcript),
+          reason: 'both humans still read the same code',
+        );
+
+        // F4: the new device holds no DAK, so ITS blob is refused — an
+        // authenticated session of the account is not a role.
+        final auth = await currentAuth();
+        final staged = await signAddedDevice(assignedId);
+        final blob = base64Encode(
+          sealLinkBlob(
+            keys: deriveLinkBlobKeys(
+              sharedSecret: sdhP,
+              transcript: transcript,
+            ),
+            payload: blobPayloadFor(assignedId, auth),
+          ),
+        );
+        final stagePayload = {
+          'provisioningId': provisioningId,
+          'blob': blob,
+          'listCanonical': staged['listCanonical'],
+          'listSignature': staged['listSignature'],
+        };
+        final refused = await n.provisionDevice(stagePayload);
+        expect(refused['success'], isFalse);
+        expect(refused['error'], 'not_primary');
+
+        // The primary — the OPENER here — is accepted, and the blob is
+        // relayed to the NEW device's socket, never back to the opener.
+        n.events.discard('provisioningBlob');
+        final acked = await alice.provisionDevice(stagePayload);
+        expect(acked['success'], isTrue, reason: '$acked');
+        final pushed = await n.events.next(
+          'provisioningBlob',
+          where: (p) => p is Map && p['provisioningId'] == provisioningId,
+          reason: 'blob relay to the new device (F4)',
+        );
+        expect((pushed as Map)['blob'], blob);
+
+        // Re-fetch binds to the hello side now, and the opener is refused by
+        // the SAME v1 `not_opener` code.
+        final refetch = await n.fetchProvisioningBlobAnswer(provisioningId);
+        expect(refetch['blob'], blob);
+        final byPrimary = await alice.fetchProvisioningBlobAnswer(
+          provisioningId,
+        );
+        expect(byPrimary['success'], isFalse);
+        expect(byPrimary['error'], 'not_opener');
+
+        // The new device opens the blob under ITS own derivation: the
+        // identity really crossed the flipped ceremony.
+        final delivered = openLinkBlob(
+          keys: deriveLinkBlobKeys(sharedSecret: sdhN, transcript: transcript),
+          blob: base64Decode(refetch['blob'] as String),
+        );
+        expect(delivered.deviceId, assignedId);
+        expect(delivered.userId, alice.userId);
+        expect(
+          delivered.ikPub,
+          base64Encode(aliceIdentity.getPublicKey().serialize()),
+        );
+
+        // Deliberately NOT completed: `provisioningComplete` is 10 per 15 min
+        // per USER and this group already spends that budget (see
+        // `secondDeviceOfAlice`). Cancel keeps the stage table clean.
+        await alice.cancelProvisioning(provisioningId);
+      }, timeout: const Timeout(Duration(minutes: 3)));
+
+      test('(lxxvii) an explicit role:new open is still the classic ceremony: '
+          'the hello side becomes the primary and the opener keeps the blob '
+          'roles', () async {
+        final n = E2eClient('linkRoleNew', baseUrl)..adoptAccountFrom(alice);
+        await n.connectSocket();
+        addTearDown(n.dispose);
+
+        n.events.discard('provisioningHello');
+        final opened = await n.openProvisioning(role: 'new');
+        expect(opened['success'], isTrue, reason: '$opened');
+        expect(opened.containsKey('deviceId'), isFalse);
+        final provisioningId = opened['provisioningId'] as String;
+
+        final ephP = generateLinkEphemeral();
+        final ephPubP = base64Encode(linkEphemeralPublicBytes(ephP));
+        final ack = await alice.provisioningHello(
+          provisioningId: provisioningId,
+          ephPubP: ephPubP,
+        );
+        expect(ack['success'], isTrue, reason: '$ack');
+        final relayed = await n.awaitProvisioningHelloRelay();
+        expect(relayed['ephPubP'], ephPubP);
+        expect(relayed['deviceId'], ack['deviceId']);
+
+        // The role slots are the v1 ones, and the two DIFFERENT refusals are
+        // what prove it without spending a `provisionDevice` slot: the hello
+        // side fails the role gate, the opener gets past it to "no blob yet".
+        final byPrimary = await alice.fetchProvisioningBlobAnswer(
+          provisioningId,
+        );
+        expect(byPrimary['success'], isFalse);
+        expect(byPrimary['error'], 'not_opener');
+        final byOpener = await n.fetchProvisioningBlobAnswer(provisioningId);
+        expect(byOpener['success'], isFalse);
+        expect(
+          byOpener['error'],
+          'no_blob',
+          reason: 'the opener IS the new device under role:new',
+        );
+
+        await alice.cancelProvisioning(provisioningId);
       }, timeout: const Timeout(Duration(minutes: 3)));
 
       test('concurrent double-link: two stages race one version slot; the '

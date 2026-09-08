@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ChatKeyExchangeService } from './chat-key-exchange.service';
 import {
   IdentityLockedError,
+  IdentityRestoreRefusedError,
   KeyBundlesService,
   PreKeyBundleResponse,
 } from '../../key-bundles/key-bundles.service';
@@ -31,6 +32,8 @@ describe('ChatKeyExchangeService', () => {
     cancelReset: jest.Mock;
     getStatusForUser: jest.Mock;
     setRecoveryKey: jest.Mock;
+    getIdentityBackup: jest.Mock;
+    hasIdentityBackup: jest.Mock;
   };
   let devicesService: { isActive: jest.Mock };
   let resetRosterService: { applyAfterReset: jest.Mock };
@@ -38,6 +41,7 @@ describe('ChatKeyExchangeService', () => {
   let jwtService: { sign: jest.Mock };
   let fcmTokensService: { removeByUserId: jest.Mock };
   let webPushSubscriptionsService: { removeByUserId: jest.Mock };
+  let deviceListService: { pendingReplacementVersion: jest.Mock };
   let clientRoomEmit: jest.Mock;
 
   /** Nonce the registration lock issues onto a socket session (§6.1). */
@@ -128,6 +132,9 @@ describe('ChatKeyExchangeService', () => {
       cancelReset: jest.fn().mockResolvedValue(false),
       getStatusForUser: jest.fn().mockResolvedValue(null),
       setRecoveryKey: jest.fn().mockResolvedValue(undefined),
+      // (lxxviii): no backup stored unless a test opts in.
+      getIdentityBackup: jest.fn().mockResolvedValue(null),
+      hasIdentityBackup: jest.fn().mockResolvedValue(false),
     };
     devicesService = {
       isActive: jest.fn().mockResolvedValue(true),
@@ -154,6 +161,9 @@ describe('ChatKeyExchangeService', () => {
     webPushSubscriptionsService = {
       removeByUserId: jest.fn().mockResolvedValue(undefined),
     };
+    deviceListService = {
+      pendingReplacementVersion: jest.fn().mockResolvedValue(null),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -167,6 +177,7 @@ describe('ChatKeyExchangeService', () => {
               previousIdentityPublicKey: null,
             }),
             uploadOneTimePreKeys: jest.fn().mockResolvedValue(undefined),
+            purgeDeviceOneTimePreKeys: jest.fn().mockResolvedValue(undefined),
             fetchPreKeyBundle: jest.fn(),
             countUnusedPreKeys: jest.fn(),
             hasKeyBundle: jest.fn(),
@@ -194,9 +205,7 @@ describe('ChatKeyExchangeService', () => {
           provide: DeviceListService,
           // (xlv) clause 1's retry offer. Null is the ordinary account: no
           // replacement enrollment owed, so the ack keeps its historic shape.
-          useValue: {
-            pendingReplacementVersion: jest.fn().mockResolvedValue(null),
-          },
+          useValue: deviceListService,
         },
       ],
     }).compile();
@@ -600,6 +609,155 @@ describe('ChatKeyExchangeService', () => {
         expect(resetRosterService.applyAfterReset).not.toHaveBeenCalled();
       });
     });
+
+    // Amendment (lxxviii) clause 2: an identity RESTORE runs the same
+    // teardown as a reset — the restoring install is a fresh wipe — but the
+    // identity did not change, so none of the §6.0 alarm surface may fire.
+    describe('(lxxviii) restore teardown wiring', () => {
+      const restoreAuthorized = () => {
+        keyBundlesService.upsertKeyBundle.mockResolvedValue({
+          identityChanged: false,
+          authorizedBy: 'restore',
+          previousIdentityPublicKey: null,
+        });
+        resetRosterService.applyAfterReset.mockResolvedValue({
+          deviceId: 4,
+          revokedDeviceIds: [1, 2],
+          accessDeviceId: 4,
+          refreshToken: 'fresh-refresh',
+          nextListVersion: 8,
+        });
+      };
+
+      it('purges the caller device OTPs BEFORE the teardown moves its bundle (F8)', async () => {
+        restoreAuthorized();
+
+        await service.handleUploadKeyBundle(
+          mockClient as Socket,
+          validData,
+          mockServer as Server,
+        );
+        await new Promise((resolve) => setImmediate(resolve));
+
+        // The pre-wipe OTP private halves died with the wipe; served, they
+        // would be unanswerable X3DH offers under the moved bundle.
+        expect(
+          keyBundlesService.purgeDeviceOneTimePreKeys,
+        ).toHaveBeenCalledWith(1, 1);
+        const purgeAt = (
+          keyBundlesService.purgeDeviceOneTimePreKeys as jest.Mock
+        ).mock.invocationCallOrder[0];
+        const rosterAt =
+          resetRosterService.applyAfterReset.mock.invocationCallOrder[0];
+        expect(purgeAt).toBeLessThan(rosterAt);
+        expect(resetRosterService.applyAfterReset).toHaveBeenCalledWith(1, 1);
+      });
+
+      it('acks the exact restore shape: restored + nextListVersion, identityChanged false', async () => {
+        restoreAuthorized();
+
+        await service.handleUploadKeyBundle(
+          mockClient as Socket,
+          validData,
+          mockServer as Server,
+        );
+        await new Promise((resolve) => setImmediate(resolve));
+
+        // NOT pendingReplacementVersion: the enrollment still verifies, the
+        // client re-signs the list via updateDeviceList — no re-enrolment.
+        expect(mockClient.emit).toHaveBeenCalledWith('keyBundleUploaded', {
+          success: true,
+          identityChanged: false,
+          deviceId: 4,
+          access_token: 'fresh-access',
+          refresh_token: 'fresh-refresh',
+          restored: true,
+          nextListVersion: 8,
+        });
+        expect(
+          // The roster branch owns the version; the (xlv) retry-offer
+          // predicate must not even be consulted.
+          deviceListService.pendingReplacementVersion,
+        ).not.toHaveBeenCalled();
+      });
+
+      it('the identity did NOT change: no alarm, no peer flag — but the restored push fires BEFORE the push rows drop', async () => {
+        restoreAuthorized();
+
+        await service.handleUploadKeyBundle(
+          mockClient as Socket,
+          validData,
+          mockServer as Server,
+        );
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(
+          pushNotificationsService.notifyIdentityChanged,
+        ).not.toHaveBeenCalled();
+        expect(mockClient.to).not.toHaveBeenCalled();
+        // Content-free wake-up to every endpoint the teardown is about to
+        // orphan — order is the contract: after the drop there is nothing
+        // left to deliver to.
+        expect(
+          pushNotificationsService.notifyIdentityReset,
+        ).toHaveBeenCalledWith(1, 'identity_restored');
+        const pushAt =
+          pushNotificationsService.notifyIdentityReset.mock
+            .invocationCallOrder[0];
+        const dropAt =
+          fcmTokensService.removeByUserId.mock.invocationCallOrder[0];
+        expect(pushAt).toBeLessThan(dropAt);
+      });
+
+      it('revoked devices are told deviceRevoked with reason restored', async () => {
+        restoreAuthorized();
+        roomsAdapter.set('device:1:2', new Set(['sock-b']));
+        const kicked = { disconnect: jest.fn() };
+        const sockets = mockServer.sockets as unknown as {
+          sockets: Map<string, unknown>;
+        };
+        sockets.sockets.set('sock-b', kicked);
+
+        await service.handleUploadKeyBundle(
+          mockClient as Socket,
+          validData,
+          mockServer as Server,
+        );
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(mockServer.emit).toHaveBeenCalledWith('deviceRevoked', {
+          userId: 1,
+          deviceId: 2,
+          // (lxxviii): a restore is not a takeover; the client words the
+          // logout accordingly. Absent on every other teardown.
+          reason: 'restored',
+        });
+        expect(kicked.disconnect).toHaveBeenCalled();
+      });
+
+      it('a refused restore proof acks restore_refused and touches nothing', async () => {
+        keyBundlesService.upsertKeyBundle.mockRejectedValue(
+          new IdentityRestoreRefusedError(),
+        );
+
+        await service.handleUploadKeyBundle(
+          mockClient as Socket,
+          validData,
+          mockServer as Server,
+        );
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(mockClient.emit).toHaveBeenCalledWith('keyBundleUploaded', {
+          success: false,
+          error: 'restore_refused',
+        });
+        expect(resetRosterService.applyAfterReset).not.toHaveBeenCalled();
+        expect(
+          keyBundlesService.purgeDeviceOneTimePreKeys,
+        ).not.toHaveBeenCalled();
+        expect(fcmTokensService.removeByUserId).not.toHaveBeenCalled();
+      });
+    });
   });
 
   // T3, spec §5.1 / §12 amendment (b): key material may land only on a
@@ -808,6 +966,8 @@ describe('ChatKeyExchangeService', () => {
           exists,
           // (lxxiii) clause 2: the lock state rides the bundle answer.
           linkingEnabled: false,
+          // (lxxviii) clause 1: the backup flag rides it too.
+          hasIdentityBackup: false,
           // 0b additions: additive, and null when the account is quiet.
           identityReset: null,
           identityReplacedAt: null,
@@ -1562,6 +1722,7 @@ describe('ChatKeyExchangeService', () => {
       expect(identityResetService.setRecoveryKey).toHaveBeenCalledWith(
         1,
         phrase,
+        undefined,
       );
       expect(mockClient.emit).toHaveBeenCalledWith('recoveryKeySet', {
         success: true,
@@ -1596,6 +1757,89 @@ describe('ChatKeyExchangeService', () => {
         success: false,
       });
     });
+
+    // Amendment (lxxviii) clause 1: the sealed blob rides the enrolment.
+    const backup = {
+      blob: 'c2VhbGVkLWJsb2I=',
+      salt: 'c2FsdC1zaXh0ZWVuLWI=',
+      iterations: 600000,
+      version: 1,
+    };
+
+    it('passes the sealed backup through to the atomic enrolment write', async () => {
+      await service.handleSetRecoveryKey(
+        mockClient as Socket,
+        { phrase, backup },
+        mockServer as Server,
+      );
+
+      expect(identityResetService.setRecoveryKey).toHaveBeenCalledWith(
+        1,
+        phrase,
+        expect.objectContaining(backup),
+      );
+      expect(mockClient.emit).toHaveBeenCalledWith('recoveryKeySet', {
+        success: true,
+      });
+    });
+
+    it.each([
+      ['iterations below the floor', { ...backup, iterations: 99999 }],
+      ['iterations above the cap', { ...backup, iterations: 2000001 }],
+      ['an oversized blob', { ...backup, blob: 'A'.repeat(16385) }],
+      ['a non-base64 salt', { ...backup, salt: 'not base64 at all!!' }],
+      ['an unknown blob version', { ...backup, version: 2 }],
+    ])('refuses %s without writing anything', async (_name, badBackup) => {
+      await service.handleSetRecoveryKey(
+        mockClient as Socket,
+        { phrase, backup: badBackup },
+        mockServer as Server,
+      );
+
+      expect(identityResetService.setRecoveryKey).not.toHaveBeenCalled();
+      expect(mockClient.emit).toHaveBeenCalledWith('recoveryKeySet', {
+        success: false,
+      });
+    });
+  });
+
+  describe('handleGetIdentityBackup (amendment (lxxviii))', () => {
+    it('serves the caller its stored backup verbatim', async () => {
+      identityResetService.getIdentityBackup.mockResolvedValue({
+        blob: 'c2VhbGVkLWJsb2I=',
+        salt: 'c2FsdC1zaXh0ZWVuLWI=',
+        iterations: 600000,
+        version: 1,
+      });
+
+      await service.handleGetIdentityBackup(mockClient as Socket);
+
+      expect(identityResetService.getIdentityBackup).toHaveBeenCalledWith(1);
+      expect(mockClient.emit).toHaveBeenCalledWith('identityBackup', {
+        exists: true,
+        blob: 'c2VhbGVkLWJsb2I=',
+        salt: 'c2FsdC1zaXh0ZWVuLWI=',
+        iterations: 600000,
+        version: 1,
+      });
+    });
+
+    it('answers exists=false when no backup is stored', async () => {
+      await service.handleGetIdentityBackup(mockClient as Socket);
+
+      expect(mockClient.emit).toHaveBeenCalledWith('identityBackup', {
+        exists: false,
+      });
+    });
+
+    it('returns early for an unauthenticated socket', async () => {
+      const noUserClient = { data: { user: null }, emit: jest.fn() };
+
+      await service.handleGetIdentityBackup(noUserClient as unknown as Socket);
+
+      expect(identityResetService.getIdentityBackup).not.toHaveBeenCalled();
+      expect(noUserClient.emit).not.toHaveBeenCalled();
+    });
   });
 
   describe('handleCheckOwnKeyBundle (0b additions)', () => {
@@ -1615,6 +1859,7 @@ describe('ChatKeyExchangeService', () => {
       expect(mockClient.emit).toHaveBeenCalledWith('ownKeyBundleStatus', {
         exists: true,
         linkingEnabled: false,
+        hasIdentityBackup: false,
         identityReset: {
           status: 'pending',
           deadlineAt: deadlineAt.toISOString(),
@@ -1637,6 +1882,8 @@ describe('ChatKeyExchangeService', () => {
       expect(mockClient.emit).toHaveBeenCalledWith('ownKeyBundleStatus', {
         exists: false,
         linkingEnabled: true,
+        // (lxxviii): drives the "create your backup" nudge when false.
+        hasIdentityBackup: false,
         identityReset: null,
         identityReplacedAt: null,
       });

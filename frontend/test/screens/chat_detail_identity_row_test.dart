@@ -42,12 +42,25 @@ const _currentUserJwt =
 const _peerId = 2;
 
 class _AlarmedEncryption extends EncryptionProvider {
-  _AlarmedEncryption({this.changedPeers = const <int>{}});
+  _AlarmedEncryption({
+    this.changedPeers = const <int>{},
+    this.notedPeers = const <int, String>{},
+    this.refusedPeers = const <int>{},
+  });
+
+  final Set<int> refusedPeers;
+
+  @override
+  Set<int> get peersRefusedIdentity => refusedPeers;
 
   final Set<int> changedPeers;
+  final Map<int, String> notedPeers;
 
   @override
   Set<int> get peersWithChangedIdentity => changedPeers;
+
+  @override
+  Map<int, String> get peerKeyChangeNotes => notedPeers;
 
   @override
   Future<String?> getPeerIdentityFingerprint(int peerId) async => 'AAAA BBBB';
@@ -80,8 +93,15 @@ Future<void> _pumpChat(
   WidgetTester tester, {
   required bool alarmed,
   required bool withMessages,
+  // (lxxix): warnings are DEMOTED by default; the pre-(lxxix) tests below
+  // opt back in because they assert the manual-confirmation red pill.
+  bool keyChangeWarnings = true,
+  bool noted = false,
+  bool refused = false,
 }) async {
-  SharedPreferences.setMockInitialValues({});
+  SharedPreferences.setMockInitialValues({
+    'key_change_warnings': keyChangeWarnings,
+  });
 
   final conversations = ConversationsProvider()..setCurrentUserId(1);
   conversations.onConversationsList([_conversationJson()]);
@@ -115,6 +135,10 @@ Future<void> _pumpChat(
         ChangeNotifierProvider<EncryptionProvider>.value(
           value: _AlarmedEncryption(
             changedPeers: alarmed ? const {_peerId} : const <int>{},
+            notedPeers: noted
+                ? const {_peerId: '2026-09-08T00:00:00.000Z'}
+                : const <int, String>{},
+            refusedPeers: refused ? const {_peerId} : const <int>{},
           ),
         ),
         ChangeNotifierProvider(
@@ -130,6 +154,8 @@ Future<void> _pumpChat(
       ),
     ),
   );
+  await tester.pump();
+  // Let the SettingsProvider async prefs load land before asserting.
   await tester.pump();
 }
 
@@ -177,5 +203,117 @@ void main() {
     await _pumpChat(tester, alarmed: false, withMessages: true);
 
     expect(find.byType(PeerIdentityChangedRow), findsNothing);
+  });
+  // ---- Amendment (lxxix): the demoted surface (falsification F11) ----
+
+  testWidgets(
+      'F11: setting OFF + noted peer → muted note present, red pill absent',
+      (tester) async {
+    await _pumpChat(
+      tester,
+      alarmed: true, // a standing warning must NOT surface as the pill
+      noted: true,
+      keyChangeWarnings: false,
+      withMessages: true,
+    );
+
+    expect(
+      find.byKey(const ValueKey('peer-identity-changed-note')),
+      findsOneWidget,
+      reason: 'the demoted change renders as ONE muted system line',
+    );
+    expect(
+      find.byType(PeerIdentityChangedRow),
+      findsNothing,
+      reason: 'toggle ignored → the red pill would render with the setting '
+          'off (F11)',
+    );
+  });
+
+  testWidgets('F11: setting OFF + noted peer, empty chat → muted note only',
+      (tester) async {
+    await _pumpChat(
+      tester,
+      alarmed: false,
+      noted: true,
+      keyChangeWarnings: false,
+      withMessages: false,
+    );
+
+    expect(
+      find.byKey(const ValueKey('peer-identity-changed-note')),
+      findsOneWidget,
+    );
+    expect(find.byType(PeerIdentityChangedRow), findsNothing);
+  });
+
+  testWidgets('setting ON keeps the red pill and suppresses the muted note',
+      (tester) async {
+    await _pumpChat(
+      tester,
+      alarmed: true,
+      noted: true, // a note may coexist; the pill wins while warnings are on
+      keyChangeWarnings: true,
+      withMessages: true,
+    );
+
+    expect(find.byType(PeerIdentityChangedRow), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('peer-identity-changed-note')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('setting OFF with no note shows neither surface', (tester) async {
+    await _pumpChat(
+      tester,
+      alarmed: false,
+      noted: false,
+      keyChangeWarnings: false,
+      withMessages: true,
+    );
+
+    expect(find.byType(PeerIdentityChangedRow), findsNothing);
+    expect(
+      find.byKey(const ValueKey('peer-identity-changed-note')),
+      findsNothing,
+    );
+  });
+  testWidgets(
+      'a REFUSED peer gets the red pill even with warnings off, never the note',
+      (tester) async {
+    await _pumpChat(
+      tester,
+      alarmed: true,
+      noted: true, // even a recorded note must not soften a refusal
+      refused: true,
+      keyChangeWarnings: false,
+      withMessages: true,
+    );
+
+    expect(
+      find.byType(PeerIdentityChangedRow),
+      findsOneWidget,
+      reason: 'a refusal blocks sending; hiding the pill behind the (lxxix) '
+          'setting would leave a dead chat with zero UI',
+    );
+    expect(
+      find.byKey(const ValueKey('peer-identity-changed-note')),
+      findsNothing,
+      reason: 'the muted note never renders for a refused peer',
+    );
+  });
+
+  testWidgets('a refused peer shows the pill in an EMPTY chat too',
+      (tester) async {
+    await _pumpChat(
+      tester,
+      alarmed: false,
+      refused: true,
+      keyChangeWarnings: false,
+      withMessages: false,
+    );
+
+    expect(find.byType(PeerIdentityChangedRow), findsOneWidget);
   });
 }

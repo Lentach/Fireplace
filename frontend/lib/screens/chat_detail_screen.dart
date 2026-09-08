@@ -687,6 +687,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     required Color messagesAreaBg,
     required UserModel? peer,
     required bool peerIdentityChanged,
+    required bool peerKeyChangeNoted,
     required int currentUserId,
   }) {
     // Wallpaper runs full-bleed behind the floating top chrome
@@ -698,10 +699,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     final settings = context.watch<SettingsProvider>();
     // Phase 0a: unacknowledged peer identity change renders a system row at
     // the newest end of the timeline (reverse list => index 0). Clears the
-    // moment the user confirms fingerprints in the verify dialog. The flag is
-    // computed (and subscribed) in build() — this helper also runs inside
-    // ChatComposerViewport's build, where context.select is illegal.
-    final identityRowOffset = peerIdentityChanged ? 1 : 0;
+    // moment the user confirms fingerprints in the verify dialog. With
+    // key-change warnings demoted (amendment (lxxix)) the slot instead holds
+    // the muted one-shot note. The flags are computed (and subscribed) in
+    // build() — this helper also runs inside ChatComposerViewport's build,
+    // where context.select is illegal.
+    final identityRowOffset = (peerIdentityChanged || peerKeyChangeNoted)
+        ? 1
+        : 0;
     return ChatBackgroundPattern(
       backgroundColor: messagesAreaBg,
       layer: settings.resolvedChatBackground,
@@ -725,6 +730,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                   if (peerIdentityChanged)
                     PeerIdentityChangedRow(
                       // Only ever true when the peer is known; see build().
+                      peerId: peer!.id,
+                      peerName: _getContactName(),
+                    )
+                  else if (peerKeyChangeNoted)
+                    PeerIdentityChangedNote(
                       peerId: peer!.id,
                       peerName: _getContactName(),
                     ),
@@ -785,6 +795,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                         return PeerIdentityChangedRow(
                           // peerIdentityChanged is only computed true in
                           // build() when otherUser (this `peer`) is non-null.
+                          peerId: peer!.id,
+                          peerName: _getContactName(),
+                        );
+                      }
+                      if (peerKeyChangeNoted && index == 0) {
+                        return PeerIdentityChangedNote(
                           peerId: peer!.id,
                           peerName: _getContactName(),
                         );
@@ -908,11 +924,34 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
         : RpgTheme.textSecondaryLight;
     final otherUser = _getOtherUser();
     // Rebuilds when the peer's identity-change warning appears or clears
-    // (Phase 0a timeline row).
-    final peerIdentityChanged =
+    // (Phase 0a timeline row). (lxxix): the red pill renders while the user
+    // opted back into manual confirmation, and ALWAYS for a peer whose
+    // session build the account-anchor gate refused — a refusal blocks
+    // sending, so it must keep a visible door to the ceremony regardless of
+    // the setting. With warnings demoted (the default) an auto-acknowledged
+    // change renders as the muted one-shot note instead; a refused peer
+    // never gets the muted note.
+    final warnOnKeyChange = context.select<SettingsProvider, bool>(
+      (s) => s.keyChangeWarnings,
+    );
+    final peerRefused =
         otherUser != null &&
         context.select<EncryptionProvider, bool>(
-          (e) => e.peersWithChangedIdentity.contains(otherUser.id),
+          (e) => e.peersRefusedIdentity.contains(otherUser.id),
+        );
+    final peerIdentityChanged =
+        peerRefused ||
+        (otherUser != null &&
+            warnOnKeyChange &&
+            context.select<EncryptionProvider, bool>(
+              (e) => e.peersWithChangedIdentity.contains(otherUser.id),
+            ));
+    final peerKeyChangeNoted =
+        otherUser != null &&
+        !peerIdentityChanged &&
+        !warnOnKeyChange &&
+        context.select<EncryptionProvider, bool>(
+          (e) => e.peerKeyChangeNotes.containsKey(otherUser.id),
         );
     final activeConv = convs.getConversationById(widget.conversationId);
     final statusText = _getHeaderStatusText(context, messaging);
@@ -993,6 +1032,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
               currentUserId: currentUserId,
               peer: otherUser,
               peerIdentityChanged: peerIdentityChanged,
+              peerKeyChangeNoted: peerKeyChangeNoted,
             ),
           ),
           composerFooter,
@@ -1024,6 +1064,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                 currentUserId: currentUserId,
                 peer: otherUser,
                 peerIdentityChanged: peerIdentityChanged,
+                peerKeyChangeNoted: peerKeyChangeNoted,
               ),
               composer: composerFooter,
             ),

@@ -9,12 +9,16 @@ import '../providers/auth_provider.dart';
 import '../providers/connection_provider.dart';
 import '../providers/encryption_provider.dart';
 import '../services/device_link/link_ceremony_controller.dart';
+import '../services/device_link/link_code_extract.dart';
+import '../services/device_link/link_crypto.dart';
+import '../services/device_link/pending_link_code.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/glass/glass_top_bar.dart';
 import '../widgets/identity_reset_pending_banner.dart'
     show identityResetRemainingLabel;
 import '../widgets/recovery_phrase_prompt.dart' show startIdentityResetFlow;
 import '../widgets/top_snackbar.dart';
+import 'link_restore_section.dart';
 import 'link_this_device_screen.dart' show LinkThisDeviceBody;
 
 /// (lxxiii) clause 3: an enrolled account that lost its keys meets a GATE,
@@ -51,8 +55,9 @@ class _DeviceLinkGateScreenState extends State<DeviceLinkGateScreen> {
     });
     // Same construction as DevicesScreen.initState: this screen owns the
     // ceremony controller and registers it as the provisioning sink for its
-    // lifetime. The deep-link/pending-code path is a PRIMARY-side concern and
-    // deliberately absent here.
+    // lifetime. A pending `n` code stays a PRIMARY-side concern, but a
+    // deep-linked `p` code (the primary's display, (lxxvii)) belongs exactly
+    // here — this keyless install is the hello side.
     final connection = context.read<ConnectionProvider>();
     final encryption = context.read<EncryptionProvider>();
     final auth = context.read<AuthProvider>();
@@ -83,18 +88,46 @@ class _DeviceLinkGateScreenState extends State<DeviceLinkGateScreen> {
     _controller = controller;
     _connection = connection;
     connection.registerProvisioningSink(controller);
+    controller.addListener(_maybeConsumePendingPrimaryCode);
+    PendingLinkCode.listenable.addListener(_maybeConsumePendingPrimaryCode);
+    // The controller has not notified yet — check the slot armed at boot.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeConsumePendingPrimaryCode();
+    });
+  }
+
+  /// A `p` code that arrived by deep link on this keyless install runs the
+  /// flipped hello-side flow ((lxxvii) clause 3). Peeked by ROLE first: an
+  /// `n` code is left armed for a primary (this install can never use it,
+  /// and consuming it would eat the code a later primary-side screen needs).
+  bool _consumedPendingPrimaryCode = false;
+  void _maybeConsumePendingPrimaryCode() {
+    final controller = _controller;
+    if (controller == null || _consumedPendingPrimaryCode || !mounted) return;
+    final raw = PendingLinkCode.listenable.value;
+    if (raw == null) return;
+    final code = extractLinkCode(raw) ?? raw;
+    if (LinkOobCode.tryParse(code)?.role != LinkRole.primary) return;
+    _consumedPendingPrimaryCode = true;
+    PendingLinkCode.take();
+    unawaited(
+      controller.startNewDeviceFromCode(code, platform: linkPlatformLabel()),
+    );
   }
 
   @override
   void dispose() {
     _ticker?.cancel();
+    PendingLinkCode.listenable.removeListener(_maybeConsumePendingPrimaryCode);
     final controller = _controller;
     if (controller != null) {
+      controller.removeListener(_maybeConsumePendingPrimaryCode);
       _connection?.unregisterProvisioningSink(controller);
       controller.dispose();
     }
     super.dispose();
   }
+
 
   /// The rebind's reconnect re-runs the E2E init, which clears
   /// `identityIncomplete` and unmounts this gate — the toast is the only
@@ -159,6 +192,11 @@ class _DeviceLinkGateScreenState extends State<DeviceLinkGateScreen> {
         const SizedBox(height: 16),
       ]);
     }
+    // (lxxviii) clause 3: the third door — restore the identity from the
+    // phrase-sealed server backup. Below the reset section on every state.
+    children.add(const SizedBox(height: 16));
+    children.add(const LinkRestoreSection());
+    children.add(const SizedBox(height: 16));
     children.add(
       TextButton(
         key: const Key('link-gate-logout'),
@@ -211,7 +249,11 @@ class _DeviceLinkGateScreenState extends State<DeviceLinkGateScreen> {
     final controller = _controller;
     return [
       Text(
-        e.linkDisposesStaleMaterial ? l10n.linkGateStaleBody : l10n.linkGateBody,
+        e.linkDisposesStaleMaterial
+            ? l10n.linkGateStaleBody
+            // (lxxvii) clause 3: the body now names BOTH directions — scan
+            // the primary's code or show it this one.
+            : l10n.linkGateScanBody,
         style: theme.textTheme.bodyMedium?.copyWith(
           color: colors.onSurfaceVariant,
         ),

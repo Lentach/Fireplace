@@ -33,7 +33,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 /// segment fails the strict re-encode check).
 final String _code = LinkOobCode(
   provisioningId: '3f2c8a1e-9b7d-4c5a-8e2f-1a6b3c9d0e4f',
-  ephPubN: linkEphemeralPublicBytes(generateLinkEphemeral()),
+  ephPub: linkEphemeralPublicBytes(generateLinkEphemeral()),
   platform: 'web',
 ).encode();
 
@@ -226,14 +226,17 @@ void main() {
         _ceremonyHost((_) => LinkDeviceScreen(controller: c)),
       );
       await tester.tap(find.byKey(const Key('open')));
+      // The screen auto-opens the flipped flow on mount ((lxxvii)); with no
+      // DAK in the mock Keystore it lands on `failed` — irrelevant here, the
+      // pin is the POP on `done`.
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('link-code-field')), findsOneWidget);
+      expect(find.byType(LinkDeviceScreen), findsOneWidget);
 
       c.primaryStep = PrimaryLinkStep.done;
       c.notifyListeners();
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('link-code-field')), findsNothing);
+      expect(find.byType(LinkDeviceScreen), findsNothing);
       expect(find.text('marker-page'), findsOneWidget);
       expect(find.text('The device has been linked.'), findsOneWidget);
       await tester.pump(const Duration(seconds: 3));

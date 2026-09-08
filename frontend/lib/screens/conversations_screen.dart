@@ -12,6 +12,7 @@ import '../providers/encryption_provider.dart';
 import '../providers/friends_provider.dart';
 import '../providers/messaging_provider.dart';
 import '../providers/passcode_provider.dart';
+import '../providers/settings_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/avatar_circle.dart';
 import '../widgets/chat_honeycomb_picker.dart';
@@ -54,6 +55,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
       final friends = context.read<FriendsProvider>();
       final convs = context.read<ConversationsProvider>();
       final msg = context.read<MessagingProvider>();
+      final settings = context.read<SettingsProvider>();
 
       // Wire all sub-providers into ConnectionProvider
       conn.setProviders(
@@ -66,6 +68,10 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
       // Wire MessagingProvider dependencies
       msg.setEncryptionProvider(enc);
       msg.setConversationsProvider(convs);
+
+      // (lxxix): the encryption layer decides between the manual key-change
+      // ceremony and the demoted auto-acknowledge off this live setting.
+      enc.keyChangeWarnings = () => settings.keyChangeWarnings;
 
       // Start connection via ConnectionProvider (owns socket lifecycle)
       await auth.ensureSessionReady();

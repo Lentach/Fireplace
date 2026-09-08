@@ -8,6 +8,22 @@ import { IdentityResetRequest } from './identity-reset-request.entity';
 import { RecoveryKey } from './recovery-key.entity';
 
 /**
+ * Phrase-sealed identity backup as written / served (amendment (lxxviii)
+ * clause 1). Opaque to the server: `blob` is base64(iv12 || AES-256-GCM ct)
+ * under PBKDF2-HMAC-SHA256(NFKD phrase, salt, iterations); `version` names
+ * the blob format (1 is the only one defined).
+ */
+export interface IdentityBackupInput {
+  blob: string;
+  salt: string;
+  iterations: number;
+  version: number;
+}
+
+/** The same shape read back for `getIdentityBackup` — never partial. */
+export type IdentityBackupRecord = IdentityBackupInput;
+
+/**
  * Delay before a reset may replace the account identity. Long by design: push
  * is this app's only offline channel (no email), so the window has to survive
  * a phone being face-down overnight. Owner-confirmed at 72 h.
@@ -499,12 +515,30 @@ export class IdentityResetService {
    * which would hand a thief the whole shortcut back: replace the phrase on a
    * long-standing row and the new secret inherits an age it never had. The age
    * gate governs the SECRET, not the row, so a new secret starts at zero.
-   *
    * Returns whether this was a replacement, so the caller can word the
    * notification correctly.
+   *
+   * `backup` (amendment (lxxviii) clause 1) is the phrase-sealed identity
+   * blob. Verifier and blob land in ONE statement — atomic by construction —
+   * so a crash can never leave a blob sealed under a phrase whose verifier
+   * was not stored (or vice versa). Absent means an older client: the phrase
+   * is replaced and any stored blob is left untouched.
    */
-  async setRecoveryKey(userId: number, phrase: string): Promise<boolean> {
+  async setRecoveryKey(
+    userId: number,
+    phrase: string,
+    backup?: IdentityBackupInput,
+  ): Promise<boolean> {
     const verifierHash = await argon2.hash(phrase, RECOVERY_ARGON2_OPTIONS);
+    const backupColumns = backup
+      ? {
+          backupBlob: backup.blob,
+          backupSalt: backup.salt,
+          backupIterations: backup.iterations,
+          backupVersion: backup.version,
+          backupUpdatedAt: new Date(),
+        }
+      : {};
     const existing = await this.recoveryRepo.findOne({ where: { userId } });
     if (existing) {
       await this.recoveryRepo.update(
@@ -515,12 +549,48 @@ export class IdentityResetService {
           failedAttempts: 0,
           lockedUntil: null,
           createdAt: new Date(),
+          ...backupColumns,
         },
       );
       return true;
     }
-    await this.recoveryRepo.insert({ userId, verifierHash });
+    await this.recoveryRepo.insert({ userId, verifierHash, ...backupColumns });
     return false;
+  }
+
+  /**
+   * The stored identity backup, or null when the account never uploaded one
+   * (amendment (lxxviii) clause 1). Served only to the authenticated owner —
+   * harmless even then, because the blob is sealed under the phrase.
+   */
+  async getIdentityBackup(
+    userId: number,
+  ): Promise<IdentityBackupRecord | null> {
+    const row = await this.recoveryRepo.findOne({ where: { userId } });
+    if (
+      !row ||
+      row.backupBlob == null ||
+      row.backupSalt == null ||
+      row.backupIterations == null ||
+      row.backupVersion == null
+    ) {
+      return null;
+    }
+    return {
+      blob: row.backupBlob,
+      salt: row.backupSalt,
+      iterations: row.backupIterations,
+      version: row.backupVersion,
+    };
+  }
+
+  /** Whether a sealed identity backup exists — `ownKeyBundleStatus`'s flag. */
+  async hasIdentityBackup(userId: number): Promise<boolean> {
+    const row = await this.recoveryRepo.findOne({
+      where: { userId },
+      select: { id: true, backupBlob: true },
+    });
+    return row?.backupBlob != null;
   }
 
   /**

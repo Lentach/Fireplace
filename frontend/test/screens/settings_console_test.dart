@@ -177,8 +177,9 @@ void main() {
     ) async {
       await tester.pumpWidget(_host());
       await tester.pumpAndSettle();
-      // Delete/Log out live in SESSION, below the fold of a lazy ListView.
-      await tester.drag(find.byType(ListView), const Offset(0, -420));
+      // Delete/Log out live in SESSION, below the fold of a lazy ListView
+      // ((lxxix) added the key-change warnings row above them).
+      await tester.drag(find.byType(ListView), const Offset(0, -560));
       await tester.pumpAndSettle();
 
       final rows = tester

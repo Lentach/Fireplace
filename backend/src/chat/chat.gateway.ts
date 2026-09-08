@@ -516,6 +516,18 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     );
   }
 
+  /**
+   * Serves the caller's phrase-sealed identity backup ((lxxviii) clause 1).
+   * Same tier as `setRecoveryKey`: the blob is useless without the phrase,
+   * but nothing legitimate fetches it in a loop.
+   */
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 900000 } })
+  @SubscribeMessage('getIdentityBackup')
+  async handleGetIdentityBackup(@ConnectedSocket() client: Socket) {
+    return this.chatKeyExchangeService.handleGetIdentityBackup(client);
+  }
+
   @UseGuards(WsThrottlerGuard)
   @Throttle({ default: { limit: 30, ttl: 900000 } })
   @SubscribeMessage('requestSessionRebuild')
@@ -599,15 +611,19 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   // ========== PROVISIONING CEREMONY (Phase 2 T3, spec §5.1/§7 row 424) ==========
 
   /**
-   * §5.1 ceremony open. Tight limit like enrollment: a legitimate account
+   * §5.1 ceremony open — `{ role?: 'new' | 'primary' }`, default 'new'
+   * (amendment (lxxvii)). Tight limit like enrollment: a legitimate account
    * links at most two extra devices, ever, and each open allocates a
    * deviceId.
    */
   @UseGuards(WsThrottlerGuard)
   @Throttle({ default: { limit: 10, ttl: 900000 } })
   @SubscribeMessage('openProvisioning')
-  async handleOpenProvisioning(@ConnectedSocket() client: Socket) {
-    return this.chatProvisioningService.handleOpenProvisioning(client);
+  async handleOpenProvisioning(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: unknown,
+  ) {
+    return this.chatProvisioningService.handleOpenProvisioning(client, data);
   }
 
   /** SAS round: the primary presents its ephemeral (§5.1). */

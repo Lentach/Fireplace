@@ -24,6 +24,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
 
 import 'package:fireplace/services/api_service.dart';
+import 'package:fireplace/services/device_link/identity_backup.dart';
 import 'package:fireplace/services/encryption_service.dart';
 import 'package:fireplace/services/socket_service.dart';
 import 'package:fireplace/utils/e2e_envelope.dart';
@@ -56,14 +57,18 @@ void enableRealNetwork() {
 /// precondition built by SQL proves nothing about the code that normally
 /// builds it.
 ///
-/// Container and credentials match the harness's own docker-compose stack;
-/// override with `E2E_DB_CONTAINER` when the stack is named differently. If
-/// `docker` is unreachable the caller gets a clear StateError rather than a
-/// mystery timeout — a test that depends on this channel must SKIP or FAIL
-/// loudly, never quietly pass.
+/// Credentials match the harness's own docker-compose stack. The default
+/// container is this checkout's (`docker compose up` from the repo root names
+/// it `fireplace-db-1`); override with `E2E_DB_CONTAINER` for any other stack.
+/// CI resolves it dynamically (`docker compose ps -q db`), so the default only
+/// serves local runs — it previously named a sibling WORKTREE's container,
+/// which made every SQL-backed test fail with "container is not running" on a
+/// normal checkout. If `docker` is unreachable the caller gets a clear
+/// StateError rather than a mystery timeout — a test that depends on this
+/// channel must SKIP or FAIL loudly, never quietly pass.
 Future<List<List<String>>> e2eSql(String statement) async {
   final container =
-      Platform.environment['E2E_DB_CONTAINER'] ?? 'fireplace-0a-db-1';
+      Platform.environment['E2E_DB_CONTAINER'] ?? 'fireplace-db-1';
   final ProcessResult result;
   try {
     result = await Process.run('docker', [
@@ -285,6 +290,9 @@ class E2eClient {
     'identityResetCancelResult',
     'recoveryKeySet',
     'ownKeyBundleStatus',
+    // (lxxviii): the sealed identity backup answer. Unlisted events are
+    // recorded nowhere, so without this every backup assert passes vacuously.
+    'identityBackup',
     // Phase 2 T2: DAK enrollment + signed device list.
     'deviceAuthorityEnrolled',
     'deviceListUpdated',
@@ -371,6 +379,35 @@ class E2eClient {
     return keys;
   }
 
+  /// The (lxxviii) backup payload for THIS instance's live identity, straight
+  /// out of the production exporter: the `identity_record_v1` and
+  /// `dak_record_v1_<uid>` strings verbatim as the stores hold them.
+  ///
+  /// Capture it BEFORE a test wipes the shared mock stores to model a wiped
+  /// install — the wipe destroys the records it reads.
+  Future<IdentityBackupPayload> exportIdentityBackup() =>
+      encryption.exportIdentityForBackup();
+
+  /// Runs the PRODUCTION restore adopt ((lxxviii) clause 3) over an unsealed
+  /// backup and returns the exact public upload payload it staged.
+  ///
+  /// Deliberately the real `adoptRestoredIdentity` rather than a hand-rolled
+  /// install: it is what proves the CLIENT half reinstalls a byte-identical
+  /// identity + registrationId (a re-mint would upload a different key and
+  /// the server would adjudicate an identity CHANGE, not a restore), and the
+  /// fresh signed pre-key / one-time pre-keys it mints are exactly what the
+  /// server's OTP purge has to make room for.
+  Future<Map<String, dynamic>> adoptRestoredIdentityForUpload(
+    IdentityBackupPayload payload,
+  ) async {
+    await encryption.adoptRestoredIdentity(userId: userId, payload: payload);
+    final keys = encryption.getKeysForUpload();
+    if (keys == null) {
+      throw StateError('$label: restore adopt staged no keys for upload');
+    }
+    return keys;
+  }
+
   /// Uploads a staged key bundle and waits for the server acknowledgement.
   Future<void> uploadKeyBundle(Map<String, dynamic> keys) async {
     socketService.uploadKeyBundle(
@@ -384,6 +421,7 @@ class E2eClient {
   Future<Map<String, dynamic>> uploadKeyBundleRaw(
     Map<String, dynamic> keys, {
     String? identitySignature,
+    String? restoreSignature,
     String? nonce,
   }) async {
     final bundle = (keys['keyBundle'] as Map).cast<String, dynamic>();
@@ -391,6 +429,7 @@ class E2eClient {
     socketService.socket!.emit('uploadKeyBundle', {
       ...bundle,
       'identitySignature': ?identitySignature,
+      'restoreSignature': ?restoreSignature,
       'nonce': ?nonce,
     });
     final answer = await events.next(
@@ -482,15 +521,35 @@ class E2eClient {
     return (payload as Map)['cancelled'] == true;
   }
 
-  /// Enrolls a recovery phrase (§6.2.1).
-  Future<bool> setRecoveryKey(String phrase) async {
+  /// Enrols a recovery phrase (§6.2.1), optionally with the (lxxviii) sealed
+  /// identity backup that turns the phrase into a real key backup.
+  Future<bool> setRecoveryKey(
+    String phrase, {
+    Map<String, dynamic>? backup,
+  }) async {
     events.discard('recoveryKeySet');
-    socketService.socket!.emit('setRecoveryKey', {'phrase': phrase});
+    socketService.socket!.emit('setRecoveryKey', {
+      'phrase': phrase,
+      'backup': ?backup,
+    });
     final payload = await events.next(
       'recoveryKeySet',
       reason: '$label recovery key answer',
     );
     return (payload as Map)['success'] == true;
+  }
+
+  /// Fetches the (lxxviii) sealed identity backup. The blob is useless
+  /// without the phrase, so the server serves it to any authenticated
+  /// session of the account.
+  Future<Map<String, dynamic>> getIdentityBackup() async {
+    events.discard('identityBackup');
+    socketService.socket!.emit('getIdentityBackup', <String, dynamic>{});
+    final payload = await events.next(
+      'identityBackup',
+      reason: '$label identity backup answer',
+    );
+    return (payload as Map).cast<String, dynamic>();
   }
 
   /// Reads the server's view of this account's key/protection state.
@@ -560,17 +619,33 @@ class E2eClient {
     return (answer as Map).cast<String, dynamic>();
   }
 
-  /// Emits `openProvisioning` (§5.1 — N opens a ceremony) and returns the
+  /// Emits `openProvisioning` (§5.1 — the ceremony opener) and returns the
   /// `provisioningOpened` answer. The answer deliberately carries NO
   /// deviceId (spec §12 amendment (a)).
-  Future<Map<String, dynamic>> openProvisioning() async {
+  ///
+  /// [role] is (lxxvii) clause 1: `'new'` (default, byte-compatible with the
+  /// pre-amendment payload) means the OPENER is the new device and the
+  /// primary will send the hello; `'primary'` flips it, and then the
+  /// opener's `provisioningHello` relay carries the assigned `deviceId`.
+  Future<Map<String, dynamic>> openProvisioning({String? role}) async {
     events.discard('provisioningOpened');
-    socketService.socket!.emit('openProvisioning', <String, dynamic>{});
+    socketService.socket!.emit('openProvisioning', {'role': ?role});
     final answer = await events.next(
       'provisioningOpened',
       reason: '$label openProvisioning answer',
     );
     return (answer as Map).cast<String, dynamic>();
+  }
+
+  /// Awaits the `provisioningHello` RELAY (the opener's side of the other
+  /// party's hello). Under (lxxvii) clause 1 a primary-opened ceremony
+  /// relays `deviceId` with it; a new-device-opened one does not.
+  Future<Map<String, dynamic>> awaitProvisioningHelloRelay() async {
+    final payload = await events.next(
+      'provisioningHello',
+      reason: '$label provisioningHello relay',
+    );
+    return (payload as Map).cast<String, dynamic>();
   }
 
   /// Emits `provisioningHello` (the primary presents its ephemeral) and

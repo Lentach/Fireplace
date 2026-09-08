@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../l10n/app_localizations.dart';
 import '../providers/passcode_provider.dart';
+import '../services/account_enrolled_hint.dart';
 import '../services/local_data_eraser.dart';
 import '../theme/rpg_theme.dart';
 import '../utils/passcode_autolock.dart';
@@ -42,12 +43,23 @@ class _PasscodeUnlockScreenState extends State<PasscodeUnlockScreen> {
   bool _erasePanelOpen = false;
   bool _erasing = false;
   bool _erasePartial = false;
+  bool _enrolledHint = false;
   Timer? _cooldownTicker;
 
   @override
   void initState() {
     super.initState();
     _confirm.addListener(_onConfirmChanged);
+    // (lxxvi) clause 1: the erase warning is enrolment-aware. Read from
+    // cleartext prefs (this screen cannot read E2E state — on web the store
+    // is wrapped while locked), with the account named by the stored access
+    // JWT rather than AuthProvider, which this screen deliberately never
+    // touches. False until it answers: the un-enrolled copy is the default.
+    unawaited(
+      AccountEnrolledHint.read().then((enrolled) {
+        if (mounted && enrolled) setState(() => _enrolledHint = true);
+      }),
+    );
   }
 
   void _onConfirmChanged() {
@@ -135,7 +147,9 @@ class _PasscodeUnlockScreenState extends State<PasscodeUnlockScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            l10n.passcodeEraseWarning,
+            _enrolledHint
+                ? l10n.passcodeEraseWarningEnrolled
+                : l10n.passcodeEraseWarning,
             textAlign: TextAlign.center,
             style: RpgTheme.bodyFont(fontSize: 13, color: colorScheme.error),
           ),

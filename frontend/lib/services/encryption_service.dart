@@ -12,6 +12,8 @@ import '../utils/e2e_diag_log.dart';
 import '../utils/e2e_persistent_diag.dart';
 import 'plaintext_record_codec.dart';
 import 'encryption/signal_stores.dart';
+import 'device_link/identity_backup.dart';
+import 'passcode_wrap_hook.dart';
 import 'encryption/session_cross_context_lock.dart';
 
 /// Thrown by [EncryptionService.initialize] when identity material is present
@@ -259,6 +261,17 @@ class EncryptionService {
   Set<int> get peersWithChangedIdentity =>
       Set.unmodifiable(_peersWithChangedIdentity);
 
+  /// Peers whose session build was REFUSED by the (xxxix)/(lv) account-anchor
+  /// gate this run. In-memory ONLY: a standing refusal re-fires on the next
+  /// build attempt, and the fail-closed state it names is already durable
+  /// (the anchor and the warning set). While it holds a peer, the red pill
+  /// renders REGARDLESS of the (lxxix) demotion setting — a refusal is the
+  /// one shape with no message flow and therefore no other visible door.
+  /// Cleared by a successful [acknowledgePeerIdentity].
+  final Set<int> _peersRefusedIdentity = <int>{};
+  Set<int> get peersRefusedIdentity =>
+      Set.unmodifiable(_peersRefusedIdentity);
+
   static const int _identityChangedCap = 200;
 
   String _identityChangedKey(int userId) =>
@@ -266,6 +279,79 @@ class EncryptionService {
 
   /// Called when a peer's identity key changes. Set by the provider.
   void Function(int peerId)? onPeerIdentityChanged;
+
+  /// Amendment (lxxix): whether the user opted back into manual key-change
+  /// confirmation. Injected from `SettingsProvider` via the provider wiring;
+  /// the default matches the spec default (warnings DEMOTED).
+  bool Function() keyChangeWarnings = () => false;
+
+  /// One-shot muted timeline notes (amendment (lxxix)): peerId → ISO-8601
+  /// instant of the auto-acknowledged identity change. Persisted per user
+  /// (`e2e_<uid>_peer_key_change_notes_v1`) so the muted line survives a
+  /// reload (falsification F12). Insertion-ordered and capped by recency,
+  /// same eviction style as [_peersWithChangedIdentity].
+  final Map<int, String> _peerKeyChangeNotes = <int, String>{};
+  Map<int, String> get peerKeyChangeNotes =>
+      Map.unmodifiable(_peerKeyChangeNotes);
+
+  String _keyChangeNotesKey(int userId) =>
+      'e2e_${userId}_peer_key_change_notes_v1';
+
+  /// The (lxxix) demotion, shared by both detection paths (server event and
+  /// local libsignal). With warnings OFF: record the muted one-shot note, then
+  /// auto-acknowledge through [acknowledgePeerIdentity] — the SAME
+  /// compare-and-swap the manual ceremony uses, so the anchor advances only to
+  /// a key this device recorded. With warnings ON this is a no-op and today's
+  /// manual-confirmation surface is unchanged.
+  Future<void> _demoteKeyChangeIfMuted(int peerId) async {
+    if (keyChangeWarnings()) return;
+    // Re-insert so a repeat change moves the note to the newest end.
+    _peerKeyChangeNotes.remove(peerId);
+    _peerKeyChangeNotes[peerId] = DateTime.now().toUtc().toIso8601String();
+    await _persistKeyChangeNotes();
+    // A bare acknowledge promotes the staged candidate (the local-detection
+    // path stages it before firing). When nothing is staged — the plain
+    // server-event shape — nothing advances and nothing is pinned; the muted
+    // note still renders and the standing warning stays gated off the UI
+    // until the user re-enables warnings.
+    await acknowledgePeerIdentity(peerId);
+    onPeerIdentityChanged?.call(peerId);
+  }
+
+  Future<void> _persistKeyChangeNotes() async {
+    final userId = _userId;
+    if (userId == null) return;
+    try {
+      final prefs = await _sharedPrefs;
+      final entries = _peerKeyChangeNotes.entries.toList();
+      final kept = entries.length > _identityChangedCap
+          ? entries.sublist(entries.length - _identityChangedCap)
+          : entries;
+      await prefs.setString(
+        _keyChangeNotesKey(userId),
+        jsonEncode([
+          for (final e in kept) {'peerId': e.key, 'occurredAt': e.value},
+        ]),
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _loadKeyChangeNotes(int userId) async {
+    try {
+      final prefs = await _sharedPrefs;
+      final raw = prefs.getString(_keyChangeNotesKey(userId));
+      if (raw == null) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return;
+      for (final entry in decoded) {
+        if (entry is! Map) continue;
+        final peerId = entry['peerId'];
+        final occurredAt = entry['occurredAt'];
+        if (peerId is! int || occurredAt is! String) continue;
+        _peerKeyChangeNotes[peerId] = occurredAt;
+      }
+    } catch (_) {}
+  }
 
   /// The user compared [peerId]'s fingerprint out of band and accepted it.
   /// Returns whether the account anchor actually advanced.
@@ -383,6 +469,7 @@ class EncryptionService {
     });
     if (!advanced) return false;
     _peersWithChangedIdentity.remove(peerId);
+    _peersRefusedIdentity.remove(peerId);
     await _persistIdentityChanged();
     onPeerIdentityChanged?.call(peerId);
     return true;
@@ -420,6 +507,7 @@ class EncryptionService {
     });
     onPeerIdentityChanged?.call(peerId);
     await _persistIdentityChanged();
+    await _demoteKeyChangeIfMuted(peerId);
   }
 
   /// A session build was REFUSED because the served identity did not match the
@@ -461,6 +549,15 @@ class EncryptionService {
       // is worth more than the candidate, and (xlvii) clause 3's ceremony
       // re-stages a served key when it finds a standing warning with no offer.
       debugPrint('[EncryptionService] stage pending identity failed: $e');
+    }
+    // (lxxix) CORRECTION: this path is NOT demoted. Auto-adopting a key the
+    // anchor just refused would convert a live MITM refusal into silent trust
+    // — exactly what the gate exists to prevent. Instead the refusal always
+    // raises the PILL surface (in-memory; a refusal re-fires on the next
+    // build attempt), so the muted default still has a visible door: the
+    // ceremony, whose successful acknowledgement clears this set.
+    if (_peersRefusedIdentity.add(peerId)) {
+      onPeerIdentityChanged?.call(peerId);
     }
     if (!_peersWithChangedIdentity.add(peerId)) return;
     E2ePersistentDiag.record('PEER_IDENTITY_CHANGED', {
@@ -903,6 +1000,9 @@ class EncryptionService {
         // Signal path (it runs inside isTrustedIdentity).
         onPeerIdentityChanged?.call(peerId);
         _persistIdentityChanged();
+        // (lxxix): not awaited — this callback runs inside isTrustedIdentity
+        // on the Signal path, same reasoning as the persist above.
+        _demoteKeyChangeIfMuted(peerId);
       },
     );
     _preKeyStore = SecurePreKeyStore(_storage, p);
@@ -924,6 +1024,7 @@ class EncryptionService {
     // Restore warnings the user has not acknowledged yet, before any session
     // work can add to the set.
     await _loadIdentityChanged(userId);
+    await _loadKeyChangeNotes(userId);
     await _loadOwnIdentityReplaced(userId);
     // Rebuild intents outlive the process that recorded them (clause 1): a
     // recovery confirmed just before the app died must still repair its
@@ -1290,6 +1391,179 @@ class EncryptionService {
       throw StateError('encryption service not initialized');
     }
     return _identityStore.getIdentityKeyPair();
+  }
+
+  /// The phrase-sealed backup's plaintext (amendment (lxxviii)): the
+  /// `identity_record_v1` string verbatim plus the `dak_record_v1_<uid>`
+  /// string verbatim (null when this account never enrolled a DAK). Records
+  /// ride as the exact strings the stores persist, so a restore reinstalls
+  /// rather than re-derives.
+  Future<IdentityBackupPayload> exportIdentityForBackup() async {
+    final uid = _userId;
+    if (uid == null || !_initialized) {
+      throw StateError('encryption service not initialized');
+    }
+    final identity = await _storage.read(key: 'e2e_${uid}_identity_record_v1');
+    if (identity == null) {
+      throw StateError('no identity record to back up');
+    }
+    final dak = await _storage.read(key: 'dak_record_v1_$uid');
+    return IdentityBackupPayload(userId: uid, identity: identity, dak: dak);
+  }
+
+  /// §6.2-recovery restore adopt (amendment (lxxviii) clause 3): reinstall
+  /// the account identity + DAK from the phrase-sealed backup on a device
+  /// that lost its keys.
+  ///
+  /// Same residue discipline as [adoptProvisionedIdentity] ((lxxiii) clause
+  /// 3): everything parses BEFORE any write, residue (a held identity — only
+  /// with [disposeStaleMaterial] — or surviving prekeys/sessions) is wiped
+  /// and PROVEN wiped before the first store write. The identity record and
+  /// the registrationId are the BACKED-UP ones — the identity is preserved,
+  /// never re-minted — while the signed prekey and one-time prekeys are
+  /// fresh (their private halves died with the wipe; peers re-key).
+  Future<void> adoptRestoredIdentity({
+    required int userId,
+    required IdentityBackupPayload payload,
+    bool disposeStaleMaterial = false,
+  }) async {
+    if (payload.userId != userId) {
+      throw StateError('adoptRestoredIdentity: backup belongs to another '
+          'account (${payload.userId} != $userId)');
+    }
+    final existingPrefix = 'e2e_${userId}_';
+    final holdsIdentity =
+        await _storage.read(key: '${existingPrefix}identity_record_v1') !=
+            null ||
+        await _storage.read(key: '${existingPrefix}identity_key_pair') != null;
+    if (holdsIdentity && !disposeStaleMaterial) {
+      throw StateError(
+        'adoptRestoredIdentity: device already holds an identity',
+      );
+    }
+    // Parse EVERYTHING first: a damaged backup must fail before any write.
+    final IdentityKeyPair identityKeyPair;
+    final int registrationId;
+    try {
+      final record = jsonDecode(payload.identity) as Map<String, dynamic>;
+      identityKeyPair = IdentityKeyPair.fromSerialized(
+        // Library caveat: curve calls mutate handed buffers — fresh copy.
+        Uint8List.fromList(base64Decode(record['pair'] as String)),
+      );
+      registrationId = record['registrationId'] as int;
+    } catch (_) {
+      throw IdentityBackupCorrupt('identity_record');
+    }
+    String? dakPubBase64;
+    final dakRecord = payload.dak;
+    if (dakRecord != null) {
+      try {
+        final decoded = jsonDecode(dakRecord) as Map<String, dynamic>;
+        if (decoded['userId'] != userId) throw StateError('dak user');
+        dakPubBase64 = decoded['dakPub'] as String;
+        base64Decode(dakPubBase64);
+        base64Decode(decoded['dakPriv'] as String);
+      } catch (_) {
+        throw IdentityBackupCorrupt('dak_record');
+      }
+    }
+
+    final residue =
+        holdsIdentity || await _hasPriorInstallResidue(existingPrefix);
+    if (residue) {
+      if (holdsIdentity) {
+        E2ePersistentDiag.record('RESTORE_STALE_MATERIAL_DISPOSED', {
+          'userId': userId,
+        });
+      }
+      if (!await _wipeSignalMaterial(existingPrefix)) {
+        E2ePersistentDiag.record('RESTORE_RESIDUE_DISPOSAL_DEFERRED', {
+          'userId': userId,
+        });
+        throw StateError(
+          'adoptRestoredIdentity: residue disposal not proven',
+        );
+      }
+    }
+
+    _userId = userId;
+    final p = 'e2e_${userId}_';
+    _buildStores(p);
+
+    await _identityStore.initialize(identityKeyPair, registrationId);
+    // The teardown re-homes this install onto a freshly allocated device id;
+    // the post-rebind connect re-stamps it.
+    try {
+      await _storage.delete(key: _materialDeviceKey(userId));
+    } catch (_) {}
+
+    if (dakRecord != null) {
+      // Restored DAK, ARMED like DakStore.persistArmed: the list re-sign
+      // after the rebind depends on this record surviving a round trip.
+      final dakKey = 'dak_record_v1_$userId';
+      await _storage.write(key: dakKey, value: dakRecord);
+      if (await _storage.read(key: dakKey) != dakRecord) {
+        throw StateError(
+          'adoptRestoredIdentity: dak record failed read-back verification',
+        );
+      }
+      await _storage.write(key: '${p}dak_pub_v1', value: dakPubBase64!);
+    }
+
+    final signedPreKey = generateSignedPreKey(identityKeyPair, 0);
+    await _signedPreKeyStore.storeSignedPreKey(signedPreKey.id, signedPreKey);
+    final preKeys = generatePreKeys(0, _initialPreKeyBatchSize);
+    await Future.wait(preKeys.map((pk) => _preKeyStore.storePreKey(pk.id, pk)));
+    await _storage.write(
+      key: '${p}next_pre_key_id',
+      value: _initialPreKeyBatchSize.toString(),
+    );
+
+    _keysForUpload = {
+      'keyBundle': {
+        'registrationId': registrationId,
+        'identityPublicKey': base64Encode(
+          identityKeyPair.getPublicKey().serialize(),
+        ),
+        'signedPreKeyId': signedPreKey.id,
+        'signedPreKeyPublic': base64Encode(
+          signedPreKey.getKeyPair().publicKey.serialize(),
+        ),
+        'signedPreKeySignature': base64Encode(signedPreKey.signature),
+      },
+      'oneTimePreKeys': preKeys.map(_preKeyToUploadFormat).toList(),
+    };
+    await _storage.write(key: '${p}setup_complete', value: 'true');
+
+    needsKeyUpload = true;
+    identityIncomplete = false;
+    _initialized = true;
+    E2ePersistentDiag.record('RESTORE_IDENTITY_ADOPTED', {'userId': userId});
+    // (lxxvi) clause 3: raw keys just landed — wrap them NOW on a device
+    // whose passcode wrapping is on, not at the next unlock.
+    await PasscodeWrapHook.run();
+  }
+
+  /// The (lxxviii) clause-2 restore proof: XEdDSA by the CURRENT identity
+  /// key over `identityPublicKey ‖ userId ‖ nonce` — byte-identical to the
+  /// §6.1 `identitySignature` layout, with the "new" key being the unchanged
+  /// one. Only the holder of `ikPriv` (restored from the backup) can produce
+  /// it.
+  Future<String> signRestoreProof(String nonceBase64) async {
+    final uid = _userId;
+    if (uid == null || !_initialized) {
+      throw StateError('encryption service not initialized');
+    }
+    final pair = await _identityStore.getIdentityKeyPair();
+    final message = Uint8List.fromList([
+      ...pair.getPublicKey().serialize(),
+      ...utf8.encode(uid.toString()),
+      ...base64Decode(nonceBase64),
+    ]);
+    // Curve.calculateSignature mutates its input — already a fresh buffer.
+    return base64Encode(
+      Curve.calculateSignature(pair.getPrivateKey(), message),
+    );
   }
 
   /// Get the public key data to upload to the server.

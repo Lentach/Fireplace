@@ -9,6 +9,7 @@ import '../services/encryption/content_key_wrap.dart';
 import '../services/passcode_kdf.dart';
 import '../services/passcode_store.dart';
 import '../services/passcode_unlock_gate.dart';
+import '../services/passcode_wrap_hook.dart';
 import '../utils/app_relaunch.dart';
 import '../utils/e2e_persistent_diag.dart';
 import '../utils/passcode_autolock.dart';
@@ -115,6 +116,7 @@ class PasscodeProvider extends ChangeNotifier {
     @visibleForTesting bool Function()? canRelaunch,
     @visibleForTesting void Function()? relaunch,
     @visibleForTesting bool Function()? nativePickerActive,
+    @visibleForTesting bool Function()? ceremonyActive,
   }) : _store = store ?? DevicePasscodeStore(),
        _kdf = kdf ?? const Pbkdf2PasscodeKdf(),
        _now = nowMs ?? _wallClock,
@@ -128,7 +130,15 @@ class PasscodeProvider extends ChangeNotifier {
        _canRelaunch = canRelaunch ?? canRelaunchApp,
        _relaunch = relaunch ?? relaunchApp,
        _nativePickerActive =
-           nativePickerActive ?? (() => composerNativePickerActive.value);
+           nativePickerActive ?? (() => composerNativePickerActive.value),
+       _ceremonyActive = ceremonyActive ?? (() => linkCeremonyActive.value) {
+    // (lxxvi) clause 3: the adopt paths (`adoptProvisionedIdentity`,
+    // `adoptRestoredIdentity`) land RAW keys in the stores and then call
+    // `PasscodeWrapHook.run()`, which must reach the vault THIS provider
+    // owns. Last-writer-wins is correct: the app has exactly one live
+    // PasscodeProvider.
+    PasscodeWrapHook.afterRawKeysLanded = wrapRawKeysNow;
+  }
 
   static int _wallClock() => DateTime.now().millisecondsSinceEpoch;
 
@@ -158,6 +168,22 @@ class PasscodeProvider extends ChangeNotifier {
   /// The span self-caps at 3 minutes (`composer_keyboard_signals.dart`), so
   /// a stuck flag degrades to the pre-guard behaviour, never to a dead lock.
   final bool Function() _nativePickerActive;
+
+  /// True while a link ceremony or an enrolment is running
+  /// (`linkCeremonyActive`, raised by `LinkCeremonyController`). The ceremony
+  /// hides the page for reasons of its own — the QR scanner, the permission
+  /// sheet, the user looking at the OTHER device — and a lock in that window
+  /// revokes keys and (on web) replaces the process in the middle of
+  /// `adoptProvisionedIdentity`'s writes. Exempt exactly like the picker
+  /// (amendment (lxxvi) clause 2). No self-cap: the ceremony has a server-side
+  /// 10-minute TTL and a terminal state on every path.
+  final bool Function() _ceremonyActive;
+
+  /// A departure signal that is CAUSED by an in-app surface, not by the user
+  /// leaving: the attach picker's OS sheet, or a live link ceremony. Neither
+  /// may trigger the immediate lock, the curtain, or (in the gate) the DOM
+  /// curtain.
+  bool _departureExempt() => _nativePickerActive() || _ceremonyActive();
 
   /// Backoff for the credential re-read in [_retryCredentialRead]. Capped so
   /// a device that never answers costs one read every 8 s and nothing more.
@@ -670,7 +696,7 @@ class PasscodeProvider extends ChangeNotifier {
     // Not for the attach picker: its sheet hides the page, and a curtain
     // over the composer would flash for a frame when the sheet closes —
     // the same exemption the immediate lock has.
-    if (_state == PasscodeLockState.unlocked && !_nativePickerActive()) {
+    if (_state == PasscodeLockState.unlocked && !_departureExempt()) {
       _setCurtained(true);
     }
     // The latch guards the STAMP only. The verdict below still runs on every
@@ -682,7 +708,7 @@ class PasscodeProvider extends ChangeNotifier {
       await _store.saveLastActiveAt(_now());
     }
     _record = await _store.load();
-    if (_record.autoLockSeconds <= 0 && !_nativePickerActive()) {
+    if (_record.autoLockSeconds <= 0 && !_departureExempt()) {
       // Awaited: on web this backgrounding IS the last code this process may
       // ever run, so the revocation has to finish before we yield.
       await _lock();
@@ -704,7 +730,7 @@ class PasscodeProvider extends ChangeNotifier {
       _setCurtained(false);
       return;
     }
-    if (_nativePickerActive()) {
+    if (_departureExempt()) {
       _setCurtained(false);
       return;
     }
@@ -748,6 +774,21 @@ class PasscodeProvider extends ChangeNotifier {
     _vault.unlock(kek: kek, kekId: meta.kekId);
     await _vault.wrapRawKeys(kPasscodeWrappedKeyPrefixes);
     return true;
+  }
+
+  /// (lxxvi) clause 3: called (via [PasscodeWrapHook]) after
+  /// `adoptProvisionedIdentity` / `adoptRestoredIdentity` land raw keys, so a
+  /// crash in that window cannot leave key material raw on a device whose
+  /// passcode is real key material. The idempotent `wrapRawKeys` path: only
+  /// still-raw keys are converted, each write armed (read back and proven to
+  /// unwrap). A no-op wherever there is nothing to do — wrapping off, or the
+  /// vault locked (no KEK in RAM means nothing can be wrapped; the next
+  /// unlock's own `wrapRawKeys` resume covers that window instead).
+  Future<void> wrapRawKeysNow() async {
+    if (!_wrapKeys) return;
+    if (!await _vault.isWrappingOn()) return;
+    if (_vault.isLocked) return;
+    await _vault.wrapRawKeys(kPasscodeWrappedKeyPrefixes);
   }
 
   /// Turns wrapping on for a code that was just accepted. Best-effort by

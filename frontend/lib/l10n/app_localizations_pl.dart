@@ -755,7 +755,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get devicesEnableLinkingWebWarningBody =>
-      'Tylko urządzenie główne może dodawać i usuwać inne urządzenia. Jeśli pamięć tej przeglądarki zostanie wyczyszczona, odzyskanie tej roli wymaga resetu: 72 godziny, albo 1 godzina z kluczem odzyskiwania. Za chwilę zaproponujemy jego utworzenie.';
+      'Tylko urządzenie główne może dodawać i usuwać inne urządzenia. Jeśli pamięć tej przeglądarki zostanie wyczyszczona, odzyskanie tej roli wymaga resetu: 72 godziny, albo 1 godzina z kluczem odzyskiwania. Za chwilę utworzysz frazę odzyskiwania — bez niej nie włączymy łączenia.';
 
   @override
   String get devicesEnableLinkingConfirmAction => 'Włącz';
@@ -1992,4 +1992,118 @@ class AppLocalizationsPl extends AppLocalizations {
   @override
   String get passcodeTooWeakForKeys =>
       'Kod szyfruje klucze w tej przeglądarce, więc własny kod musi mieć co najmniej 6 znaków i nie może składać się tylko z cyfr.';
+
+  @override
+  String get passcodeEraseWarningEnrolled =>
+      'Jedyne wyjście to usunięcie danych tej aplikacji z tego urządzenia. Wiadomości przechowywane tylko tutaj znikną na zawsze. Po ponownym zalogowaniu konto trzeba będzie przywrócić: frazą odzyskiwania (od razu), z innego urządzenia albo resetem (72 godziny).';
+
+  @override
+  String get linkScanAction => 'Zeskanuj kod';
+
+  @override
+  String get linkShowCodeAction => 'Pokaż kod';
+
+  @override
+  String get linkScanHint => 'Skieruj aparat na kod QR z drugiego urządzenia.';
+
+  @override
+  String get linkScanCameraDenied =>
+      'Brak dostępu do aparatu. Wpisz kod ręcznie.';
+
+  @override
+  String get linkScanUnsupported =>
+      'Ta przeglądarka nie obsługuje skanowania. Wpisz kod ręcznie.';
+
+  @override
+  String get linkEnterCodeManually => 'Wpisz kod ręcznie';
+
+  @override
+  String get linkNewCodeLabel => 'Kod z urządzenia głównego';
+
+  @override
+  String get linkPrimaryShowCodeExplainer =>
+      'Na nowym urządzeniu zaloguj się i zeskanuj ten kod. Możesz też zeskanować kod pokazany tam.';
+
+  @override
+  String get linkGateScanBody =>
+      'Zeskanuj kod QR z urządzenia głównego (Ustawienia → Urządzenia → Połącz urządzenie) albo pokaż mu ten kod. Nic nie przepadnie.';
+
+  @override
+  String get recoveryKeyBackupExplainer =>
+      'Te 12 słów to kopia kluczy Twojego konta. Jeśli ta przeglądarka lub telefon straci dane, wpiszesz je i od razu odzyskasz konto i kontakty — bez czekania. Kto zna te słowa, ma Twoje konto: zapisz je tam, gdzie tylko Ty masz dostęp.\n\nSłowa pokazujemy tylko raz i nie zapisujemy ich na tym urządzeniu.';
+
+  @override
+  String get recoveryKeyConfirmTitle => 'Potwierdź, że masz słowa zapisane';
+
+  @override
+  String recoveryKeyConfirmPrompt(int n) {
+    return 'Wpisz słowo nr $n';
+  }
+
+  @override
+  String get recoveryKeyConfirmMismatch =>
+      'To nie to słowo. Sprawdź zapisane słowa.';
+
+  @override
+  String get recoveryKeyConfirmAction => 'Potwierdź';
+
+  @override
+  String get recoveryKeyRequiredForLinking =>
+      'Bez frazy odzyskiwania nie włączymy łączenia: po utracie danych urządzenia głównego konto byłoby zablokowane na 72 godziny.';
+
+  @override
+  String get recoveryKeyBackupFailed =>
+      'Nie udało się zapisać kopii kluczy — łączenie nie zostało włączone. Spróbuj ponownie.';
+
+  @override
+  String get linkGateRestoreAction => 'Mam frazę odzyskiwania';
+
+  @override
+  String get linkGateRestoreTitle => 'Przywróć konto z frazy';
+
+  @override
+  String get linkGateRestoreBody =>
+      'Wpisz 12 słów. To urządzenie stanie się urządzeniem głównym; pozostałe zostaną wylogowane i trzeba je połączyć ponownie.';
+
+  @override
+  String get linkGateRestoring => 'Przywracam klucze…';
+
+  @override
+  String get linkGateRestoreWrongPhrase =>
+      'Fraza nie pasuje do kopii kluczy tego konta.';
+
+  @override
+  String get linkGateRestoreNoBackup =>
+      'To konto nie ma kopii kluczy. Połącz to urządzenie z urządzenia głównego albo rozpocznij reset.';
+
+  @override
+  String get linkGateRestoreFailed =>
+      'Przywracanie nie powiodło się. Spróbuj ponownie.';
+
+  @override
+  String get linkGateRestoreDone => 'Konto przywrócone.';
+
+  @override
+  String get devicesBackupMissing =>
+      'To konto nie ma jeszcze kopii kluczy. Utwórz frazę odzyskiwania, żeby po utracie danych tego urządzenia odzyskać konto od razu.';
+
+  @override
+  String get devicesCreateBackupAction => 'Utwórz frazę odzyskiwania';
+
+  @override
+  String get deviceRevokedRestoredNotice =>
+      'Konto zostało przywrócone z frazy odzyskiwania na innym urządzeniu. To urządzenie wylogowano — połącz je ponownie. Jeśli to nie Ty, zmień hasło.';
+
+  @override
+  String peerIdentityChangedSystemLine(String name) {
+    return '$name loguje się z nowego urządzenia lub przeglądarki — klucze bezpieczeństwa zostały zaktualizowane.';
+  }
+
+  @override
+  String get settingsKeyChangeWarnings =>
+      'Ostrzegaj o zmianie kluczy kontaktów';
+
+  @override
+  String get settingsKeyChangeWarningsSubtitle =>
+      'Wymagaj ręcznego potwierdzenia nowego numeru bezpieczeństwa. Domyślnie nowe klucze są przyjmowane, a w rozmowie pojawia się krótka notatka.';
 }

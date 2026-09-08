@@ -4,8 +4,9 @@
 // the app runs installed (standalone display mode); a plain browser tab gets
 // an install instruction instead, because a tab's origin storage is the first
 // thing a cache sweep takes and a wiped primary's only exit is the §6.2
-// delay. Enabling on web is confirmed by a one-paragraph warning dialog, and
-// a confirmed enrollment routes to the recovery-key offer (skippable).
+// delay. Enabling on web is confirmed by a one-paragraph warning dialog; the
+// confirm then routes to the MANDATORY (lxxviii) phrase screen, and only a
+// phrase that landed a sealed backup lets the enrolment run at all.
 // Clause 2: an already-enrolled web primary in a plain tab is nudged (one
 // line, informational) above the "link a device" action.
 //
@@ -16,10 +17,11 @@
 // is the installed/tab answer (`isInstalledDisplayMode`), and `null` (the
 // tearDown reset) is native, where behaviour is unchanged.
 //
-// "enableLinking was invoked" is observed at the widget level: the screen's
-// EncryptionService is never initialized here, so the DAK mint fails
-// immediately and the enroll attempt renders `devices-enroll-error` — which
-// only an invocation can produce.
+// ENROLMENT ORDER ((lxxviii) clause 4): "enable" = mintDak (pure keygen +
+// armed persist, no wire) → RecoveryKeyScreen → `enableLinking` ONLY on a
+// `true` pop. The screen's EncryptionService is never initialized here, so
+// the phrase step can never pop true — which is exactly what makes the abort
+// path (F9) observable: the account stays notEnrolled with no enroll error.
 
 import 'package:fireplace/l10n/app_localizations.dart';
 import 'package:fireplace/models/user_model.dart';
@@ -125,27 +127,34 @@ void main() {
       expect(find.byKey(const Key('devices-enable-linking')), findsNothing);
     });
 
-    testWidgets('installed web: the button, and confirm enables linking', (
-      tester,
-    ) async {
+    testWidgets('installed web: the button, and confirm routes to the '
+        'MANDATORY phrase screen before enrolling', (tester) async {
       debugInstalledDisplayModeOverride = true;
-      await _pumpNotEnrolled(tester);
+      final controller = await _pumpNotEnrolled(tester);
       final l10n = await AppLocalizations.delegate.load(const Locale('en'));
 
       expect(find.byKey(const Key('devices-install-first')), findsNothing);
       await tester.tap(find.byKey(const Key('devices-enable-linking')));
       await tester.pumpAndSettle();
 
-      // The one-paragraph warning, not an immediate enroll.
+      // The one-paragraph warning, not an immediate enroll, and it now names
+      // the phrase as mandatory ((lxxviii) clause 4).
       expect(find.text(l10n.devicesEnableLinkingWebWarningTitle), findsOneWidget);
+      expect(
+        find.textContaining(l10n.recoveryKeyRequiredForLinking),
+        findsOneWidget,
+      );
       expect(find.byKey(const Key('devices-enroll-error')), findsNothing);
 
       await tester.tap(find.byKey(const Key('devices-enable-linking-confirm')));
       await tester.pumpAndSettle();
 
-      // enableLinking ran (its mint fails on the uninitialized service and
-      // renders the enroll error — see the header note).
-      expect(find.byKey(const Key('devices-enroll-error')), findsOneWidget);
+      // mintDak ran (pure keygen + armed persist, no server call) and the
+      // phrase screen is on top. Nothing is enrolled yet: `enableLinking`
+      // waits for the screen to pop `true`.
+      expect(find.byType(RecoveryKeyScreen), findsOneWidget);
+      expect(find.byKey(const Key('devices-enroll-error')), findsNothing);
+      expect(controller.listState, DeviceListState.notEnrolled);
     });
 
     testWidgets('installed web: cancel enables nothing', (tester) async {
@@ -163,19 +172,24 @@ void main() {
       expect(find.byKey(const Key('devices-enroll-error')), findsNothing);
     });
 
-    testWidgets('native: no dialog, enabling is direct', (tester) async {
-      // Override left null: the native path, unchanged by (lxxiv).
-      await _pumpNotEnrolled(tester);
+    testWidgets('native: no dialog, straight to the phrase screen', (
+      tester,
+    ) async {
+      // Override left null: the native path, which skips only the (lxxiv)
+      // install warning — the (lxxviii) phrase step is NOT platform-gated.
+      final controller = await _pumpNotEnrolled(tester);
       final l10n = await AppLocalizations.delegate.load(const Locale('en'));
 
       await tester.tap(find.byKey(const Key('devices-enable-linking')));
       await tester.pumpAndSettle();
 
       expect(find.text(l10n.devicesEnableLinkingWebWarningTitle), findsNothing);
-      expect(find.byKey(const Key('devices-enroll-error')), findsOneWidget);
+      expect(find.byType(RecoveryKeyScreen), findsOneWidget);
+      expect(find.byKey(const Key('devices-enroll-error')), findsNothing);
+      expect(controller.listState, DeviceListState.notEnrolled);
     });
 
-    testWidgets('a confirmed enrollment routes to the recovery-key offer', (
+    testWidgets('F9: backing out of the phrase screen enrolls NOTHING', (
       tester,
     ) async {
       debugInstalledDisplayModeOverride = true;
@@ -185,38 +199,19 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('devices-enable-linking-confirm')));
       await tester.pumpAndSettle();
-
-      // The enrollment ack lands: the post-ack list refresh reports enrolled.
-      controller.listState = DeviceListState.enrolled;
-      controller.verifiedList = _enrolledList;
-      controller.holdsDak = true;
-      controller.notifyListeners();
-      await tester.pumpAndSettle();
-
       expect(find.byType(RecoveryKeyScreen), findsOneWidget);
-      // Skippable: a plain route push, back returns to the devices screen.
+
+      // A plain route push: back returns to the devices screen, and the
+      // abort must leave the account un-enrolled. The minted DAK merely waits
+      // in the keystore for the next attempt (mintDak is idempotent).
       await tester.tap(find.byIcon(Icons.arrow_back));
       await tester.pumpAndSettle();
+
       expect(find.byType(RecoveryKeyScreen), findsNothing);
       expect(find.byType(DevicesScreen), findsOneWidget);
-    });
-
-    testWidgets('an enrollment WITHOUT the web confirm never routes there', (
-      tester,
-    ) async {
-      // Native enable, then the ack: the recovery offer is armed only by the
-      // web dialog's confirm.
-      final controller = await _pumpNotEnrolled(tester);
-      await tester.tap(find.byKey(const Key('devices-enable-linking')));
-      await tester.pumpAndSettle();
-
-      controller.listState = DeviceListState.enrolled;
-      controller.verifiedList = _enrolledList;
-      controller.holdsDak = true;
-      controller.notifyListeners();
-      await tester.pumpAndSettle();
-
-      expect(find.byType(RecoveryKeyScreen), findsNothing);
+      expect(controller.listState, DeviceListState.notEnrolled);
+      expect(find.byKey(const Key('devices-enable-linking')), findsOneWidget);
+      expect(find.byKey(const Key('devices-enroll-error')), findsNothing);
     });
   });
 

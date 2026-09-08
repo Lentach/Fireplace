@@ -261,7 +261,9 @@ void main() {
       await pumpFrames(tester);
       final l10n = await AppLocalizations.delegate.load(const Locale('en'));
 
-      expect(find.text(l10n.linkGateBody), findsOneWidget);
+      // (lxxvii) clause 3: the body copy now names both directions (scan /
+      // show), so the pinned string is linkGateScanBody.
+      expect(find.text(l10n.linkGateScanBody), findsOneWidget);
       expect(find.byType(LinkThisDeviceBody), findsOneWidget);
       expect(find.text(l10n.linkGateNoPrimaryQuestion), findsOneWidget);
       expect(find.byKey(const Key('link-gate-start-reset')), findsOneWidget);
