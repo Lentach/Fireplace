@@ -27,7 +27,7 @@ dependencies:
   provider: ^6.1.2
   socket_io_client: ^3.1.6
   http: ^1.2.2
-  google_fonts: ^6.2.1
+  google_fonts: ^8.2.1
   jwt_decoder: ^2.0.1
   shared_preferences: ^2.3.4
   # Runtime, not test-only: the plaintext record store reads through the
