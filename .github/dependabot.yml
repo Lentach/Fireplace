@@ -12,6 +12,30 @@ updates:
     groups:
       backend-minor-patch:
         update-types: [minor, patch]
+    ignore:
+      # @types/node MUST describe the runtime, not the newest Node. The image is
+      # `node:22-alpine` in BOTH stages of backend/Dockerfile, CI pins
+      # node-version 22, and package.json says `engines.node >=22` — types for 24
+      # or 26 would let a call to an API this runtime does not have type-check
+      # green and then crash in prod. Dependabot proposed 22 -> 26 (#155, closed
+      # 2026-09-08). When the base image moves, bump BOTH in the same commit and
+      # drop this rule. Major only — patch/minor of the 22 line still land in the
+      # backend-minor-patch group.
+      - dependency-name: "@types/node"
+        update-types:
+          - version-update:semver-major
+
+      # The Nest family must move as ONE major (core/common/platform-*/websockets
+      # peer each other at the same ^N), and today it CANNOT: @nestjs/throttler
+      # is at 6.5.0 (latest) and still peers `@nestjs/common ^7 || ... || ^11`
+      # only, so Nest 12 breaks the WsThrottlerGuard rate-limit contract
+      # (CLAUDE.md §7). Dependabot's single-package attempt (#156,
+      # @nestjs/platform-express 11 -> 12) also failed its own Backend tests job.
+      # RE-CHECK when @nestjs/throttler ships a release peering ^12, then do the
+      # whole family in one PR and delete this rule. Major only.
+      - dependency-name: "@nestjs/*"
+        update-types:
+          - version-update:semver-major
 
   - package-ecosystem: pub
     directory: /frontend
