@@ -42,9 +42,17 @@ updates:
     schedule:
       interval: monthly
     open-pull-requests-limit: 3
-    groups:
-      frontend-minor-patch:
-        update-types: [minor, patch]
+    # NO `groups:` HERE ON PURPOSE (2026-09-08). It used to be
+    # `frontend-minor-patch: {update-types: [minor, patch]}`, and the `ignore`
+    # list below was NOT honoured inside it: #157 (2026-09-01), #169 and #171
+    # (both today) each bundled drift/drift_dev/sqlite3 despite rules that have
+    # been in this file since 2026-08-03, and every one of those PRs was
+    # unmergeable — `flutter pub get` cannot even resolve the set. GitHub's own
+    # trackers carry the same behaviour (dependabot-core #7523, discussion
+    # #11962) for a group with no explicit `patterns`. Update-config-level
+    # `ignore` demonstrably works for standalone PRs, so the fix is one PR per
+    # package. Cost: up to 3 frontend PRs a month instead of 1 grouped one —
+    # cheaper than a dead PR every month plus the re-litigation it invites.
     ignore:
       # Pinned in pubspec.yaml: >=0.6.1 native-assets hook needs CMake + MSVC C++
       # on the build PC; the asset ships nowhere (web=JS path, Android=NDK).
@@ -56,13 +64,18 @@ updates:
           - version-update:semver-minor
           - version-update:semver-major
 
-      # The Android encrypted content store (frontend/CLAUDE.md §5). Same shape
-      # as webcrypto above and for the same reason: sqlite3 3.x and drift >=2.32
-      # switch to native-assets build hooks that demand MSVC C++ on EVERY local
-      # `flutter test`, and sqlcipher_flutter_libs 0.7.0 is the "+eol" release.
-      # pubspec.yaml already carries EXPLICIT upper bounds, but dependabot
-      # rewrites the constraint rather than resolving within it, so it proposed
-      # all four anyway (#123, closed 2026-08-02) and would do so every month.
+      # The Android encrypted content store (frontend/CLAUDE.md §5).
+      # CORRECTED 2026-09-08: the reason recorded here was WRONG. It claimed
+      # sqlite3 3.x / drift >=2.32 switch to native-assets build hooks that
+      # demand CMake + MSVC C++ on every local `flutter test`. That did NOT
+      # reproduce — the full host suite runs fine with sqlite3 3.5.2 resolved.
+      # The REAL blocker is an API deletion: sqlite3 3.x removed
+      # `package:sqlite3/open.dart`, which lib/services/encryption/content_db.dart
+      # imports for the SQLCipher open override, so `flutter analyze` fails with
+      # "Target of URI doesn't exist". Taking it means rewriting the open
+      # override on the encrypted content store — a data-safety path whose only
+      # honest verification surface is an on-device integration run.
+      # sqlcipher_flutter_libs 0.7.0 is still the "+eol" release.
       # Version updates only — a SECURITY advisory on any of these still opens
       # a PR, which is the whole point of listing update-types instead of a
       # bare dependency-name.
@@ -82,6 +95,28 @@ updates:
           - version-update:semver-minor
           - version-update:semver-major
       - dependency-name: sqlcipher_flutter_libs
+        update-types:
+          - version-update:semver-patch
+          - version-update:semver-minor
+          - version-update:semver-major
+
+      # Both are pinned by the FLUTTER SDK, not by us — dependabot cannot see
+      # that and proposed them in #157/#169/#171 anyway, where they made the
+      # whole group unresolvable:
+      #   clock 1.1.3        -> `flutter_test` from the SDK pins clock 1.1.2.
+      #   build_runner 2.16+ -> wants analyzer >=13.3.0 (needs meta ^1.18.3 vs
+      #                         the SDK's meta 1.18.0) AND is capped by
+      #                         drift_dev 2.31.0's analyzer <11.0.0, so it
+      #                         cannot move until the drift/sqlite3 block above
+      #                         is unblocked.
+      # Re-check both after a Flutter SDK upgrade; delete these two entries
+      # then. Version updates only, same as the rest of this list.
+      - dependency-name: clock
+        update-types:
+          - version-update:semver-patch
+          - version-update:semver-minor
+          - version-update:semver-major
+      - dependency-name: build_runner
         update-types:
           - version-update:semver-patch
           - version-update:semver-minor
