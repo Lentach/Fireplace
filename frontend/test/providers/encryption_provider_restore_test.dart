@@ -402,11 +402,11 @@ void main() {
   // has re-run E2E init, and the init success path clears `identityIncomplete`
   // (:1384) behind the machine's back — so that flag alone cannot be what
   // holds the gate. This drives the predicate directly: a provider whose init
-  // SUCCEEDED (so `identityIncomplete` is false) must still be gated while a
-  // restore sits unfinished.
-  test('an unfinished restore holds the gate even when init cleared the flag',
-      () async {
-    await arrangeSealedBackup();
+  // SUCCEEDED (so `identityIncomplete` is false) must still be gated while an
+  // ADOPTED restore sits unfinished.
+  test('an adopted, unfinished restore holds the gate even when init cleared '
+      'the flag', () async {
+    final sealed = await arrangeSealedBackup();
     final provider = await buildProvider();
     expect(
       provider.needsDeviceLink,
@@ -415,8 +415,22 @@ void main() {
     );
 
     provider.setEmitCallback((event, data) {
-      if (event == 'getIdentityBackup') {
-        scheduleMicrotask(() => provider.onIdentityBackup({'exists': false}));
+      switch (event) {
+        case 'getIdentityBackup':
+          scheduleMicrotask(() => provider.onIdentityBackup({
+                'exists': true,
+                'blob': sealed.blob,
+                'salt': sealed.salt,
+                'iterations': sealed.iterations,
+              }));
+        case 'getRegistrationLockNonce':
+          scheduleMicrotask(() => provider.onRegistrationLockNonce(
+              {'nonce': base64Encode(List<int>.filled(24, 1))}));
+        case 'uploadKeyBundle':
+          // Adopted, then refused: the identity is held locally with
+          // prekeys the server never saw.
+          scheduleMicrotask(() => provider.onKeyBundleUploaded(
+              {'success': false, 'error': 'restore_refused'}));
       }
     });
     await provider.restoreFromPhrase(phrase);
@@ -425,8 +439,76 @@ void main() {
     expect(
       provider.needsDeviceLink,
       isTrue,
-      reason: 'an unfinished restore is itself a reason to keep the gate — the '
+      reason: 'an adopted restore is itself a reason to keep the gate — the '
           'user has to see the failure and retry it',
+    );
+  });
+
+  // (lxxx) clause 7: the hold above must NOT apply before anything was
+  // adopted. A wrong phrase leaves the install exactly as it was; if the user
+  // then takes another door (QR link, 72 h reset) the post-rebind init clears
+  // `identityIncomplete` and the gate has to drop — a `failed` stage that
+  // nobody ever resets would otherwise gate the install for the life of the
+  // process, with nothing left to retry.
+  test('a restore that failed BEFORE adopt does not hold the gate', () async {
+    final sealed = await arrangeSealedBackup();
+    final provider = await buildProvider();
+    provider.setEmitCallback((event, data) {
+      if (event == 'getIdentityBackup') {
+        scheduleMicrotask(() => provider.onIdentityBackup({
+              'exists': true,
+              'blob': sealed.blob,
+              'salt': sealed.salt,
+              'iterations': sealed.iterations,
+            }));
+      }
+    });
+
+    await provider.restoreFromPhrase(wrongPhrase);
+    expect(provider.restoreStage, IdentityRestoreStage.failed);
+    expect(provider.restoreFailure, IdentityRestoreFailure.wrongPhrase);
+    expect(
+      provider.needsDeviceLink,
+      isFalse,
+      reason: 'nothing was adopted, so nothing is half-done: the gate is '
+          'held only by whatever brought the user to it',
+    );
+  });
+
+  // (lxxx) clause 7: the machine belongs to the account. The provider is a
+  // process singleton reused across logins, so user A's failed restore must
+  // not gate user B — `clearAll()` is the logout / account-switch teardown.
+  test('clearAll returns a failed, adopted restore to idle', () async {
+    final sealed = await arrangeSealedBackup();
+    final provider = await buildProvider();
+    provider.setEmitCallback((event, data) {
+      switch (event) {
+        case 'getIdentityBackup':
+          scheduleMicrotask(() => provider.onIdentityBackup({
+                'exists': true,
+                'blob': sealed.blob,
+                'salt': sealed.salt,
+                'iterations': sealed.iterations,
+              }));
+        case 'getRegistrationLockNonce':
+          scheduleMicrotask(() => provider.onRegistrationLockNonce(
+              {'nonce': base64Encode(List<int>.filled(24, 1))}));
+        case 'uploadKeyBundle':
+          scheduleMicrotask(() => provider.onKeyBundleUploaded(
+              {'success': false, 'error': 'restore_refused'}));
+      }
+    });
+    await provider.restoreFromPhrase(phrase);
+    expect(provider.needsDeviceLink, isTrue, reason: 'precondition');
+
+    provider.clearAll();
+
+    expect(provider.restoreStage, IdentityRestoreStage.idle);
+    expect(provider.restoreFailure, isNull);
+    expect(
+      provider.needsDeviceLink,
+      isFalse,
+      reason: 'the next account must not inherit a gate it cannot clear',
     );
   });
 }

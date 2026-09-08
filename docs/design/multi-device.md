@@ -2812,6 +2812,27 @@ that is the designed outcome).
     DEADLOCKED the harness (the machine awaits the upload ack, which awaited an init that awaited
     its own `checkOwnKeyBundle` answer from the same callback) — the kept test drives the predicate
     directly instead, which is both faster and non-vacuous.
+  - **(lxxx) clause 7 — clause 6's third change over-held the gate (found by the final pre-ship
+    review of 0.2.25, present in the shipped 0.2.25).** `restoreUnfinished` was `_restoreStage`
+    neither `idle` nor `done`, and NOTHING ever returned the stage to `idle`: not `clearAll()`
+    (logout / account switch), not `onConnect(false)`, not another door succeeding. So a restore
+    that failed BEFORE adopting anything — wrong phrase, `exists:false`, a fetch that never
+    answered — left `restoreUnfinished` true for the life of the process. That held the gate
+    against the OTHER two doors: a user who mistyped the phrase and then linked by QR (or completed
+    a 72 h reset) had `identityIncomplete` cleared by the post-rebind init and stayed gated
+    anyway, with nothing left to retry — the (lxxx) clause-6 stuck state on a different door. And
+    it outlived the account: a failed attempt under user A gated user B's next login on the same
+    install. Two changes. (1) `restoreUnfinished` holds ONLY once the backup identity has been
+    ADOPTED and the machine has not reached `done` (`_restoreAdopted`, set after
+    `adoptRestoredIdentity` returns, cleared at `done`): before adopt nothing is half-done, the
+    gate is held by whatever brought the user to it, and the failure is shown by the same
+    section; after adopt the install holds an identity whose prekeys are unpublished and the
+    idempotent retry (clause 6) is the way out. (2) `clearAll()` and `onConnect(false)` return the
+    machine to `idle` with the failure and the adopted flag cleared — the restore belongs to the
+    account, like the §6.2 ceremony state two lines above it. The §6.2 rebind is `connect()` with
+    the SAME user id, so it is a reconnect and touches neither. Falsification: (F23) hold on
+    `failed` regardless of adopt → a wrong phrase followed by a healthy init stays gated; (F24)
+    drop the teardown → the failed machine survives `clearAll()` into the next account.
 
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the

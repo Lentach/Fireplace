@@ -29,7 +29,8 @@ function parseClaudeCounts(text) {
 /**
  * `flutter test` has TWO output shapes and CI uses the one a local run does not:
  *
- *   attached to a TTY -> per-test progress, last line wins:
+ *   attached to a TTY -> per-test progress, last line wins ("All other tests
+ *   passed!" when the run has skips):
  *       01:32 +903 ~4: All tests passed!
  *   non-interactive (GitHub Actions) -> a single summary line, no counters at all:
  *       🎉 903 tests passed, 4 skipped.
@@ -50,7 +51,7 @@ function parseFlutterLog(text) {
       'flutter test output: found neither an "N tests passed" summary nor a "+N:" progress counter — did the run fail before starting?',
     );
   }
-  if (!/All tests passed!/.test(text)) {
+  if (!/All (?:other )?tests passed!/.test(text)) {
     throw new Error(
       'flutter test output: "All tests passed!" not present — the suite did not pass, refusing to compare counts.',
     );

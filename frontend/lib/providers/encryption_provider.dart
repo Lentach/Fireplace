@@ -1664,6 +1664,11 @@ class EncryptionProvider extends ChangeNotifier {
 
   IdentityRestoreStage _restoreStage = IdentityRestoreStage.idle;
   IdentityRestoreFailure? _restoreFailure;
+  /// (lxxx) clause 7: true from the moment `adoptRestoredIdentity` returned
+  /// until `done`. This — not the stage — is what holds the gate: before it,
+  /// nothing is half-done; after it, the install holds an identity whose
+  /// prekeys the server has never seen.
+  bool _restoreAdopted = false;
 
   /// Where the phrase restore currently stands. Drives the gate's restore
   /// section; a terminal state may be retried by calling [restoreFromPhrase]
@@ -1697,6 +1702,15 @@ class EncryptionProvider extends ChangeNotifier {
     _e2eFlowLog('RESTORE_FAILED', {'stage': _restoreStage.name, 'why': why});
     _restoreFailure = failure;
     _setRestoreStage(IdentityRestoreStage.failed);
+  }
+
+  /// (lxxx) clause 7: the machine belongs to the ACCOUNT. Called from the
+  /// logout / account-switch teardowns, never from the restore's own rebind
+  /// (that is a reconnect of the same user).
+  void _resetRestoreMachine() {
+    _restoreFailure = null;
+    _restoreAdopted = false;
+    _restoreStage = IdentityRestoreStage.idle;
   }
 
   /// The (lxxviii) clause-3 restore: fetch the phrase-sealed backup, unseal
@@ -1768,6 +1782,7 @@ class EncryptionProvider extends ChangeNotifier {
         'adopt:${e.runtimeType}',
       );
     }
+    _restoreAdopted = true;
     // `_identityIncomplete` is deliberately NOT cleared here. It drives
     // `needsDeviceLink`, which is what keeps the gate — and this machine's own
     // progress and error surface — mounted. Clearing it at adopt showed the
@@ -1847,6 +1862,7 @@ class EncryptionProvider extends ChangeNotifier {
     // field report cannot otherwise place: every earlier stage has its own
     // record, and this is the boundary a premature clear used to cross early.
     E2ePersistentDiag.record('RESTORE_GATE_RELEASED', {});
+    _restoreAdopted = false;
     _setRestoreStage(IdentityRestoreStage.done);
     // The adopt left the service initialized but this provider's init flag is
     // still whatever the gate saw; the rebind reconnect usually re-runs the
@@ -2063,9 +2079,9 @@ class EncryptionProvider extends ChangeNotifier {
   bool get linkDisposesStaleMaterial =>
       deviceMaterialMismatch || identityUploadLocked;
 
-  /// True while a (lxxviii) phrase restore has started and not finished —
-  /// including a FAILED one, which is exactly the state the user has to be
-  /// able to see and retry.
+  /// True while a (lxxviii) phrase restore has ADOPTED the backup identity
+  /// and not finished — including a FAILED one, which is exactly the state
+  /// the user has to be able to see and retry.
   ///
   /// This is a SECOND reason to hold the gate, not a duplicate of
   /// `identityIncomplete`: the restore's own rebind reconnect re-runs E2E init,
@@ -2074,9 +2090,13 @@ class EncryptionProvider extends ChangeNotifier {
   /// after the rebind — would otherwise drop the gate that hosts this
   /// machine's progress and errors, which is the (lxxx) clause-6 defect one
   /// step later in the sequence.
-  bool get restoreUnfinished =>
-      _restoreStage != IdentityRestoreStage.idle &&
-      _restoreStage != IdentityRestoreStage.done;
+  ///
+  /// (lxxx) clause 7: keyed on the adopt, NOT on the stage. A restore that
+  /// failed before adopting anything (wrong phrase, no backup) left the
+  /// install as it was; holding on that would gate the other two doors — a
+  /// user who mistyped the phrase and then linked by QR stayed gated with
+  /// nothing left to retry.
+  bool get restoreUnfinished => _restoreAdopted;
 
   /// True while this install cannot do E2E duty under its session's device id
   /// and the §5.1 device-side flow is its way out: no identity at all,
@@ -2655,6 +2675,10 @@ class EncryptionProvider extends ChangeNotifier {
       // reach the next one's ceremony.
       _identityUploadLocked = false;
       _currentUserId = null;
+      // (lxxx) clause 7: a restore left `failed` under the previous account
+      // must not gate the next one. The §6.2 rebind is a reconnect of the
+      // SAME user and never reaches this branch.
+      _resetRestoreMachine();
       // Fresh connect may be a different account: forget verified lists AND
       // their rollback pins (they are per-account TOFU state).
       _deviceListCache.clear();
@@ -2724,6 +2748,8 @@ class EncryptionProvider extends ChangeNotifier {
     _identityResetRequestStatus = null;
     _identityResetAnswerTimeout?.cancel();
     _identityResetAnswerTimeout = null;
+    // (lxxx) clause 7: same ownership as the ceremony state above.
+    _resetRestoreMachine();
     _syncIdentityResetRefresh();
     _cancelPendingFetches();
     notifyListeners();
