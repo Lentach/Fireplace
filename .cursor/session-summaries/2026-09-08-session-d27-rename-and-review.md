@@ -109,6 +109,27 @@ the behaviour the marker stands for. An advisory called it out. The rewrite star
 gated state (no local identity + a server that says a bundle exists, driven through
 `checkOwnKeyBundle`) and asserts on `needsDeviceLink` itself; both mutants then fail.
 
+## Clause 6 needed a THIRD change, and an advisory caught it
+
+Clearing the flag late only covers failures BEFORE the rebind. The rebind’s own reconnect re-runs
+E2E init, and the init success path clears `identityIncomplete` itself
+(`encryption_provider.dart:1384`) — so a failure at `listing` or in the
+session-rebuild sweep, both AFTER the rebind, dismissed the gate again with the same consequence.
+`needsDeviceLink` now carries `restoreUnfinished` (`_restoreStage` neither
+`idle` nor `done`) as an INDEPENDENT reason to hold the gate, which also covers a
+`failed` restore — precisely the state the user must be able to see and retry. Shipped as
+**0.2.25** (web only: zero backend files differ from 0.2.24, verified with
+`git diff --name-only 89088143..HEAD -- backend/`).
+
+**Two failed attempts at the test, both instructive.** Modelling the rebind inside the
+`uploadKeyBundle` branch DEADLOCKED the harness — the machine awaits the upload ack, which
+awaited an init that awaited its own `checkOwnKeyBundle` answer scheduled from the same
+callback; the run hit a 900 s timeout. An earlier variant passed VACUOUSLY because the harness
+never re-ran init at all, so the mutant survived. The kept test drives the predicate directly: a
+provider whose init SUCCEEDED (so `identityIncomplete` is false), then a restore failed
+at `fetching`, must still be gated. Fast, non-vacuous, and it dies on the mutant.
+**A hanging test is worse than no test.**
+
 ## Verification
 
 - frontend **2055 / 14 skipped**, backend **1102 / 62 suites**, analyzer clean on lib + test +
