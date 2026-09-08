@@ -5,9 +5,16 @@ import '../theme/glass_theme.dart';
 import '../theme/rpg_theme.dart';
 
 class MessageDateSeparator extends StatelessWidget {
-  final DateTime date;
+  final DateTime? date;
+  final String? label;
 
-  const MessageDateSeparator({super.key, required this.date});
+  const MessageDateSeparator({super.key, required DateTime this.date})
+      : label = null;
+
+  /// The same pill carrying a fixed text — used for the one "history before
+  /// this device was linked" divider at the oldest end of a thread (spec §12
+  /// amendment (lxxxi)).
+  const MessageDateSeparator.label(this.label, {super.key}) : date = null;
 
   /// "Today" / "Yesterday" / short date for [date], device-local. Shared with
   /// the fullscreen video header so both surfaces name a day the same way.
@@ -24,7 +31,7 @@ class MessageDateSeparator extends StatelessWidget {
     return MaterialLocalizations.of(context).formatShortDate(localDate);
   }
 
-  String _formatDate(BuildContext context) => dayLabel(context, date);
+  String _text(BuildContext context) => label ?? dayLabel(context, date!);
 
   @override
   Widget build(BuildContext context) {
@@ -41,7 +48,7 @@ class MessageDateSeparator extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
           ),
           child: Text(
-            _formatDate(context),
+            _text(context),
             style: RpgTheme.bodyFont(
               fontSize: 11,
               color: glass.datePillText,

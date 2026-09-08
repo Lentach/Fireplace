@@ -484,8 +484,8 @@ class AppLocalizationsEn extends AppLocalizations {
       'This message is no longer stored on this device.';
 
   @override
-  String get messageSentBeforeDeviceLinked =>
-      'Sent before this device was linked.';
+  String get historyBeforeDeviceLinked =>
+      'History from before this device was linked';
 
   @override
   String get devicesSyncingNote => 'Syncing your devices…';

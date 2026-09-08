@@ -2834,6 +2834,63 @@ that is the designed outcome).
     `failed` regardless of adopt → a wrong phrase followed by a healthy init stays gated; (F24)
     drop the teardown → the failed machine survives `clearAll()` into the next account.
 
+- **Amendment 2026-09-08c (owner-ratified after the D27 ship: "5 go" on the gap list, and the two
+  security answers below given in the same exchange):**
+  - **(lxxxi) — pre-link history collapses to ONE line instead of a wall of placeholders.** §5.3
+    and (viii) made `none_for_device` an HONEST marker, never a destruction trigger and never
+    `[Decryption failed]`; the client then rendered every such row as its own bubble reading
+    "Wysłana przed połączeniem tego urządzenia." — which on a freshly linked device is the FIRST
+    thing the user sees, dozens of times, before any real message. Owner ruling (2026-09-08,
+    "nobody reads a wall of text"): hide the rows. Storage, ingestion, the (lxvi) clause-2
+    plaintext-outranks-marker rule, the decrypt pass and `getServedMessageIds` reconcile are ALL
+    UNCHANGED — the row still exists locally, still carries the sentinel, is still never destroyed
+    on the marker. The change is confined to the DISPLAY boundary: `MessagingProvider.messages`
+    (the only list the UI reads) omits rows whose content is the pre-link sentinel, and exposes
+    `hiddenPreLinkCount`; `ChatDetailScreen` renders ONE muted divider at the oldest end while that
+    count is non-zero ("Historia sprzed połączenia tego urządzenia"), so the user still learns
+    WHY the thread starts where it does. Rows are contiguous at the oldest end (a row predates the
+    link or it does not), so a page of hidden rows adds nothing visible and the scroll-anchored
+    pagination simply asks for the next page on the next nudge — no auto-continue, because an
+    account with a long pre-link history would otherwise be walked page by page unprompted.
+    An EDITED pre-link row (§5.7: the edit re-fan upserts real ciphertext for a later-linked
+    device) is not hidden — it carries ciphertext, decrypts, and renders as a normal message.
+    A reply whose parent is hidden still previews from the server-enriched reply snapshot; the
+    lookup through `messages` simply misses. Falsification: (F28) drop the filter → the envelope
+    test that asserts the row is absent from `messages` and counted turns RED; (F29) count
+    without filtering → the divider renders while the placeholders are also rendered, the
+    widget test finds both.
+  - **(lxxxi) clause 2 — clause 5 of (lxxx) failed its first live proof; the restored install
+    still alarmed itself.** Reproduced 2026-09-08 on the local stack: account 204, identity
+    K1 → second browser mints K2 (un-enrolled, audit row K1→K2) → that browser enrols with a phrase
+    (backup of K2) → third, EMPTY browser logs in, restores from the phrase (server:
+    `[identity-restore] proof verified`, device 1→3, identity byte-identical, no new audit row)
+    → the shell raises "Nowe klucze szyfrowania na Twoim koncie". The (lxxx) comparison is
+    correct and DID run — on the SECOND hydration. The FIRST `ownKeyBundleStatus` arrives at the
+    connect that precedes the gate, when the wiped install holds NO identity at all;
+    `_ownPublishedIdentityBase64()` returns null and the documented "unknown own key falls
+    through to reporting" rule raises the alarm and persists it. The restore then rebinds,
+    re-initializes, hydrates again, finds `to == own`, and takes the early return — which SKIPS
+    the row but never RETRACTS the alarm that same row raised a minute earlier. The
+    fail-through was designed for a foreign row and is right for one; it was never asked what
+    happens when the row later turns out to be ours. Fix, content-based like clause 5 itself:
+    in the `own == replacedTo` branch, an alarm currently showing for THIS row — the same
+    normalized instant, because the server reports only the latest audit row — is dismissed
+    (`_ownIdentityReplacedAt == normalized` → the ordinary dismissal path, watermark written).
+    Any alarm for a DIFFERENT instant is left alone: a device that minted K3 over a foreign K2
+    still shows the K1→K2 alarm it was raised on, exactly as today. Falsification: (F31)
+    remove the retraction → the test that raises the alarm with no identity, then hydrates the
+    same row with the identity loaded, stays alarmed; the control asserts a row with a
+    different instant is NOT retracted.
+  - **Owner decisions recorded, NOT yet built (release 2):** (a) the §6.2 reset delay drops from
+    72 h to **6 h** (phrase-shortened 1 h unchanged; the "phrase younger than 3 days does not
+    shorten" rule unchanged); (b) the recovery phrase alone MAY reset the account password — a
+    new unauthenticated endpoint verifying the (lxxviii)-era Argon2id phrase verifier, setting a
+    new password and dropping every session. The lead stated the combined effect once (each
+    single stolen secret then suffices for takeover: a stolen phrase walks in with no alarm and
+    nothing to cancel; a stolen password waits 6 h, shorter than a night's sleep). The owner's
+    stated posture: "seed phrase > password" — the crypto-wallet model. Written into this record
+    as an explicit owner decision; the build waits on his one-word confirmation.
+
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the
   test-integrity findings are folded at `4c0e0bf`; the four security findings were T9. **T10 (xlv)

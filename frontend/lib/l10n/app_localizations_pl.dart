@@ -487,8 +487,8 @@ class AppLocalizationsPl extends AppLocalizations {
       'Ta wiadomość nie jest już przechowywana na tym urządzeniu.';
 
   @override
-  String get messageSentBeforeDeviceLinked =>
-      'Wysłana przed połączeniem tego urządzenia.';
+  String get historyBeforeDeviceLinked =>
+      'Historia sprzed połączenia tego urządzenia';
 
   @override
   String get devicesSyncingNote => 'Synchronizowanie urządzeń…';

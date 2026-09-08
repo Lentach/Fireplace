@@ -1,8 +1,11 @@
+import 'dart:convert';
+
 import 'package:fireplace/models/message_model.dart';
 import 'package:fireplace/providers/conversations_provider.dart';
 import 'package:fireplace/providers/encryption_provider.dart';
 import 'package:fireplace/providers/messaging_provider.dart';
 import 'package:fireplace/services/encryption_service.dart';
+import 'package:fireplace/utils/e2e_envelope.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -24,9 +27,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 ///  * no delivery/read receipt is ever produced for the account's own message,
 ///    whichever device reads it (spec §4, falsification 19).
 class _SelfSyncEncryption extends EncryptionProvider {
-  _SelfSyncEncryption({required this.plaintextByCiphertext});
+  _SelfSyncEncryption({
+    required this.plaintextByCiphertext,
+    this.envelopeByCiphertext = const {},
+  });
 
   final Map<String, String> plaintextByCiphertext;
+
+  /// Ciphertexts whose plaintext is a FULL envelope (media rows), returned
+  /// verbatim instead of being wrapped as `{"content": …}`.
+  final Map<String, String> envelopeByCiphertext;
 
   /// Every decrypt attempt, as `(senderId, deviceId, ciphertext)`.
   final List<(int, int, String)> decryptCalls = [];
@@ -50,6 +60,8 @@ class _SelfSyncEncryption extends EncryptionProvider {
     int deviceId = 1,
   }) async {
     decryptCalls.add((senderId, deviceId, ciphertext));
+    final raw = envelopeByCiphertext[ciphertext];
+    if (raw != null) return raw;
     final plaintext = plaintextByCiphertext[ciphertext];
     if (plaintext == null) {
       throw StateError('no session for ciphertext $ciphertext');
@@ -257,6 +269,74 @@ void main() {
           reason:
               'decrypted against the ORIGIN device session (userId 1, dev 1)',
         );
+      },
+    );
+
+    test(
+      'a device-1 VIDEO self-sync row arrives on device 2 with everything '
+      'needed to play it, and keeps it across a reopen',
+      () async {
+        // The envelope the origin device built in `sendVideoMessage`
+        // (`E2eEnvelope.build` with the media fields). Self-sync shares that
+        // path with the peer fan-out; this pins that the RECEIVING end of our
+        // own account applies the media fields, not just `content`.
+        const videoCipher = '3:selfsync-video';
+        final envelope = jsonEncode(
+          E2eEnvelope.build(
+            '',
+            messageType: 'VIDEO',
+            mediaUrl: 'https://media.example/msgs/v1.bin',
+            mediaDuration: 7,
+            mediaKey: 'k'.padRight(43, 'A'),
+            mediaIv: 'i'.padRight(15, 'B'),
+            mediaWidth: 720,
+            mediaHeight: 1280,
+          ),
+        );
+        encryption = _SelfSyncEncryption(
+          plaintextByCiphertext: const {},
+          envelopeByCiphertext: {videoCipher: envelope},
+        );
+        await encryption.service.initialize(
+          1,
+          checkServerIdentity: () async =>
+              const ServerIdentityGuard(exists: false),
+        );
+        provider.setEncryptionProvider(encryption);
+        encryption.setOwnDeviceId(2);
+
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [
+            {
+              ..._ownRow(
+                id: 7010,
+                encryptedContent: videoCipher,
+                originDeviceId: 1,
+              ),
+              'messageType': 'VIDEO',
+            },
+          ],
+        });
+        await pump();
+
+        final row = provider.messages.firstWhere((m) => m.id == 7010);
+        expect(row.messageType, MessageType.video);
+        expect(row.mediaUrl, 'https://media.example/msgs/v1.bin');
+        expect(row.mediaKey, 'k'.padRight(43, 'A'));
+        expect(row.mediaIv, 'i'.padRight(15, 'B'));
+        expect(row.mediaDuration, 7);
+        expect(row.mediaWidth, 720);
+        expect(row.mediaHeight, 1280);
+        expect(encryption.decryptCalls.single, (1, 1, videoCipher));
+
+        // Replay after reopening the chat reads the persisted copy, not the
+        // ratchet (which cannot decrypt the same ciphertext twice).
+        final stored = await encryption.getDecryptedContent(7010);
+        expect(stored?['messageType'], 'VIDEO');
+        expect(stored?['mediaKey'], 'k'.padRight(43, 'A'));
+        expect(stored?['mediaIv'], 'i'.padRight(15, 'B'));
+        expect(stored?['mediaUrl'], 'https://media.example/msgs/v1.bin');
       },
     );
 

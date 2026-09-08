@@ -944,11 +944,11 @@ abstract class AppLocalizations {
   /// **'Ta wiadomość nie jest już przechowywana na tym urządzeniu.'**
   String get messageNoLongerStoredOnThisDevice;
 
-  /// No description provided for @messageSentBeforeDeviceLinked.
+  /// One pill at the oldest end of a thread, standing in for every row that predates this device's link (multi-device spec amendment (lxxxi)).
   ///
   /// In pl, this message translates to:
-  /// **'Wysłana przed połączeniem tego urządzenia.'**
-  String get messageSentBeforeDeviceLinked;
+  /// **'Historia sprzed połączenia tego urządzenia'**
+  String get historyBeforeDeviceLinked;
 
   /// No description provided for @devicesSyncingNote.
   ///

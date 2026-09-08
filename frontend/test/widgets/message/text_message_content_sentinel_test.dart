@@ -1,13 +1,13 @@
-// Live QA 2026-08-31: a re-linked device rendered the §5.3 none_for_device
-// marker as the RAW '[Sent before this device was linked]' sentinel — English
-// brackets in a Polish UI. `messageDisplayContent` maps every sentinel, but
-// the bubble BODY renders through `TextMessageContent._displayBody`, which
-// mapped only the retired one. This file pins the body path itself.
+// The bubble BODY renders through `TextMessageContent._displayBody`, not
+// `messageDisplayContent`, so a sentinel it does not map reaches the user raw
+// (live QA 2026-08-31 saw exactly that). This file pins the body path itself.
+// The pre-link sentinel no longer reaches a bubble at all — amendment (lxxxi)
+// hides those rows at `MessagingProvider.messages`.
 
 import 'package:fireplace/l10n/app_localizations.dart';
 import 'package:fireplace/models/message_model.dart';
 import 'package:fireplace/providers/messaging_provider.dart'
-    show kNotLinkedYetMessageLabel, kRetiredMessageLabel;
+    show kRetiredMessageLabel;
 import 'package:fireplace/widgets/message/text_message_content.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -38,18 +38,6 @@ Widget _host(MessageModel m, {Locale locale = const Locale('pl')}) =>
     );
 
 void main() {
-  testWidgets('the §5.3 not-linked marker renders localized, never the raw '
-      'sentinel', (tester) async {
-    final pl = await AppLocalizations.delegate.load(const Locale('pl'));
-    await tester.pumpWidget(_host(_msg(kNotLinkedYetMessageLabel)));
-    await tester.pumpAndSettle();
-
-    expect(find.textContaining(pl.messageSentBeforeDeviceLinked, findRichText: true),
-        findsOneWidget);
-    expect(find.textContaining(kNotLinkedYetMessageLabel, findRichText: true), findsNothing,
-        reason: 'raw sentinel text must never reach the user');
-  });
-
   testWidgets('the retired marker keeps its localized mapping', (tester) async {
     final pl = await AppLocalizations.delegate.load(const Locale('pl'));
     await tester.pumpWidget(_host(_msg(kRetiredMessageLabel)));

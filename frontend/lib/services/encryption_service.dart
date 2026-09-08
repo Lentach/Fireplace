@@ -691,6 +691,15 @@ class EncryptionService {
       final own = await _ownPublishedIdentityBase64();
       if (own != null && own == replacedTo) {
         E2ePersistentDiag.record('OWN_IDENTITY_REPLACED_IS_SELF', {});
+        // (lxxxi) clause 2: the SAME row may already be showing — it was
+        // reported by the connect that preceded the restore, when this
+        // install held no identity to compare against. It just proved to be
+        // ours, so retract it. Only an alarm for THIS instant: the server
+        // reports the latest row, and an alarm for an earlier instant was
+        // raised by a different row that is still somebody else's.
+        if (_ownIdentityReplacedAt == normalized) {
+          await dismissOwnIdentityReplaced();
+        }
         return;
       }
     }

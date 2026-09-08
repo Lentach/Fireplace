@@ -277,7 +277,50 @@ class MessagingProvider extends ChangeNotifier {
 
   // ---------- Public Getters ----------
 
-  List<MessageModel> get messages => _messages;
+  /// The rows the UI shows. Pre-link rows (content == [kNotLinkedYetMessageLabel],
+  /// spec §12 amendment (lxxxi)) are omitted here and ONLY here: they stay in
+  /// [_messages] and in storage, are never destroyed on the marker, and the
+  /// decrypt/reconcile passes keep seeing them. The screen renders one divider
+  /// for the whole run instead ([hiddenPreLinkCount]).
+  ///
+  /// Rebuilt lazily after every [notifyListeners] — every mutation of
+  /// [_messages] ends in one, so a consumer never reads a stale view — and
+  /// returns [_messages] itself when nothing is hidden, so the common case
+  /// allocates nothing.
+  List<MessageModel> get messages {
+    final cached = _visibleMessages;
+    if (cached != null && identical(_visibleSource, _messages)) return cached;
+    _visibleSource = _messages;
+    var hidden = 0;
+    for (final m in _messages) {
+      if (m.content == kNotLinkedYetMessageLabel) hidden++;
+    }
+    _hiddenPreLinkCount = hidden;
+    return _visibleMessages = hidden == 0
+        ? _messages
+        : List.unmodifiable(
+            _messages.where((m) => m.content != kNotLinkedYetMessageLabel),
+          );
+  }
+
+  /// How many rows of the loaded history [messages] hides because they predate
+  /// this device's link. Non-zero → the thread shows one "history before this
+  /// device was linked" divider at its oldest end.
+  int get hiddenPreLinkCount {
+    messages; // refresh the cache
+    return _hiddenPreLinkCount;
+  }
+
+  List<MessageModel>? _visibleMessages;
+  List<MessageModel>? _visibleSource;
+  int _hiddenPreLinkCount = 0;
+
+  @override
+  void notifyListeners() {
+    _visibleMessages = null;
+    super.notifyListeners();
+  }
+
   MessageModel? get replyingToMessage => _replyingToMessage;
   MessageModel? get editingMessage => _editingMessage;
   bool get showPingEffect => _showPingEffect;
@@ -291,6 +334,11 @@ class MessagingProvider extends ChangeNotifier {
   void seedCacheForTest(int conversationId, List<MessageModel> messages) {
     _conversationCache[conversationId] = List.from(messages);
   }
+
+  /// Test-only: the loaded rows INCLUDING the ones [messages] hides, so a test
+  /// can prove a hidden row still exists (I8: a marker never destroys).
+  @visibleForTesting
+  List<MessageModel> get loadedMessagesForTest => List.unmodifiable(_messages);
 
   @visibleForTesting
   MessageModel? cacheMessageForTest(int conversationId, int messageId) {

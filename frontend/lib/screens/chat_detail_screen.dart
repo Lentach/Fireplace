@@ -707,6 +707,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     final identityRowOffset = (peerIdentityChanged || peerKeyChangeNoted)
         ? 1
         : 0;
+    // Amendment (lxxxi): rows that predate this device's link are not in
+    // `messages`; one pill at the oldest end says why the thread starts here.
+    final preLinkDivider = context.read<MessagingProvider>().hiddenPreLinkCount > 0
+        ? 1
+        : 0;
     return ChatBackgroundPattern(
       backgroundColor: messagesAreaBg,
       layer: settings.resolvedChatBackground,
@@ -740,13 +745,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                     ),
                   Expanded(
                     child: Center(
-                      child: Text(
-                        AppLocalizations.of(context).noMessagesYet,
-                        style: RpgTheme.bodyFont(
-                          fontSize: 14,
-                          color: mutedColor,
-                        ),
-                      ),
+                      child: preLinkDivider == 1
+                          ? MessageDateSeparator.label(
+                              AppLocalizations.of(context)
+                                  .historyBeforeDeviceLinked,
+                              key: const Key('pre-link-history-divider'),
+                            )
+                          : Text(
+                              AppLocalizations.of(context).noMessagesYet,
+                              style: RpgTheme.bodyFont(
+                                fontSize: 14,
+                                color: mutedColor,
+                              ),
+                            ),
                     ),
                   ),
                 ],
@@ -789,7 +800,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                     itemCount:
                         messages.length +
                         (_isLoadingMoreLocal ? 1 : 0) +
-                        identityRowOffset,
+                        identityRowOffset +
+                        preLinkDivider,
                     itemBuilder: (context, index) {
                       if (peerIdentityChanged && index == 0) {
                         return PeerIdentityChangedRow(
@@ -806,6 +818,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                         );
                       }
                       final effIndex = index - identityRowOffset;
+                      final loadingSlot = _isLoadingMoreLocal ? 1 : 0;
+                      if (preLinkDivider == 1 &&
+                          effIndex == messages.length + loadingSlot) {
+                        return MessageDateSeparator.label(
+                          AppLocalizations.of(context).historyBeforeDeviceLinked,
+                          key: const Key('pre-link-history-divider'),
+                        );
+                      }
                       if (_isLoadingMoreLocal && effIndex == messages.length) {
                         return const Padding(
                           padding: EdgeInsets.symmetric(vertical: 8),

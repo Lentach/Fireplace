@@ -626,6 +626,75 @@ void main() {
       );
     });
 
+    // Amendment (lxxxi) clause 2 — the shape the live proof of clause 5 hit.
+    // The FIRST hydration reaches a wiped install BEFORE it holds any identity
+    // (the connect that precedes the gate), so the row is reported; the
+    // restore then brings back exactly the key the row ends at, and the second
+    // hydration must RETRACT that alarm, not merely skip the row.
+    test('an alarm raised with no identity is retracted when the same row '
+        'turns out to end at our own key', () async {
+      final at = DateTime.now().toUtc().toIso8601String();
+      final service = EncryptionService();
+
+      // Hydration 1: no keys loaded yet — reported, as it must be.
+      await service.recordOwnIdentityReplacedFromServer(
+        at,
+        replacedTo: 'BrEstoredKeyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      );
+      expect(service.ownIdentityReplacedAt, isNotNull);
+
+      // The restore adopts the identity; take the key it now publishes as
+      // the row's `to` (the row is served unchanged by the server).
+      await service.initialize(
+        94,
+        checkServerIdentity: () async =>
+            const ServerIdentityGuard(exists: false),
+      );
+      final own =
+          (await service.getKeyBundleForReupload())!['identityPublicKey']
+              as String;
+      await service.recordOwnIdentityReplaced(at); // still showing
+
+      // Hydration 2, same row, identity loaded.
+      await service.recordOwnIdentityReplacedFromServer(at, replacedTo: own);
+
+      expect(
+        service.ownIdentityReplacedAt,
+        isNull,
+        reason: 'the row ended at the key this device now holds; the alarm '
+            'it raised while the install was empty is moot',
+      );
+    });
+
+    test('a showing alarm for a DIFFERENT instant is not retracted by an '
+        'own-key row', () async {
+      final service = EncryptionService();
+      await service.initialize(
+        95,
+        checkServerIdentity: () async =>
+            const ServerIdentityGuard(exists: false),
+      );
+      final own =
+          (await service.getKeyBundleForReupload())!['identityPublicKey']
+              as String;
+      final earlier = DateTime.now()
+          .toUtc()
+          .subtract(const Duration(hours: 1))
+          .toIso8601String();
+      await service.recordOwnIdentityReplaced(earlier);
+
+      await service.recordOwnIdentityReplacedFromServer(
+        DateTime.now().toUtc().toIso8601String(),
+        replacedTo: own,
+      );
+
+      expect(
+        service.ownIdentityReplacedAt,
+        earlier,
+        reason: 'only the alarm THIS row raised is retracted',
+      );
+    });
+
     test('an absent replacedTo (older server) reports exactly as before',
         () async {
       final service = EncryptionService();

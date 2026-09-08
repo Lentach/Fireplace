@@ -123,19 +123,31 @@ void main() {
       );
     });
 
-    test('a none_for_device row is never decrypted and renders the honest '
-        'placeholder', () async {
+    test('a none_for_device row is never decrypted, is hidden from the thread '
+        'and counted for the divider (amendment (lxxxi))', () async {
       provider.onMessageHistory({
         'conversationId': 10,
-        'messages': [_row(id: 101, envelopeStatus: 'none_for_device')],
+        'messages': [
+          _row(id: 100, encryptedContent: '2:ct'),
+          _row(id: 101, envelopeStatus: 'none_for_device'),
+        ],
       });
       await pump();
 
-      final row = provider.messages.firstWhere((m) => m.id == 101);
-      // NOT '[Decryption failed]': nothing failed, the row simply predates this
-      // device's link.
-      expect(row.content, kNotLinkedYetMessageLabel);
-      expect(encryption.decryptCalls, 0);
+      expect(encryption.decryptCalls, 1, reason: 'only the real ciphertext');
+      expect(provider.messages.map((m) => m.id), [100]);
+      expect(provider.hiddenPreLinkCount, 1);
+    });
+
+    test('a row that never predated this device is not hidden', () async {
+      provider.onMessageHistory({
+        'conversationId': 10,
+        'messages': [_row(id: 100, encryptedContent: '2:ct')],
+      });
+      await pump();
+
+      expect(provider.messages.map((m) => m.id), [100]);
+      expect(provider.hiddenPreLinkCount, 0);
     });
 
     test('a marker row is not a destruction trigger', () async {
@@ -145,11 +157,12 @@ void main() {
       });
       await pump();
 
-      // The row survives as a placeholder — I8: an honest marker never purges,
-      // retires, or removes anything (falsification 13).
-      expect(provider.messages.any((m) => m.id == 102), isTrue);
-      final row = provider.messages.firstWhere((m) => m.id == 102);
+      // The row survives locally — I8: an honest marker never purges, retires,
+      // or removes anything (falsification 13). Hidden from the thread is not
+      // gone.
+      final row = provider.loadedMessagesForTest.firstWhere((m) => m.id == 102);
       expect(row.content, isNot(kRetiredMessageLabel));
+      expect(provider.messages.any((m) => m.id == 102), isFalse);
     });
 
     test('the marker can never overwrite plaintext already held', () {
@@ -242,16 +255,15 @@ void main() {
       expect(row.envelopeStatus, 'none_for_device');
     });
 
-    test('a marked row with nothing local keeps the honest placeholder',
-        () async {
+    test('a marked row with nothing local stays hidden', () async {
       provider.onMessageHistory({
         'conversationId': 10,
         'messages': [_row(id: 202, envelopeStatus: 'none_for_device')],
       });
       await pumpEventQueue(times: 200);
 
-      final row = provider.messages.firstWhere((m) => m.id == 202);
-      expect(row.content, kNotLinkedYetMessageLabel);
+      expect(provider.messages, isEmpty);
+      expect(provider.hiddenPreLinkCount, 1);
     });
   });
 }
