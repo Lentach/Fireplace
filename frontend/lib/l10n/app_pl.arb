@@ -171,7 +171,6 @@
   "devicesSyncingNote": "Synchronizowanie urządzeń…",
   "encryptionNotInitialized": "Szyfrowanie niezainicjowane",
   "identityDamagedTitle": "Brak kluczy szyfrowania na tym urządzeniu",
-  "identityDamagedBody": "Logujesz się na nowym urządzeniu lub w nowej przeglądarce? Twoje konto ma już klucze szyfrowania na innym urządzeniu — połącz to urządzenie stamtąd i nic nie przepadnie. Nic nie zostało odtworzone automatycznie: nowym kluczom utworzonym tutaj nikt by nie ufał, a zrobienie tego po cichu zniszczyłoby możliwość odczytania historii.\n\nNie masz już działającego urządzenia głównego? Rozpocznij reset: po 72 godzinach (1 godzinie z kluczem odzyskiwania) to urządzenie otrzyma nowe klucze, pozostałe urządzenia zostaną wylogowane, a wiadomości, których to urządzenie nigdy nie odszyfrowało, będą nie do odzyskania.",
 
 
 
@@ -272,14 +271,13 @@
   },
   "identityResetAnyMoment": "lada chwila",
   "identityUploadLockedTitle": "Twoje nowe klucze szyfrowania nie zostały opublikowane",
-  "identityUploadLockedBody": "To urządzenie utworzyło nowe klucze, ale konto nadal używa poprzednich, więc inne osoby nie mogą się z Tobą bezpiecznie skontaktować. Jeśli poprzednie klucze wciąż masz na innym urządzeniu, połącz to urządzenie stamtąd — nieopublikowane klucze zostaną odrzucone i nic nie przepadnie. Tylko jeśli tych kluczy nie ma już nigdzie, rozpocznij reset, aby opublikować te — trwa 72 godziny, wylogowuje pozostałe urządzenia, a wszystkie zalogowane sesje otrzymają powiadomienie.",
   "identityResetStartAction": "Rozpocznij reset",
   "linkGateTitle": "Połącz to urządzenie",
   "linkGateBody": "To urządzenie nie ma kluczy szyfrowania Twojego konta. Ma je Twoje urządzenie główne — zeskanuj nim ten kod albo wpisz go tam ręcznie. Nic nie przepadnie.",
   "linkGateWaiting": "Czekam na urządzenie główne…",
   "linkGateStaleBody": "Klucze na tym urządzeniu są nieaktualne i zostaną zastąpione po połączeniu. Zapisane wiadomości pozostaną.",
   "linkGateNoPrimaryQuestion": "Nie masz już urządzenia głównego?",
-  "linkGateResetHint": "Reset nadaje kontu nowe klucze po 72 godzinach (1 godzinie z kluczem odzyskiwania), wylogowuje pozostałe urządzenia i powiadamia wszystkie zalogowane sesje. Wiadomości, których to urządzenie nie odszyfrowało, przepadną.",
+  "linkGateResetHint": "Reset to ostatnia opcja: nadaje kontu nowe klucze po 72 godzinach (1 godzinie z kluczem odzyskiwania), wylogowuje pozostałe urządzenia i powiadamia wszystkie zalogowane sesje. Wiadomości, których to urządzenie nie odszyfrowało, przepadną. Masz frazę odzyskiwania? Wpisz ją powyżej — jeśli konto ma kopię kluczy, wracasz od razu.",
   "linkGateResetPendingTitle": "Reset kluczy w toku",
   "linkGateResetPendingBody": "Za {remaining} konto otrzyma nowe klucze i to urządzenie będzie mogło pisać dalej. Jeśli w międzyczasie odzyskasz urządzenie główne, najpierw dotknij „Anuluj” — reset trwa, dopóki go nie anulujesz — a potem połącz to urządzenie stamtąd.",
   "@linkGateResetPendingBody": {
@@ -293,11 +291,10 @@
   "devicesInstallFirst": "Aby włączyć łączenie w przeglądarce, najpierw zainstaluj Umbra jako aplikację (menu przeglądarki → „Zainstaluj” lub „Dodaj do ekranu początkowego”). Dane zwykłej karty przeglądarka może usunąć bez pytania, a razem z nimi klucze urządzenia głównego.",
   "devicesInstallNudge": "Ta przeglądarka jest urządzeniem głównym Twojego konta, ale Umbra nie jest tu zainstalowana jako aplikacja. Zainstaluj ją, aby przeglądarka nie usunęła kluczy razem z pamięcią podręczną.",
   "devicesEnableLinkingWebWarningTitle": "Ta przeglądarka stanie się urządzeniem głównym",
-  "devicesEnableLinkingWebWarningBody": "Tylko urządzenie główne może dodawać i usuwać inne urządzenia. Jeśli pamięć tej przeglądarki zostanie wyczyszczona, odzyskanie tej roli wymaga resetu: 72 godziny, albo 1 godzina z kluczem odzyskiwania. Za chwilę utworzysz frazę odzyskiwania — bez niej nie włączymy łączenia.",
+  "devicesEnableLinkingWebWarningBody": "Tylko urządzenie główne może dodawać i usuwać inne urządzenia. Jeśli pamięć tej przeglądarki zostanie wyczyszczona, wrócisz tu frazą odzyskiwania — od razu, bez czekania. Za chwilę ją utworzysz; bez niej nie włączymy łączenia, bo wtedy jedynym wyjściem byłby reset i 72 godziny.",
   "devicesEnableLinkingConfirmAction": "Włącz",
   "recoveryKeyTitle": "Klucz odzyskiwania",
   "recoveryKeySubtitle": "Szybszy powrót, jeśli stracisz klucze",
-  "recoveryKeyExplainer": "Jeśli kiedykolwiek stracisz dostęp do swoich kluczy szyfrowania, uzyskanie nowych trwa 72 godziny — to celowe opóźnienie, dzięki któremu nikt inny nie przejmie po cichu Twojego konta, zanim zdążysz zareagować. Klucz odzyskiwania skraca to oczekiwanie do 1 godziny. Nigdy go nie pomija, a wszystkie zalogowane sesje i tak otrzymają powiadomienie.\n\nSłowa pokazujemy tylko raz i nie zapisujemy ich na tym urządzeniu — przechowywanie ich tutaj oznaczałoby utratę dokładnie wtedy, gdy są potrzebne. Zapisz je w bezpiecznym miejscu, poza urządzeniem.",
   "recoveryKeyGenerateAction": "Wygeneruj klucz odzyskiwania",
   "recoveryKeyShownOnceWarning": "Te słowa pokazujemy tylko raz. Zapisz je, zanim przejdziesz dalej — wygenerowanie nowego klucza zastąpi ten.",
   "recoveryKeyCopyAction": "Kopiuj słowa",
@@ -777,5 +774,33 @@
   "peerIdentityChangedSystemLine": "{name} loguje się z nowego urządzenia lub przeglądarki — klucze bezpieczeństwa zostały zaktualizowane.",
   "@peerIdentityChangedSystemLine": {"placeholders": {"name": {"type": "String"}}},
   "settingsKeyChangeWarnings": "Ostrzegaj o zmianie kluczy kontaktów",
-  "settingsKeyChangeWarningsSubtitle": "Wymagaj ręcznego potwierdzenia nowego numeru bezpieczeństwa. Domyślnie nowe klucze są przyjmowane, a w rozmowie pojawia się krótka notatka."
+  "settingsKeyChangeWarningsSubtitle": "Wymagaj ręcznego potwierdzenia nowego numeru bezpieczeństwa. Domyślnie nowe klucze są przyjmowane, a w rozmowie pojawia się krótka notatka.",
+  "devicesRenameAction": "Zmień nazwę",
+  "@devicesRenameAction": {
+    "description": "Button/tooltip that opens the rename sheet for one device row ((lxxx) clause 1)."
+  },
+  "devicesRenameTitle": "Nazwa urządzenia",
+  "@devicesRenameTitle": {
+    "description": "Title of the rename sheet."
+  },
+  "devicesRenameHint": "np. Telefon Ani",
+  "@devicesRenameHint": {
+    "description": "Placeholder in the rename field — an example, never a default."
+  },
+  "devicesRenameSave": "Zapisz",
+  "@devicesRenameSave": {
+    "description": "Confirms the rename; signs a new device list."
+  },
+  "devicesRenameClearHint": "Puste pole usuwa nazwę.",
+  "@devicesRenameClearHint": {
+    "description": "Tells the user that submitting an empty field clears the name instead of storing an empty one."
+  },
+  "devicesRenameFailed": "Nie udało się zmienić nazwy. Spróbuj ponownie.",
+  "@devicesRenameFailed": {
+    "description": "Shown when the signed list mutation was refused or never answered."
+  },
+  "devicesRenameNotStorable": "Ta nazwa zawiera znaki, których nie zapiszemy. Wpisz ją z klawiatury, zamiast wklejać.",
+  "@devicesRenameNotStorable": {
+    "description": "Shown when a device name is refused BEFORE signing because it is not NFC-normalized ((lxxx) clause 1) — the storage gate would refuse it as invalid_canonical."
+  }
 }

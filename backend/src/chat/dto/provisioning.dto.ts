@@ -3,6 +3,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
 } from 'class-validator';
 
@@ -38,6 +39,20 @@ export class ProvisioningHelloDto {
   @IsNotEmpty()
   @MaxLength(64)
   ephPubP: string;
+
+  /**
+   * Informational platform label of the HELLO side (amendment (lxxx) clause
+   * 3). Only reason it exists: when the PRIMARY opened the ceremony
+   * (amendment (lxxvii)) this is the only channel by which the joining
+   * device's label reaches the signer, so without it every such link lands
+   * in the roster as 'unknown'. OPTIONAL — an older client omits it and is
+   * unchanged. Same `^[A-Za-z0-9_-]{1,32}$` bound the OOB code enforces; it
+   * is metadata, never a crypto input.
+   */
+  @IsOptional()
+  @IsString()
+  @Matches(/^[A-Za-z0-9_-]{1,32}$/)
+  platform?: string;
 }
 
 export class ProvisionDeviceDto {

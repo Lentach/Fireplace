@@ -968,12 +968,6 @@ abstract class AppLocalizations {
   /// **'Brak kluczy szyfrowania na tym urządzeniu'**
   String get identityDamagedTitle;
 
-  /// No description provided for @identityDamagedBody.
-  ///
-  /// In pl, this message translates to:
-  /// **'Logujesz się na nowym urządzeniu lub w nowej przeglądarce? Twoje konto ma już klucze szyfrowania na innym urządzeniu — połącz to urządzenie stamtąd i nic nie przepadnie. Nic nie zostało odtworzone automatycznie: nowym kluczom utworzonym tutaj nikt by nie ufał, a zrobienie tego po cichu zniszczyłoby możliwość odczytania historii.\n\nNie masz już działającego urządzenia głównego? Rozpocznij reset: po 72 godzinach (1 godzinie z kluczem odzyskiwania) to urządzenie otrzyma nowe klucze, pozostałe urządzenia zostaną wylogowane, a wiadomości, których to urządzenie nigdy nie odszyfrowało, będą nie do odzyskania.'**
-  String get identityDamagedBody;
-
   /// Re-sends a message whose delivery failed.
   ///
   /// In pl, this message translates to:
@@ -1226,12 +1220,6 @@ abstract class AppLocalizations {
   /// **'Twoje nowe klucze szyfrowania nie zostały opublikowane'**
   String get identityUploadLockedTitle;
 
-  /// No description provided for @identityUploadLockedBody.
-  ///
-  /// In pl, this message translates to:
-  /// **'To urządzenie utworzyło nowe klucze, ale konto nadal używa poprzednich, więc inne osoby nie mogą się z Tobą bezpiecznie skontaktować. Jeśli poprzednie klucze wciąż masz na innym urządzeniu, połącz to urządzenie stamtąd — nieopublikowane klucze zostaną odrzucone i nic nie przepadnie. Tylko jeśli tych kluczy nie ma już nigdzie, rozpocznij reset, aby opublikować te — trwa 72 godziny, wylogowuje pozostałe urządzenia, a wszystkie zalogowane sesje otrzymają powiadomienie.'**
-  String get identityUploadLockedBody;
-
   /// No description provided for @identityResetStartAction.
   ///
   /// In pl, this message translates to:
@@ -1271,7 +1259,7 @@ abstract class AppLocalizations {
   /// No description provided for @linkGateResetHint.
   ///
   /// In pl, this message translates to:
-  /// **'Reset nadaje kontu nowe klucze po 72 godzinach (1 godzinie z kluczem odzyskiwania), wylogowuje pozostałe urządzenia i powiadamia wszystkie zalogowane sesje. Wiadomości, których to urządzenie nie odszyfrowało, przepadną.'**
+  /// **'Reset to ostatnia opcja: nadaje kontu nowe klucze po 72 godzinach (1 godzinie z kluczem odzyskiwania), wylogowuje pozostałe urządzenia i powiadamia wszystkie zalogowane sesje. Wiadomości, których to urządzenie nie odszyfrowało, przepadną. Masz frazę odzyskiwania? Wpisz ją powyżej — jeśli konto ma kopię kluczy, wracasz od razu.'**
   String get linkGateResetHint;
 
   /// No description provided for @linkGateResetPendingTitle.
@@ -1337,7 +1325,7 @@ abstract class AppLocalizations {
   /// No description provided for @devicesEnableLinkingWebWarningBody.
   ///
   /// In pl, this message translates to:
-  /// **'Tylko urządzenie główne może dodawać i usuwać inne urządzenia. Jeśli pamięć tej przeglądarki zostanie wyczyszczona, odzyskanie tej roli wymaga resetu: 72 godziny, albo 1 godzina z kluczem odzyskiwania. Za chwilę utworzysz frazę odzyskiwania — bez niej nie włączymy łączenia.'**
+  /// **'Tylko urządzenie główne może dodawać i usuwać inne urządzenia. Jeśli pamięć tej przeglądarki zostanie wyczyszczona, wrócisz tu frazą odzyskiwania — od razu, bez czekania. Za chwilę ją utworzysz; bez niej nie włączymy łączenia, bo wtedy jedynym wyjściem byłby reset i 72 godziny.'**
   String get devicesEnableLinkingWebWarningBody;
 
   /// No description provided for @devicesEnableLinkingConfirmAction.
@@ -1357,12 +1345,6 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Szybszy powrót, jeśli stracisz klucze'**
   String get recoveryKeySubtitle;
-
-  /// No description provided for @recoveryKeyExplainer.
-  ///
-  /// In pl, this message translates to:
-  /// **'Jeśli kiedykolwiek stracisz dostęp do swoich kluczy szyfrowania, uzyskanie nowych trwa 72 godziny — to celowe opóźnienie, dzięki któremu nikt inny nie przejmie po cichu Twojego konta, zanim zdążysz zareagować. Klucz odzyskiwania skraca to oczekiwanie do 1 godziny. Nigdy go nie pomija, a wszystkie zalogowane sesje i tak otrzymają powiadomienie.\n\nSłowa pokazujemy tylko raz i nie zapisujemy ich na tym urządzeniu — przechowywanie ich tutaj oznaczałoby utratę dokładnie wtedy, gdy są potrzebne. Zapisz je w bezpiecznym miejscu, poza urządzeniem.'**
-  String get recoveryKeyExplainer;
 
   /// No description provided for @recoveryKeyGenerateAction.
   ///
@@ -3649,6 +3631,48 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Wymagaj ręcznego potwierdzenia nowego numeru bezpieczeństwa. Domyślnie nowe klucze są przyjmowane, a w rozmowie pojawia się krótka notatka.'**
   String get settingsKeyChangeWarningsSubtitle;
+
+  /// Button/tooltip that opens the rename sheet for one device row ((lxxx) clause 1).
+  ///
+  /// In pl, this message translates to:
+  /// **'Zmień nazwę'**
+  String get devicesRenameAction;
+
+  /// Title of the rename sheet.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nazwa urządzenia'**
+  String get devicesRenameTitle;
+
+  /// Placeholder in the rename field — an example, never a default.
+  ///
+  /// In pl, this message translates to:
+  /// **'np. Telefon Ani'**
+  String get devicesRenameHint;
+
+  /// Confirms the rename; signs a new device list.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zapisz'**
+  String get devicesRenameSave;
+
+  /// Tells the user that submitting an empty field clears the name instead of storing an empty one.
+  ///
+  /// In pl, this message translates to:
+  /// **'Puste pole usuwa nazwę.'**
+  String get devicesRenameClearHint;
+
+  /// Shown when the signed list mutation was refused or never answered.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się zmienić nazwy. Spróbuj ponownie.'**
+  String get devicesRenameFailed;
+
+  /// Shown when a device name is refused BEFORE signing because it is not NFC-normalized ((lxxx) clause 1) — the storage gate would refuse it as invalid_canonical.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ta nazwa zawiera znaki, których nie zapiszemy. Wpisz ją z klawiatury, zamiast wklejać.'**
+  String get devicesRenameNotStorable;
 }
 
 class _AppLocalizationsDelegate

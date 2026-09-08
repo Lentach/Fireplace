@@ -539,12 +539,21 @@ export class KeyBundlesService {
    * happened still surfaces it — the durable audit row outlives the live
    * notification, which reaches only sessions connected at that moment.
    */
-  async latestIdentityChangeAt(userId: number): Promise<Date | null> {
+  async latestIdentityChange(
+    userId: number,
+  ): Promise<{ at: Date; to: string } | null> {
     const latest = await this.identityChangeAuditRepo.findOne({
       where: { userId },
       order: { createdAt: 'DESC' },
     });
-    return latest?.createdAt ?? null;
+    if (!latest) return null;
+    // (lxxx) clause 5: the client needs the key the change ENDED at, not just
+    // when it happened. A row whose new key is the caller's own published
+    // identity describes something that already landed on the key it holds,
+    // so it is not a pending replacement — and a wiped-then-restored install,
+    // which has no dismissal watermark left, must not be alarmed by its own
+    // history.
+    return { at: latest.createdAt, to: latest.newIdentityPublicKey };
   }
 
   async uploadOneTimePreKeys(

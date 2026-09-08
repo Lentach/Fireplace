@@ -413,4 +413,36 @@ void main() {
     expect(socket.enrollments, isEmpty,
         reason: 'a restored account keeps its DAK — updateDeviceList, not enroll');
   });
+
+  test('a RESTORED offer with NO rebind never re-enrolls either', () async {
+    conn.onSessionRebound = (_) async {};
+
+    // The (lxxviii) restore ack rides every later authenticated upload, and
+    // this one carries no session — the restore already rebound, or the ack
+    // arrived on a socket that needs no rebind. The no-rebind branch must
+    // honour the same exemption as the rebind branch: the restore PRESERVED
+    // the DAK and its enrollment (E still verifies under the unchanged
+    // identity), so minting a replacement enrollment here would discard the
+    // very authority the phrase backup exists to keep, and every peer holding
+    // the old E would be re-anchored onto a DAK the account never needed.
+    socket.emitServer('keyBundleUploaded', {
+      'success': true,
+      'restored': true,
+      'deviceId': 5,
+      'nextListVersion': 3,
+    });
+    await pumpEventQueue();
+
+    expect(socket.connects, 1, reason: 'no tokens — nothing to rebind');
+    expect(
+      socket.enrollments,
+      isEmpty,
+      reason: 'a restored account re-signs via updateDeviceList, not enroll',
+    );
+    expect(
+      order,
+      ['ack'],
+      reason: 'the exemption must skip the enrollment, never swallow the ack',
+    );
+  });
 }

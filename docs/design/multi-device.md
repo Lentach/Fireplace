@@ -2688,6 +2688,98 @@ that is the designed outcome).
     Falsification: (F11) toggle ignored → red pill with the setting off; (F12) auto-ack removed → the
     muted line persists across reload.
 
+- **Amendment 2026-09-08b (D27, owner-ratified: "let user rename linked devices"; the three riders
+  are defects D26 shipped or exposed, folded into the same release):**
+  - **(lxxx) clause 1 — DEVICE RENAME.** The primary may give any LIVE device row a human name.
+    **No new wire and no server change:** `DeviceListEntry.name` has been in the canonical encoding
+    since §3 (sorted key `name`, `kDeviceNameMaxLength` = 64 UTF-16 units, `_validString` rejects
+    control characters, and the server re-checks it at the storage gate), and `updateDeviceList`
+    already accepts ANY DAK-signed list at a higher version — `applySignedListUpdate` constrains
+    only `userId`, the signature and version monotonicity. So a rename is exactly the
+    `revokeDevice` shape with `name` set instead of `revokedAtMs`, emitted on the EXISTING
+    `updateDeviceList` (mutating tier, 60/900000) and answered by `deviceListUpdated
+    { success, listVersion }`; the server's own `deviceListChanged` broadcast to the user room is
+    what refreshes the other installs. Rules: only a DAK holder may rename (the engine is armed
+    from the Keystore FIRST, as `revokeDevice` learned to — the app-proof caught that path missing
+    it); a REVOKED row may not be renamed (it is a tombstone, and mutating it would spend a list
+    version to no effect); an empty/whitespace-only name CLEARS the field rather than storing `""`
+    (the encoder omits an absent name, so clearing must reach the same canonical bytes as never
+    naming it); the name is trimmed and length-capped client-side before signing. Names are
+    INFORMATIONAL: nothing in I1–I7, the SAS or any envelope reads them, and a peer that dislikes a
+    name simply displays it. Falsification: (F13) rename emitted without arming the DAK → signature
+    absent, nothing leaves the device; (F14) a cleared name that still writes `""` → canonical bytes
+    differ from the never-named list.
+    **NFC.** The storage gate refuses a `name` that is not NFC-normalized, and the encoder's own
+    header has promised since §3 that "when the rename UI lands, the client-side NFC normalization
+    lands with it". It lands as a REFUSAL, not a normalization: Dart core ships no Unicode
+    normalizer, and the alternative was hundreds of KB of Unicode tables in a PWA bundle to tidy a
+    device label. `isSignableDeviceName` rejects the combining-diacritic blocks (U+0300–U+036F,
+    U+1AB0–U+1AFF, U+1DC0–U+1DFF, U+FE20–U+FE2F) that decompose Latin, Greek and Cyrillic — the
+    only way this app's users produce non-NFC text (a paste from macOS/iOS) — and deliberately
+    leaves alone the marks that are NORMAL in NFC for other scripts (Arabic, Hebrew, Indic vowel
+    signs live in different blocks). The refusal happens BEFORE signing, so no list version is
+    spent, and it gets its own copy (`devicesRenameNotStorable`, "type it instead of pasting"):
+    "could not rename, try again" would be a dead end, since retyping the same paste fails
+    identically. Accepted false positive: a Latin base + mark with no precomposed form (`z` +
+    U+0308) is refused despite being valid NFC. Falsification: (F19) with the check removed, the
+    decomposed name is signed and emitted; the precomposed spelling of the SAME name and an Arabic
+    fatha both stay accepted, so the refusal is not simply "no diacritics allowed".
+  - **(lxxx) clause 2 — the "primary" badge was keyed on `deviceId == 1`.** `devices_screen.dart`
+    labelled the row whose id is 1. Every §6.2 reset and every (lxxviii) restore RE-HOMES the
+    surviving install onto a FRESH id and revokes the old one, so after any of them the live primary
+    loses the badge and the REVOKED device 1 keeps it — actively misleading, and (lxxviii) turns
+    that from a 72-h-rare event into an ordinary one (observed live on the 0.2.23 drive: the
+    restored primary rendered `web · #3` with no badge). The signed list carries no `isPrimary`
+    field and must not grow one (it would be a second source of truth the DAK signs but the server
+    also believes). The badge is therefore derived: **the LOWEST non-revoked `deviceId`**, which is
+    exactly the row `DevicesService.resolveLoginDeviceId` resolves for login. Falsification: (F15)
+    a list whose device 1 is revoked and 3 is live badges 3, never 1.
+  - **(lxxx) clause 3 — the flipped ceremony recorded `platform: 'unknown'`.** (lxxvii) let the
+    PRIMARY open the ceremony, and in that direction the new device's platform label reaches the
+    primary only through `provisioningHello` — which carried `provisioningId` + `ephPubP` and
+    nothing else, so every device linked through the path (lxxvii) makes primary landed in the
+    roster as `unknown`. `ProvisioningHelloDto` gains an OPTIONAL `platform` (same
+    `^[A-Za-z0-9_-]{1,32}$` bound the OOB code already enforces), relayed to the opener beside
+    `deviceId`; the primary uses it for the list entry and falls back to `unknown` when absent, so
+    an older client is unchanged. Informational metadata only (spec item (i)) — it is not a crypto
+    input and a lying label costs its own owner a wrong icon. Falsification: (F16) hello without
+    `platform` → entry still `unknown`, never a crash or a rejected DTO.
+  - **(lxxx) clause 4 — copy that understates (lxxviii).** Two LIVE strings still promised the
+    pre-(lxxviii) recovery terms: `devicesEnableLinkingWebWarningBody` ("a reset: 72 hours, or 1
+    hour with a recovery key" — said in the very dialog that is about to DEMAND a phrase whose whole
+    point is that it restores immediately) and `linkGateResetHint` (the same "1 hour with a recovery
+    key", rendered on the gate directly above the instant restore door). Both now describe the reset
+    as the LAST resort and point at the phrase door. Three (lxxiii)-era keys carrying the same stale
+    promise are DELETED, not reworded: `identityDamagedBody`, `identityUploadLockedBody` and
+    `recoveryKeyExplainer` have had no reader since `DeviceLinkGateScreen` replaced the banners and
+    `recoveryKeyBackupExplainer` replaced the phrase explainer. `recoveryPhrasePromptBody` KEEPS its
+    "72 → 1" wording: it belongs to the reset ceremony, where a phrase genuinely only shortens the
+    wait.
+  - **(lxxx) clause 5 — the restored install alarmed itself.** Observed live on the 0.2.23 drive:
+    seconds after a successful restore the shell raised the RED own-account banner "Nowe klucze
+    szyfrowania na Twoim koncie". The restore was innocent — the audit row it reported predated the
+    restore and was written by that same install's earlier login — but the wipe destroyed the
+    install's dismissal watermark (`e2e_<uid>_own_identity_replaced_seen_v1`), so connect-time
+    hydration from `ownKeyBundleStatus.identityReplacedAt` re-raised a change the user had already
+    lived through, in the one flow whose entire promise is "nothing happened to your account".
+    **The fix is CONTENT-BASED, never a suppression flag.** `latestIdentityChangeAt` is replaced by
+    `latestIdentityChange` returning `{ at, to }` where `to` is the audit row's
+    `newIdentityPublicKey`, and `ownKeyBundleStatus` carries the additive `identityReplacedTo`
+    beside `identityReplacedAt`. `recordOwnIdentityReplacedFromServer` then IGNORES a row whose
+    `to` equals this device's own published identity: such a row describes a change that ENDED at
+    the key this device holds, so nothing is pending — while a row ending at any OTHER key still
+    alarms, unchanged. This is exactly as strong as the existing threat model: an attacker cannot
+    republish this identity without its private half, and a §6.2 ceremony or a §6.1 rotation by
+    anyone else lands on a DIFFERENT key and is still reported. **The one-shot
+    `markOwnIdentityPublished` flag was deliberately NOT reused here** — a restore reports
+    `identityChanged: false` and an account with no audit row sends no instant at all, so
+    `normalizeServerInstant` returns null and bails BEFORE the flag is consumed; the flag would
+    persist in prefs and silently eat the first genuine replacement that ever arrived. A rule that
+    can only ever suppress a row already ending at our own key cannot do that. Absent
+    `identityReplacedTo` (older server) changes nothing: the row is reported as today.
+    Falsification: (F17) a hydrated row whose `to` is a FOREIGN key still raises the banner; (F18)
+    with the comparison removed, the restore drive's own row raises it again.
+
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the
   test-integrity findings are folded at `4c0e0bf`; the four security findings were T9. **T10 (xlv)

@@ -181,7 +181,7 @@ describe('ChatKeyExchangeService', () => {
             fetchPreKeyBundle: jest.fn(),
             countUnusedPreKeys: jest.fn(),
             hasKeyBundle: jest.fn(),
-            latestIdentityChangeAt: jest.fn().mockResolvedValue(null),
+            latestIdentityChange: jest.fn().mockResolvedValue(null),
             // (lxxiii) default: the ordinary pre-linking account, not enrolled.
             isEnrolled: jest.fn().mockResolvedValue(false),
           },
@@ -971,6 +971,8 @@ describe('ChatKeyExchangeService', () => {
           // 0b additions: additive, and null when the account is quiet.
           identityReset: null,
           identityReplacedAt: null,
+          // (lxxx) clause 5: additive, and null in the same breath.
+          identityReplacedTo: null,
         });
         expect(keyBundlesService.fetchPreKeyBundle).not.toHaveBeenCalled();
       },
@@ -1847,7 +1849,10 @@ describe('ChatKeyExchangeService', () => {
       const deadlineAt = new Date(Date.now() + 1000);
       const replacedAt = new Date(Date.now() - 5000);
       keyBundlesService.hasKeyBundle.mockResolvedValue(true);
-      keyBundlesService.latestIdentityChangeAt.mockResolvedValue(replacedAt);
+      keyBundlesService.latestIdentityChange.mockResolvedValue({
+        at: replacedAt,
+        to: 'BfOreignKeyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      });
       identityResetService.getStatusForUser.mockResolvedValue({
         status: 'pending',
         deadlineAt,
@@ -1869,6 +1874,9 @@ describe('ChatKeyExchangeService', () => {
         },
         // This is what gives a session offline at the time its banner.
         identityReplacedAt: replacedAt.toISOString(),
+        // (lxxx) clause 5: the key the change ENDED at, so the client can
+        // tell a foreign replacement from its own identity being republished.
+        identityReplacedTo: 'BfOreignKeyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
       });
     });
 
@@ -1886,6 +1894,7 @@ describe('ChatKeyExchangeService', () => {
         hasIdentityBackup: false,
         identityReset: null,
         identityReplacedAt: null,
+        identityReplacedTo: null,
       });
     });
 

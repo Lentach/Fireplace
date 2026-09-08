@@ -59,6 +59,13 @@ abstract class ProvisioningEventSink {
   void onDeviceListChanged(dynamic data);
   void onDeviceRevocationCompleted(dynamic data);
 
+  /// Answer to `updateDeviceList` — the event a device RENAME rides
+  /// ((lxxx) clause 1 reuses the existing mutating request rather than
+  /// growing a wire). The restore machine in EncryptionProvider awaits the
+  /// same event through its own completer; both hear every answer, and each
+  /// ignores one it has nothing in flight for.
+  void onDeviceListUpdated(dynamic data);
+
   /// The session's socket just became authenticated (`socketReady`). The
   /// only moment an emit is guaranteed to reach the CURRENT socket — a
   /// rebind's reconnect returns before its transport exists, and an
@@ -230,6 +237,11 @@ class LinkCeremonyController extends ChangeNotifier
   /// The hello party's ephemeral relayed to this flipped-flow primary (the
   /// N slot of the fixed N-then-P transcript).
   Uint8List? _relayedEphPubN;
+
+  /// The new device's self-reported platform label from the hello relay
+  /// ((lxxx) clause 3), or null when the hello carried none (an older
+  /// client) — the staged entry then falls back to `unknown`.
+  String? _relayedPlatform;
   int _resignRetries = 0;
   bool _resignPending = false;
 
@@ -529,6 +541,7 @@ class LinkCeremonyController extends ChangeNotifier
     primaryOobCode = null;
     assignedDeviceId = null;
     _relayedEphPubN = null;
+    _relayedPlatform = null;
     _resignRetries = 0;
     primaryStep = PrimaryLinkStep.opening;
     notifyListeners();
@@ -698,9 +711,10 @@ class LinkCeremonyController extends ChangeNotifier
         ),
       );
       // The staged v+1 list: current entries + EXACTLY the assigned device,
-      // platform from the code, NO name (amendment (i)). The flipped flow
-      // has no code from N and the hello relay carries no platform — the
-      // entry is labelled 'unknown' (informational metadata only).
+      // NO name (amendment (i)). The platform label comes from the pasted
+      // code in the classic flow and from the hello relay in the flipped one
+      // ((lxxx) clause 3); an older client that sends neither is labelled
+      // 'unknown' (informational metadata only).
       final staged = DeviceList(
         userId: userId,
         version: list.version + 1,
@@ -708,7 +722,7 @@ class LinkCeremonyController extends ChangeNotifier
           ...list.devices,
           DeviceListEntry(
             deviceId: deviceId,
-            platform: code?.platform ?? 'unknown',
+            platform: code?.platform ?? _relayedPlatform ?? 'unknown',
             addedAtMs: DateTime.now().millisecondsSinceEpoch,
           ),
         ],
@@ -816,6 +830,110 @@ class LinkCeremonyController extends ChangeNotifier
     notifyListeners();
   }
 
+  // ---------- Rename (spec §12 (lxxx) clause 1) ----------
+
+  /// Device id whose rename is in flight, or null.
+  int? renamingDeviceId;
+
+  /// Stable refusal code from the last rename attempt, or null.
+  String? renameError;
+
+  /// Gives one row of the account's signed list a human [name] — or CLEARS
+  /// it when [name] is empty/whitespace only.
+  ///
+  /// Exactly the [revokeDevice] shape with `name` set instead of
+  /// `revokedAt`: only a DAK holder may sign a list version, so the engine is
+  /// armed from the Keystore FIRST, and the mutation rides the EXISTING
+  /// `updateDeviceList` request — the server constrains only the userId, the
+  /// signature and version monotonicity, so no new wire and no server change
+  /// is needed.
+  ///
+  /// A REVOKED row is refused: it is a tombstone, and mutating it would spend
+  /// a list version to no effect. Clearing passes `null` rather than `""`, so
+  /// the canonical bytes match a list that was never named (the encoder omits
+  /// an absent name).
+  Future<void> renameDevice(int deviceId, String name) async {
+    final list = verifiedList;
+    if (list == null || renamingDeviceId != null || revokingDeviceId != null) {
+      return;
+    }
+    final target = list.devices
+        .where((d) => d.deviceId == deviceId)
+        .firstOrNull;
+    if (target == null || target.revokedAtMs != null) return;
+    final trimmed = name.trim();
+    final String? nextName = trimmed.isEmpty
+        ? null
+        : (trimmed.length > kDeviceNameMaxLength
+              ? trimmed.substring(0, kDeviceNameMaxLength)
+              : trimmed);
+    // (lxxx) clause 1: refuse a name the STORAGE GATE would reject for NFC
+    // reasons BEFORE spending a list version on it. Signing first burns
+    // version+1, comes back as `invalid_canonical`, and tells the user only
+    // "could not rename".
+    if (nextName != null && !isSignableDeviceName(nextName)) {
+      renameError = 'not_storable';
+      notifyListeners();
+      return;
+    }
+    renamingDeviceId = deviceId;
+    renameError = null;
+    notifyListeners();
+    // Arm the engine from the Keystore FIRST — same reason as
+    // [revokeDevice]: a controller rebuilt with the screen holds no DAK, and
+    // signing without one throws so nothing ever leaves the device.
+    if (await _readDak() == null) {
+      renamingDeviceId = null;
+      renameError = 'no_dak';
+      notifyListeners();
+      return;
+    }
+    try {
+      final staged = DeviceList(
+        userId: userId,
+        version: list.version + 1,
+        devices: [
+          for (final d in list.devices)
+            if (d.deviceId == deviceId)
+              DeviceListEntry(
+                deviceId: d.deviceId,
+                platform: d.platform,
+                addedAtMs: d.addedAtMs,
+                name: nextName,
+                revokedAtMs: d.revokedAtMs,
+              )
+            else
+              d,
+        ],
+      );
+      final signed = _engine.signList(staged);
+      _emit('updateDeviceList', {
+        'listCanonical': signed['listCanonical'],
+        'listSignature': signed['listSignature'],
+      });
+    } catch (e) {
+      renamingDeviceId = null;
+      renameError = 'sign_failed';
+      notifyListeners();
+    }
+  }
+
+  @override
+  void onDeviceListUpdated(dynamic data) {
+    // The restore machine ((lxxviii)) emits the same request from
+    // EncryptionProvider and awaits its own completer; an answer that
+    // belongs to it finds nothing in flight here and is left alone.
+    if (renamingDeviceId == null) return;
+    renamingDeviceId = null;
+    if (data is Map && data['success'] == true) {
+      renameError = null;
+      refreshDeviceList();
+    } else {
+      renameError = 'rename_failed';
+    }
+    notifyListeners();
+  }
+
   @override
   void onProvisionDeviceAck(dynamic data) {
     if (primaryStep != PrimaryLinkStep.staging) return;
@@ -861,13 +979,13 @@ class LinkCeremonyController extends ChangeNotifier
     _ephP = null;
     _ephPubP = null;
     _relayedEphPubN = null;
+    _relayedPlatform = null;
     _primaryProvisioningId = null;
     _resignRetries = 0;
     _resignPending = false;
   }
 
   // ---------- New-device flow ----------
-
   Future<void> startNewDeviceFlow({required String platform}) async {
     _platform = platform;
     final eph = generateLinkEphemeral();
@@ -919,9 +1037,13 @@ class LinkCeremonyController extends ChangeNotifier
     notifyListeners();
     // The wire field stays `ephPubP` for v1 compatibility — it is simply
     // "the hello party's ephemeral", filling the N slot in this flow.
+    // `platform` is (lxxx) clause 3: in the FLIPPED direction this hello is
+    // the only channel that carries this device's label to the primary, and
+    // without it every device linked that way landed as `unknown`.
     _emit('provisioningHello', {
       'provisioningId': code.provisioningId,
       'ephPubP': base64Encode(_ephPubNBytes!),
+      'platform': _platform,
     });
     return null;
   }
@@ -1061,6 +1183,12 @@ class LinkCeremonyController extends ChangeNotifier
     final eph = _ephP;
     if (eph == null) return;
     _relayedEphPubN = ephPubN;
+    // (lxxx) clause 3: OPTIONAL on the wire; an older new device sends none
+    // and the entry stays 'unknown' rather than crashing the ceremony.
+    final platform = data['platform'];
+    _relayedPlatform = platform is String && platform.isNotEmpty
+        ? platform
+        : null;
     assignedDeviceId = data['deviceId'] as int;
     final transcript = linkTranscript(
       provisioningId: _primaryProvisioningId!,

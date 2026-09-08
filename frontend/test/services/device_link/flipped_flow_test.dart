@@ -20,6 +20,7 @@ import 'package:fireplace/services/device_link/dak_store.dart';
 import 'package:fireplace/services/device_link/link_ceremony_controller.dart';
 import 'package:fireplace/services/device_link/link_crypto.dart';
 import 'package:fireplace/services/device_list/device_authority_engine.dart';
+import 'package:fireplace/services/device_list/device_list_canonical.dart';
 import 'package:fireplace/services/passcode_wrap_hook.dart';
 import 'package:fireplace/widgets/input/composer_keyboard_signals.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -437,5 +438,105 @@ void main() {
     // The enrolment is signed over the SAME pair the backup flow sealed —
     // a fresh mint here would orphan the blob (fails without reuseHeldDak).
     expect(payload['dakPub'], minted.dakPub);
+  });
+
+  // (lxxx) clause 3: in the FLIPPED direction the hello is the ONLY channel
+  // by which the joining device's label reaches the signer, so every device
+  // linked that way used to land on the list as `unknown`.
+  group('the hello relays the platform label', () {
+    LinkCeremonyController primaryController() {
+      final identity = generateIdentityKeyPair();
+      final engine = DeviceAuthorityEngine();
+      final authorization = _asServed(
+        engine.mintEnrollment(
+          userId: _userId,
+          identity: identity,
+          createdAtMs: 1755600000000,
+        ),
+      );
+      final dak = engine.exportDakForPersistence();
+      final controller = LinkCeremonyController(
+        userId: _userId,
+        emit: (event, data) => emitted.add((event, data)),
+        identity: _Identity(identity),
+        adoptSession: (_) async {},
+        reconnect: (_) async {},
+        engine: engine,
+        dakStore: _StubDakStore(
+          DakRecord(
+            userId: _userId,
+            dakPub: dak['dakPub']!,
+            dakPriv: dak['dakPriv']!,
+            createdAtMs: 1755600000000,
+          ),
+        ),
+      );
+      addTearDown(controller.dispose);
+      controller.onDeviceList({
+        'userId': _userId,
+        'authorization': authorization,
+      });
+      return controller;
+    }
+
+    /// Drives a primary to `showSas` with the given hello relay payload and
+    /// returns the platform of the entry it signs.
+    Future<String> stagedPlatform(Map<String, dynamic> extraRelay) async {
+      final primary = primaryController();
+      await primary.startPrimaryShowFlow(platform: 'web');
+      primary.onProvisioningOpened({
+        'success': true,
+        'provisioningId': _provisioningId,
+      });
+      final newDevice = keylessController();
+      addTearDown(newDevice.dispose);
+      await newDevice.startNewDeviceFromCode(
+        primary.primaryOobCode!,
+        platform: 'android',
+      );
+      final hello = payloadOf('provisioningHello') as Map<String, dynamic>;
+      primary.onProvisioningHelloRelay({
+        'provisioningId': _provisioningId,
+        'ephPubP': hello['ephPubP'],
+        'deviceId': 2,
+        ...extraRelay,
+      });
+      await primary.approvePrimary();
+      await _settle();
+      final staged =
+          emitted.lastWhere((e) => e.$1 == 'provisionDevice').$2
+              as Map<String, dynamic>;
+      final list = parseCanonicalDeviceList(
+        base64Decode(staged['listCanonical'] as String),
+      );
+      return list.devices.firstWhere((d) => d.deviceId == 2).platform;
+    }
+
+    test('the joining device sends its own label', () async {
+      final primary = primaryController();
+      await primary.startPrimaryShowFlow(platform: 'web');
+      primary.onProvisioningOpened({
+        'success': true,
+        'provisioningId': _provisioningId,
+      });
+      final newDevice = keylessController();
+      addTearDown(newDevice.dispose);
+
+      await newDevice.startNewDeviceFromCode(
+        primary.primaryOobCode!,
+        platform: 'android',
+      );
+
+      final hello = payloadOf('provisioningHello') as Map<String, dynamic>;
+      expect(hello['platform'], 'android');
+    });
+
+    test('the primary signs the RELAYED label', () async {
+      expect(await stagedPlatform({'platform': 'android'}), 'android');
+    });
+
+    test('an older client that sends none stays unknown, never a crash', () async {
+      expect(await stagedPlatform(const {}), 'unknown');
+    });
   });
 }

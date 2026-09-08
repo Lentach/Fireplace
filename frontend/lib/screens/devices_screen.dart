@@ -264,26 +264,39 @@ class _DevicesScreenState extends State<DevicesScreen> {
           for (final e in list.devices)
             if (e.revokedAtMs != null) e,
         ];
+        // (lxxx) clause 2: the signed list carries NO primary flag (§3) and
+        // must not grow one. The badge is DERIVED as the lowest non-revoked
+        // id — exactly the row `DevicesService.resolveLoginDeviceId`
+        // resolves for login. Keying it on `deviceId == 1` was actively
+        // misleading: every §6.2 reset and every (lxxviii) restore re-homes
+        // the survivor onto a FRESH id and revokes the old one, so the live
+        // primary lost the badge and the revoked device 1 kept it.
+        final int? primaryDeviceId = live.isEmpty
+            ? null
+            : live.map((e) => e.deviceId).reduce((a, b) => a < b ? a : b);
         Widget row(DeviceListEntry entry) => _DeviceRow(
           entry: entry,
           l10n: l10n,
+          isPrimary: entry.deviceId == primaryDeviceId,
           // Only the primary may revoke, and never itself (amendment
           // (xxi)) — the server enforces both; this just does not offer an
-          // action guaranteed to be refused. The signed canonical list
-          // carries NO primary flag (spec §3), so "primary" is read as
-          // device 1, which is exactly true until §6.3 primary migration
-          // ships. When it does, the flag has to reach the client (either
-          // in the canonical list or beside it) and this condition must
-          // move to it — a §6.2 reset already makes the primary a
-          // freshly allocated id server-side.
+          // action guaranteed to be refused.
           onRevoke:
               entry.revokedAtMs == null &&
-                  entry.deviceId != 1 &&
+                  entry.deviceId != primaryDeviceId &&
                   entry.deviceId !=
                       context.read<EncryptionProvider>().ownDeviceId
               ? () => _confirmRevoke(context, controller, entry, l10n)
               : null,
-          busy: controller.revokingDeviceId == entry.deviceId,
+          // (lxxx) clause 1: a name is informational, so ANY live row may
+          // take one — including this device and the primary. A revoked row
+          // is a tombstone and gets no affordance.
+          onRename: entry.revokedAtMs == null
+              ? () => _promptRename(context, controller, entry, l10n)
+              : null,
+          busy:
+              controller.revokingDeviceId == entry.deviceId ||
+              controller.renamingDeviceId == entry.deviceId,
         );
         return [
           for (final entry in live) row(entry),
@@ -309,6 +322,20 @@ class _DevicesScreenState extends State<DevicesScreen> {
               padding: const EdgeInsets.only(top: 4),
               child: Text(
                 l10n.devicesRevokeFailed,
+                style: theme.textTheme.bodySmall?.copyWith(color: colors.error),
+              ),
+            ),
+          if (controller.renameError != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                // (lxxx) clause 1: a name refused BEFORE signing gets its own
+                // actionable line. "Try again" would be a dead end here —
+                // retyping the same paste fails identically.
+                controller.renameError == 'not_storable'
+                    ? l10n.devicesRenameNotStorable
+                    : l10n.devicesRenameFailed,
+                key: const Key('devices-rename-error'),
                 style: theme.textTheme.bodySmall?.copyWith(color: colors.error),
               ),
             ),
@@ -356,6 +383,25 @@ class _DevicesScreenState extends State<DevicesScreen> {
       if (!mounted || controller.revokeError != null) return;
       setState(() => _showRevoked = true);
     }
+  }
+
+  /// (lxxx) clause 1: names are INFORMATIONAL — nothing in I1–I7, the SAS or
+  /// any envelope reads them — so the prompt is a plain dialog, not a
+  /// ceremony. Submitting an empty field CLEARS the name (the helper text
+  /// says so), which reaches the same canonical bytes as never naming it.
+  Future<void> _promptRename(
+    BuildContext context,
+    LinkCeremonyController controller,
+    DeviceListEntry entry,
+    AppLocalizations l10n,
+  ) async {
+    final name = await showDialog<String>(
+      context: context,
+      builder: (_) =>
+          _RenameDialog(initialName: entry.name ?? '', l10n: l10n),
+    );
+    if (name == null) return;
+    await controller.renameDevice(entry.deviceId, name);
   }
 
   List<Widget> _buildActions(
@@ -549,20 +595,86 @@ class _DevicesScreenState extends State<DevicesScreen> {
   }
 }
 
+/// Owns the rename field's controller for exactly the dialog's lifetime —
+/// disposing it at the `showDialog` await would kill it mid exit-transition,
+/// while the field is still being laid out.
+class _RenameDialog extends StatefulWidget {
+  const _RenameDialog({required this.initialName, required this.l10n});
+
+  final String initialName;
+  final AppLocalizations l10n;
+
+  @override
+  State<_RenameDialog> createState() => _RenameDialogState();
+}
+
+class _RenameDialogState extends State<_RenameDialog> {
+  late final TextEditingController _field = TextEditingController(
+    text: widget.initialName,
+  );
+
+  @override
+  void dispose() {
+    _field.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = widget.l10n;
+    return AlertDialog(
+      title: Text(l10n.devicesRenameTitle),
+      content: TextField(
+        key: const Key('device-rename-field'),
+        controller: _field,
+        autofocus: true,
+        maxLength: kDeviceNameMaxLength,
+        textInputAction: TextInputAction.done,
+        decoration: InputDecoration(
+          hintText: l10n.devicesRenameHint,
+          helperText: l10n.devicesRenameClearHint,
+          helperMaxLines: 2,
+        ),
+        onSubmitted: (value) => Navigator.of(context).pop(value),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(MaterialLocalizations.of(context).cancelButtonLabel),
+        ),
+        TextButton(
+          key: const Key('device-rename-save'),
+          onPressed: () => Navigator.of(context).pop(_field.text),
+          child: Text(l10n.devicesRenameSave),
+        ),
+      ],
+    );
+  }
+}
+
 class _DeviceRow extends StatelessWidget {
   const _DeviceRow({
     required this.entry,
     required this.l10n,
+    this.isPrimary = false,
     this.onRevoke,
+    this.onRename,
     this.busy = false,
   });
 
   final DeviceListEntry entry;
   final AppLocalizations l10n;
 
+  /// (lxxx) clause 2: DERIVED by the caller as the lowest non-revoked id —
+  /// the signed list carries no primary flag and must not grow one.
+  final bool isPrimary;
+
   /// Null when this device may not be revoked from here: itself, the primary,
   /// or one already revoked (spec §12 amendment (xxi)).
   final VoidCallback? onRevoke;
+
+  /// Null on a revoked row — a tombstone takes no name ((lxxx) clause 1).
+  final VoidCallback? onRename;
   final bool busy;
 
   @override
@@ -574,10 +686,22 @@ class _DeviceRow extends StatelessWidget {
         '${added.year}-${added.month.toString().padLeft(2, '0')}-'
         '${added.day.toString().padLeft(2, '0')}';
     final revoked = entry.revokedAtMs != null;
+    // The name leads when there is one, but `platform · #id` never
+    // disappears: the id is what every refusal code and support answer
+    // names, so it stays on the secondary line ((lxxx) clause 1).
+    final idLabel = '${entry.platform} · #${entry.deviceId}';
+    final name = entry.name;
+    final statusLabel = revoked ? l10n.devicesRevokedBadge : addedLabel;
+    final title =
+        '${name ?? idLabel}'
+        '${isPrimary ? ' · ${l10n.devicesPrimaryBadge}' : ''}';
+    final secondary = name == null ? statusLabel : '$idLabel · $statusLabel';
 
     return Semantics(
       label:
           'device ${entry.deviceId} ${entry.platform}'
+          '${name == null ? '' : ' $name'}'
+          '${isPrimary ? ' ${l10n.devicesPrimaryBadge}' : ''}'
           '${revoked ? ' ${l10n.devicesRevokedBadge}' : ''}',
       child: Container(
         key: Key('device-row-${entry.deviceId}'),
@@ -603,8 +727,7 @@ class _DeviceRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${entry.platform} · #${entry.deviceId}'
-                    '${entry.deviceId == 1 ? ' · ${l10n.devicesPrimaryBadge}' : ''}',
+                    title,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w600,
                       color: revoked
@@ -614,7 +737,7 @@ class _DeviceRow extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    revoked ? l10n.devicesRevokedBadge : addedLabel,
+                    secondary,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: colors.onSurfaceVariant,
                     ),
@@ -631,13 +754,22 @@ class _DeviceRow extends StatelessWidget {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
               )
-            else if (onRevoke != null)
-              IconButton(
-                key: Key('device-revoke-${entry.deviceId}'),
-                icon: const Icon(Icons.link_off, size: 20),
-                tooltip: l10n.devicesRevokeAction,
-                onPressed: onRevoke,
-              ),
+            else ...[
+              if (onRename != null)
+                IconButton(
+                  key: Key('device-rename-${entry.deviceId}'),
+                  icon: const Icon(Icons.edit_outlined, size: 20),
+                  tooltip: l10n.devicesRenameAction,
+                  onPressed: onRename,
+                ),
+              if (onRevoke != null)
+                IconButton(
+                  key: Key('device-revoke-${entry.deviceId}'),
+                  icon: const Icon(Icons.link_off, size: 20),
+                  tooltip: l10n.devicesRevokeAction,
+                  onPressed: onRevoke,
+                ),
+            ],
           ],
         ),
       ),

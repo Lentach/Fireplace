@@ -663,13 +663,37 @@ class EncryptionService {
   /// alarm. The comparison is a string compare, which is sound because every
   /// value that reaches here has been through [normalizeServerInstant] — the
   /// assumption a comment used to assert, now enforced ((li) clause 1).
-  Future<void> recordOwnIdentityReplacedFromServer(String occurredAt) async {
+  ///
+  /// [replacedTo] is the audit row's NEW identity key ((lxxx) clause 5). When
+  /// it equals the key THIS device publishes, the row describes a change that
+  /// ended at the identity we already hold — nothing is pending, so it is not
+  /// reported. A row ending at any OTHER key still alarms, which is what keeps
+  /// this exactly as strong as before: republishing this identity needs its
+  /// private half, and a §6.1 rotation or §6.2 ceremony by anyone else lands
+  /// on a different key. Deliberately NOT the one-shot
+  /// [markOwnIdentityPublished] flag: an account with no audit row sends no
+  /// instant, the early return below fires before the flag is consumed, and a
+  /// flag left armed in prefs would eat the next genuine replacement.
+  Future<void> recordOwnIdentityReplacedFromServer(
+    String occurredAt, {
+    String? replacedTo,
+  }) async {
     // Defence in depth: the provider normalizes, and so do we. An unorderable
     // instant is IGNORED on this path — hydration exists only to order a past
     // event against the watermark, and a server that withholds the field
     // entirely already achieves this, so ignoring grants it nothing new.
     final normalized = normalizeServerInstant(occurredAt);
     if (normalized == null) return;
+
+    if (replacedTo != null && replacedTo.isNotEmpty) {
+      // Unknown own key (not initialized yet) falls THROUGH to reporting:
+      // silence must never be the fail-open answer for an alarm.
+      final own = await _ownPublishedIdentityBase64();
+      if (own != null && own == replacedTo) {
+        E2ePersistentDiag.record('OWN_IDENTITY_REPLACED_IS_SELF', {});
+        return;
+      }
+    }
 
     // Amendment (li) clause 2: the report of OUR OWN republish, consumed once.
     if (_ownPublishUnacknowledged) {
@@ -681,6 +705,20 @@ class EncryptionService {
     final current = _ownIdentityReplacedAt;
     if (current != null && normalized.compareTo(current) <= 0) return;
     await recordOwnIdentityReplaced(normalized);
+  }
+
+  /// This device's published identity public key, base64, or null when the
+  /// keys are not loaded (or unreadable). Only ever used to recognise our OWN
+  /// key in an audit row ((lxxx) clause 5), so a null answer is safe: the
+  /// caller then reports the row rather than suppressing it.
+  Future<String?> _ownPublishedIdentityBase64() async {
+    if (!_initialized) return null;
+    try {
+      final keyPair = await _identityStore.getIdentityKeyPair();
+      return base64Encode(keyPair.getPublicKey().serialize());
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Records that THIS device published a new identity, so the connect-time

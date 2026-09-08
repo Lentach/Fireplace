@@ -2421,11 +2421,20 @@ class EncryptionProvider extends ChangeNotifier {
     if (data is Map) {
       _hydrateIdentityResetState(data);
       final replacedAt = data['identityReplacedAt'];
+      // (lxxx) clause 5: additive. Absent (older server) ⇒ null ⇒ the row is
+      // reported exactly as before.
+      final replacedTo = data['identityReplacedTo'];
       if (replacedAt is String && replacedAt.isNotEmpty) {
-        // Respects the user's dismissal watermark inside the service.
+        // Respects the user's dismissal watermark inside the service, and
+        // ignores a row that merely ends at our OWN published identity.
         unawaited(
           _encryptionService
-              .recordOwnIdentityReplacedFromServer(replacedAt)
+              .recordOwnIdentityReplacedFromServer(
+                replacedAt,
+                replacedTo: replacedTo is String && replacedTo.isNotEmpty
+                    ? replacedTo
+                    : null,
+              )
               .then((_) => notifyListeners()),
         );
       }

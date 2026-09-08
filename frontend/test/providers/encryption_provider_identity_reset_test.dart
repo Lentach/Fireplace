@@ -574,6 +574,73 @@ void main() {
         reason: 'only the first report is ours; the next one is an alarm',
       );
     });
+
+    // Amendment (lxxx) clause 5. A wiped-then-restored install has no
+    // dismissal watermark left, so the server's audit row — which the restore
+    // did NOT write and which may be the install's own earlier history —
+    // greeted the user with the red own-account banner in the one flow whose
+    // promise is "nothing happened to your account". Observed live on 0.2.23.
+    test('a row ending at our OWN published identity is not an alarm', () async {
+      final service = EncryptionService();
+      await service.initialize(
+        91,
+        checkServerIdentity: () async =>
+            const ServerIdentityGuard(exists: false),
+      );
+      final own =
+          (await service.getKeyBundleForReupload())!['identityPublicKey']
+              as String;
+
+      await service.recordOwnIdentityReplacedFromServer(
+        DateTime.now().toUtc().toIso8601String(),
+        replacedTo: own,
+      );
+
+      expect(
+        service.ownIdentityReplacedAt,
+        isNull,
+        reason: 'the change ended at the key this device holds — nothing '
+            'is pending, and no flag was spent to reach that conclusion',
+      );
+    });
+
+    test('a row ending at a FOREIGN identity still alarms', () async {
+      final service = EncryptionService();
+      await service.initialize(
+        92,
+        checkServerIdentity: () async =>
+            const ServerIdentityGuard(exists: false),
+      );
+
+      // Same shape, different key: exactly what a §6.1 rotation or a spent
+      // §6.2 ceremony by somebody else looks like.
+      await service.recordOwnIdentityReplacedFromServer(
+        DateTime.now().toUtc().toIso8601String(),
+        replacedTo: 'BfOreignKeyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      );
+
+      expect(
+        service.ownIdentityReplacedAt,
+        isNotNull,
+        reason: 'suppression must be content-based, never blanket',
+      );
+    });
+
+    test('an absent replacedTo (older server) reports exactly as before',
+        () async {
+      final service = EncryptionService();
+      await service.initialize(
+        93,
+        checkServerIdentity: () async =>
+            const ServerIdentityGuard(exists: false),
+      );
+
+      await service.recordOwnIdentityReplacedFromServer(
+        DateTime.now().toUtc().toIso8601String(),
+      );
+
+      expect(service.ownIdentityReplacedAt, isNotNull);
+    });
   });
 
   // A ceremony leaving 'pending' has NO server event: `completeDueResets`

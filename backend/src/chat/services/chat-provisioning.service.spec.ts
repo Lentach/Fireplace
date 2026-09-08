@@ -301,6 +301,79 @@ describe('ChatProvisioningService', () => {
         error: 'invalid_ephemeral',
       });
     });
+
+    // Amendment (lxxx) clause 3, falsification F16. The common case is an
+    // OLDER client: it sends no `platform` at all, and the relay must be
+    // byte-identical to the pre-(lxxx) one — not `platform: undefined`,
+    // which `toHaveBeenCalledWith` would silently accept.
+    it('accepts a hello WITHOUT platform and relays exactly as before (F16)', async () => {
+      const { provisioningId } = await openStage();
+      const primary = pinHello(provisioningId);
+
+      expect(lastEmit(primary, 'provisioningHelloAck')).toEqual({
+        success: true,
+        deviceId: 2,
+      });
+      expect(roomEmit).toHaveBeenCalledTimes(1);
+      const [event, payload] = roomEmit.mock.calls[0] as [
+        string,
+        Record<string, unknown>,
+      ];
+      expect(event).toBe('provisioningHello');
+      expect(Object.keys(payload).sort()).toEqual([
+        'deviceId',
+        'ephPubP',
+        'provisioningId',
+      ]);
+    });
+
+    it('relays a valid platform label to the opener', async () => {
+      const { provisioningId } = await openStage();
+      const primary = makeClient('primary-socket');
+
+      service.handleProvisioningHello(
+        primary as unknown as Socket,
+        { provisioningId, ephPubP: EPH_PUB_P, platform: 'web-chrome_1' },
+        server as unknown as Server,
+      );
+
+      expect(lastEmit(primary, 'provisioningHelloAck')).toEqual({
+        success: true,
+        deviceId: 2,
+      });
+      expect(server.to).toHaveBeenCalledWith('opener-socket');
+      expect(roomEmit).toHaveBeenCalledWith('provisioningHello', {
+        provisioningId,
+        ephPubP: EPH_PUB_P,
+        deviceId: 2,
+        platform: 'web-chrome_1',
+      });
+    });
+
+    it.each([
+      ['33 chars', 'a'.repeat(33)],
+      ['a dot', 'web.chrome'],
+      ['a space', 'web chrome'],
+      ['empty', ''],
+    ])('rejects a platform with %s like any malformed field', async (
+      _label,
+      platform,
+    ) => {
+      const { provisioningId } = await openStage();
+      const primary = makeClient('primary-socket');
+
+      service.handleProvisioningHello(
+        primary as unknown as Socket,
+        { provisioningId, ephPubP: EPH_PUB_P, platform },
+        server as unknown as Server,
+      );
+
+      expect(lastEmit(primary, 'provisioningHelloAck')).toEqual({
+        success: false,
+        error: 'hello_failed',
+      });
+      expect(roomEmit).not.toHaveBeenCalled();
+    });
   });
 
   describe('provisionDevice', () => {

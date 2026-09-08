@@ -122,7 +122,10 @@ export class ChatProvisioningService {
    * memoized deviceId (amendment (lxxvii)): this is how the primary learns
    * the id it must sign, whichever socket it sits on. The wire field stays
    * `ephPubP` for v1 compatibility even though it is simply "the hello
-   * party's ephemeral".
+   * party's ephemeral". An OPTIONAL `platform` label rides the same relay
+   * (amendment (lxxx) clause 3) so a ceremony the PRIMARY opened can still
+   * name the joining device; omitted by older clients, and the signer then
+   * falls back to 'unknown'.
    */
   handleProvisioningHello(client: Socket, data: unknown, server: Server): void {
     const userId = socketUserId(client);
@@ -167,10 +170,15 @@ export class ChatProvisioningService {
         success: true,
         deviceId: stage.deviceId,
       });
+      // `platform` rides along only when the hello side sent one (amendment
+      // (lxxx) clause 3): an older client omits it and the opener falls back
+      // to 'unknown', exactly as before. Nothing is stored — the relay is
+      // synchronous with the hello, so the stage never needs to hold it.
       server.to(stage.openerSocketId).emit('provisioningHello', {
         provisioningId: stage.provisioningId,
         ephPubP: dto.ephPubP,
         deviceId: stage.deviceId,
+        ...(dto.platform === undefined ? {} : { platform: dto.platform }),
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

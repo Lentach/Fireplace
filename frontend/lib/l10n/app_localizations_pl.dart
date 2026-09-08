@@ -501,10 +501,6 @@ class AppLocalizationsPl extends AppLocalizations {
       'Brak kluczy szyfrowania na tym urządzeniu';
 
   @override
-  String get identityDamagedBody =>
-      'Logujesz się na nowym urządzeniu lub w nowej przeglądarce? Twoje konto ma już klucze szyfrowania na innym urządzeniu — połącz to urządzenie stamtąd i nic nie przepadnie. Nic nie zostało odtworzone automatycznie: nowym kluczom utworzonym tutaj nikt by nie ufał, a zrobienie tego po cichu zniszczyłoby możliwość odczytania historii.\n\nNie masz już działającego urządzenia głównego? Rozpocznij reset: po 72 godzinach (1 godzinie z kluczem odzyskiwania) to urządzenie otrzyma nowe klucze, pozostałe urządzenia zostaną wylogowane, a wiadomości, których to urządzenie nigdy nie odszyfrowało, będą nie do odzyskania.';
-
-  @override
   String get messageRetrySend => 'Ponów';
 
   @override
@@ -689,10 +685,6 @@ class AppLocalizationsPl extends AppLocalizations {
       'Twoje nowe klucze szyfrowania nie zostały opublikowane';
 
   @override
-  String get identityUploadLockedBody =>
-      'To urządzenie utworzyło nowe klucze, ale konto nadal używa poprzednich, więc inne osoby nie mogą się z Tobą bezpiecznie skontaktować. Jeśli poprzednie klucze wciąż masz na innym urządzeniu, połącz to urządzenie stamtąd — nieopublikowane klucze zostaną odrzucone i nic nie przepadnie. Tylko jeśli tych kluczy nie ma już nigdzie, rozpocznij reset, aby opublikować te — trwa 72 godziny, wylogowuje pozostałe urządzenia, a wszystkie zalogowane sesje otrzymają powiadomienie.';
-
-  @override
   String get identityResetStartAction => 'Rozpocznij reset';
 
   @override
@@ -714,7 +706,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get linkGateResetHint =>
-      'Reset nadaje kontu nowe klucze po 72 godzinach (1 godzinie z kluczem odzyskiwania), wylogowuje pozostałe urządzenia i powiadamia wszystkie zalogowane sesje. Wiadomości, których to urządzenie nie odszyfrowało, przepadną.';
+      'Reset to ostatnia opcja: nadaje kontu nowe klucze po 72 godzinach (1 godzinie z kluczem odzyskiwania), wylogowuje pozostałe urządzenia i powiadamia wszystkie zalogowane sesje. Wiadomości, których to urządzenie nie odszyfrowało, przepadną. Masz frazę odzyskiwania? Wpisz ją powyżej — jeśli konto ma kopię kluczy, wracasz od razu.';
 
   @override
   String get linkGateResetPendingTitle => 'Reset kluczy w toku';
@@ -755,7 +747,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get devicesEnableLinkingWebWarningBody =>
-      'Tylko urządzenie główne może dodawać i usuwać inne urządzenia. Jeśli pamięć tej przeglądarki zostanie wyczyszczona, odzyskanie tej roli wymaga resetu: 72 godziny, albo 1 godzina z kluczem odzyskiwania. Za chwilę utworzysz frazę odzyskiwania — bez niej nie włączymy łączenia.';
+      'Tylko urządzenie główne może dodawać i usuwać inne urządzenia. Jeśli pamięć tej przeglądarki zostanie wyczyszczona, wrócisz tu frazą odzyskiwania — od razu, bez czekania. Za chwilę ją utworzysz; bez niej nie włączymy łączenia, bo wtedy jedynym wyjściem byłby reset i 72 godziny.';
 
   @override
   String get devicesEnableLinkingConfirmAction => 'Włącz';
@@ -765,10 +757,6 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get recoveryKeySubtitle => 'Szybszy powrót, jeśli stracisz klucze';
-
-  @override
-  String get recoveryKeyExplainer =>
-      'Jeśli kiedykolwiek stracisz dostęp do swoich kluczy szyfrowania, uzyskanie nowych trwa 72 godziny — to celowe opóźnienie, dzięki któremu nikt inny nie przejmie po cichu Twojego konta, zanim zdążysz zareagować. Klucz odzyskiwania skraca to oczekiwanie do 1 godziny. Nigdy go nie pomija, a wszystkie zalogowane sesje i tak otrzymają powiadomienie.\n\nSłowa pokazujemy tylko raz i nie zapisujemy ich na tym urządzeniu — przechowywanie ich tutaj oznaczałoby utratę dokładnie wtedy, gdy są potrzebne. Zapisz je w bezpiecznym miejscu, poza urządzeniem.';
 
   @override
   String get recoveryKeyGenerateAction => 'Wygeneruj klucz odzyskiwania';
@@ -2106,4 +2094,27 @@ class AppLocalizationsPl extends AppLocalizations {
   @override
   String get settingsKeyChangeWarningsSubtitle =>
       'Wymagaj ręcznego potwierdzenia nowego numeru bezpieczeństwa. Domyślnie nowe klucze są przyjmowane, a w rozmowie pojawia się krótka notatka.';
+
+  @override
+  String get devicesRenameAction => 'Zmień nazwę';
+
+  @override
+  String get devicesRenameTitle => 'Nazwa urządzenia';
+
+  @override
+  String get devicesRenameHint => 'np. Telefon Ani';
+
+  @override
+  String get devicesRenameSave => 'Zapisz';
+
+  @override
+  String get devicesRenameClearHint => 'Puste pole usuwa nazwę.';
+
+  @override
+  String get devicesRenameFailed =>
+      'Nie udało się zmienić nazwy. Spróbuj ponownie.';
+
+  @override
+  String get devicesRenameNotStorable =>
+      'Ta nazwa zawiera znaki, których nie zapiszemy. Wpisz ją z klawiatury, zamiast wklejać.';
 }

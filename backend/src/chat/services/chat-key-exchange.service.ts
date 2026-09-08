@@ -615,10 +615,10 @@ export class ChatKeyExchangeService {
       );
       // Additive fields: an older client ignores them, and a newer client
       // treats a missing payload as UNKNOWN rather than as "nothing pending".
-      const [reset, identityReplacedAt, linkingEnabled, hasIdentityBackup] =
+      const [reset, identityChange, linkingEnabled, hasIdentityBackup] =
         await Promise.all([
           this.identityResetService.getStatusForUser(userId),
-          this.keyBundlesService.latestIdentityChangeAt(userId),
+          this.keyBundlesService.latestIdentityChange(userId),
           // (lxxiii) clause 2 — the client learns the lock state with the
           // bundle answer. Additive; an absent field reads as `true`
           // client-side (fail-closed to the pre-(lxxiii) gate, never to a
@@ -642,9 +642,14 @@ export class ChatKeyExchangeService {
               shortened: reset.shortened,
             }
           : null,
-        identityReplacedAt: identityReplacedAt
-          ? identityReplacedAt.toISOString()
+        identityReplacedAt: identityChange
+          ? identityChange.at.toISOString()
           : null,
+        // (lxxx) clause 5: additive. The key the change ENDED at, so a client
+        // can tell "someone replaced my identity" from "my own identity was
+        // (re)published" — the latter is what a restored install sees in its
+        // own history with no dismissal watermark left to suppress it.
+        identityReplacedTo: identityChange ? identityChange.to : null,
       });
     } catch (error) {
       // Silence is fail-closed on the client: it treats no status as UNKNOWN.

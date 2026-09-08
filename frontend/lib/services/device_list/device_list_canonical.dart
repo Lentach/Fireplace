@@ -19,9 +19,11 @@
 // is not NFC-normalized (Node `String.normalize`). Dart core ships no Unicode
 // normalizer, and normalization is display hygiene, not a signature-ambiguity
 // risk here — the signature binds the exact bytes, and this parser's
-// byte-exact rule already rejects every re-encoding of the same list. When T3
-// lands the rename UI (the first writer of non-trivial names), the client-side
-// NFC normalization lands with it.
+// byte-exact rule already rejects every re-encoding of the same list. The
+// rename UI ((lxxx) clause 1) is the first writer of non-trivial names, and it
+// settles this as a REFUSAL rather than a normalization: see
+// [isSignableDeviceName] below for what it covers and what it deliberately
+// does not.
 //
 // Pure Dart on purpose: shared by lib code, the widget-test suite, the wire
 // harness, and `tool/device_list_vector_generator.dart` (run via `dart run`).
@@ -39,6 +41,39 @@ const int kDevicePlatformMaxLength = 32;
 /// but revoked entries stay on the list, so leave room without allowing an
 /// unbounded payload.
 const int kDeviceListMaxEntries = 64;
+
+/// Whether [name] is safe to SIGN as a device name — i.e. the storage gate
+/// will not refuse it for NFC reasons ((lxxx) clause 1).
+///
+/// The server rejects a `name` that is not NFC-normalized (Node
+/// `String.normalize`), and Dart core ships no Unicode normalizer. The two
+/// honest options were a normalization package (hundreds of KB of Unicode
+/// tables in a PWA bundle, for device-name hygiene) or refusing the input
+/// BEFORE signing. This is the refusal: without it a decomposed paste is
+/// signed locally, refused as `invalid_canonical`, and the user only sees a
+/// generic "could not rename".
+///
+/// It detects the combining-diacritic blocks used to decompose Latin, Greek
+/// and Cyrillic — the scripts whose NFC form is precomposed, and the only way
+/// this app's users produce non-NFC text (a paste from macOS/iOS). Marks that
+/// are NORMAL in NFC for other scripts (Arabic, Hebrew, Indic vowel signs)
+/// live in different blocks and are deliberately NOT touched.
+///
+/// Known false positive, accepted: a Latin base + mark with no precomposed
+/// form (`z` + U+0308) is refused even though it IS valid NFC. The copy tells
+/// the user to type the name instead of pasting it, which resolves it.
+bool isSignableDeviceName(String name) {
+  for (final rune in name.runes) {
+    if ((rune >= 0x0300 && rune <= 0x036F) || // Combining Diacritical Marks
+        (rune >= 0x1AB0 && rune <= 0x1AFF) || // …Extended
+        (rune >= 0x1DC0 && rune <= 0x1DFF) || // …Supplement
+        (rune >= 0xFE20 && rune <= 0xFE2F)) {
+      // Half Marks
+      return false;
+    }
+  }
+  return true;
+}
 
 /// One device row of the signed list (spec §3).
 class DeviceListEntry {

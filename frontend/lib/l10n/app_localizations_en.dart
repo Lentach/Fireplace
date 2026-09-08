@@ -498,10 +498,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get identityDamagedTitle => 'Encryption keys missing on this device';
 
   @override
-  String get identityDamagedBody =>
-      'Signed in on a new device or browser? Your account already has encryption keys on another device — link this one from there and nothing is lost. Nothing was regenerated automatically: new keys made here would be trusted by no one, and doing that silently would destroy your ability to read your history.\n\nNo working main device anymore? Start a reset: after 72 hours (1 hour with your recovery key) this device gets new keys, every other device is signed out, and any message this device never decrypted can never be recovered.';
-
-  @override
   String get messageRetrySend => 'Retry';
 
   @override
@@ -681,10 +677,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Your new encryption keys were not published';
 
   @override
-  String get identityUploadLockedBody =>
-      'This device made new keys, but the account still uses the previous ones, so other people cannot reach you securely. If you still have the previous keys on another device, link this one from there — the unpublished keys are discarded and nothing is lost. Only if those keys are gone everywhere should you start a reset to publish these — it takes 72 hours, signs out every other device, and everyone signed in is notified.';
-
-  @override
   String get identityResetStartAction => 'Start reset';
 
   @override
@@ -706,7 +698,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get linkGateResetHint =>
-      'A reset gives the account new keys after 72 hours (1 hour with a recovery key), signs out every other device, and notifies everyone signed in. Messages this device never decrypted are lost.';
+      'A reset is the last resort: it gives the account new keys after 72 hours (1 hour with a recovery key), signs out every other device, and notifies everyone signed in. Messages this device never decrypted are lost. Have your recovery phrase? Enter it above — if the account has a key backup, you are back immediately.';
 
   @override
   String get linkGateResetPendingTitle => 'Key reset in progress';
@@ -747,7 +739,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get devicesEnableLinkingWebWarningBody =>
-      'Only the main device can add and remove other devices. If this browser\'s storage is cleared, getting that role back needs a reset: 72 hours, or 1 hour with a recovery key. You will create a recovery phrase next — without it linking stays off.';
+      'Only the main device can add and remove other devices. If this browser\'s storage is cleared, your recovery phrase brings you straight back — no waiting. You will create it in a moment; without it linking stays off, because then a reset and 72 hours would be the only way back.';
 
   @override
   String get devicesEnableLinkingConfirmAction => 'Enable';
@@ -757,10 +749,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get recoveryKeySubtitle => 'Get back in faster if you lose your keys';
-
-  @override
-  String get recoveryKeyExplainer =>
-      'If you ever lose access to your encryption keys, getting new ones takes 72 hours — a deliberate delay, so nobody else can quietly take over your account without you having time to stop it. A recovery key shortens that wait to 1 hour. It never skips the wait, and everyone signed in is still notified.\n\nThe words are shown once and never stored on this device — keeping them here would lose them to the very thing they protect against. Write them down somewhere safe and offline.';
 
   @override
   String get recoveryKeyGenerateAction => 'Generate recovery key';
@@ -2078,4 +2066,26 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get settingsKeyChangeWarningsSubtitle =>
       'Require manual confirmation of a new security number. By default new keys are accepted and a short note appears in the chat.';
+
+  @override
+  String get devicesRenameAction => 'Rename';
+
+  @override
+  String get devicesRenameTitle => 'Device name';
+
+  @override
+  String get devicesRenameHint => 'e.g. Ann\'s phone';
+
+  @override
+  String get devicesRenameSave => 'Save';
+
+  @override
+  String get devicesRenameClearHint => 'An empty field removes the name.';
+
+  @override
+  String get devicesRenameFailed => 'Could not rename that device. Try again.';
+
+  @override
+  String get devicesRenameNotStorable =>
+      'That name contains characters we cannot store. Type it in instead of pasting it.';
 }

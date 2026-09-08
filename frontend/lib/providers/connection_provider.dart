@@ -1046,6 +1046,10 @@ class ConnectionProvider extends ChangeNotifier {
     });
     _socketService.on('deviceListUpdated', (data) {
       _encryptionProvider?.onDeviceListUpdated(data);
+      // (lxxx) clause 1: a device RENAME rides the same request, so the
+      // ceremony controller hears the same answer. Each ignores one it has
+      // nothing in flight for — the restore machine's completer is untouched.
+      _provisioningSink?.onDeviceListUpdated(data);
     });
 
     // --- Device list + §5.1 provisioning ceremony (Phase 2 T3) ---
