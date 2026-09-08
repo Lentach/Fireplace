@@ -87,3 +87,15 @@ completed in that state is an edge the amendment names rather than adds machiner
 - The test that pinned the defect was written to a marker of the mechanism ("failed → gated"),
   not to the user's situation ("nothing adopted → the other doors must still work"). Ask what
   the user can DO from the asserted state.
+
+## Addendum — 0.2.27 (`8da367c`, web-only, CI 34265297599 green, smoke 5/5)
+
+- `settingsKeyChangeWarningsSubtitle` PL/EN shortened to the sentence the owner could not read
+  (76 / 70 chars; the row is two lines with an ellipsis). ARBs stay CRLF, `flutter gen-l10n` re-run,
+  verified in place on a rebuilt bundle.
+- Rename dialog under the iOS keyboard: iOS keeps the layout viewport at full height and scrolls the
+  host document to reveal the focused input, so the centred `AlertDialog` was shoved off the top.
+  `_RenameDialog` now owns a `FocusNode` and calls `setIOSComposerViewportPin(hasFocus)` — the same
+  scoped pin the composer uses (`<flutter-view>` pinned to the visual viewport, document has no
+  overflow), reverted on blur and in `dispose`. No-op off iOS WebKit. **Not iOS-verified here.**
+  The change-password dialog in Settings has the same shape and probably the same jump; not touched.
