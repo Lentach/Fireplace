@@ -355,25 +355,25 @@ describe('ChatProvisioningService', () => {
       ['a dot', 'web.chrome'],
       ['a space', 'web chrome'],
       ['empty', ''],
-    ])('rejects a platform with %s like any malformed field', async (
-      _label,
-      platform,
-    ) => {
-      const { provisioningId } = await openStage();
-      const primary = makeClient('primary-socket');
+    ])(
+      'rejects a platform with %s like any malformed field',
+      async (_label, platform) => {
+        const { provisioningId } = await openStage();
+        const primary = makeClient('primary-socket');
 
-      service.handleProvisioningHello(
-        primary as unknown as Socket,
-        { provisioningId, ephPubP: EPH_PUB_P, platform },
-        server as unknown as Server,
-      );
+        service.handleProvisioningHello(
+          primary as unknown as Socket,
+          { provisioningId, ephPubP: EPH_PUB_P, platform },
+          server as unknown as Server,
+        );
 
-      expect(lastEmit(primary, 'provisioningHelloAck')).toEqual({
-        success: false,
-        error: 'hello_failed',
-      });
-      expect(roomEmit).not.toHaveBeenCalled();
-    });
+        expect(lastEmit(primary, 'provisioningHelloAck')).toEqual({
+          success: false,
+          error: 'hello_failed',
+        });
+        expect(roomEmit).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe('provisionDevice', () => {

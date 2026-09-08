@@ -255,7 +255,9 @@ describe('KeyBundlesService', () => {
       keyBundleRepo.findOne.mockImplementation(
         ({ where }: { where: { userId: number; deviceId?: number } }) =>
           Promise.resolve(
-          where.deviceId == null || where.deviceId === 1 ? deviceOneRow : null,
+            where.deviceId == null || where.deviceId === 1
+              ? deviceOneRow
+              : null,
           ),
       );
       keyBundleRepo.upsert.mockResolvedValue({ raw: [] });
@@ -315,7 +317,9 @@ describe('KeyBundlesService', () => {
         keyBundleRepo.findOne.mockImplementation(
           ({ where }: { where: { userId: number; deviceId?: number } }) =>
             Promise.resolve(
-            where.deviceId == null || where.deviceId === 1 ? deviceOneRow : null,
+              where.deviceId == null || where.deviceId === 1
+                ? deviceOneRow
+                : null,
             ),
         );
         keyBundleRepo.upsert.mockResolvedValue({ raw: [] });
@@ -938,7 +942,13 @@ describe('KeyBundlesService', () => {
       });
       otpRepo.upsert.mockResolvedValue({ raw: [] });
 
-      await service.uploadOneTimePreKeys(5, keys, 'published-identity', 1, 12345);
+      await service.uploadOneTimePreKeys(
+        5,
+        keys,
+        'published-identity',
+        1,
+        12345,
+      );
 
       expect(otpRepo.upsert).toHaveBeenCalledTimes(1);
     });

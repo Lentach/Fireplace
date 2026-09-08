@@ -69,11 +69,7 @@ export interface PreKeyBundleResponse {
  * wipe, so every other device is presumed lost.
  */
 export type IdentityChangeAuthorization =
-  | 'signature'
-  | 'reset'
-  | 'unlocked'
-  | 'restore'
-  | null;
+  'signature' | 'reset' | 'unlocked' | 'restore' | null;
 
 export interface UpsertKeyBundleResult {
   /** True when the upload REPLACED a stored bundle with a different identity. */
