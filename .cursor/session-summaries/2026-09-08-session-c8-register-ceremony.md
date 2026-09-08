@@ -113,3 +113,15 @@ Owner: "go" on all 68. Two adjustments made while shipping: `passcodeNote` EN ke
 | 67 | privacyAntiQuantumNotePointKey | Klucz jest w linku po #, którego serwer nigdy nie widzi. | The key sits after # in the link, which the server never sees. |
 | 68 | privacyAntiQuantumNotePointTimer | Nieotwarte znikają po 1–24 h. | Unopened ones vanish after 1–24 h. |
 
+
+## Addendum — 0.2.30 (`2b66d56`, web-only): release 1 of the gap list
+
+Owner's answers to the "is multi-device finished" list: 3 (iOS rename dialog) verified on his phone; 4 (assetlinks) waits for the APK; 5 "seed phrase > password"; 6 → Q2 **6 h** reset, Q3 **phrase alone resets the password**; 7 "go" on clause-5 proof + hide `none_for_device` + video receive. Q2+Q3 recorded in spec (lxxxi) as owner decisions, NOT built — I stated the combined effect once (any single stolen secret suffices) and asked for a one-word "confirmed".
+
+- **(lxxxi) pre-link history → one pill.** `MessagingProvider.messages` omits sentinel rows (lazy cache, invalidated in `notifyListeners`, returns `_messages` itself when nothing is hidden); `hiddenPreLinkCount`; `ChatDetailScreen` renders `MessageDateSeparator.label(historyBeforeDeviceLinked)` at the oldest end and in the all-hidden empty state. Dead bubble branches removed, `messageSentBeforeDeviceLinked` → `historyBeforeDeviceLinked`. `loadedMessagesForTest` keeps the I8 "never destroyed" assertion honest.
+- **(lxxxi) clause 2 — clause 5 failed live.** Repro: user 204, K1 → browser B mints K2 (audit row) → B enrols with phrase `weasel … palace` → empty browser C restores → banner. Cause: first hydration hits the empty install (`own == null` fall-through reports), second hydration only skipped. Fix: own-key branch retracts an alarm showing for the SAME instant. Test RED → GREEN, F31 killed; re-driven on browser D: silent. Negative arm live too: browser A (K1) showed the banner for the foreign K2.
+- **Video self-sync receive** test in `messaging_provider_self_sync_test.dart` (full envelope → media fields applied + persisted); F30 killed.
+- Suite 2071/14, analyzer clean over lib/test/test_e2e.
+- Seen, not touched: `recovery_key_screen` body starts 8 px under the header pill (same padding formula as Devices; per spec, looks tight).
+
+Drive accounts on the local stack: `c9prim#8244` (id 204, phrase above), `c8lost`, `c8taken`, `c8dead` (password `Passw0rd!x`).
