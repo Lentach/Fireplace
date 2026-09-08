@@ -70,7 +70,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get uninstallWarning =>
-      'Odinstalowanie aplikacji lub wyczyszczenie danych witryny trwale usuwa historię wiadomości — aby odświeżyć, po prostu całkowicie zamknij i otwórz aplikację ponownie.';
+      'Nie odinstalowuj i nie czyść danych — historia zniknie.';
 
   @override
   String get chat => 'Czaty';
@@ -95,7 +95,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get devicesExplainer =>
-      'Urządzenia połączone z tym kontem. Nowe urządzenie można dodać tylko z urządzenia głównego.';
+      'Nowe urządzenie dodasz tylko z urządzenia głównego.';
 
   @override
   String get devicesLinkedDeviceNote =>
@@ -116,7 +116,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get devicesAlreadyEnrolled =>
-      'Inna instalacja tego konta już włączyła łączenie. Urządzenia można dodawać tylko z tamtego urządzenia.';
+      'Łączenie włączono na innym urządzeniu. Dodawaj stamtąd.';
 
   @override
   String get devicesEnrollFailed =>
@@ -148,7 +148,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get devicesRevokeExplainer =>
-      'Zostanie wylogowane i przestanie odbierać nowe wiadomości. Wiadomości już zapisane na tym urządzeniu nie zostaną usunięte.';
+      'Zostanie wylogowane. Jego wiadomości zostają.';
 
   @override
   String get devicesRevokeFailed =>
@@ -156,14 +156,14 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get deviceRevokedNotice =>
-      'To urządzenie zostało usunięte z Twojego konta. Twoje wiadomości na nim pozostały — aby pisać dalej, zaloguj się i połącz to urządzenie ponownie.';
+      'To urządzenie usunięto z konta. Zaloguj się i połącz je ponownie.';
 
   @override
   String get deviceMismatchTitle => 'To urządzenie zostało usunięte z konta';
 
   @override
   String get deviceMismatchBody =>
-      'Klucze szyfrowania tego urządzenia należą do urządzenia usuniętego z Twojego konta, więc przestało ono wysyłać i odbierać zaszyfrowane wiadomości. Aby pisać dalej, połącz to urządzenie ponownie ze swojego drugiego urządzenia. Na pozostałych urządzeniach nic się nie zmieniło.';
+      'Klucze tego urządzenia zostały unieważnione. Połącz je ponownie z drugiego urządzenia.';
 
   @override
   String get deviceMismatchAction => 'Połącz to urządzenie';
@@ -213,7 +213,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get linkNoDak =>
-      'Brak klucza autoryzacji na tym urządzeniu. Łączyć można tylko z urządzenia, które włączyło łączenie.';
+      'Łączyć można tylko z urządzenia, które włączyło łączenie.';
 
   @override
   String get linkFailed => 'Łączenie nie powiodło się';
@@ -227,7 +227,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get linkNewExplainer =>
-      'Pokaż ten kod na głównym urządzeniu: wybierz tam „Połącz urządzenie” i przepisz kod (albo zeskanuj QR).';
+      'Na urządzeniu głównym: Połącz urządzenie → zeskanuj lub wpisz ten kod.';
 
   @override
   String get linkNewWaitingHello => 'Czekam na główne urządzenie…';
@@ -287,42 +287,42 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get e2eEncryptionDescription =>
-      'Twoje wiadomości są szyfrowane protokołem Signal. Tylko Ty i odbiorca możecie je odczytać. Serwery Umbra nie mają dostępu do treści wiadomości.';
+      'Szyfrowanie Signal. Treść widzisz tylko Ty i odbiorca.';
 
   @override
   String get yourEncryptionKeys => 'Twoje klucze szyfrowania';
 
   @override
   String get yourEncryptionKeysDescription =>
-      'Klucze są bezpiecznie przechowywane na tym urządzeniu. Po zmianie urządzenia lub reinstalacji aplikacji zostaną wygenerowane nowe klucze, a poprzedniej historii nie da się odzyskać.';
+      'Klucze są tylko na tym urządzeniu. Bez kopii nie da się ich odzyskać.';
 
   @override
   String get singleDeviceEncryption => 'Szyfrowanie na jednym urządzeniu';
 
   @override
   String get singleDeviceEncryptionDescription =>
-      'Każde urządzenie ma własne klucze. Wiadomości są powiązane z urządzeniem, które je wysłało lub odebrało.';
+      'Każde urządzenie ma własne klucze.';
 
   @override
   String get webKeyStorage => 'Przeglądarka: przechowywanie kluczy';
 
   @override
   String get webKeyStorageDescription =>
-      'W wersji web klucze są przechowywane w przeglądarce (szyfrowane WebCrypto). Osoba z dostępem do tego urządzenia mogłaby je odczytać. Dla maksymalnego bezpieczeństwa używaj aplikacji mobilnej.';
+      'W przeglądarce klucze chroni tylko blokada kodem.';
 
   @override
   String get whatIsEncrypted => 'Co jest szyfrowane';
 
   @override
   String get whatIsEncryptedDescription =>
-      'Wszystkie wiadomości są szyfrowane end-to-end (tekst, zdjęcia, głos, linki). Tylko Ty i odbiorca możecie je odczytać.';
+      'Tekst, zdjęcia, głos, linki — wszystko end-to-end.';
 
   @override
   String get serverStoresMetadata => 'Co przechowuje serwer (metadane)';
 
   @override
   String get serverStoresMetadataDescription =>
-      'Aby dostarczać wiadomości, serwer przechowuje: kto jest w danej rozmowie, kiedy wiadomości zostały wysłane oraz status dostarczenia. Treść wiadomości nigdy nie jest widoczna dla serwera.';
+      'Serwer widzi kto, z kim i kiedy. Nigdy treść.';
 
   @override
   String get deleteAllLocalHistoryTitle =>
@@ -330,7 +330,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get deleteAllLocalHistoryDescription =>
-      'Trwale usuwa z tego urządzenia wszystkie zapisane wiadomości, w tym pobrane notatki głosowe. Nie usuwa konta, wiadomości z urządzenia drugiej osoby ani kluczy i sesji szyfrowania. Tej operacji nie można cofnąć: serwer przechowywał wyłącznie zaszyfrowane dane, których nie potrafi odczytać, więc nie ma kopii do przywrócenia.';
+      'Usuwa wiadomości z tego urządzenia. Konto i klucze zostają.';
 
   @override
   String get deleteAllLocalHistoryButton =>
@@ -342,7 +342,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get deleteAllLocalHistoryDialogBody =>
-      'Ta operacja trwale usuwa z tego urządzenia wszystkie wiadomości i pobrane notatki głosowe. Nie można jej cofnąć — serwer przechowywał wyłącznie zaszyfrowane dane, których nie potrafi odczytać, więc nie ma kopii do przywrócenia. Twoje konto, klucze i sesje szyfrowania pozostaną bez zmian.';
+      'Wiadomości z tego urządzenia znikną na zawsze.';
 
   @override
   String get deleteAllLocalHistoryConfirm => 'Usuń trwale';
@@ -505,7 +505,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get authStatusSavedSessionUnreadable =>
-      'Nie udało się odczytać zapisanej sesji z tego urządzenia. Twoje logowanie może nadal tam być — uruchom aplikację ponownie.';
+      'Nie udało się odczytać sesji. Uruchom aplikację ponownie.';
 
   @override
   String get authStatusRegisterSucceeded =>
@@ -574,7 +574,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String peerIdentityFingerprintDialogDescription(String name) {
-    return 'Porównaj te odciski z użytkownikiem $name za pośrednictwem innego kanału. Muszą być identyczne.';
+    return 'Porównaj z $name innym kanałem. Muszą się zgadzać.';
   }
 
   @override
@@ -588,12 +588,12 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String peerIdentityFingerprintChangedNotice(String name) {
-    return 'Klucze użytkownika $name uległy zmianie. Porównaj NOWY odcisk poniżej — poprzedni pokazujemy tylko po to, aby było widać, co się zmieniło.';
+    return 'Klucz $name się zmienił. Porównaj NOWY odcisk.';
   }
 
   @override
   String peerIdentityFingerprintServedNotice(String name) {
-    return 'Ten klucz pochodzi z serwera i żadna wiadomość od użytkownika $name go jeszcze nie potwierdziła. Porównanie go innym kanałem to jedyne zabezpieczenie.';
+    return 'Klucz $name z serwera, niepotwierdzony wiadomością. Porównaj go innym kanałem.';
   }
 
   @override
@@ -607,22 +607,22 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String peerIdentityFingerprintOfferChanged(String name) {
-    return 'Nic nie zostało potwierdzone: klucz użytkownika $name zmienił się, gdy to okno było otwarte, więc nie jest to klucz, który właśnie porównałeś. Porównaj odcisk poniżej ponownie przed potwierdzeniem.';
+    return 'Klucz $name zmienił się w trakcie. Porównaj ponownie.';
   }
 
   @override
   String peerIdentityFingerprintUnchangedNotice(String name) {
-    return 'Klucz użytkownika $name nie zmienił się od czasu, gdy go zaakceptowałeś. Potwierdź poniżej, aby zamknąć to ostrzeżenie.';
+    return 'Klucz $name bez zmian od Twojej akceptacji.';
   }
 
   @override
   String peerIdentityFingerprintOfferUnavailable(String name) {
-    return 'Nie udało się wczytać aktualnego klucza użytkownika $name, więc nie ma jeszcze czego porównywać. Sprawdź połączenie i otwórz to ponownie.';
+    return 'Nie udało się pobrać klucza $name. Sprawdź połączenie.';
   }
 
   @override
   String peerIdentityChangedTimelineRow(String name) {
-    return 'Klucze bezpieczeństwa $name uległy zmianie — zwykle to logowanie z nowego urządzenia lub przeglądarki. Dotknij, aby zweryfikować.';
+    return 'Klucze $name się zmieniły. Dotknij, aby sprawdzić.';
   }
 
   @override
@@ -631,7 +631,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get ownIdentityReplacedBody =>
-      'Inne logowanie przesłało nowe klucze szyfrowania dla Twojego konta — zwykle to nowe urządzenie, przeglądarka lub ponowna instalacja. Jeśli to nie Ty, natychmiast zmień hasło.';
+      'Nowe logowanie zmieniło klucze konta. To nie Ty? Zmień hasło.';
 
   @override
   String get ownIdentityReplacedDismissAction => 'Rozumiem';
@@ -642,7 +642,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String identityResetPendingBody(String remaining) {
-    return 'Jeśli to nie Ty, anuluj teraz — w przeciwnym razie za $remaining Twoje konto otrzyma nowe klucze szyfrowania, a historia wiadomości stanie się nieczytelna.';
+    return 'Za $remaining konto dostanie nowe klucze. To nie Ty? Anuluj teraz.';
   }
 
   @override
@@ -688,40 +688,40 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get linkGateBody =>
-      'To urządzenie nie ma kluczy szyfrowania Twojego konta. Ma je Twoje urządzenie główne — zeskanuj nim ten kod albo wpisz go tam ręcznie. Nic nie przepadnie.';
+      'To urządzenie nie ma kluczy konta. Połącz je z urządzenia głównego.';
 
   @override
   String get linkGateWaiting => 'Czekam na urządzenie główne…';
 
   @override
   String get linkGateStaleBody =>
-      'Klucze na tym urządzeniu są nieaktualne i zostaną zastąpione po połączeniu. Zapisane wiadomości pozostaną.';
+      'Klucze tutaj są nieaktualne — połączenie je zastąpi.';
 
   @override
   String get linkGateNoPrimaryQuestion => 'Nie masz już urządzenia głównego?';
 
   @override
   String get linkGateResetHint =>
-      'Reset to ostatnia opcja: nadaje kontu nowe klucze po 72 godzinach (1 godzinie z kluczem odzyskiwania), wylogowuje pozostałe urządzenia i powiadamia wszystkie zalogowane sesje. Wiadomości, których to urządzenie nie odszyfrowało, przepadną. Masz frazę odzyskiwania? Wpisz ją powyżej — jeśli konto ma kopię kluczy, wracasz od razu.';
+      'Reset: nowe klucze po 72 h, inne urządzenia wylogowane, stara historia przepada.';
 
   @override
   String get linkGateResetPendingTitle => 'Reset kluczy w toku';
 
   @override
   String linkGateResetPendingBody(String remaining) {
-    return 'Za $remaining konto otrzyma nowe klucze i to urządzenie będzie mogło pisać dalej. Jeśli w międzyczasie odzyskasz urządzenie główne, najpierw dotknij „Anuluj” — reset trwa, dopóki go nie anulujesz — a potem połącz to urządzenie stamtąd.';
+    return 'Za $remaining konto dostanie nowe klucze. Odzyskałeś urządzenie główne? Anuluj i połącz stamtąd.';
   }
 
   @override
   String get linkGateResetPhraseTooNew =>
-      'Klucz odzyskiwania został utworzony mniej niż 3 dni temu, więc obowiązuje pełne 72 godziny.';
+      'Klucz odzyskiwania ma mniej niż 3 dni — obowiązuje pełne 72 h.';
 
   @override
   String get linkGateCheckingTitle => 'Sprawdzam klucze tego urządzenia…';
 
   @override
   String get linkGateCheckingBody =>
-      'Potrzebuję połączenia z serwerem, żeby sprawdzić, czy konto ma już klucze na innym urządzeniu.';
+      'Sprawdzam, czy konto ma klucze na innym urządzeniu…';
 
   @override
   String get linkGateRetryAction => 'Spróbuj ponownie';
@@ -731,11 +731,11 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get devicesInstallFirst =>
-      'Aby włączyć łączenie w przeglądarce, najpierw zainstaluj Umbra jako aplikację (menu przeglądarki → „Zainstaluj” lub „Dodaj do ekranu początkowego”). Dane zwykłej karty przeglądarka może usunąć bez pytania, a razem z nimi klucze urządzenia głównego.';
+      'Najpierw zainstaluj Umbra jako aplikację (menu → Dodaj do ekranu).';
 
   @override
   String get devicesInstallNudge =>
-      'Ta przeglądarka jest urządzeniem głównym Twojego konta, ale Umbra nie jest tu zainstalowana jako aplikacja. Zainstaluj ją, aby przeglądarka nie usunęła kluczy razem z pamięcią podręczną.';
+      'Zainstaluj Umbra jako aplikację — przeglądarka może usunąć klucze.';
 
   @override
   String get devicesEnableLinkingWebWarningTitle =>
@@ -743,7 +743,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get devicesEnableLinkingWebWarningBody =>
-      'Tylko urządzenie główne może dodawać i usuwać inne urządzenia. Jeśli pamięć tej przeglądarki zostanie wyczyszczona, wrócisz tu frazą odzyskiwania — od razu, bez czekania. Za chwilę ją utworzysz; bez niej nie włączymy łączenia, bo wtedy jedynym wyjściem byłby reset i 72 godziny.';
+      'Tylko urządzenie główne dodaje i usuwa urządzenia.';
 
   @override
   String get devicesEnableLinkingConfirmAction => 'Włącz';
@@ -759,7 +759,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get recoveryKeyShownOnceWarning =>
-      'Te słowa pokazujemy tylko raz. Zapisz je, zanim przejdziesz dalej — wygenerowanie nowego klucza zastąpi ten.';
+      'Pokazujemy je tylko raz. Zapisz teraz.';
 
   @override
   String get recoveryKeyCopyAction => 'Kopiuj słowa';
@@ -775,14 +775,14 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get recoveryKeySaveFailed =>
-      'Nie udało się zapisać klucza odzyskiwania — nic nie zostało zapisane, więc te słowa nie zadziałają. Spróbuj ponownie.';
+      'Nie zapisano klucza. Te słowa nie działają — spróbuj ponownie.';
 
   @override
   String get recoveryPhrasePromptTitle => 'Masz klucz odzyskiwania?';
 
   @override
   String get recoveryPhrasePromptBody =>
-      'Wpisanie 12 słów skraca oczekiwanie z 72 godzin do 1. Tak czy inaczej wszystkie zalogowane sesje otrzymają powiadomienie, a reset nadal można anulować.';
+      '12 słów skraca oczekiwanie z 72 h do 1 h.';
 
   @override
   String get recoveryPhrasePromptHint => 'dwanaście słów oddzielonych spacjami';
@@ -799,11 +799,11 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get identityResetStarted =>
-      'Reset rozpoczęty. Wszystkie zalogowane sesje zostały powiadomione, a do końca odliczania można go anulować.';
+      'Reset rozpoczęty. Możesz go anulować do końca odliczania.';
 
   @override
   String get identityResetPhraseTooNew =>
-      'Reset rozpoczęty. Twój klucz odzyskiwania był poprawny, ale został utworzony mniej niż 3 dni temu, więc tym razem nie może skrócić oczekiwania — obowiązują pełne 72 godziny. Nie musisz wpisywać go ponownie.';
+      'Reset rozpoczęty. Klucz ma mniej niż 3 dni, więc czekasz pełne 72 h.';
 
   @override
   String get identityResetAlreadyRunning =>
@@ -811,23 +811,23 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get identityResetCooldown =>
-      'Reset został niedawno anulowany, więc nowy nie może ruszyć przez maksymalnie 24 godziny. Jeśli ktoś inny wciąż go anuluje, najpierw zmień hasło, aby go wylogować.';
+      'Reset niedawno anulowano. Nowy za maks. 24 h. Ktoś obcy anuluje? Zmień hasło.';
 
   @override
   String get identityResetPhraseRejected =>
-      'Te 12 słów nie pasuje do klucza odzyskiwania zapisanego dla tego konta. Możesz spróbować ponownie albo rozpocząć reset bez klucza i poczekać 72 godziny.';
+      'Te 12 słów nie pasuje do tego konta.';
 
   @override
   String get identityResetPhraseLocked =>
-      'Zbyt wiele prób z kluczem odzyskiwania. Spróbuj ponownie za około godzinę albo rozpocznij reset bez klucza i poczekaj 72 godziny.';
+      'Zbyt wiele prób. Spróbuj za godzinę.';
 
   @override
   String get identityResetNotEnrolled =>
-      'To konto nie ma połączonych urządzeń, więc jego klucze nie są zablokowane — reset nie jest potrzebny. Zaloguj się na nowym urządzeniu, a nowe klucze zastąpią stare automatycznie.';
+      'Reset niepotrzebny — zaloguj się na nowym urządzeniu.';
 
   @override
   String get identityResetNoAnswer =>
-      'Brak odpowiedzi serwera, więc nic nie zostało rozpoczęte. Sprawdź połączenie i spróbuj ponownie.';
+      'Brak odpowiedzi. Nic nie rozpoczęto — spróbuj ponownie.';
 
   @override
   String get identityFingerprintUnavailable =>
@@ -903,7 +903,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get deleteConversationConfirm =>
-      'Wszystkie wiadomości z tej rozmowy zostaną usunięte. Później możesz otworzyć czat z Kontaktów.';
+      'Usunie wszystkie wiadomości z tej rozmowy.';
 
   @override
   String get cancel => 'Anuluj';
@@ -1281,7 +1281,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get antiQuantumNoteRevealWarning =>
-      'Tę notatkę można odczytać tylko raz. Odsłonięcie zniszczy ją trwale — dla wszystkich, na zawsze.';
+      'Odczytasz ją tylko raz. Potem zniknie dla wszystkich.';
 
   @override
   String get antiQuantumNoteRevealConfirm => 'Odsłoń i zniszcz';
@@ -1337,15 +1337,15 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get privacyAntiQuantumNoteLead =>
-      'Samoniszczące wiadomości z własną, drugą warstwą szyfrowania — nawet link nie zdradza sekretu.';
+      'Samoniszczące notatki z własnym szyfrowaniem.';
 
   @override
   String get privacyAntiQuantumNotePointDevice =>
-      'Szyfrowane na Twoim urządzeniu przed wysłaniem — serwer przechowuje wyłącznie nieczytelny szyfrogram.';
+      'Szyfrowane na Twoim urządzeniu, serwer widzi tylko szyfrogram.';
 
   @override
   String get privacyAntiQuantumNotePointKey =>
-      'Klucz deszyfrujący podróżuje jedynie we fragmencie linku (#), którego przeglądarki nigdy nie wysyłają do żadnego serwera.';
+      'Klucz jest w linku po #, którego serwer nigdy nie widzi.';
 
   @override
   String get privacyAntiQuantumNotePointOnce =>
@@ -1353,7 +1353,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get privacyAntiQuantumNotePointTimer =>
-      'Nieotwarte notatki niszczą się same po upływie timera (1h–24h), a wiadomość w czacie znika razem z nimi.';
+      'Nieotwarte znikają po 1–24 h.';
 
   @override
   String get documentDownloaded => 'Dokument pobrany';
@@ -1917,12 +1917,11 @@ class AppLocalizationsPl extends AppLocalizations {
   String get passcodeForgot => 'Nie pamiętasz kodu?';
 
   @override
-  String get passcodeNoRecovery =>
-      'Nie ma sposobu, aby odzyskać zapomniany kod. Nikt — ani my, ani hasło Twojego konta — go nie obejdzie.';
+  String get passcodeNoRecovery => 'Zapomnianego kodu nie da się odzyskać.';
 
   @override
   String get passcodeEraseWarning =>
-      'Jedyne wyjście to usunięcie danych tej aplikacji z tego urządzenia i ponowne zalogowanie. Wiadomości przechowywane tylko tutaj znikną na zawsze, a Twoje kontakty zobaczą nowy numer bezpieczeństwa.';
+      'Usunie dane aplikacji. Wiadomości tylko stąd znikną na zawsze.';
 
   @override
   String get passcodeEraseConfirmWord => 'USUN';
@@ -1939,8 +1938,7 @@ class AppLocalizationsPl extends AppLocalizations {
   String get passcodeErasing => 'Usuwanie…';
 
   @override
-  String get passcodeErasePartial =>
-      'Części danych nie udało się usunąć. Spróbuj ponownie albo wyczyść dane tej aplikacji w ustawieniach systemu lub przeglądarki.';
+  String get passcodeErasePartial => 'Nie wszystko usunięto. Spróbuj ponownie.';
 
   @override
   String passcodeAttemptsLeft(num count) {
@@ -1963,23 +1961,23 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get passcodeNote =>
-      'Jeśli zapomnisz kodu, jedynym wyjściem jest usunięcie danych tej aplikacji z tego urządzenia — wiadomości zapisane tylko tutaj przepadną.';
+      'Zapomnisz kodu — jedyne wyjście to usunięcie danych aplikacji.';
 
   @override
   String get passcodeScopeNoteDevice =>
-      'Kod blokuje tę aplikację na tym urządzeniu. Weryfikator trzyma keystore Androida, a okno aplikacji jest ukryte przed zrzutami ekranu. Kod nie szyfruje wiadomości i nie jest wysyłany na serwer.';
+      'Blokuje aplikację na tym urządzeniu. Nie trafia na serwer.';
 
   @override
   String get passcodeScopeNoteBrowser =>
-      'Kod szyfruje klucze zapisane w tej przeglądarce: ktoś z kopią profilu przeglądarki nie odczyta bez niego Twoich wiadomości. Kod nigdy nie jest wysyłany na serwer.';
+      'Szyfruje klucze w tej przeglądarce. Nie trafia na serwer.';
 
   @override
   String get passcodeTooWeakForKeys =>
-      'Kod szyfruje klucze w tej przeglądarce, więc własny kod musi mieć co najmniej 6 znaków i nie może składać się tylko z cyfr.';
+      'Własny kod: min. 6 znaków, nie tylko cyfry.';
 
   @override
   String get passcodeEraseWarningEnrolled =>
-      'Jedyne wyjście to usunięcie danych tej aplikacji z tego urządzenia. Wiadomości przechowywane tylko tutaj znikną na zawsze. Po ponownym zalogowaniu konto trzeba będzie przywrócić: frazą odzyskiwania (od razu), z innego urządzenia albo resetem (72 godziny).';
+      'Usunie dane aplikacji. Potem przywrócisz konto frazą, z innego urządzenia lub resetem.';
 
   @override
   String get linkScanAction => 'Zeskanuj kod';
@@ -2006,15 +2004,15 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get linkPrimaryShowCodeExplainer =>
-      'Na nowym urządzeniu zaloguj się i zeskanuj ten kod. Możesz też zeskanować kod pokazany tam.';
+      'Zeskanuj ten kod nowym urządzeniem.';
 
   @override
   String get linkGateScanBody =>
-      'Zeskanuj kod QR z urządzenia głównego (Ustawienia → Urządzenia → Połącz urządzenie) albo pokaż mu ten kod. Nic nie przepadnie.';
+      'Zeskanuj kod z urządzenia głównego albo pokaż mu ten.';
 
   @override
   String get recoveryKeyBackupExplainer =>
-      'Te 12 słów to kopia kluczy Twojego konta. Jeśli ta przeglądarka lub telefon straci dane, wpiszesz je i od razu odzyskasz konto i kontakty — bez czekania. Kto zna te słowa, ma Twoje konto: zapisz je tam, gdzie tylko Ty masz dostęp.\n\nSłowa pokazujemy tylko raz i nie zapisujemy ich na tym urządzeniu.';
+      'Te 12 słów przywraca konto po utracie urządzenia. Kto je zna, ma Twoje konto. Pokazujemy je raz.';
 
   @override
   String get recoveryKeyConfirmTitle => 'Potwierdź, że masz słowa zapisane';
@@ -2033,7 +2031,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get recoveryKeyRequiredForLinking =>
-      'Bez frazy odzyskiwania nie włączymy łączenia: po utracie danych urządzenia głównego konto byłoby zablokowane na 72 godziny.';
+      'Łączenie wymaga frazy odzyskiwania — utworzysz ją za chwilę.';
 
   @override
   String get recoveryKeyBackupFailed =>
@@ -2047,7 +2045,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get linkGateRestoreBody =>
-      'Wpisz 12 słów. To urządzenie stanie się urządzeniem głównym; pozostałe zostaną wylogowane i trzeba je połączyć ponownie.';
+      'Wpisz 12 słów. To urządzenie stanie się głównym.';
 
   @override
   String get linkGateRestoring => 'Przywracam klucze…';
@@ -2058,7 +2056,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get linkGateRestoreNoBackup =>
-      'To konto nie ma kopii kluczy. Połącz to urządzenie z urządzenia głównego albo rozpocznij reset.';
+      'Brak kopii kluczy. Połącz z urządzenia głównego albo zresetuj.';
 
   @override
   String get linkGateRestoreFailed =>
@@ -2069,18 +2067,18 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get devicesBackupMissing =>
-      'To konto nie ma jeszcze kopii kluczy. Utwórz frazę odzyskiwania, żeby po utracie danych tego urządzenia odzyskać konto od razu.';
+      'Brak kopii kluczy. Utwórz frazę odzyskiwania.';
 
   @override
   String get devicesCreateBackupAction => 'Utwórz frazę odzyskiwania';
 
   @override
   String get deviceRevokedRestoredNotice =>
-      'Konto zostało przywrócone z frazy odzyskiwania na innym urządzeniu. To urządzenie wylogowano — połącz je ponownie. Jeśli to nie Ty, zmień hasło.';
+      'Konto przywrócono na innym urządzeniu. Połącz to ponownie.';
 
   @override
   String peerIdentityChangedSystemLine(String name) {
-    return '$name loguje się z nowego urządzenia lub przeglądarki — klucze bezpieczeństwa zostały zaktualizowane.';
+    return '$name: nowe urządzenie lub przeglądarka — klucze zaktualizowane.';
   }
 
   @override

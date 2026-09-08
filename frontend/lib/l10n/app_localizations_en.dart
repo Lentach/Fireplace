@@ -70,7 +70,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get uninstallWarning =>
-      'Uninstalling or clearing site data permanently erases your message history — to refresh, just fully close and reopen the app.';
+      'Don\'t uninstall or clear data — history is lost.';
 
   @override
   String get chat => 'Chats';
@@ -95,7 +95,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get devicesExplainer =>
-      'Devices linked to this account. A new device can only be added from the primary device.';
+      'Add new devices from the primary device only.';
 
   @override
   String get devicesLinkedDeviceNote =>
@@ -116,7 +116,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get devicesAlreadyEnrolled =>
-      'Another installation of this account already enabled linking. Devices can only be added from that device.';
+      'Linking is enabled on another device. Add from there.';
 
   @override
   String get devicesEnrollFailed => 'Could not enable linking. Try again.';
@@ -147,21 +147,21 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get devicesRevokeExplainer =>
-      'It will be signed out and will stop receiving new messages. Messages already on that device are not erased.';
+      'It will be signed out. Its messages stay.';
 
   @override
   String get devicesRevokeFailed => 'Could not remove that device. Try again.';
 
   @override
   String get deviceRevokedNotice =>
-      'This device was removed from your account. Your messages on it were kept — to keep chatting here, sign in and link this device again.';
+      'This device was removed. Sign in and link it again.';
 
   @override
   String get deviceMismatchTitle => 'This device was removed from the account';
 
   @override
   String get deviceMismatchBody =>
-      'This device\'s encryption keys belong to a device that was removed from your account, so it stopped sending and receiving encrypted messages. To keep chatting here, link this device again from your other device. Nothing changed on your other devices.';
+      'This device\'s keys were revoked. Link it again from your other device.';
 
   @override
   String get deviceMismatchAction => 'Link this device';
@@ -210,8 +210,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Invalid code. Copy it exactly from the new device.';
 
   @override
-  String get linkNoDak =>
-      'No authorization key on this device. Linking is only possible from the device that enabled linking.';
+  String get linkNoDak => 'Only the device that enabled linking can link.';
 
   @override
   String get linkFailed => 'Linking failed';
@@ -225,7 +224,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get linkNewExplainer =>
-      'Show this code on your primary device: choose “Link a device” there and type the code (or scan the QR).';
+      'On the primary: Link a device → scan or type this code.';
 
   @override
   String get linkNewWaitingHello => 'Waiting for your primary device…';
@@ -285,42 +284,42 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get e2eEncryptionDescription =>
-      'Your messages are encrypted using the Signal Protocol. Only you and the recipient can read them. Not even Umbra servers can access your message content.';
+      'Signal encryption. Only you and the recipient see the content.';
 
   @override
   String get yourEncryptionKeys => 'Your encryption keys';
 
   @override
   String get yourEncryptionKeysDescription =>
-      'Keys are stored securely on this device. If you switch devices or reinstall the app, a new set of keys will be generated and previous message history cannot be recovered.';
+      'Keys live only on this device. Without a backup they can\'t be recovered.';
 
   @override
   String get singleDeviceEncryption => 'Single-device encryption';
 
   @override
   String get singleDeviceEncryptionDescription =>
-      'Each device has its own encryption keys. Messages are tied to the device that sent or received them.';
+      'Each device has its own keys.';
 
   @override
   String get webKeyStorage => 'Web: key storage';
 
   @override
   String get webKeyStorageDescription =>
-      'On web, keys are stored in the browser (encrypted with WebCrypto). Someone with access to this device could potentially read them. For maximum security, use the mobile app.';
+      'In a browser only the passcode lock protects the keys.';
 
   @override
   String get whatIsEncrypted => 'What is encrypted';
 
   @override
   String get whatIsEncryptedDescription =>
-      'All messages are end-to-end encrypted (text, images, voice, links). Only you and the recipient can read them.';
+      'Text, images, voice, links — all end-to-end.';
 
   @override
   String get serverStoresMetadata => 'What the server stores (metadata)';
 
   @override
   String get serverStoresMetadataDescription =>
-      'To deliver messages, the server stores: who is in each conversation, when messages were sent, and delivery status. Message content is never visible to the server.';
+      'The server sees who, with whom and when. Never the content.';
 
   @override
   String get deleteAllLocalHistoryTitle =>
@@ -328,7 +327,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get deleteAllLocalHistoryDescription =>
-      'Permanently deletes all messages stored on this device, including downloaded voice notes. It does not delete your account, messages on the other person\'s device, or your encryption keys and sessions. This cannot be undone: the server only ever held ciphertext it cannot read, so there is no copy to restore from.';
+      'Deletes messages from this device. Account and keys stay.';
 
   @override
   String get deleteAllLocalHistoryButton =>
@@ -340,7 +339,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get deleteAllLocalHistoryDialogBody =>
-      'This permanently deletes every message and downloaded voice note stored on this device. It cannot be undone — the server only ever held ciphertext it cannot read, so there is no copy to restore from. Your account, encryption keys, and sessions are not affected.';
+      'Messages on this device are gone for good.';
 
   @override
   String get deleteAllLocalHistoryConfirm => 'Delete permanently';
@@ -502,7 +501,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get authStatusSavedSessionUnreadable =>
-      'Could not read the saved session from this device. Your sign-in may still be there — restart the app to try again.';
+      'Could not read the session. Restart the app.';
 
   @override
   String get authStatusRegisterSucceeded =>
@@ -568,7 +567,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String peerIdentityFingerprintDialogDescription(String name) {
-    return 'Compare these fingerprints with $name over another channel. They must match.';
+    return 'Compare with $name over another channel. They must match.';
   }
 
   @override
@@ -582,12 +581,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String peerIdentityFingerprintChangedNotice(String name) {
-    return '$name\'s keys have changed. Compare the NEW fingerprint below — the previous one is shown only so you can see what changed.';
+    return '$name\'s key changed. Compare the NEW fingerprint.';
   }
 
   @override
   String peerIdentityFingerprintServedNotice(String name) {
-    return 'This key came from the server and no message from $name has confirmed it yet. Comparing it out of band is the only check there is.';
+    return '$name\'s key came from the server, unconfirmed by any message. Compare it out of band.';
   }
 
   @override
@@ -601,22 +600,22 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String peerIdentityFingerprintOfferChanged(String name) {
-    return 'Nothing was confirmed: $name\'s key changed while this was open, so it is not the one you just compared. Compare the fingerprint below again before confirming.';
+    return '$name\'s key changed meanwhile. Compare again.';
   }
 
   @override
   String peerIdentityFingerprintUnchangedNotice(String name) {
-    return '$name\'s key has not changed since you last accepted it. Confirm below to dismiss this warning.';
+    return '$name\'s key unchanged since you accepted it.';
   }
 
   @override
   String peerIdentityFingerprintOfferUnavailable(String name) {
-    return '$name\'s current key could not be loaded, so there is nothing to compare yet. Check your connection and open this again.';
+    return 'Couldn\'t load $name\'s key. Check the connection.';
   }
 
   @override
   String peerIdentityChangedTimelineRow(String name) {
-    return '$name\'s security keys have changed — usually a sign-in from a new device or browser. Tap to verify.';
+    return '$name\'s keys changed. Tap to verify.';
   }
 
   @override
@@ -624,7 +623,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get ownIdentityReplacedBody =>
-      'Another sign-in uploaded new encryption keys for your account — usually a new device, browser, or reinstall. If this wasn\'t you, change your password immediately.';
+      'A new sign-in changed the account keys. Not you? Change your password.';
 
   @override
   String get ownIdentityReplacedDismissAction => 'Got it';
@@ -635,7 +634,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String identityResetPendingBody(String remaining) {
-    return 'If this wasn\'t you, cancel now — otherwise your account gets new encryption keys in $remaining and your message history becomes unreadable.';
+    return 'New keys in $remaining. Not you? Cancel now.';
   }
 
   @override
@@ -679,40 +678,40 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get linkGateBody =>
-      'This device does not have your account\'s encryption keys. Your main device has them — scan this code with it, or type the code there. Nothing is lost.';
+      'This device has no account keys. Link it from the primary device.';
 
   @override
   String get linkGateWaiting => 'Waiting for your main device…';
 
   @override
   String get linkGateStaleBody =>
-      'The keys on this device are stale and will be replaced when it is linked. Saved messages stay.';
+      'Keys here are stale — linking replaces them.';
 
   @override
   String get linkGateNoPrimaryQuestion => 'No longer have your main device?';
 
   @override
   String get linkGateResetHint =>
-      'A reset is the last resort: it gives the account new keys after 72 hours (1 hour with a recovery key), signs out every other device, and notifies everyone signed in. Messages this device never decrypted are lost. Have your recovery phrase? Enter it above — if the account has a key backup, you are back immediately.';
+      'Reset: new keys after 72 h, other devices signed out, old history lost.';
 
   @override
   String get linkGateResetPendingTitle => 'Key reset in progress';
 
   @override
   String linkGateResetPendingBody(String remaining) {
-    return 'In $remaining the account gets new keys and this device can continue. If you get your main device back in the meantime, tap Cancel first — the reset keeps running until you cancel it — then link this device from there.';
+    return 'New keys in $remaining. Got the primary back? Cancel and link from there.';
   }
 
   @override
   String get linkGateResetPhraseTooNew =>
-      'The recovery key was created less than 3 days ago, so the full 72 hours apply.';
+      'Recovery key is under 3 days old — full 72 h apply.';
 
   @override
   String get linkGateCheckingTitle => 'Checking this device\'s keys…';
 
   @override
   String get linkGateCheckingBody =>
-      'A server connection is needed to check whether the account already has keys on another device.';
+      'Checking whether the account has keys elsewhere…';
 
   @override
   String get linkGateRetryAction => 'Try again';
@@ -722,11 +721,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get devicesInstallFirst =>
-      'To enable linking in a browser, first install Umbra as an app (browser menu → \"Install\" or \"Add to Home Screen\"). A plain tab\'s data can be evicted by the browser without asking — and with it the main device\'s keys.';
+      'Install Umbra as an app first (menu → Add to Home Screen).';
 
   @override
   String get devicesInstallNudge =>
-      'This browser is your account\'s main device, but Umbra is not installed here as an app. Install it so the browser does not evict the keys along with its cache.';
+      'Install Umbra as an app — the browser may evict the keys.';
 
   @override
   String get devicesEnableLinkingWebWarningTitle =>
@@ -734,7 +733,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get devicesEnableLinkingWebWarningBody =>
-      'Only the main device can add and remove other devices. If this browser\'s storage is cleared, your recovery phrase brings you straight back — no waiting. You will create it in a moment; without it linking stays off, because then a reset and 72 hours would be the only way back.';
+      'Only the primary device adds and removes devices.';
 
   @override
   String get devicesEnableLinkingConfirmAction => 'Enable';
@@ -749,8 +748,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get recoveryKeyGenerateAction => 'Generate recovery key';
 
   @override
-  String get recoveryKeyShownOnceWarning =>
-      'These words are shown once. Save them before continuing — generating a new key replaces this one.';
+  String get recoveryKeyShownOnceWarning => 'Shown only once. Save them now.';
 
   @override
   String get recoveryKeyCopyAction => 'Copy words';
@@ -766,14 +764,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get recoveryKeySaveFailed =>
-      'Could not save the recovery key — nothing was stored, so those words will not work. Please try again.';
+      'Key not saved. These words won\'t work — try again.';
 
   @override
   String get recoveryPhrasePromptTitle => 'Do you have a recovery key?';
 
   @override
   String get recoveryPhrasePromptBody =>
-      'Entering your 12 words shortens the wait from 72 hours to 1. Everyone signed in is notified either way, and the reset can still be cancelled.';
+      'The 12 words cut the wait from 72 h to 1 h.';
 
   @override
   String get recoveryPhrasePromptHint => 'twelve words separated by spaces';
@@ -790,11 +788,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get identityResetStarted =>
-      'Reset started. Everyone signed in has been told, and it can be cancelled until the countdown ends.';
+      'Reset started. Cancel any time before the countdown ends.';
 
   @override
   String get identityResetPhraseTooNew =>
-      'Reset started. Your recovery key was correct, but it was created less than 3 days ago, so it cannot shorten the wait this time — the full 72 hours apply. There is no need to enter it again.';
+      'Reset started. Key is under 3 days old, so the full 72 h apply.';
 
   @override
   String get identityResetAlreadyRunning =>
@@ -802,23 +800,22 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get identityResetCooldown =>
-      'A reset was cancelled recently, so a new one cannot start for up to 24 hours. If someone else keeps cancelling it, change your password to sign them out first.';
+      'Reset cancelled recently. Next in up to 24 h. Someone else cancelling? Change password.';
 
   @override
   String get identityResetPhraseRejected =>
-      'Those 12 words did not match the recovery key stored for this account. You can try again, or start the reset without it and wait 72 hours.';
+      'Those 12 words don\'t match this account.';
 
   @override
   String get identityResetPhraseLocked =>
-      'Too many recovery-key attempts. Try again in about an hour, or start the reset without the key and wait 72 hours.';
+      'Too many attempts. Try again in an hour.';
 
   @override
   String get identityResetNotEnrolled =>
-      'This account has no linked devices, so its keys are not locked — no reset is needed. Sign in on the new device and its keys replace the old ones automatically.';
+      'No reset needed — just sign in on the new device.';
 
   @override
-  String get identityResetNoAnswer =>
-      'No answer from the server, so nothing was started. Check your connection and try again.';
+  String get identityResetNoAnswer => 'No answer. Nothing started — try again.';
 
   @override
   String get identityFingerprintUnavailable => 'Fingerprint unavailable.';
@@ -894,7 +891,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get deleteConversationConfirm =>
-      'This will delete all messages in this conversation. You can re-open the chat later from Contacts.';
+      'Deletes every message in this conversation.';
 
   @override
   String get cancel => 'Cancel';
@@ -1260,7 +1257,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get antiQuantumNoteRevealWarning =>
-      'This note can be read only once. Revealing it destroys it permanently — for everyone, forever.';
+      'You can read it once. Then it\'s gone for everyone.';
 
   @override
   String get antiQuantumNoteRevealConfirm => 'Reveal & destroy';
@@ -1316,15 +1313,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get privacyAntiQuantumNoteLead =>
-      'Self-destructing messages with their own second layer of encryption — even the link keeps the secret.';
+      'Self-destructing notes with their own encryption.';
 
   @override
   String get privacyAntiQuantumNotePointDevice =>
-      'Encrypted on your device before upload — the server stores only unreadable ciphertext.';
+      'Encrypted on your device; the server sees only ciphertext.';
 
   @override
   String get privacyAntiQuantumNotePointKey =>
-      'The decryption key travels solely inside the link\'s #fragment, which browsers never send to any server.';
+      'The key sits after # in the link, which the server never sees.';
 
   @override
   String get privacyAntiQuantumNotePointOnce =>
@@ -1332,7 +1329,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get privacyAntiQuantumNotePointTimer =>
-      'Unopened notes self-destruct when their timer (1h–24h) runs out, and the chat message disappears with them.';
+      'Unopened ones vanish after 1–24 h.';
 
   @override
   String get documentDownloaded => 'Document downloaded';
@@ -1891,12 +1888,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get passcodeForgot => 'Forgot your passcode?';
 
   @override
-  String get passcodeNoRecovery =>
-      'A forgotten passcode cannot be recovered. Nothing gets past it — not us, not your account password.';
+  String get passcodeNoRecovery => 'A forgotten passcode cannot be recovered.';
 
   @override
   String get passcodeEraseWarning =>
-      'The only way out is to erase this app\'s data on this device and sign in again. Messages stored only here are gone forever, and your contacts will see a new safety number.';
+      'Erases the app\'s data. Messages only here are gone for good.';
 
   @override
   String get passcodeEraseConfirmWord => 'ERASE';
@@ -1913,8 +1909,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get passcodeErasing => 'Erasing…';
 
   @override
-  String get passcodeErasePartial =>
-      'Some data could not be erased. Try again, or clear this app\'s data in your system or browser settings.';
+  String get passcodeErasePartial => 'Not everything was erased. Try again.';
 
   @override
   String passcodeAttemptsLeft(num count) {
@@ -1935,23 +1930,23 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get passcodeNote =>
-      'If you forget your passcode, the only way back in is erasing this app\'s data on this device — messages stored only here would be lost.';
+      'Forget it and the only way out is erasing this app\'s data.';
 
   @override
   String get passcodeScopeNoteDevice =>
-      'The passcode locks this app on this device. The verifier is held in the Android keystore and the app window is hidden from screenshots. It does not encrypt your messages and is never sent to the server.';
+      'Locks the app on this device. Never sent to the server.';
 
   @override
   String get passcodeScopeNoteBrowser =>
-      'The passcode encrypts this browser\'s stored keys: someone with a copy of this browser profile cannot read your messages without it. It is never sent to the server.';
+      'Encrypts this browser\'s keys. Never sent to the server.';
 
   @override
   String get passcodeTooWeakForKeys =>
-      'Because the passcode encrypts this browser\'s keys, a custom code needs at least 6 characters and cannot be digits only.';
+      'Custom code: 6+ characters, not digits only.';
 
   @override
   String get passcodeEraseWarningEnrolled =>
-      'The only way out is to erase this app\'s data from this device. Messages stored only here are gone for good. After signing in again the account must be restored: with the recovery phrase (instantly), from another device, or by a 72-hour reset.';
+      'Erases the app\'s data. Then restore with the phrase, another device, or a reset.';
 
   @override
   String get linkScanAction => 'Scan code';
@@ -1979,15 +1974,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get linkPrimaryShowCodeExplainer =>
-      'On the new device, sign in and scan this code. You can also scan the code shown there.';
+      'Scan this code with the new device.';
 
   @override
   String get linkGateScanBody =>
-      'Scan the QR code from your main device (Settings → Devices → Link a device), or show it this code. Nothing is lost.';
+      'Scan the primary\'s code, or show it this one.';
 
   @override
   String get recoveryKeyBackupExplainer =>
-      'These 12 words are a backup of your account keys. If this browser or phone loses its data, type them and get your account and contacts back instantly — no waiting. Whoever knows these words owns your account: keep them where only you can reach them.\n\nThe words are shown once and are not stored on this device.';
+      'These 12 words restore the account after losing a device. Whoever has them owns it. Shown once.';
 
   @override
   String get recoveryKeyConfirmTitle => 'Confirm you saved the words';
@@ -2006,7 +2001,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get recoveryKeyRequiredForLinking =>
-      'Linking cannot be enabled without a recovery phrase: losing the main device\'s data would lock the account for 72 hours.';
+      'Linking requires a recovery phrase — you\'ll create it next.';
 
   @override
   String get recoveryKeyBackupFailed =>
@@ -2020,7 +2015,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get linkGateRestoreBody =>
-      'Enter the 12 words. This device becomes the main device; the others are signed out and must be linked again.';
+      'Enter the 12 words. This device becomes primary.';
 
   @override
   String get linkGateRestoring => 'Restoring keys…';
@@ -2031,7 +2026,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get linkGateRestoreNoBackup =>
-      'This account has no key backup. Link this device from the main device, or start a reset.';
+      'No key backup. Link from the primary or reset.';
 
   @override
   String get linkGateRestoreFailed => 'Restore failed. Try again.';
@@ -2040,19 +2035,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get linkGateRestoreDone => 'Account restored.';
 
   @override
-  String get devicesBackupMissing =>
-      'This account has no key backup yet. Create a recovery phrase so you can get the account back instantly if this device loses its data.';
+  String get devicesBackupMissing => 'No key backup. Create a recovery phrase.';
 
   @override
   String get devicesCreateBackupAction => 'Create recovery phrase';
 
   @override
   String get deviceRevokedRestoredNotice =>
-      'The account was restored from the recovery phrase on another device. This device was signed out — link it again. If this was not you, change your password.';
+      'Account restored on another device. Link this one again.';
 
   @override
   String peerIdentityChangedSystemLine(String name) {
-    return '$name is signing in from a new device or browser — security keys were updated.';
+    return '$name: new device or browser — keys updated.';
   }
 
   @override
