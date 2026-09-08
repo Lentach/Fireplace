@@ -295,4 +295,105 @@ void main() {
     expect(provider.hasIdentityBackup, isTrue,
         reason: 'absence must not erase a known answer');
   });
+
+  // The failure a code review caught, and the reason it was severe: the gate
+  // that HOSTS this machine's progress and errors is mounted on
+  // `needsDeviceLink`. Clearing `identityIncomplete` at adopt showed the shell
+  // the instant the identity landed, so a failure in any later stage died on
+  // an unmounted widget — invisible — while the freshly minted prekeys were
+  // never published and peers kept fetching the stale server bundle.
+  test('a failure AFTER adopt keeps the gate up, and the restore retries',
+      () async {
+    final sealed = await arrangeSealedBackup();
+    final nonce = base64Encode(List<int>.generate(24, (i) => i));
+    var failUpload = true;
+    final log = <String>[];
+    // Start from the REAL gated state, not the harness's deferred-init one:
+    // no local identity + a server that says a bundle exists is what makes
+    // the service refuse to mint, sets `identityIncomplete`, and mounts the
+    // gate this machine's UI lives on. Asserting on a diag marker instead
+    // would pin the marker, not the behaviour — a mutant that re-added the
+    // early clear survived exactly that weaker assertion.
+    final provider = EncryptionProvider(
+      service: EncryptionService(),
+      backupCodec: codec(),
+    );
+    addTearDown(provider.dispose);
+
+    provider.setEmitCallback((event, data) {
+      log.add(event);
+      switch (event) {
+        case 'checkOwnKeyBundle':
+          scheduleMicrotask(() => provider.onOwnKeyBundleStatus(
+              {'exists': true, 'linkingEnabled': true}));
+        case 'getIdentityBackup':
+          scheduleMicrotask(() => provider.onIdentityBackup({
+                'exists': true,
+                'blob': sealed.blob,
+                'salt': sealed.salt,
+                'iterations': sealed.iterations,
+              }));
+        case 'getRegistrationLockNonce':
+          scheduleMicrotask(
+            () => provider.onRegistrationLockNonce({'nonce': nonce}),
+          );
+        case 'uploadKeyBundle':
+          scheduleMicrotask(() {
+            if (failUpload) {
+              // A refusal stands in for every post-adopt way this can die:
+              // the nonce wait, the 45 s ack timeout, the roster re-sign.
+              provider.onKeyBundleUploaded(
+                  {'success': false, 'error': 'restore_refused'});
+            } else {
+              provider.onKeyBundleUploaded({
+                'success': true,
+                'identityChanged': false,
+                'restored': true,
+                'deviceId': 7,
+                'access_token': 'a',
+                'refresh_token': 'r',
+                'nextListVersion': 4,
+              });
+            }
+          });
+        case 'getDeviceList':
+          scheduleMicrotask(() => provider.onDeviceList({
+                'userId': userId,
+                'authorization': {'listCanonical': oldListCanonicalB64()},
+              }));
+        case 'updateDeviceList':
+          scheduleMicrotask(() => provider
+              .onDeviceListUpdated({'success': true, 'listVersion': 4}));
+      }
+    });
+
+    await provider.initializeE2E(userId);
+    expect(
+      provider.needsDeviceLink,
+      isTrue,
+      reason: 'precondition: this is the gated, keyless install',
+    );
+
+    await provider.restoreFromPhrase(phrase);
+    expect(provider.restoreStage, IdentityRestoreStage.failed);
+    expect(
+      provider.needsDeviceLink,
+      isTrue,
+      reason: 'a half-done restore must not drop the gate that shows it',
+    );
+
+    // The retry re-adopts the SAME identity this device now holds. Refusing
+    // that was what made the stuck state permanent.
+    failUpload = false;
+    await provider.restoreFromPhrase(phrase);
+
+    expect(provider.restoreStage, IdentityRestoreStage.done);
+    expect(provider.restoreFailure, isNull);
+    expect(
+      provider.needsDeviceLink,
+      isFalse,
+      reason: 'only a finished restore may drop the gate',
+    );
+    expect(log.where((e) => e == 'uploadKeyBundle'), hasLength(2));
+  });
 }

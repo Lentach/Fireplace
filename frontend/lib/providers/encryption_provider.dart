@@ -1768,7 +1768,14 @@ class EncryptionProvider extends ChangeNotifier {
         'adopt:${e.runtimeType}',
       );
     }
-    _identityIncomplete = false;
+    // `_identityIncomplete` is deliberately NOT cleared here. It drives
+    // `needsDeviceLink`, which is what keeps the gate — and this machine's own
+    // progress and error surface — mounted. Clearing it at adopt showed the
+    // shell the instant the identity landed, so a failure in any REMAINING
+    // stage (a 20 s nonce wait, the 45 s upload ack, the roster re-sign) died
+    // on an unmounted widget: invisible, and with the fresh prekeys never
+    // published while peers kept fetching the stale server bundle. It is
+    // cleared at `done` instead, below.
     _setRestoreStage(IdentityRestoreStage.uploading);
     final nonce = await _requestLockNonce();
     if (nonce == null) {
@@ -1833,6 +1840,13 @@ class EncryptionProvider extends ChangeNotifier {
       return _failRestore(IdentityRestoreFailure.failed, 'list:$e');
     }
     await _requestSessionRebuilds();
+    // ONLY NOW: the identity is adopted, published, rebound and re-rostered,
+    // so dropping the gate cannot hide an unfinished restore.
+    _identityIncomplete = false;
+    // Recorded because "the recovery gate closed" is the one restore step a
+    // field report cannot otherwise place: every earlier stage has its own
+    // record, and this is the boundary a premature clear used to cross early.
+    E2ePersistentDiag.record('RESTORE_GATE_RELEASED', {});
     _setRestoreStage(IdentityRestoreStage.done);
     // The adopt left the service initialized but this provider's init flag is
     // still whatever the gate saw; the rebind reconnect usually re-runs the

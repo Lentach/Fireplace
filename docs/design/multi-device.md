@@ -2779,6 +2779,27 @@ that is the designed outcome).
     `identityReplacedTo` (older server) changes nothing: the row is reported as today.
     Falsification: (F17) a hydrated row whose `to` is a FOREIGN key still raises the banner; (F18)
     with the comparison removed, the restore drive's own row raises it again.
+  - **(lxxx) clause 6 — a half-finished restore stranded the install (found by the D27 code
+    review, present in the shipped 0.2.23).** `restoreFromPhrase` cleared `_identityIncomplete`
+    the moment `adoptRestoredIdentity` returned, four stages before the machine was done. That flag
+    feeds `needsDeviceLink`, which mounts the gate that HOSTS this machine's progress and errors —
+    so the shell appeared as soon as the identity landed, and a failure in any remaining stage (the
+    20 s nonce wait, the 45 s upload ack, the roster re-sign) reported itself to an unmounted
+    widget. Invisible, and worse, PERMANENT: on re-entry `adoptRestoredIdentity` saw a held
+    identity, and a keyless install has neither `deviceMaterialMismatch` nor
+    `identityUploadLocked`, so `disposeStaleMaterial` was false and it threw
+    `already holds an identity` on every retry. The install kept a locally adopted identity whose
+    fresh signed prekey and one-time prekeys were never published — peers went on fetching the
+    stale server bundle, so first-message decryption broke — with no route back.
+    Two changes, both narrow: the flag is cleared only at `done` (and the release is recorded as
+    `RESTORE_GATE_RELEASED`, the one restore step a field report could not otherwise place), and a
+    re-adopt of the IDENTICAL identity is now idempotent instead of fatal — a DIFFERENT held
+    identity is still refused, because disposing that one needs the (lxv)/(lxvii) authorization the
+    caller passes explicitly. Falsification: (F20) re-add the early clear → the regression fails on
+    a still-gated retry; (F21) refuse every re-adopt → the retry cannot complete. The regression
+    starts from the REAL gated state (no local identity + a server that says a bundle exists);
+    an earlier version asserted on the diag marker instead and the (F20) mutant SURVIVED it, which
+    is why the assertion is on `needsDeviceLink` itself.
 
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the

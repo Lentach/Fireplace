@@ -1449,17 +1449,35 @@ class EncryptionService {
     return IdentityBackupPayload(userId: uid, identity: identity, dak: dak);
   }
 
+  /// The public half stored in an `identity_record_v1` blob, base64, or null
+  /// when the record is absent or unreadable. Only used to recognise a
+  /// re-adopt of the SAME identity, so null is the safe answer: the caller
+  /// then treats the held identity as different and refuses.
+  String? _identityRecordPublicKey(String? record) {
+    if (record == null) return null;
+    try {
+      final decoded = jsonDecode(record) as Map<String, dynamic>;
+      final pair = IdentityKeyPair.fromSerialized(
+        Uint8List.fromList(base64Decode(decoded['pair'] as String)),
+      );
+      return base64Encode(pair.getPublicKey().serialize());
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// §6.2-recovery restore adopt (amendment (lxxviii) clause 3): reinstall
   /// the account identity + DAK from the phrase-sealed backup on a device
   /// that lost its keys.
   ///
   /// Same residue discipline as [adoptProvisionedIdentity] ((lxxiii) clause
   /// 3): everything parses BEFORE any write, residue (a held identity — only
-  /// with [disposeStaleMaterial] — or surviving prekeys/sessions) is wiped
-  /// and PROVEN wiped before the first store write. The identity record and
-  /// the registrationId are the BACKED-UP ones — the identity is preserved,
-  /// never re-minted — while the signed prekey and one-time prekeys are
-  /// fresh (their private halves died with the wipe; peers re-key).
+  /// with [disposeStaleMaterial], or a re-adopt of the identity already held —
+  /// or surviving prekeys/sessions) is wiped and PROVEN wiped before the first
+  /// store write. The identity record and the registrationId are the BACKED-UP
+  /// ones — the identity is preserved, never re-minted — while the signed
+  /// prekey and one-time prekeys are fresh (their private halves died with the
+  /// wipe; peers re-key).
   Future<void> adoptRestoredIdentity({
     required int userId,
     required IdentityBackupPayload payload,
@@ -1470,16 +1488,14 @@ class EncryptionService {
           'account (${payload.userId} != $userId)');
     }
     final existingPrefix = 'e2e_${userId}_';
+    final heldRecord = await _storage.read(
+      key: '${existingPrefix}identity_record_v1',
+    );
     final holdsIdentity =
-        await _storage.read(key: '${existingPrefix}identity_record_v1') !=
-            null ||
+        heldRecord != null ||
         await _storage.read(key: '${existingPrefix}identity_key_pair') != null;
-    if (holdsIdentity && !disposeStaleMaterial) {
-      throw StateError(
-        'adoptRestoredIdentity: device already holds an identity',
-      );
-    }
-    // Parse EVERYTHING first: a damaged backup must fail before any write.
+    // Parse EVERYTHING first: a damaged backup must fail before any write —
+    // and before the held-identity decision below, which needs the pair.
     final IdentityKeyPair identityKeyPair;
     final int registrationId;
     try {
@@ -1491,6 +1507,25 @@ class EncryptionService {
       registrationId = record['registrationId'] as int;
     } catch (_) {
       throw IdentityBackupCorrupt('identity_record');
+    }
+    if (holdsIdentity && !disposeStaleMaterial) {
+      // A RETRY of this same restore is not a second identity: the (lxxviii)
+      // machine adopts, then still has to fetch a nonce, upload and re-sign
+      // the roster, and any of those can die on a flaky connection. Refusing
+      // here would strand the install — it holds the identity but never
+      // published its fresh prekeys — with no way to run the sequence again.
+      // So a re-adopt of the IDENTICAL identity is idempotent, while a
+      // DIFFERENT held identity is still refused: disposing that one needs
+      // the (lxv)/(lxvii) authorization the caller passes explicitly.
+      final heldPub = _identityRecordPublicKey(heldRecord);
+      final backupPub = base64Encode(
+        identityKeyPair.getPublicKey().serialize(),
+      );
+      if (heldPub == null || heldPub != backupPub) {
+        throw StateError(
+          'adoptRestoredIdentity: device already holds an identity',
+        );
+      }
     }
     String? dakPubBase64;
     final dakRecord = payload.dak;
