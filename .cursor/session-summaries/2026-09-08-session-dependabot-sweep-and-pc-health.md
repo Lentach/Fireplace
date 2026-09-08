@@ -12,7 +12,7 @@ into conflict. That is why none of them was merged.
 
 ## What was done
 
-### Dependency work — end state: 0 open alerts, 0 open PRs
+### Dependency work — end state: 0 open alerts, 1 open PR (parked on purpose), 0 open code-scanning alerts
 
 Master went from `01cff73` to **`084774e`** in five commits:
 
@@ -27,12 +27,18 @@ Master went from `01cff73` to **`084774e`** in five commits:
 
 **Applied because the evidence said safe.** The two that needed real proof:
 
-- **firebase_core 4 + firebase_messaging 16** — both packages' own `android/local-config.gradle` declare
-  compileSdk 34 / minSdk 23 / targetSdk 34 / Java 17 / AGP 8.3.0, all *below* ours (36 / 24 / 8.11.1 / Kotlin
-  2.2.20 / Gradle 8.14), so no native build-config edit. `firebase_messaging` 16.0.0's only removed Dart API is
-  `sendMessage()`, which this app never calls. Web is untouched: init is `!kIsWeb`-gated, web push is our own
-  `web-push-sw.js`, `web/index.html` pins no Firebase JS. Proven with a real **`flutter build apk --debug`**
-  (assembleDebug 458.9 s, green) on top of analyze + suite + web release build.
+- **firebase_core 4 + firebase_messaging 16** — CORRECTED WORDING (verified in the pub cache): the plugins do
+  NOT pin their own SDK levels when built inside an app — `firebase_core-4.14.0/android/build.gradle:43-47` and
+  `firebase_messaging-16.6.0/android/build.gradle:42-45` read `project.ext.compileSdk` / `project.ext.minSdk` /
+  `project.ext.targetSdk`, i.e. they INHERIT ours (36 / 24 / 36). Their standalone fallback
+  `android/local-config.gradle` says compileSdk=34 / minSdk=23 / targetSdk=34 / Java 17, which is only used when
+  the plugin is built on its own. Either way nothing is above us — unlike `permission_handler_android` 14.1.0,
+  which HARDCODES `compileSdk = 37` with AGP 9.0.1 + Kotlin 2.3.20 (`android/build.gradle.kts:5,12,31`). So the
+  gradle read is not the proof; the green `flutter build apk --debug` is.
+  `firebase_messaging` 16.0.0's only removed Dart API is `sendMessage()`, which this app never calls. Web is
+  untouched: init is `!kIsWeb`-gated, web push is our own `web-push-sw.js`, `web/index.html` pins no Firebase JS.
+  Proof: **`flutter build apk --debug`** (assembleDebug 458.9 s, green) on top of analyze + suite + web release
+  build — the host suite alone proves nothing here, since `push_service.dart` returns early on `kIsWeb`.
 - **google_fonts 6→8** — both majors exist ONLY to delete font families, and none of the deleted ones is used
   (`GoogleFonts.inter`, `.archivo`, `.pressStart2p`). No `*TextTheme()` helper and no `GoogleFonts.config`, so
   8.2.0's `Config`→`GoogleFontsConfig` rename does not reach us; fonts are runtime-fetched (no `fonts:` section).
@@ -63,6 +69,21 @@ dependabot-core #7523 / discussion #11962 for a group with no explicit `patterns
 + `build_runner` joined the ignore list with their SDK-pin reasons and a "re-check after a Flutter SDK upgrade"
 note. Cost: up to 3 frontend PRs/month instead of 1 grouped one — cheaper than a permanent dead PR.
 
+**⚠ THE FIX IS UNPROVEN — do not inherit it as settled.** Right after `084774e` was pushed, dependabot opened
+#172/#173/#174 at 14:23, all with **base sha `084774e`** — and **#173 is STILL titled "frontend-minor-patch
+group"** and still bundles drift 2.34.4 / drift_dev 2.34.6 / sqlite3 3.5.2 / build_runner 2.16.1 / clock 1.1.3,
+i.e. the exact set the ignore list names. Either that run read a cached config or the group shape survives the
+config change. The shape only proves out on the NEXT dependabot run: if a grouped `frontend-minor-patch` PR
+appears again, the yml is not the enforcement point and the server-side route (`@dependabot ignore this <x>
+version` comments, which are stored per-repo) is. That route was used on #155 and #156 as belt-and-braces.
+
+What that run DID show, and it is the expected new shape: per-package PRs. #172 permission_handler 13.0.2 (same
+compileSdk-37 blocker, closed), #173 the blocked five (closed), and **#174 file_picker 11.0.2 → 11.0.3, LEFT
+OPEN on purpose** — that is the attachment picker (`chat_action_tiles.dart`), and `utils/web_file_input.dart`
+exists precisely because of file_picker 11.0.2's web DOM behaviour (its comment: file_picker styles the `<input>`
+`display:none` and REMOVES it from the DOM). The 2026-08-19 composer rule applies: nothing ships there without a
+green repro and the owner's explicit OK, and no host test can see that DOM path.
+
 Also **corrected a wrong comment** in that file: the drift/sqlite3 pins were justified by a native-assets hook
 "demanding CMake + MSVC C++ on every local `flutter test`". That does not reproduce — the full host suite runs
 fine with sqlite3 3.5.2 resolved. The real blocker is the deleted `open.dart`. Source beat the note.
@@ -85,7 +106,7 @@ levels of security fixes), CMake 4.3.4→4.4.3, App Installer 1.29.289→1.29.29
   flutter_local_notifications ^22.3.0, google_fonts ^8.2.1, emoji_picker_flutter ^4.5.4. `version: 0.2.23` untouched.
 - `.github/dependabot.yml` — backend major ignores; pub group removed; clock/build_runner ignored; corrected comment.
 - PRs closed with the evidence written INTO each thread: #154, #155, #156, #157, #158, #159, #160, #161, #162,
-  #166, #167, #168, #169, #170, #171.
+  #166, #167, #168, #169, #170, #171, #172, #173. **#174 (file_picker) is deliberately OPEN** — owner's call.
 
 ## Verification
 
@@ -94,9 +115,14 @@ levels of security fixes), CMake 4.3.4→4.4.3, App Installer 1.29.289→1.29.29
   157 formatting, unchanged — typescript-eslint 8.70 first reported −14 against the pre-D26 baseline).
 - **Frontend**: `flutter analyze --no-fatal-infos` clean; **`flutter test` 2027 passed / 14 skipped**;
   `flutter build web --release` OK; **`flutter build apk --debug` OK** (the Firebase-major proof).
-- **CI on master**: `279df93` green (CI + CodeQL). `e26c3ac`'s run was cancelled by the next push, but its
-  Backend tests / E2E wire harness / E2E isolated probes / Web Lock probe were all green before cancellation.
-- **`gh api repos/Lentach/Fireplace/dependabot/alerts` → open count `0`**; `gh pr list --state open` → empty.
+- **CI on master**: `084774e` **CI completed/success** — that run is what covers the google_fonts/emoji_picker
+  commit, whose own run (`090b67f`) was CANCELLED by the next push, as was `e26c3ac`'s (its Backend tests /
+  E2E wire harness / E2E isolated probes / Web Lock probe were green before cancellation). `279df93` green too.
+  Read run state with `gh api repos/Lentach/Fireplace/commits/master/check-runs` or
+  `?head_sha=<sha>` — plain `gh run list --branch master` returned stale rows (commits from weeks ago) twice
+  this session and must not be trusted for "is master green".
+- **`dependabot/alerts` open count `0`** and **`code-scanning/alerts` open count `0`**; `gh pr list --state open`
+  → **`174` only** (parked file_picker). Everything else from three dependabot waves is closed with evidence.
 
 ## Notes for next session
 
