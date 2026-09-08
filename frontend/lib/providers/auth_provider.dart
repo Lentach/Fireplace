@@ -59,16 +59,12 @@ enum AuthStatusCode {
   /// gateway error while the backend is being deployed).
   serverError,
 
-  /// The backend could not be reached at all.
+  /// The backend could not be reached at all, or the answer never arrived
+  /// (timeout / dropped connection — an iOS tab resumed from the background
+  /// is enough). Only reported after [AuthProvider] has already retried on its
+  /// own; for a register that includes settling whether the lost request
+  /// created the account (see [AuthProvider.register]).
   serverUnreachable,
-
-  /// The register request was sent and its answer never arrived (timeout or a
-  /// dropped connection — a phone switching WiFi→cellular is enough). The
-  /// account MAY exist: `Future.timeout` cannot abort the in-flight request, so
-  /// the row can be committed while the client reports failure. Telling the
-  /// user to retry the same name would only produce [nicknameTaken]; the honest
-  /// instruction is to try signing in.
-  registerOutcomeUnknown,
 
   /// Anything else. Deliberately generic: the previous behaviour leaked the
   /// exception text, which was untranslated and told the user nothing they
@@ -121,14 +117,7 @@ AuthStatusCode classifyAuthFailure(
       error is http.ClientException ||
       // dart:io socket errors cannot be type-checked from web-safe code.
       error.toString().contains('SocketException');
-  if (lost) {
-    // A register request whose ANSWER was lost may still have created the
-    // account — the request is not idempotent and `Future.timeout` cannot abort
-    // it — so this door gets its own, honest wording.
-    return attempt == AuthAttempt.register
-        ? AuthStatusCode.registerOutcomeUnknown
-        : AuthStatusCode.serverUnreachable;
-  }
+  if (lost) return AuthStatusCode.serverUnreachable;
   return AuthStatusCode.unexpectedError;
 }
 
@@ -190,8 +179,9 @@ class AuthProvider extends ChangeNotifier {
   String? get lastSessionEndReason => _lastSessionEndReason;
 
   /// The username a failed REGISTER should offer to sign in with, because the
-  /// account may already exist under it ([AuthStatusCode.nicknameTaken] or
-  /// [AuthStatusCode.registerOutcomeUnknown]). Null whenever no such offer
+  /// account may already exist under it ([AuthStatusCode.nicknameTaken]) or
+  /// does and only the follow-up sign-in failed
+  /// ([AuthStatusCode.registerSucceeded]). Null whenever no such offer
   /// applies. The screen uses it to prefill the sign-in tab.
   String? get recoverableUsername => _recoverableUsername;
 
@@ -615,52 +605,62 @@ class AuthProvider extends ChangeNotifier {
 
   /// Creates the account and SIGNS THE USER IN when it can.
   ///
-  /// Registration used to end at "account created, now sign in", which is one
-  /// more step where a user can get lost — and the step where one did: he read
-  /// the failure of a request whose account had in fact been created, retried
-  /// the same name, got a 409 rendered as "something went wrong", and stopped.
-  /// The credentials are already in hand here, so the honest end state of a
-  /// successful registration is a signed-in session.
+  /// One tap ends in one of two states: a session, or a one-line reason with
+  /// the field to fix. The provider settles every ambiguous outcome itself
+  /// instead of describing it to the user:
   ///
-  /// Returns true when the account now exists AND belongs to these credentials
-  /// — including a name that was already taken by the user's own earlier
-  /// attempt (recovered by signing in) and the case where the follow-up
-  /// sign-in failed ([AuthStatusCode.registerSucceeded]); the caller checks
-  /// [isLoggedIn] to know whether it also has a session.
+  /// - 201 → sign in with the same credentials.
+  /// - 409 → sign in with the same credentials (a taken name is the SHAPE of
+  ///   an earlier lost answer: that request still created the account). Only
+  ///   when that sign-in is refused is the name reported as taken.
+  /// - answer lost → sign in with the same credentials, which settles whether
+  ///   the lost request created the account (`Future.timeout` cannot abort it,
+  ///   so the row can be committed while the client saw only a failure). A
+  ///   refused sign-in means the server is back and the account is not ours,
+  ///   so the register is retried ONCE — a 409 there lands in the branch
+  ///   above. Only a second lost answer is reported, as
+  ///   [AuthStatusCode.serverUnreachable].
+  ///
+  /// Production shape this replaces (2026-09-08, iPhone Safari): the first
+  /// POST after resuming the tab hung on a dead socket, the 15 s timeout fired
+  /// and the user read a paragraph about the account "maybe existing" as a
+  /// server outage. The retry he then made succeeded on its own.
+  ///
+  /// Returns true when the account now exists AND belongs to these credentials,
+  /// including the case where the follow-up sign-in failed
+  /// ([AuthStatusCode.registerSucceeded]); the caller checks [isLoggedIn] to
+  /// know whether it also has a session.
   Future<bool> register(String username, String password) async {
     clearStatus();
-    try {
-      await _api.register(username, password);
-    } catch (e) {
-      final code = classifyAuthFailure(e, attempt: AuthAttempt.register);
+    var code = await _register(username, password);
 
-      // A taken name is the SHAPE of the lost-response case: the register
-      // request whose answer never arrived still created the account, and the
-      // retry the user makes seconds later lands here. The credentials in hand
-      // settle it without asking them anything — if they open that account, it
-      // was theirs and they are now in it. This is not a new oracle: it is one
-      // ordinary login attempt, on the same throttle as the login form.
-      if (code == AuthStatusCode.nicknameTaken &&
-          await _signIn(username, password, reportFailure: false)) {
-        return true;
+    if (code == AuthStatusCode.serverUnreachable) {
+      final signIn = await _signIn(username, password);
+      if (signIn == null) return true;
+      if (signIn == AuthStatusCode.serverUnreachable) {
+        _report(signIn);
+        return false;
       }
+      code = await _register(username, password);
+    }
 
-      // Both of these mean "an account under this name may be yours already",
-      // so the surface can offer the way out instead of a dead end.
-      _recoverableUsername =
-          (code == AuthStatusCode.nicknameTaken ||
-              code == AuthStatusCode.registerOutcomeUnknown)
+    // One ordinary login attempt, on the same throttle as the login form —
+    // not a new oracle. If it opens the account, it was ours.
+    if (code == AuthStatusCode.nicknameTaken &&
+        await _signIn(username, password) == null) {
+      return true;
+    }
+
+    if (code != null) {
+      _recoverableUsername = code == AuthStatusCode.nicknameTaken
           ? username
           : null;
-      _statusCode = code;
-      _isError = true;
-      notifyListeners();
+      _report(code);
       return false;
     }
 
     // The account exists from here on: never report a failure for it.
-    final signedIn = await _signIn(username, password, reportFailure: false);
-    if (!signedIn) {
+    if (await _signIn(username, password) != null) {
       _recoverableUsername = username;
       _statusCode = AuthStatusCode.registerSucceeded;
       _isError = false;
@@ -669,16 +669,32 @@ class AuthProvider extends ChangeNotifier {
     return true;
   }
 
+  /// Signs in; a lost answer is retried ONCE before being reported, because
+  /// the request is idempotent and the first request after a resumed tab is
+  /// the one that hangs.
   Future<bool> login(String identifier, String password) async {
     clearStatus();
-    return _signIn(identifier, password, reportFailure: true);
+    var code = await _signIn(identifier, password);
+    if (code == AuthStatusCode.serverUnreachable) {
+      code = await _signIn(identifier, password);
+    }
+    if (code == null) return true;
+    _report(code);
+    return false;
   }
 
-  Future<bool> _signIn(
-    String identifier,
-    String password, {
-    required bool reportFailure,
-  }) async {
+  /// Null when the account was created, else why not.
+  Future<AuthStatusCode?> _register(String username, String password) async {
+    try {
+      await _api.register(username, password);
+      return null;
+    } catch (e) {
+      return classifyAuthFailure(e, attempt: AuthAttempt.register);
+    }
+  }
+
+  /// Null when signed in (session persisted, user loaded), else why not.
+  Future<AuthStatusCode?> _signIn(String identifier, String password) async {
     try {
       final body = await _api.login(identifier, password);
       await _persistTokens(body);
@@ -691,15 +707,16 @@ class AuthProvider extends ChangeNotifier {
       _isError = false;
       _startSessionRefreshTimer();
       notifyListeners();
-      return true;
+      return null;
     } catch (e) {
-      if (reportFailure) {
-        _statusCode = classifyAuthFailure(e, attempt: AuthAttempt.login);
-        _isError = true;
-        notifyListeners();
-      }
-      return false;
+      return classifyAuthFailure(e, attempt: AuthAttempt.login);
     }
+  }
+
+  void _report(AuthStatusCode code) {
+    _statusCode = code;
+    _isError = true;
+    notifyListeners();
   }
 
   Future<void> logout() async {

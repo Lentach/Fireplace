@@ -176,8 +176,6 @@ void main() {
         AuthStatusCode.tooManyAttempts: en.authStatusTooManyAttempts,
         AuthStatusCode.serverError: en.authStatusServerError,
         AuthStatusCode.serverUnreachable: en.authStatusServerUnreachable,
-        AuthStatusCode.registerOutcomeUnknown:
-            en.authStatusRegisterOutcomeUnknown,
         AuthStatusCode.unexpectedError: en.authStatusUnexpectedError,
       };
       // A new code added without a mapping would render nothing at all, so the

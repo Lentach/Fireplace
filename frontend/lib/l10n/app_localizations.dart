@@ -989,7 +989,7 @@ abstract class AppLocalizations {
   /// Auth surface status, localized from an AuthStatusCode.
   ///
   /// In pl, this message translates to:
-  /// **'Nie można połączyć się z serwerem. Sprawdź połączenie i spróbuj ponownie.'**
+  /// **'Brak połączenia. Spróbuj ponownie.'**
   String get authStatusServerUnreachable;
 
   /// Auth surface status, localized from an AuthStatusCode.
@@ -1039,12 +1039,6 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Serwer nie mógł tego teraz obsłużyć. Spróbuj za chwilę.'**
   String get authStatusServerError;
-
-  /// Auth surface status, localized from an AuthStatusCode.
-  ///
-  /// In pl, this message translates to:
-  /// **'Połączenie zerwało się, zanim dotarła odpowiedź, więc konto mogło już powstać. Spróbuj zalogować się tą samą nazwą i hasłem.'**
-  String get authStatusRegisterOutcomeUnknown;
 
   /// Button that switches the auth screen to the sign-in tab with the username prefilled.
   ///

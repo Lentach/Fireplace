@@ -116,19 +116,130 @@ void main() {
       expect(auth.recoverableUsername, 'nowy');
     });
 
-    test(
-        'a lost register answer says the account may exist instead of blaming '
-        'the user', () async {
-      // The 2026-09-05 shape: request delivered, answer never arrived (WiFi →
-      // cellular handoff). `Future.timeout` cannot abort it, so the row can be
-      // committed while the client sees only a failure.
-      final auth = _provider(
-        MockClient((req) async => throw TimeoutException('no answer')),
-      );
+    // 2026-09-08, iPhone Safari resumed from the background: the first POST
+    // hung on a dead socket, the 15 s timeout fired, and the user read the
+    // "account may already exist" paragraph as a server outage. The provider
+    // settles that itself now — the user never sees the ambiguity.
+    group('a lost register answer is settled by the provider', () {
+      test('the lost request DID create the account: sign-in lands inside',
+          () async {
+        var registers = 0;
+        final auth = _provider(
+          MockClient((req) async {
+            switch (req.url.path) {
+              case '/auth/register':
+                registers++;
+                throw TimeoutException('x');
+              case '/auth/login':
+                return _json(
+                    {'access_token': _accessJwt, 'refresh_token': 'r'}, 200);
+              case '/users/me':
+                return _json(
+                    {'id': 114, 'username': 'ma0i', 'tag': '5269'}, 200);
+              default:
+                throw StateError('unexpected ${req.url.path}');
+            }
+          }),
+        );
 
-      expect(await auth.register('ma0i', 'Password1'), isFalse);
-      expect(auth.statusCode, AuthStatusCode.registerOutcomeUnknown);
-      expect(auth.recoverableUsername, 'ma0i');
+        expect(await auth.register('ma0i', 'Password1'), isTrue);
+        expect(auth.isLoggedIn, isTrue);
+        expect(auth.statusCode, isNull);
+        expect(registers, 1, reason: 'no blind re-register once signed in');
+      });
+
+      test('the lost request did NOT create it: register is retried once',
+          () async {
+        var registers = 0;
+        var logins = 0;
+        final auth = _provider(
+          MockClient((req) async => switch (req.url.path) {
+                '/auth/register' => ++registers == 1
+                    ? throw TimeoutException('x')
+                    : _json({'id': 7, 'username': 'ma0i'}, 201),
+                // First: the settling probe, refused — no such account yet.
+                // Second: the sign-in after the retried register.
+                '/auth/login' => ++logins == 1
+                    ? _json({'message': 'Invalid credentials'}, 401)
+                    : _json(
+                        {'access_token': _accessJwt, 'refresh_token': 'r'},
+                        200),
+                '/users/me' =>
+                  _json({'id': 114, 'username': 'ma0i', 'tag': '5269'}, 200),
+                _ => throw StateError('unexpected ${req.url.path}'),
+              }),
+        );
+
+        expect(await auth.register('ma0i', 'Password1'), isTrue);
+        expect(auth.isLoggedIn, isTrue);
+        expect(auth.statusCode, isNull);
+        expect(registers, 2);
+      });
+
+      test('a retried register that meets 409 still opens with the credentials',
+          () async {
+        // The lost request created the row AFTER the settling probe was
+        // refused (they raced). The retry's 409 lands in the taken branch,
+        // whose sign-in now succeeds.
+        var registers = 0;
+        var logins = 0;
+        final auth = _provider(
+          MockClient((req) async => switch (req.url.path) {
+                '/auth/register' => ++registers == 1
+                    ? throw TimeoutException('x')
+                    : _json({'message': 'nickname is already taken'}, 409),
+                '/auth/login' => ++logins == 1
+                    ? _json({'message': 'Invalid credentials'}, 401)
+                    : _json(
+                        {'access_token': _accessJwt, 'refresh_token': 'r'},
+                        200),
+                '/users/me' =>
+                  _json({'id': 114, 'username': 'ma0i', 'tag': '5269'}, 200),
+                _ => throw StateError('unexpected ${req.url.path}'),
+              }),
+        );
+
+        expect(await auth.register('ma0i', 'Password1'), isTrue);
+        expect(auth.isLoggedIn, isTrue);
+      });
+
+      test('still no answer on the settling sign-in: one line, no paragraph',
+          () async {
+        var registers = 0;
+        final auth = _provider(
+          MockClient((req) async {
+            if (req.url.path == '/auth/register') registers++;
+            throw TimeoutException('no answer');
+          }),
+        );
+
+        expect(await auth.register('ma0i', 'Password1'), isFalse);
+        expect(auth.statusCode, AuthStatusCode.serverUnreachable);
+        expect(auth.recoverableUsername, isNull);
+        expect(registers, 1,
+            reason: 'a dead connection is not probed with a third request');
+      });
+
+      test('a second lost answer is reported, not retried forever', () async {
+        var registers = 0;
+        final auth = _provider(
+          MockClient((req) async {
+            switch (req.url.path) {
+              case '/auth/register':
+                registers++;
+                throw TimeoutException('x');
+              case '/auth/login':
+                return _json({'message': 'Invalid credentials'}, 401);
+              default:
+                throw StateError('unexpected ${req.url.path}');
+            }
+          }),
+        );
+
+        expect(await auth.register('ma0i', 'Password1'), isFalse);
+        expect(auth.statusCode, AuthStatusCode.serverUnreachable);
+        expect(registers, 2);
+      });
     });
   });
 
@@ -195,6 +306,42 @@ void main() {
 
       expect(await auth.login('ma0i', 'Password1'), isFalse);
       expect(auth.statusCode, AuthStatusCode.serverUnreachable);
+    });
+
+    test('a lost sign-in answer is retried once, silently', () async {
+      var logins = 0;
+      final auth = _provider(
+        MockClient((req) async {
+          switch (req.url.path) {
+            case '/auth/login':
+              if (++logins == 1) throw TimeoutException('x');
+              return _json(
+                  {'access_token': _accessJwt, 'refresh_token': 'r'}, 200);
+            case '/users/me':
+              return _json(
+                  {'id': 114, 'username': 'ma0i', 'tag': '5269'}, 200);
+            default:
+              throw StateError('unexpected ${req.url.path}');
+          }
+        }),
+      );
+
+      expect(await auth.login('ma0i', 'Password1'), isTrue);
+      expect(auth.statusCode, isNull);
+      expect(logins, 2);
+    });
+
+    test('a refused sign-in is NOT retried', () async {
+      var logins = 0;
+      final auth = _provider(
+        MockClient((req) async {
+          logins++;
+          return _json({'message': 'Invalid credentials'}, 401);
+        }),
+      );
+
+      expect(await auth.login('ma0i', 'nope'), isFalse);
+      expect(logins, 1);
     });
   });
 

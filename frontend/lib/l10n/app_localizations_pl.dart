@@ -513,7 +513,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get authStatusServerUnreachable =>
-      'Nie można połączyć się z serwerem. Sprawdź połączenie i spróbuj ponownie.';
+      'Brak połączenia. Spróbuj ponownie.';
 
   @override
   String get authStatusUnexpectedError =>
@@ -545,10 +545,6 @@ class AppLocalizationsPl extends AppLocalizations {
   @override
   String get authStatusServerError =>
       'Serwer nie mógł tego teraz obsłużyć. Spróbuj za chwilę.';
-
-  @override
-  String get authStatusRegisterOutcomeUnknown =>
-      'Połączenie zerwało się, zanim dotarła odpowiedź, więc konto mogło już powstać. Spróbuj zalogować się tą samą nazwą i hasłem.';
 
   @override
   String get authGoToLogin => 'Przejdź do logowania';

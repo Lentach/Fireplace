@@ -509,8 +509,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Account created. Sign in to continue.';
 
   @override
-  String get authStatusServerUnreachable =>
-      'Cannot reach the server. Check your connection and try again.';
+  String get authStatusServerUnreachable => 'No connection. Try again.';
 
   @override
   String get authStatusUnexpectedError =>
@@ -541,10 +540,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get authStatusServerError =>
       'The server could not handle that right now. Try again in a moment.';
-
-  @override
-  String get authStatusRegisterOutcomeUnknown =>
-      'The connection dropped before we got an answer, so the account may already exist. Try signing in with the same username and password.';
 
   @override
   String get authGoToLogin => 'Sign in instead';
