@@ -168,7 +168,7 @@ void main() {
     //
     // This drives the RECOVERY-KEY path because it exercises strictly more
     // machinery than a bare request (verifier + shortening + the same
-    // notify/cancel/cooldown plumbing). The 72 h default and the Argon2id
+    // notify/cancel/cooldown plumbing). The 6 h default and the Argon2id
     // parameters are pinned by the backend unit suite, which can assert them
     // without spending an account.
     test('a recovery key shortens the window, still notifies every session, '
@@ -183,7 +183,7 @@ void main() {
 
       // §12 (xlii): a phrase enrolled less than the full reset delay ago may
       // NOT shorten. Without that gate a password thief simply enrols a fresh
-      // recovery key and skips the very 72 h wait the key is an exception to.
+      // recovery key and skips the very 6 h wait the key is an exception to.
       //
       // §12 (xliv): and the refusal must SAY so. The phrase is right, so a
       // silent full-length wait reads as "rejected" and walks the owner into
@@ -202,9 +202,11 @@ void main() {
       final fullWait = DateTime.parse(
         tooNew['deadlineAt'] as String,
       ).difference(DateTime.now().toUtc());
+      // The full delay is 6 h since (lxxxii) clause 1; the shortened one is
+      // 1 h, so anything past 5 h is the full wait and not the shortcut.
       expect(
-        fullWait.inHours,
-        greaterThan(70),
+        fullWait.inMinutes,
+        inInclusiveRange(5 * 60, 6 * 60),
         reason: 'the ceremony still starts, at the FULL delay',
       );
 

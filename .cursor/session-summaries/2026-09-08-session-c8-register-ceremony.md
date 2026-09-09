@@ -125,3 +125,13 @@ Owner's answers to the "is multi-device finished" list: 3 (iOS rename dialog) ve
 - Seen, not touched: `recovery_key_screen` body starts 8 px under the header pill (same padding formula as Devices; per spec, looks tight).
 
 Drive accounts on the local stack: `c9prim#8244` (id 204, phrase above), `c8lost`, `c8taken`, `c8dead` (password `Passw0rd!x`).
+
+## Addendum — 0.2.31 (`4ba17ab`, BOTH tiers): (lxxxii) "the seed is the account"
+
+Owner: "confirm all" after the combined-effect warning (any single stolen secret now suffices). Recorded in `docs/design/multi-device.md` §12 (lxxxii) as an explicit owner decision.
+
+- **Clause 1:** `RESET_DELAY_MS` 72 h → **6 h** (`RECOVERY_MIN_AGE_MS` follows by definition). Copy: `linkGateResetHint`, `linkGateResetPhraseTooNew`, `recoveryPhrasePromptBody`, `identityResetPhraseTooNew`; root `CLAUDE.md` §7 and `frontend/CLAUDE.md` §5 updated (the latter still claimed "no key backup").
+- **Clause 2:** `POST /auth/recover { identifier, phrase, newPassword }` — `RecoverPasswordDto`, `AuthService.recoverPassword` (resolve → `IdentityResetService.verifyRecoveryPhrase` → `UsersService.setPassword` → wait for the next whole second → `issueSession`). `verifyRecoveryPhrase` is the shortcut's verifier + counter + lockout extracted (`verifyAgainstRow`), never spending, `usedAt`/age ignored, success clears the counter. **Found while building: a token signed in the same second as `passwordChangedAt` is rejected by `JwtStrategy` (`iat <= stamp` in whole seconds)** — the door waits ≤1 s for the next second instead of back-dating the stamp; pinned by a test.
+- **Client:** `AuthFormMode {login, register, recover}` (`AuthForm.onSubmit(username, password, phrase)`), "Nie pamiętam hasła" link, recover form with `RecoveryPhrase.isValid/normalize`, `AuthProvider.recoverPassword` (+ `_adoptSession` shared with `_signIn`), `AuthStatusCode.phraseRejected` ("Nazwa lub fraza nie pasuje."), 423 → `tooManyAttempts`.
+- **Proof:** mutants F32–F36 killed (1 substitution each). Backend 1116/62, frontend 2078/14, analyzer clean, prettier on touched files, lint ratchet floor 894 → 898 (six `expect(mock.method)` assertions in new tests — the suite's idiom). Live on the local stack (dev backend hot-reloaded): curl — wrong phrase counted, right phrase → tokens, old password 401 / new 201; UI on a rebuilt bundle — wrong phrase → one line, right phrase → shell → the gate (enrolled account) reading "6 h".
+- **Deploy:** backend FIRST (route + constant), then web.
