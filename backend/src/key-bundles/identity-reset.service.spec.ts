@@ -1036,6 +1036,9 @@ describe('IdentityResetService (reset ceremony §6.2 / recovery key §6.2.1)', (
 
       await expect(service.getIdentityBackup(7)).resolves.toBeNull();
       await expect(service.hasIdentityBackup(7)).resolves.toBe(false);
+      // (lxxxiii) clause 4: but it IS a phrase — the Chats nudge must not ask
+      // its owner for one.
+      await expect(service.hasRecoveryPhrase(7)).resolves.toBe(true);
     });
 
     it('no recovery row at all means no backup', async () => {
@@ -1043,6 +1046,7 @@ describe('IdentityResetService (reset ceremony §6.2 / recovery key §6.2.1)', (
 
       await expect(service.getIdentityBackup(7)).resolves.toBeNull();
       await expect(service.hasIdentityBackup(7)).resolves.toBe(false);
+      await expect(service.hasRecoveryPhrase(7)).resolves.toBe(false);
     });
   });
 });

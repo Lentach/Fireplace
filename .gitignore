@@ -66,6 +66,7 @@ omp-session*.html
 # --log` reads. Regenerated on every run and machine-specific; it exists only to
 # let the verifier check the counts recorded in CLAUDE.md §3.
 frontend/test-output.txt
+backend/test-output.txt
 
 # Local audit report — findings/backlog stay off the remote by choice, not visibility
 docs/audit/

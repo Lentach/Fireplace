@@ -2046,6 +2046,10 @@ class AppLocalizationsPl extends AppLocalizations {
   String get recoveryKeyLaterAction => 'Później';
 
   @override
+  String get recoveryKeyReplacesExisting =>
+      'Masz już frazę. Nowe słowa ją zastąpią — stare przestaną działać.';
+
+  @override
   String get backupNudgeTitle => 'Zabezpiecz konto — utwórz 12 słów';
 
   @override

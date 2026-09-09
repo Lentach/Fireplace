@@ -296,6 +296,44 @@ void main() {
         reason: 'absence must not erase a known answer');
   });
 
+  test('(lxxxiii) clause 4: hasRecoveryPhrase is its own explicit bool, both '
+      'flags flip on a saved phrase, and both reset on account switch', () async {
+    FlutterSecureStorage.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({});
+    final provider = EncryptionProvider(
+      service: EncryptionService(),
+      backupCodec: codec(),
+    );
+    expect(provider.hasRecoveryPhrase, isNull);
+    // goonboy's shape: a verifier-only phrase, no blob.
+    provider.onOwnKeyBundleStatus({
+      'exists': true,
+      'hasRecoveryPhrase': true,
+      'hasIdentityBackup': false,
+    });
+    expect(provider.hasRecoveryPhrase, isTrue);
+    expect(provider.hasIdentityBackup, isFalse);
+    // A 0.2.33 server sends no `hasRecoveryPhrase`: UNKNOWN, not false.
+    provider.onOwnKeyBundleStatus({'exists': true, 'hasIdentityBackup': false});
+    expect(provider.hasRecoveryPhrase, isTrue,
+        reason: 'absence must not erase a known answer');
+
+    provider.onOwnKeyBundleStatus({
+      'exists': true,
+      'hasRecoveryPhrase': false,
+      'hasIdentityBackup': false,
+    });
+    provider.onRecoveryKeySet(const {'success': true});
+    expect(provider.hasRecoveryPhrase, isTrue);
+    expect(provider.hasIdentityBackup, isTrue);
+
+    // A process singleton reused across logins: user A's answer must not
+    // put the Chats line over user B's list until B's first status.
+    provider.clearAll();
+    expect(provider.hasRecoveryPhrase, isNull);
+    expect(provider.hasIdentityBackup, isNull);
+  });
+
   // The failure a code review caught, and the reason it was severe: the gate
   // that HOSTS this machine's progress and errors is mounted on
   // `needsDeviceLink`. Clearing `identityIncomplete` at adopt showed the shell

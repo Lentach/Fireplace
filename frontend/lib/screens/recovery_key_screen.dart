@@ -155,7 +155,13 @@ class _RecoveryKeyScreenState extends State<RecoveryKeyScreen> {
     // `initialize()` has run, and at the door the identity is minted seconds
     // after the shell appears. A disabled button for those seconds beats a
     // phrase-shaped failure.
-    final e2eReady = context.watch<EncryptionProvider>().isE2EReady;
+    final encryption = context.watch<EncryptionProvider>();
+    final e2eReady = encryption.isE2EReady;
+    // (lxxxiii) clause 4: a phrase already enrolled (blob or not) is REPLACED
+    // by confirming a new one. Said before the words exist, not after — the
+    // field case was a user with an older phrase on paper and twelve new
+    // words on screen, no hint which one counts.
+    final replacesExisting = encryption.hasRecoveryPhrase == true;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -196,6 +202,17 @@ class _RecoveryKeyScreenState extends State<RecoveryKeyScreen> {
             ),
             const SizedBox(height: 20),
             if (words == null) ...[
+              if (replacesExisting) ...[
+                Text(
+                  l10n.recoveryKeyReplacesExisting,
+                  key: const Key('recovery-key-replaces-existing'),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.error,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               FilledButton(
                 key: const Key('recovery-key-generate'),
                 onPressed: e2eReady ? _generate : null,

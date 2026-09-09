@@ -653,6 +653,19 @@ export class IdentityResetService {
   }
 
   /**
+   * Whether ANY recovery phrase is enrolled — blob or not ((lxxxiii) clause
+   * 4). A pre-(lxxviii) verifier-only row already resets the password at the
+   * (lxxxii) door, so the Chats nudge must not ask its owner for "12 words".
+   */
+  async hasRecoveryPhrase(userId: number): Promise<boolean> {
+    const row = await this.recoveryRepo.findOne({
+      where: { userId },
+      select: { id: true },
+    });
+    return row != null;
+  }
+
+  /**
    * Commits ceremonies whose delay has elapsed. Runs every minute so a restart
    * cannot skip a deadline.
    *

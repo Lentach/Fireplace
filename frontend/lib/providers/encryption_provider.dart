@@ -2300,16 +2300,28 @@ class EncryptionProvider extends ChangeNotifier {
   bool? get recoveryKeySetResult => _recoveryKeySetResult;
 
   /// (lxxviii): whether the server holds a phrase-sealed identity backup for
-  /// this account. Null until an `ownKeyBundleStatus` said either way.
+  /// this account. Null until an `ownKeyBundleStatus` said either way. This
+  /// drives the DEVICES-screen nudge only (an enrolled primary needs the
+  /// blob); the Chats line and the door offer use [hasRecoveryPhrase].
   bool? get hasIdentityBackup => _hasIdentityBackup;
   bool? _hasIdentityBackup;
+
+  /// (lxxxiii) clause 4: whether ANY recovery phrase is enrolled, blob or
+  /// not. A pre-(lxxviii) verifier-only phrase already resets the password,
+  /// so its owner must not be asked for "12 words" again. Null until an
+  /// `ownKeyBundleStatus` carried the field (absent on an older server).
+  bool? get hasRecoveryPhrase => _hasRecoveryPhrase;
+  bool? _hasRecoveryPhrase;
 
   void onRecoveryKeySet(dynamic data) {
     _recoveryKeySetResult = data is Map && data['success'] == true;
     // A phrase (re)enrolment always carries the freshly sealed blob now, so a
-    // success means the server holds a backup — flip the nudge without
-    // waiting for the next `ownKeyBundleStatus`.
-    if (_recoveryKeySetResult == true) _hasIdentityBackup = true;
+    // success means the server holds a phrase AND a backup — flip both
+    // without waiting for the next `ownKeyBundleStatus`.
+    if (_recoveryKeySetResult == true) {
+      _hasIdentityBackup = true;
+      _hasRecoveryPhrase = true;
+    }
     notifyListeners();
   }
 
@@ -2450,16 +2462,26 @@ class EncryptionProvider extends ChangeNotifier {
       'exists': exists,
       'linkingEnabled': linkingEnabled,
     });
-    // (lxxviii): additive `hasIdentityBackup`. Only an EXPLICIT bool is
-    // recorded — absent (older server) stays UNKNOWN, and the devices
-    // screen's backup nudge renders only on an explicit false.
+    // (lxxviii)/(lxxxiii) clause 4: additive `hasIdentityBackup` and
+    // `hasRecoveryPhrase`. Only an EXPLICIT bool is recorded — absent (older
+    // server) stays UNKNOWN, and every nudge renders only on an explicit
+    // false.
+    var changed = false;
     if (data is Map && data['hasIdentityBackup'] is bool) {
       final hasBackup = data['hasIdentityBackup'] as bool;
       if (hasBackup != _hasIdentityBackup) {
         _hasIdentityBackup = hasBackup;
-        notifyListeners();
+        changed = true;
       }
     }
+    if (data is Map && data['hasRecoveryPhrase'] is bool) {
+      final hasPhrase = data['hasRecoveryPhrase'] as bool;
+      if (hasPhrase != _hasRecoveryPhrase) {
+        _hasRecoveryPhrase = hasPhrase;
+        changed = true;
+      }
+    }
+    if (changed) notifyListeners();
     // (lxxvi) clause 1: persist the CLEARTEXT enrolment hint the LOCK SCREEN
     // reads (`account_enrolled_hint_<uid>` — the erase panel cannot read E2E
     // state; on web the store is wrapped while locked). Only an EXPLICIT
@@ -2732,6 +2754,12 @@ class EncryptionProvider extends ChangeNotifier {
     _identityUploadLocked = false;
     _identityCheckUnavailable = false;
     _deviceListCache.clear();
+    // The phrase/backup flags are per ACCOUNT too: left standing, user A's
+    // `false` puts the Chats line over user B's list until B's first status
+    // corrects it — the same class of stale-singleton defect as the ceremony
+    // below. Back to UNKNOWN, which renders nothing.
+    _hasIdentityBackup = null;
+    _hasRecoveryPhrase = null;
     // The §6.2 ceremony belongs to the ACCOUNT, and this provider is a process
     // singleton reused across logins. Left standing, user A's countdown renders
     // over user B's session — with a live cancel button that emits

@@ -110,11 +110,17 @@ Future<
   return (encryption: encryption, settings: settings);
 }
 
-/// The server's word on the backup, as `ownKeyBundleStatus` carries it.
-void _status(EncryptionProvider encryption, {bool? hasIdentityBackup}) {
+/// The server's word on the phrase, as `ownKeyBundleStatus` carries it.
+/// `hasIdentityBackup` defaults to the same value; clause 4's cases split them.
+void _status(
+  EncryptionProvider encryption, {
+  bool? hasRecoveryPhrase,
+  bool? hasIdentityBackup,
+}) {
   encryption.onOwnKeyBundleStatus({
     'exists': true,
-    'hasIdentityBackup': ?hasIdentityBackup,
+    'hasRecoveryPhrase': ?hasRecoveryPhrase,
+    'hasIdentityBackup': ?(hasIdentityBackup ?? hasRecoveryPhrase),
   });
 }
 
@@ -125,20 +131,20 @@ void main() {
     final now = DateTime.utc(2026, 9, 9, 12);
 
     test('only an EXPLICIT false shows; unknown and true never do', () {
-      for (final hasBackup in [null, true]) {
+      for (final hasPhrase in [null, true]) {
         expect(
           shouldShowBackupNudge(
-            hasIdentityBackup: hasBackup,
+            hasRecoveryPhrase: hasPhrase,
             dismissedAt: null,
             now: now,
           ),
           isFalse,
-          reason: 'hasIdentityBackup=$hasBackup',
+          reason: 'hasRecoveryPhrase=$hasPhrase',
         );
       }
       expect(
         shouldShowBackupNudge(
-          hasIdentityBackup: false,
+          hasRecoveryPhrase: false,
           dismissedAt: null,
           now: now,
         ),
@@ -150,7 +156,7 @@ void main() {
       final dismissed = now.subtract(const Duration(days: 7));
       expect(
         shouldShowBackupNudge(
-          hasIdentityBackup: false,
+          hasRecoveryPhrase: false,
           dismissedAt: dismissed.add(const Duration(seconds: 1)),
           now: now,
         ),
@@ -159,7 +165,7 @@ void main() {
       );
       expect(
         shouldShowBackupNudge(
-          hasIdentityBackup: false,
+          hasRecoveryPhrase: false,
           dismissedAt: dismissed,
           now: now,
         ),
@@ -193,11 +199,11 @@ void main() {
         final h = await _pump(tester, width: width);
         expect(find.byKey(_nudge), findsNothing, reason: 'unknown shows nothing');
 
-        _status(h.encryption, hasIdentityBackup: true);
+        _status(h.encryption, hasRecoveryPhrase: true);
         await tester.pump();
         expect(find.byKey(_nudge), findsNothing);
 
-        _status(h.encryption, hasIdentityBackup: false);
+        _status(h.encryption, hasRecoveryPhrase: false);
         await tester.pump();
         expect(find.byKey(_nudge), findsOneWidget);
 
@@ -221,7 +227,7 @@ void main() {
   testWidgets('clause 3: tapping the line opens the recovery-key screen '
       'without a "later" action', (tester) async {
     final h = await _pump(tester);
-    _status(h.encryption, hasIdentityBackup: false);
+    _status(h.encryption, hasRecoveryPhrase: false);
     await tester.pump();
     await tester.tap(find.byKey(_nudge));
     await tester.pumpAndSettle();
@@ -236,7 +242,7 @@ void main() {
     expect(find.byType(RecoveryKeyScreen), findsNothing,
         reason: 'unknown: no offer yet');
 
-    _status(h.encryption, hasIdentityBackup: false);
+    _status(h.encryption, hasRecoveryPhrase: false);
     await tester.pumpAndSettle();
     expect(find.byType(RecoveryKeyScreen), findsOneWidget);
     expect(find.byKey(_later), findsOneWidget);
@@ -249,7 +255,7 @@ void main() {
     expect(h.settings.backupNudgeDismissedAt, isNotNull);
 
     // The offer fires once: a later status does not re-open it.
-    _status(h.encryption, hasIdentityBackup: false);
+    _status(h.encryption, hasRecoveryPhrase: false);
     await tester.pumpAndSettle();
     expect(find.byType(RecoveryKeyScreen), findsNothing);
   });
@@ -257,7 +263,7 @@ void main() {
   testWidgets('clause 1 / F39: an account the server reports WITH a backup is '
       'never offered the screen, fresh or not', (tester) async {
     final h = await _pump(tester, fresh: true);
-    _status(h.encryption, hasIdentityBackup: true);
+    _status(h.encryption, hasRecoveryPhrase: true);
     await tester.pumpAndSettle();
     expect(find.byType(RecoveryKeyScreen), findsNothing);
   });
@@ -265,9 +271,50 @@ void main() {
   testWidgets('clause 1: without a fresh registration the flag alone opens '
       'nothing', (tester) async {
     final h = await _pump(tester);
-    _status(h.encryption, hasIdentityBackup: false);
+    _status(h.encryption, hasRecoveryPhrase: false);
     await tester.pumpAndSettle();
     expect(find.byType(RecoveryKeyScreen), findsNothing);
     expect(find.byKey(_nudge), findsOneWidget);
+  });
+
+  testWidgets('clause 4 / F44: a pre-(lxxviii) verifier-only phrase '
+      '(hasRecoveryPhrase true, hasIdentityBackup false) gets NO line and NO '
+      'offer', (tester) async {
+    final h = await _pump(tester, fresh: true);
+    // goonboy's shape, prod id 48.
+    _status(h.encryption, hasRecoveryPhrase: true, hasIdentityBackup: false);
+    await tester.pumpAndSettle();
+    expect(find.byKey(_nudge), findsNothing);
+    expect(find.byType(RecoveryKeyScreen), findsNothing);
+  });
+
+  testWidgets('clause 4 / F45: a status WITHOUT the field (older server) is '
+      'UNKNOWN — nothing renders even when hasIdentityBackup is false',
+      (tester) async {
+    final h = await _pump(tester, fresh: true);
+    h.encryption.onOwnKeyBundleStatus(const {
+      'exists': true,
+      'hasIdentityBackup': false,
+    });
+    await tester.pumpAndSettle();
+    expect(find.byKey(_nudge), findsNothing);
+    expect(find.byType(RecoveryKeyScreen), findsNothing);
+  });
+
+  testWidgets('clause 4: the door warns that new words REPLACE an enrolled '
+      'phrase, and only then', (tester) async {
+    final h = await _pump(tester);
+    _status(h.encryption, hasRecoveryPhrase: false);
+    await tester.pump();
+    await tester.tap(find.byKey(_nudge));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('recovery-key-replaces-existing')),
+        findsNothing, reason: 'no phrase yet: nothing to replace');
+
+    // The server now says a phrase exists (e.g. enrolled from another tab).
+    _status(h.encryption, hasRecoveryPhrase: true, hasIdentityBackup: false);
+    await tester.pump();
+    expect(find.byKey(const Key('recovery-key-replaces-existing')),
+        findsOneWidget);
   });
 }

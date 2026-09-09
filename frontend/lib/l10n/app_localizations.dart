@@ -3560,6 +3560,12 @@ abstract class AppLocalizations {
   /// **'Później'**
   String get recoveryKeyLaterAction;
 
+  /// No description provided for @recoveryKeyReplacesExisting.
+  ///
+  /// In pl, this message translates to:
+  /// **'Masz już frazę. Nowe słowa ją zastąpią — stare przestaną działać.'**
+  String get recoveryKeyReplacesExisting;
+
   /// No description provided for @backupNudgeTitle.
   ///
   /// In pl, this message translates to:

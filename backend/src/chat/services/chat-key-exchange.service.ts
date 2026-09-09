@@ -615,23 +615,33 @@ export class ChatKeyExchangeService {
       );
       // Additive fields: an older client ignores them, and a newer client
       // treats a missing payload as UNKNOWN rather than as "nothing pending".
-      const [reset, identityChange, linkingEnabled, hasIdentityBackup] =
-        await Promise.all([
-          this.identityResetService.getStatusForUser(userId),
-          this.keyBundlesService.latestIdentityChange(userId),
-          // (lxxiii) clause 2 — the client learns the lock state with the
-          // bundle answer. Additive; an absent field reads as `true`
-          // client-side (fail-closed to the pre-(lxxiii) gate, never to a
-          // refused mint).
-          this.keyBundlesService.isEnrolled(userId),
-          // (lxxviii) clause 1 — additive: drives the "create your backup"
-          // nudge on an enrolled primary without one.
-          this.identityResetService.hasIdentityBackup(userId),
-        ]);
+      const [
+        reset,
+        identityChange,
+        linkingEnabled,
+        hasIdentityBackup,
+        hasRecoveryPhrase,
+      ] = await Promise.all([
+        this.identityResetService.getStatusForUser(userId),
+        this.keyBundlesService.latestIdentityChange(userId),
+        // (lxxiii) clause 2 — the client learns the lock state with the
+        // bundle answer. Additive; an absent field reads as `true`
+        // client-side (fail-closed to the pre-(lxxiii) gate, never to a
+        // refused mint).
+        this.keyBundlesService.isEnrolled(userId),
+        // (lxxviii) clause 1 — additive: drives the "create your backup"
+        // nudge on an enrolled primary without one.
+        this.identityResetService.hasIdentityBackup(userId),
+        // (lxxxiii) clause 4 — additive: a phrase exists, blob or not. The
+        // Chats-list nudge and the post-registration offer key off THIS, so a
+        // pre-(lxxviii) verifier-only phrase is not nagged into replacement.
+        this.identityResetService.hasRecoveryPhrase(userId),
+      ]);
       client.emit('ownKeyBundleStatus', {
         exists,
         linkingEnabled,
         hasIdentityBackup,
+        hasRecoveryPhrase,
         identityReset: reset
           ? {
               status: reset.status,

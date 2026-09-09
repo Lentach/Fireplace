@@ -101,3 +101,41 @@ mean exactly one thing: forgot password → still get in."*
   `Input.insertText`; a cold profile needs ~15 s before the first form paints — clicks before that land
   on nothing (run 3's first attempt). `?q=` classification of screenshot frames is a cheap way to find
   WHEN a route appeared.
+
+---
+
+## Addendum — 0.2.35, (lxxxiii) clause 4: the line asked for a BLOB, not a PHRASE (both tiers)
+
+**Field report, hours after 0.2.34 went live:** user `goonboy` (id 48) "already had his phrase from
+earlier" — the Czaty line told him to secure the account, the door showed twelve NEW words unlike
+the ones on his paper. Prod row: phrase created 2026-09-02 (pre-(lxxviii)), `backupBlob` NULL,
+`createdAt` unchanged → he had NOT confirmed (`setRecoveryKey` rewrites `createdAt`), so his paper
+phrase was still the valid one. Told the owner: back arrow, keep the old paper, X the line.
+
+**Root cause:** the line and the offer keyed off `hasIdentityBackup` (a sealed blob exists — only
+phrases created since 0.2.23 have one). For a PWA user the phrase means password recovery, and a
+verifier-only phrase already does that at `/auth/recover`. Prod: 2 verifier-only rows, 0 blobs — the
+line nagged exactly the two people who had already done the right thing. Second defect: the screen
+never said that new words REPLACE an enrolled phrase.
+
+**Fix (owner "Go, both tiers"):** `IdentityResetService.hasRecoveryPhrase(userId)` (any
+`recovery_keys` row) rides `ownKeyBundleStatus` as an additive explicit bool next to
+`hasIdentityBackup`; `EncryptionProvider.hasRecoveryPhrase` (absent = UNKNOWN); the Chats line and
+the door offer key off it; `onRecoveryKeySet` success flips both; **both flags reset to `null` in
+`clearAll()`** (they never did — user A's answer would have painted user B's list until B's first
+status). The devices-screen nudge keeps `hasIdentityBackup` (an enrolled primary needs the blob).
+`RecoveryKeyScreen` renders `recoveryKeyReplacesExisting` in the error colour above the generate
+button whenever `hasRecoveryPhrase == true`: "Masz już frazę. Nowe słowa ją zastąpią — stare
+przestaną działać." / "You already have a phrase. New words replace it — the old ones stop working."
+
+**Proof:** F44 (line keys off `hasIdentityBackup`), F44b (offer likewise), F45 (client reads an
+absent field as false), F45b (server drops the field) — 1 substitution each, printed, killed,
+restored. Backend 1119/62, Flutter 2094/14, ratchet 898 PASS. Live on the local stack with
+`c9nudge3` made verifier-only by SQL (goonboy's shape): Czaty shows NO line, Settings → Klucz
+odzyskiwania shows the red replace warning above the button; control `c9nudge2` (no row) still gets
+the line. Deploy order backend FIRST — a 0.2.35 client on a 0.2.33 server reads the missing field as
+UNKNOWN and shows nothing, the safe direction.
+
+**Traps:** Docker Desktop died mid-session (`npipe` gone) — restart it and wait ~2.5 min for the dev
+backend; `npm test` rewrote `backend/package-lock.json` (48 `libc` lines, npm-version noise) —
+reverted, not committed; `backend/test-output.txt` is now gitignored like the frontend one.

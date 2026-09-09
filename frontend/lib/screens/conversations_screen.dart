@@ -41,7 +41,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   Timer? _listCountdownTimer;
 
   /// (lxxxiii) clause 1: armed once per fresh registration; fires the offer
-  /// when the server has said this account holds no backup. The provider is
+  /// when the server has said this account holds no recovery phrase. The provider is
   /// held so dispose() can unsubscribe without touching the context.
   (EncryptionProvider, VoidCallback)? _phraseOffer;
 
@@ -98,12 +98,13 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     super.dispose();
   }
 
-  /// (lxxxiii) clause 1: the offer waits for an EXPLICIT `hasIdentityBackup:
-  /// false` — never unknown, never true (an existing account reached through
-  /// the lost-answer probe keeps whatever phrase it already holds).
+  /// (lxxxiii) clause 1 + clause 4: the offer waits for an EXPLICIT
+  /// `hasRecoveryPhrase: false` — never unknown, never true (an existing
+  /// account reached through the lost-answer probe keeps whatever phrase it
+  /// already holds, blob or not).
   void _armPhraseOffer(EncryptionProvider enc) {
     void check() {
-      if (enc.hasIdentityBackup != false) return;
+      if (enc.hasRecoveryPhrase != false) return;
       _disarmPhraseOffer();
       if (mounted) _openRecoveryKey(deferrable: true);
     }
@@ -141,10 +142,10 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   }
 
   /// (lxxxiii) clause 3: the one muted line for an account the server
-  /// EXPLICITLY reported as having no phrase backup, or null.
+  /// EXPLICITLY reported as having no recovery phrase, or null.
   Widget? _buildBackupNudge() {
     final show = shouldShowBackupNudge(
-      hasIdentityBackup: context.watch<EncryptionProvider>().hasIdentityBackup,
+      hasRecoveryPhrase: context.watch<EncryptionProvider>().hasRecoveryPhrase,
       dismissedAt: context.watch<SettingsProvider>().backupNudgeDismissedAt,
       now: DateTime.now(),
     );

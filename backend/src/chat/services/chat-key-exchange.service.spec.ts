@@ -34,6 +34,7 @@ describe('ChatKeyExchangeService', () => {
     setRecoveryKey: jest.Mock;
     getIdentityBackup: jest.Mock;
     hasIdentityBackup: jest.Mock;
+    hasRecoveryPhrase: jest.Mock;
   };
   let devicesService: { isActive: jest.Mock };
   let resetRosterService: { applyAfterReset: jest.Mock };
@@ -135,6 +136,8 @@ describe('ChatKeyExchangeService', () => {
       // (lxxviii): no backup stored unless a test opts in.
       getIdentityBackup: jest.fn().mockResolvedValue(null),
       hasIdentityBackup: jest.fn().mockResolvedValue(false),
+      // (lxxxiii) clause 4: no phrase at all unless a test opts in.
+      hasRecoveryPhrase: jest.fn().mockResolvedValue(false),
     };
     devicesService = {
       isActive: jest.fn().mockResolvedValue(true),
@@ -968,6 +971,8 @@ describe('ChatKeyExchangeService', () => {
           linkingEnabled: false,
           // (lxxviii) clause 1: the backup flag rides it too.
           hasIdentityBackup: false,
+          // (lxxxiii) clause 4: the Chats nudge keys off THIS one.
+          hasRecoveryPhrase: false,
           // 0b additions: additive, and null when the account is quiet.
           identityReset: null,
           identityReplacedAt: null,
@@ -977,6 +982,24 @@ describe('ChatKeyExchangeService', () => {
         expect(keyBundlesService.fetchPreKeyBundle).not.toHaveBeenCalled();
       },
     );
+  });
+
+  describe('handleCheckOwnKeyBundle — (lxxxiii) clause 4', () => {
+    it('a pre-(lxxviii) verifier-only phrase reports hasRecoveryPhrase without a backup', async () => {
+      // goonboy's shape (prod id 48): a row with a verifier and no blob.
+      identityResetService.hasRecoveryPhrase.mockResolvedValue(true);
+      identityResetService.hasIdentityBackup.mockResolvedValue(false);
+
+      await service.handleCheckOwnKeyBundle(mockClient as Socket);
+
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        'ownKeyBundleStatus',
+        expect.objectContaining({
+          hasRecoveryPhrase: true,
+          hasIdentityBackup: false,
+        }),
+      );
+    });
   });
 
   describe('handleFetchPreKeyBundle', () => {
@@ -1865,6 +1888,7 @@ describe('ChatKeyExchangeService', () => {
         exists: true,
         linkingEnabled: false,
         hasIdentityBackup: false,
+        hasRecoveryPhrase: false,
         identityReset: {
           status: 'pending',
           deadlineAt: deadlineAt.toISOString(),
@@ -1892,6 +1916,7 @@ describe('ChatKeyExchangeService', () => {
         linkingEnabled: true,
         // (lxxviii): drives the "create your backup" nudge when false.
         hasIdentityBackup: false,
+        hasRecoveryPhrase: false,
         identityReset: null,
         identityReplacedAt: null,
         identityReplacedTo: null,

@@ -2987,6 +2987,31 @@ that is the designed outcome).
     is enabled with E2E down; (F42) stamp `freshRegistration` on the taken-but-mine path → an
     existing account is offered a phrase it may already hold. Live: register → shell → offer →
     Później → line on Czaty → X → line gone → Settings → phrase → line stays gone after relogin.
+    **Clause 4 — the line and the offer ask for a PHRASE, not a BLOB (field defect, 2026-09-09,
+    hours after 0.2.34 went live).** User `goonboy` (id 48) enrolled a phrase on 2026-09-02 —
+    before (lxxviii) — so his `recovery_keys` row has a verifier and NO `backupBlob`;
+    `hasIdentityBackup` is `false` for him, the Czaty line told him to "secure the account", and
+    the screen showed twelve NEW words with no hint that confirming them would replace the ones
+    on his paper. He backed out (row `createdAt` unchanged — `setRecoveryKey` rewrites it), so
+    nothing was lost; prod had exactly 2 verifier-only rows and 0 blobs, i.e. the line nagged the
+    only two people who had already done the right thing. The owner's framing decides the fix:
+    for a PWA user the phrase means password recovery, and a verifier-only phrase already does
+    that ((lxxxii) clause 2 verifies against `verifierHash`); the blob matters only at the gate,
+    which an un-enrolled account never meets, and enabling linking already re-enrols the phrase
+    through the same screen. So: `ownKeyBundleStatus` additionally carries `hasRecoveryPhrase`
+    (a `recovery_keys` row exists, blob or not; additive, explicit bool, absent = UNKNOWN); the
+    clause-1 offer and the clause-3 line key off `hasRecoveryPhrase == false` — never on
+    `hasIdentityBackup`. The devices screen's "create your backup" nudge on an ENROLLED primary
+    keeps `hasIdentityBackup` (there the blob IS the point). `onRecoveryKeySet` success flips
+    both flags. And `RecoveryKeyScreen` says, above the generate button whenever
+    `hasRecoveryPhrase == true`, that the new words REPLACE the current phrase
+    (`recoveryKeyReplacesExisting`) — true on every door, load-bearing on this one.
+    Falsification: (F44) key the line off `hasIdentityBackup` again → a verifier-only account
+    (`hasRecoveryPhrase: true, hasIdentityBackup: false`) gets the line; (F45) drop the
+    `hasRecoveryPhrase` field from the status payload → the same account gets the line because
+    the client reads absent as false (it must read absent as UNKNOWN, and the server must send
+    it). Deploy order: backend FIRST — a 0.2.35 client against a 0.2.33 server sees no field and
+    shows nothing, which is the safe direction.
 
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the

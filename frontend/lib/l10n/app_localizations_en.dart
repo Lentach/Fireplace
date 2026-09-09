@@ -2016,6 +2016,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get recoveryKeyLaterAction => 'Later';
 
   @override
+  String get recoveryKeyReplacesExisting =>
+      'You already have a phrase. New words replace it — the old ones stop working.';
+
+  @override
   String get backupNudgeTitle => 'Secure your account — create 12 words';
 
   @override

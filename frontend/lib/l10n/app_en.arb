@@ -775,6 +775,7 @@
   "recoveryKeyConfirmMismatch": "That is not the word. Check what you saved.",
   "recoveryKeyConfirmAction": "Confirm",
   "recoveryKeyLaterAction": "Later",
+  "recoveryKeyReplacesExisting": "You already have a phrase. New words replace it — the old ones stop working.",
   "backupNudgeTitle": "Secure your account — create 12 words",
   "recoveryKeyRequiredForLinking": "Linking requires a recovery phrase — you'll create it next.",
   "linkGateRestoreAction": "I have my recovery phrase",
