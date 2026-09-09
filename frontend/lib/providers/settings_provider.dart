@@ -257,6 +257,37 @@ class SettingsProvider extends ChangeNotifier {
     return fallback;
   }
 
+  /// (lxxxiii) clause 3: when this account last snoozed the Czaty backup
+  /// nudge on this install, or null. Per account — a second account on the
+  /// same browser gets its own line. Loaded by [loadBackupNudge]; until then
+  /// null, which the predicate reads as "never snoozed".
+  DateTime? get backupNudgeDismissedAt => _backupNudgeDismissedAt;
+  DateTime? _backupNudgeDismissedAt;
+
+  static String _backupNudgeKey(int userId) =>
+      'backup_nudge_dismissed_at_$userId';
+
+  Future<void> loadBackupNudge(int userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getInt(_backupNudgeKey(userId));
+    final next = stored == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(stored);
+    if (next == _backupNudgeDismissedAt) return;
+    _backupNudgeDismissedAt = next;
+    notifyListeners();
+  }
+
+  /// Hides the nudge for 7 days (`kBackupNudgeSnooze`, utils/backup_nudge.dart)
+  /// from [now]. Both the line's X and "Później" at the door write this.
+  Future<void> snoozeBackupNudge(int userId, {DateTime? now}) async {
+    final at = now ?? DateTime.now();
+    _backupNudgeDismissedAt = at;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_backupNudgeKey(userId), at.millisecondsSinceEpoch);
+  }
+
   /// Loads the per-user background and migrates both legacy storage shapes:
   /// per-conversation wallpaper keys and the global Cosmic starfield switch.
   ///

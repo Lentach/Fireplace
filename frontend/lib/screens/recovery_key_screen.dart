@@ -26,13 +26,19 @@ import '../widgets/top_snackbar.dart';
 /// tap-through.
 ///
 /// Pops `true` ONLY when verifier + backup landed on the server; any other
-/// exit (back, failure) pops nothing/`false`, and the enable-linking flow
-/// treats that as an abort ((lxxviii) clause 4 / falsification F9).
+/// exit (back, "Później", failure) pops nothing/`false`, and the enable-linking
+/// flow treats that as an abort ((lxxviii) clause 4 / falsification F9), while
+/// the registration offer treats it as "later" ((lxxxiii) clause 3).
 class RecoveryKeyScreen extends StatefulWidget {
-  const RecoveryKeyScreen({super.key, this.codec});
+  const RecoveryKeyScreen({super.key, this.codec, this.deferrable = false});
 
   /// Test seam; production seals with the real PBKDF2 + AES-GCM pair.
   final IdentityBackupCodec? codec;
+
+  /// (lxxxiii) clause 1: the offer at the door shows a "Później" action.
+  /// Forcing the phrase on someone who came to chat loses more users than it
+  /// protects.
+  final bool deferrable;
 
   @override
   State<RecoveryKeyScreen> createState() => _RecoveryKeyScreenState();
@@ -106,7 +112,7 @@ class _RecoveryKeyScreenState extends State<RecoveryKeyScreen> {
       setState(() => _saving = false);
       showTopSnackBar(
         context,
-        l10n.recoveryKeyBackupFailed,
+        l10n.recoveryKeySaveFailed,
         backgroundColor: Theme.of(context).colorScheme.error,
       );
       return;
@@ -133,7 +139,7 @@ class _RecoveryKeyScreenState extends State<RecoveryKeyScreen> {
     // Nothing was stored, so the phrase on screen is worthless — say so.
     showTopSnackBar(
       context,
-      l10n.recoveryKeyBackupFailed,
+      l10n.recoveryKeySaveFailed,
       backgroundColor: Theme.of(context).colorScheme.error,
     );
   }
@@ -145,6 +151,11 @@ class _RecoveryKeyScreenState extends State<RecoveryKeyScreen> {
     final l10n = AppLocalizations.of(context);
     final words = _words;
     final confirmIndex = _confirmIndex;
+    // (lxxxiii) clause 2: `exportIdentityForBackup` throws until
+    // `initialize()` has run, and at the door the identity is minted seconds
+    // after the shell appears. A disabled button for those seconds beats a
+    // phrase-shaped failure.
+    final e2eReady = context.watch<EncryptionProvider>().isE2EReady;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -184,12 +195,21 @@ class _RecoveryKeyScreenState extends State<RecoveryKeyScreen> {
               ),
             ),
             const SizedBox(height: 20),
-            if (words == null)
+            if (words == null) ...[
               FilledButton(
-                onPressed: _generate,
+                key: const Key('recovery-key-generate'),
+                onPressed: e2eReady ? _generate : null,
                 child: Text(l10n.recoveryKeyGenerateAction),
-              )
-            else if (confirmIndex != null)
+              ),
+              if (widget.deferrable) ...[
+                const SizedBox(height: 8),
+                TextButton(
+                  key: const Key('recovery-key-later'),
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: Text(l10n.recoveryKeyLaterAction),
+                ),
+              ],
+            ] else if (confirmIndex != null)
               ..._confirmStep(context, confirmIndex)
             else
               ..._wordsStep(context, words),

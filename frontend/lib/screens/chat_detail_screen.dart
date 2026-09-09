@@ -614,6 +614,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     );
   }
 
+  /// (lxxxi): the ONE pill standing in for every pre-link `none_for_device`
+  /// row, rendered at the oldest end of the list and in the all-hidden empty
+  /// state — both sites, one builder, one key.
+  Widget _preLinkDivider(BuildContext context) => MessageDateSeparator.label(
+    AppLocalizations.of(context).historyBeforeDeviceLinked,
+    key: const Key('pre-link-history-divider'),
+  );
+
   String _getContactName() {
     final conv = _getActiveConversation();
     return conv != null
@@ -746,11 +754,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                   Expanded(
                     child: Center(
                       child: preLinkDivider == 1
-                          ? MessageDateSeparator.label(
-                              AppLocalizations.of(context)
-                                  .historyBeforeDeviceLinked,
-                              key: const Key('pre-link-history-divider'),
-                            )
+                          ? _preLinkDivider(context)
                           : Text(
                               AppLocalizations.of(context).noMessagesYet,
                               style: RpgTheme.bodyFont(
@@ -821,10 +825,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                       final loadingSlot = _isLoadingMoreLocal ? 1 : 0;
                       if (preLinkDivider == 1 &&
                           effIndex == messages.length + loadingSlot) {
-                        return MessageDateSeparator.label(
-                          AppLocalizations.of(context).historyBeforeDeviceLinked,
-                          key: const Key('pre-link-history-divider'),
-                        );
+                        return _preLinkDivider(context);
                       }
                       if (_isLoadingMoreLocal && effIndex == messages.length) {
                         return const Padding(

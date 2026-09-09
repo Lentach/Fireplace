@@ -20,10 +20,13 @@ import '../widgets/hex_avatar.dart';
 import '../widgets/conversation_tile.dart';
 import '../widgets/conversation_list_skeleton.dart';
 import '../widgets/main_tab_screen_header.dart';
+import '../utils/backup_nudge.dart';
 import '../utils/instant_opaque_route.dart';
+import '../widgets/backup_nudge_line.dart';
 import 'chat_detail_screen.dart';
 import 'passcode_lock_screen.dart';
 import 'invitations_screen.dart';
+import 'recovery_key_screen.dart';
 
 class ConversationsScreen extends StatefulWidget {
   final VoidCallback? onAvatarTap;
@@ -36,6 +39,11 @@ class ConversationsScreen extends StatefulWidget {
 
 class _ConversationsScreenState extends State<ConversationsScreen> {
   Timer? _listCountdownTimer;
+
+  /// (lxxxiii) clause 1: armed once per fresh registration; fires the offer
+  /// when the server has said this account holds no backup. The provider is
+  /// held so dispose() can unsubscribe without touching the context.
+  (EncryptionProvider, VoidCallback)? _phraseOffer;
 
   @override
   void initState() {
@@ -76,14 +84,75 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
       // Start connection via ConnectionProvider (owns socket lifecycle)
       await auth.ensureSessionReady();
       if (!mounted) return;
-      conn.connect(auth.currentUser!.id, auth.token!, AppConfig.baseUrl);
+      final userId = auth.currentUser!.id;
+      conn.connect(userId, auth.token!, AppConfig.baseUrl);
+      settings.loadBackupNudge(userId).ignore();
+      if (auth.consumeFreshRegistration()) _armPhraseOffer(enc);
     });
   }
 
   @override
   void dispose() {
     _listCountdownTimer?.cancel();
+    _disarmPhraseOffer();
     super.dispose();
+  }
+
+  /// (lxxxiii) clause 1: the offer waits for an EXPLICIT `hasIdentityBackup:
+  /// false` — never unknown, never true (an existing account reached through
+  /// the lost-answer probe keeps whatever phrase it already holds).
+  void _armPhraseOffer(EncryptionProvider enc) {
+    void check() {
+      if (enc.hasIdentityBackup != false) return;
+      _disarmPhraseOffer();
+      if (mounted) _openRecoveryKey(deferrable: true);
+    }
+
+    _phraseOffer = (enc, check);
+    enc.addListener(check);
+    check();
+  }
+
+  void _disarmPhraseOffer() {
+    final offer = _phraseOffer;
+    if (offer == null) return;
+    _phraseOffer = null;
+    offer.$1.removeListener(offer.$2);
+  }
+
+  /// Any exit other than a saved backup is "later": snooze the Czaty line so
+  /// it does not reappear under the screen the user just closed.
+  Future<void> _openRecoveryKey({required bool deferrable}) async {
+    final settings = context.read<SettingsProvider>();
+    final userId = context.read<AuthProvider>().currentUser?.id;
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => RecoveryKeyScreen(deferrable: deferrable),
+      ),
+    );
+    if (saved == true || !deferrable || userId == null) return;
+    settings.snoozeBackupNudge(userId).ignore();
+  }
+
+  void _snoozeBackupNudge() {
+    final userId = context.read<AuthProvider>().currentUser?.id;
+    if (userId == null) return;
+    context.read<SettingsProvider>().snoozeBackupNudge(userId).ignore();
+  }
+
+  /// (lxxxiii) clause 3: the one muted line for an account the server
+  /// EXPLICITLY reported as having no phrase backup, or null.
+  Widget? _buildBackupNudge() {
+    final show = shouldShowBackupNudge(
+      hasIdentityBackup: context.watch<EncryptionProvider>().hasIdentityBackup,
+      dismissedAt: context.watch<SettingsProvider>().backupNudgeDismissedAt,
+      now: DateTime.now(),
+    );
+    if (!show) return null;
+    return BackupNudgeLine(
+      onTap: () => _openRecoveryKey(deferrable: false),
+      onDismiss: _snoozeBackupNudge,
+    );
   }
 
   void _openChat(int conversationId) {
@@ -188,10 +257,29 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   Widget _buildMobileLayout() {
     // Floating glass chrome: the list runs full-bleed behind the header
     // capsules (and behind the bottom nav via MainShell's extendBody);
-    // clearance is applied as list padding, not layout slots.
+    // clearance is applied as list padding, not layout slots. While the
+    // backup nudge is up it takes the header clearance itself and the list
+    // starts below it — the line has to exist in the skeleton, empty and
+    // populated states alike, so it cannot be a list item.
+    final nudge = _buildBackupNudge();
     return Stack(
       children: [
-        Positioned.fill(child: _buildConversationList(floatingChrome: true)),
+        Positioned.fill(
+          child: nudge == null
+              ? _buildConversationList(floatingChrome: true)
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(
+                      height:
+                          MediaQuery.paddingOf(context).top +
+                          MainTabScreenHeader.clearance,
+                    ),
+                    nudge,
+                    Expanded(child: _buildConversationList()),
+                  ],
+                ),
+        ),
         Positioned(top: 0, left: 0, right: 0, child: _buildCustomHeader()),
       ],
     );
@@ -303,6 +391,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _buildCustomHeader(),
+                ?_buildBackupNudge(),
                 Expanded(child: _buildConversationList()),
               ],
             ),

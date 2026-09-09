@@ -1361,7 +1361,7 @@ abstract class AppLocalizations {
   /// No description provided for @recoveryKeySubtitle.
   ///
   /// In pl, this message translates to:
-  /// **'Szybszy powrót, jeśli stracisz klucze'**
+  /// **'Odzyskasz hasło i konto, gdy stracisz urządzenie'**
   String get recoveryKeySubtitle;
 
   /// No description provided for @recoveryKeyGenerateAction.
@@ -3527,7 +3527,7 @@ abstract class AppLocalizations {
   /// No description provided for @recoveryKeyBackupExplainer.
   ///
   /// In pl, this message translates to:
-  /// **'Te 12 słów przywraca konto po utracie urządzenia. Kto je zna, ma Twoje konto. Pokazujemy je raz.'**
+  /// **'Te 12 słów odzyskuje hasło i konto po utracie urządzenia. Kto je zna, ma Twoje konto. Pokazujemy je raz.'**
   String get recoveryKeyBackupExplainer;
 
   /// No description provided for @recoveryKeyConfirmTitle.
@@ -3554,17 +3554,23 @@ abstract class AppLocalizations {
   /// **'Potwierdź'**
   String get recoveryKeyConfirmAction;
 
+  /// No description provided for @recoveryKeyLaterAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Później'**
+  String get recoveryKeyLaterAction;
+
+  /// No description provided for @backupNudgeTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zabezpiecz konto — utwórz 12 słów'**
+  String get backupNudgeTitle;
+
   /// No description provided for @recoveryKeyRequiredForLinking.
   ///
   /// In pl, this message translates to:
   /// **'Łączenie wymaga frazy odzyskiwania — utworzysz ją za chwilę.'**
   String get recoveryKeyRequiredForLinking;
-
-  /// No description provided for @recoveryKeyBackupFailed.
-  ///
-  /// In pl, this message translates to:
-  /// **'Nie udało się zapisać kopii kluczy — łączenie nie zostało włączone. Spróbuj ponownie.'**
-  String get recoveryKeyBackupFailed;
 
   /// No description provided for @linkGateRestoreAction.
   ///

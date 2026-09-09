@@ -754,7 +754,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get recoveryKeyTitle => 'Recovery key';
 
   @override
-  String get recoveryKeySubtitle => 'Get back in faster if you lose your keys';
+  String get recoveryKeySubtitle =>
+      'Recover your password and account if you lose a device';
 
   @override
   String get recoveryKeyGenerateAction => 'Generate recovery key';
@@ -1994,7 +1995,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get recoveryKeyBackupExplainer =>
-      'These 12 words restore the account after losing a device. Whoever has them owns it. Shown once.';
+      'These 12 words recover your password and the account after losing a device. Whoever has them owns it. Shown once.';
 
   @override
   String get recoveryKeyConfirmTitle => 'Confirm you saved the words';
@@ -2012,12 +2013,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get recoveryKeyConfirmAction => 'Confirm';
 
   @override
-  String get recoveryKeyRequiredForLinking =>
-      'Linking requires a recovery phrase — you\'ll create it next.';
+  String get recoveryKeyLaterAction => 'Later';
 
   @override
-  String get recoveryKeyBackupFailed =>
-      'The key backup could not be saved — linking was not enabled. Try again.';
+  String get backupNudgeTitle => 'Secure your account — create 12 words';
+
+  @override
+  String get recoveryKeyRequiredForLinking =>
+      'Linking requires a recovery phrase — you\'ll create it next.';
 
   @override
   String get linkGateRestoreAction => 'I have my recovery phrase';

@@ -11,9 +11,17 @@ enum AuthFormMode { login, register, recover }
 class AuthForm extends StatefulWidget {
   final AuthFormMode mode;
 
-  /// `phrase` is non-null only in [AuthFormMode.recover].
-  final Future<void> Function(String username, String password, String? phrase)
-  onSubmit;
+  /// [AuthFormMode.login] and [AuthFormMode.register]: the typed credentials.
+  final Future<void> Function(String username, String password) onSubmit;
+
+  /// [AuthFormMode.recover]: identifier, the normalized 12 words, and the NEW
+  /// password. The other two modes never call it.
+  final Future<void> Function(
+    String username,
+    String phrase,
+    String newPassword,
+  )
+  onRecover;
 
   /// Username to start with. Set when the screen sends the user from the
   /// register tab to the sign-in tab, so they never retype a name the app
@@ -28,6 +36,7 @@ class AuthForm extends StatefulWidget {
     super.key,
     required this.mode,
     required this.onSubmit,
+    required this.onRecover,
     this.initialUsername,
     this.onEdited,
   });
@@ -97,12 +106,18 @@ class _AuthFormState extends State<AuthForm> {
   Future<void> _handleSubmit() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _loading = true);
+    final username = _usernameController.text.trim();
+    final password = _passwordController.text;
     try {
-      await widget.onSubmit(
-        _usernameController.text.trim(),
-        _passwordController.text,
-        _isRecover ? RecoveryPhrase.normalize(_phraseController.text) : null,
-      );
+      if (_isRecover) {
+        await widget.onRecover(
+          username,
+          RecoveryPhrase.normalize(_phraseController.text),
+          password,
+        );
+      } else {
+        await widget.onSubmit(username, password);
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }

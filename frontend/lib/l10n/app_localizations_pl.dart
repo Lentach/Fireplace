@@ -764,7 +764,8 @@ class AppLocalizationsPl extends AppLocalizations {
   String get recoveryKeyTitle => 'Klucz odzyskiwania';
 
   @override
-  String get recoveryKeySubtitle => 'Szybszy powrót, jeśli stracisz klucze';
+  String get recoveryKeySubtitle =>
+      'Odzyskasz hasło i konto, gdy stracisz urządzenie';
 
   @override
   String get recoveryKeyGenerateAction => 'Wygeneruj klucz odzyskiwania';
@@ -2024,7 +2025,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get recoveryKeyBackupExplainer =>
-      'Te 12 słów przywraca konto po utracie urządzenia. Kto je zna, ma Twoje konto. Pokazujemy je raz.';
+      'Te 12 słów odzyskuje hasło i konto po utracie urządzenia. Kto je zna, ma Twoje konto. Pokazujemy je raz.';
 
   @override
   String get recoveryKeyConfirmTitle => 'Potwierdź, że masz słowa zapisane';
@@ -2042,12 +2043,14 @@ class AppLocalizationsPl extends AppLocalizations {
   String get recoveryKeyConfirmAction => 'Potwierdź';
 
   @override
-  String get recoveryKeyRequiredForLinking =>
-      'Łączenie wymaga frazy odzyskiwania — utworzysz ją za chwilę.';
+  String get recoveryKeyLaterAction => 'Później';
 
   @override
-  String get recoveryKeyBackupFailed =>
-      'Nie udało się zapisać kopii kluczy — łączenie nie zostało włączone. Spróbuj ponownie.';
+  String get backupNudgeTitle => 'Zabezpiecz konto — utwórz 12 słów';
+
+  @override
+  String get recoveryKeyRequiredForLinking =>
+      'Łączenie wymaga frazy odzyskiwania — utworzysz ją za chwilę.';
 
   @override
   String get linkGateRestoreAction => 'Mam frazę odzyskiwania';

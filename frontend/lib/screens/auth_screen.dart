@@ -203,16 +203,14 @@ class _AuthScreenState extends State<AuthScreen> {
                             onEdited: authProvider.statusCode == null
                                 ? null
                                 : authProvider.clearStatus,
-                            onSubmit: (username, password, phrase) async {
+                            onRecover: authProvider.recoverPassword,
+                            onSubmit: (username, password) async {
                               switch (_mode) {
                                 case AuthFormMode.login:
                                   await authProvider.login(username, password);
                                 case AuthFormMode.recover:
-                                  await authProvider.recoverPassword(
-                                    username,
-                                    phrase!,
-                                    password,
-                                  );
+                                  // The form routes this door to onRecover.
+                                  break;
                                 case AuthFormMode.register:
                                   final created = await authProvider.register(
                                     username,

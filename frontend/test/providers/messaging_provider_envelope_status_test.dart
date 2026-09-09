@@ -139,6 +139,30 @@ void main() {
       expect(provider.hiddenPreLinkCount, 1);
     });
 
+    test('the filtered view is rebuilt after an IN-PLACE mutation of the '
+        'loaded list (the cache invalidates on notify, not on reassignment)',
+        () async {
+      provider.onMessageHistory({
+        'conversationId': 10,
+        'messages': [
+          _row(id: 100, encryptedContent: '2:ct'),
+          _row(id: 101, envelopeStatus: 'none_for_device'),
+        ],
+      });
+      await pump();
+      // The hidden row forces a FILTERED copy, so the view is a different
+      // list than the store; an append to the store must still show.
+      expect(provider.messages.map((m) => m.id), [100]);
+
+      provider.onNewMessage(_row(id: 102, encryptedContent: '2:ct2'));
+      await pump();
+
+      expect(provider.loadedMessagesForTest.map((m) => m.id), [100, 101, 102]);
+      expect(provider.messages.map((m) => m.id), [100, 102],
+          reason: 'a stale filtered view would still read [100]');
+      expect(provider.hiddenPreLinkCount, 1);
+    });
+
     test('a row that never predated this device is not hidden', () async {
       provider.onMessageHistory({
         'conversationId': 10,

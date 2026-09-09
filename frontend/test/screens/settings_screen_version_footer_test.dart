@@ -62,6 +62,8 @@ void main() {
 
     expect(find.textContaining('0.0.2'), findsOneWidget);
     expect(find.textContaining('+'), findsNothing);
-    expect(find.textContaining('dev'), findsOneWidget);
+    // The footer is `version · gitCommit`; a bare 'dev' also matches copy
+    // that says "device".
+    expect(find.textContaining('· dev'), findsOneWidget);
   });
 }

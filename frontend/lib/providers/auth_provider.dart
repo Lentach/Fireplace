@@ -163,6 +163,7 @@ class AuthProvider extends ChangeNotifier {
   bool _isRestoringSession = true;
   String? _lastSessionEndReason;
   String? _recoverableUsername;
+  bool _freshRegistration = false;
 
   static const int _refreshMaxAttempts = 3;
   static const Duration _refreshRetryBaseDelay = Duration(milliseconds: 250);
@@ -193,6 +194,17 @@ class AuthProvider extends ChangeNotifier {
   /// ([AuthStatusCode.registerSucceeded]). Null whenever no such offer
   /// applies. The screen uses it to prefill the sign-in tab.
   String? get recoverableUsername => _recoverableUsername;
+
+  /// (lxxxiii) clause 1: true once after [register] ended SIGNED IN with an
+  /// account these credentials just created. The Chats screen consumes it to
+  /// offer the recovery phrase at the door. Reset by [clearStatus] (the start
+  /// of every attempt); the "taken → my credentials opened it" path never
+  /// sets it — that is an existing account, which may already hold a phrase.
+  bool consumeFreshRegistration() {
+    final fresh = _freshRegistration;
+    _freshRegistration = false;
+    return fresh;
+  }
 
   void setOnAccessTokenChanged(void Function(String)? cb) {
     onAccessTokenChanged = cb;
@@ -644,8 +656,13 @@ class AuthProvider extends ChangeNotifier {
     var code = await _register(username, password);
 
     if (code == AuthStatusCode.serverUnreachable) {
+      // The lost request is the one that created the account in every case
+      // seen in the field (2026-09-08); a pre-existing account with the same
+      // credentials is caught downstream by `hasIdentityBackup`.
+      _freshRegistration = true;
       final signIn = await _signIn(username, password);
       if (signIn == null) return true;
+      _freshRegistration = false;
       if (signIn == AuthStatusCode.serverUnreachable) {
         _report(signIn);
         return false;
@@ -669,6 +686,7 @@ class AuthProvider extends ChangeNotifier {
     }
 
     // The account exists from here on: never report a failure for it.
+    _freshRegistration = true;
     if (await _signIn(username, password) != null) {
       _recoverableUsername = username;
       _statusCode = AuthStatusCode.registerSucceeded;
@@ -787,6 +805,7 @@ class AuthProvider extends ChangeNotifier {
     _statusMessage = null;
     _statusCode = null;
     _recoverableUsername = null;
+    _freshRegistration = false;
     _isError = false;
     notifyListeners();
   }

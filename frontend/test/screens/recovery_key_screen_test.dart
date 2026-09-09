@@ -27,6 +27,8 @@ void main() {
     WidgetTester tester, {
     required List<bool?> results,
     void Function(String event, dynamic data)? onEmit,
+    bool e2eReady = true,
+    bool deferrable = false,
   }) async {
     FlutterSecureStorage.setMockInitialValues({});
     SharedPreferences.setMockInitialValues({});
@@ -37,6 +39,9 @@ void main() {
           const ServerIdentityGuard(exists: false),
     );
     provider = EncryptionProvider(service: service);
+    // The real flow reaches this screen with `_initializeE2EInner` done;
+    // (lxxxiii) clause 2 gates the generate button on exactly that.
+    if (e2eReady) provider.markE2EInitialized();
     emitted = [];
     provider.setEmitCallback((event, data) {
       emitted.add((event, data));
@@ -60,6 +65,7 @@ void main() {
                     final saved = await Navigator.of(context).push<bool>(
                       MaterialPageRoute(
                         builder: (_) => RecoveryKeyScreen(
+                          deferrable: deferrable,
                           codec: IdentityBackupCodec(
                             kdf: FakePasscodeKdf(),
                             sealer: FakeContentSealer(),
@@ -207,7 +213,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final l10n = await AppLocalizations.delegate.load(const Locale('en'));
-    expect(find.text(l10n.recoveryKeyBackupFailed), findsOneWidget);
+    expect(find.text(l10n.recoveryKeySaveFailed), findsOneWidget);
     expect(find.byType(RecoveryKeyScreen), findsOneWidget,
         reason: 'the screen must not pretend success');
     expect(results, isEmpty,
@@ -215,5 +221,35 @@ void main() {
     // Drain the failure snackbar's auto-dismiss timer.
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('(lxxxiii) clause 2: the generate button is disabled until E2E '
+      'is ready and enables when it becomes ready', (tester) async {
+    await pumpScreen(tester, results: <bool?>[], e2eReady: false);
+    final button = find.byKey(const Key('recovery-key-generate'));
+    expect(tester.widget<FilledButton>(button).onPressed, isNull,
+        reason: 'exportIdentityForBackup throws before initialize() ran');
+
+    provider.markE2EInitialized();
+    provider.notifyListeners();
+    await tester.pump();
+    expect(tester.widget<FilledButton>(button).onPressed, isNotNull);
+  });
+
+  testWidgets('(lxxxiii) clause 1: "Later" exists only on the deferrable door '
+      'and pops false', (tester) async {
+    final results = <bool?>[];
+    await pumpScreen(tester, results: results);
+    expect(find.byKey(const Key('recovery-key-later')), findsNothing,
+        reason: 'Settings/Devices/nudge doors have no "later"');
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    results.clear();
+    await pumpScreen(tester, results: results, deferrable: true);
+    await tester.tap(find.byKey(const Key('recovery-key-later')));
+    await tester.pumpAndSettle();
+    expect(results, [false]);
+    expect(emitted, isEmpty, reason: 'declining uploads nothing');
   });
 }

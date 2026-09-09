@@ -2905,6 +2905,9 @@ that is the designed outcome).
     it is not an oracle for who enrolled either (F38).
     (The first cut skipped the dummy "for the memory cost"; that argument did not hold, since an
     attacker who wants to burn Argon2 simply names a real account. Fixed in the same release.)
+    Accepted residual (owner, 2026-09-09): the dummy paths do not perform the failure-counter
+    UPDATE the wrong-phrase-on-an-enrolled-account path pays (~1 ms, one indexed row) — a
+    difference below network jitter, not worth a dummy write. Recorded, not fixed.
     Identifier
     resolves exactly as `login` does (`username#tag`, or a bare username that matches exactly one
     account; an ambiguous bare name resolves to nobody). The phrase is verified against the
@@ -2934,6 +2937,56 @@ that is the designed outcome).
     (F34) skip the dummy verify → an unknown identifier answers without paying the Argon2 cost
     (asserted by the verify spy); (F37) same, on the ambiguous-bare-name path. Frontend: (F35) map 401 on the recover attempt to `invalidCredentials` → the
     screen names a password field the form does not have.
+  - **(lxxxiii) — THE PHRASE IS OFFERED AT THE DOOR AND NUDGED ON THE LIST (owner "go" 2026-09-09,
+    closing the multi-device programme's last open ask: "PWA users never need to link").** The
+    12 words do not lock the account — only "Włącz łączenie" enrols (an `account_authorizations`
+    row, (lxxiii)); `setRecoveryKey` has no enrolment precondition (`handleSetRecoveryKey`), so
+    for a plain single-browser user the phrase buys exactly one thing: forgot password → still
+    get in ((lxxxii) clause 2). No gate, no QR, no devices screen. Losing the browser on an
+    un-enrolled account still means new keys (the phrase restores the identity at the gate ONLY
+    when the account is enrolled — (lxxviii) clause 3 is reached through `needsDeviceLink`, which
+    an un-enrolled account never raises); contacts still see the muted note. Password recovery,
+    not history.
+    **Clause 1 — at registration.** `AuthProvider.register` stamps `freshRegistration` on the two
+    paths that end SIGNED IN with an account these credentials just created (the clean 201 and
+    the lost-answer → probe-sign-in path); the "taken → the typed credentials opened it" path is
+    an EXISTING account and is not stamped. `clearStatus()` (the start of every attempt) clears
+    it. The Chats screen CONSUMES the stamp once, and pushes the existing `RecoveryKeyScreen`
+    (12 words, Zapisałem, confirm one word — the §6.2.1/(lxxviii) screen, unchanged in substance)
+    the moment `ownKeyBundleStatus` reports `hasIdentityBackup: false` for this account — never
+    on unknown, never on true (a pre-existing account reached through the probe path keeps its
+    backup). The screen gains `deferrable: true` → a "Później" action (`recovery-key-later`)
+    under the generate button; any exit other than a saved backup counts as "later" (clause 3).
+    Forcing the screen on someone who came to chat loses more users than it protects.
+    **Clause 2 — the generate button waits for E2E.** `RecoveryKeyScreen` enables "Wygeneruj"
+    only while `EncryptionProvider.isE2EReady` — `exportIdentityForBackup` throws before
+    `initialize()` has finished, and at the door the identity is minted seconds after the shell
+    appears. Applies to every door (Settings, Devices, the nudge, the offer): a disabled button
+    for two seconds beats a phrase-shaped failure snackbar. The failure snackbar itself becomes
+    context-neutral (`recoveryKeySaveFailed`, a dead key until now: "Nie zapisano klucza. Te słowa
+    nie działają — spróbuj ponownie."); `recoveryKeyBackupFailed` ("łączenie nie zostało
+    włączone") is DELETED — it was wrong on two of the four doors, and the linking flow's abort
+    is visible on the toggle itself.
+    **Clause 3 — the legacy nudge.** No migration: `ownKeyBundleStatus.hasIdentityBackup`
+    ((lxxviii)) already says whether an account has a backup. Any account with an EXPLICIT
+    `false` gets ONE muted line at the top of Czaty — `backup-nudge`, "Zabezpiecz konto — utwórz
+    12 słów", tap → the same screen; an X (`backup-nudge-dismiss`) snoozes it. Snooze is
+    `SettingsProvider.snoozeBackupNudge(userId)`: prefs key `backup_nudge_dismissed_at_<uid>`,
+    epoch ms, per account per install, hides the line for 7 days
+    (`kBackupNudgeSnooze`); the pure predicate is `shouldShowBackupNudge(hasIdentityBackup,
+    dismissedAt, now)` in `utils/backup_nudge.dart`. Done removes it: `onRecoveryKeySet` success
+    already flips `_hasIdentityBackup = true`. "Później" at the door writes the same snooze — the
+    user just declined, and a line under the very screen they closed is a nag, not a reminder.
+    The line is rendered ABOVE the list in the Chats column (mobile: the list stops scrolling
+    behind the header while the line is up; desktop: between the header and the list) so it
+    exists in the skeleton, empty and populated states alike. Unknown (`null`, older server)
+    renders nothing, as the devices-screen nudge already does.
+    Falsification: (F39) drop the `hasIdentityBackup == false` condition on the offer → the offer
+    fires on an account the status reported `true` for; (F40) predicate ignores `dismissedAt` →
+    the line is back the moment it is dismissed; (F41) generate button ignores `isE2EReady` → it
+    is enabled with E2E down; (F42) stamp `freshRegistration` on the taken-but-mine path → an
+    existing account is offered a phrase it may already hold. Live: register → shell → offer →
+    Później → line on Czaty → X → line gone → Settings → phrase → line stays gone after relogin.
 
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the

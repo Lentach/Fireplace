@@ -51,6 +51,9 @@ void main() {
       expect(auth.isLoggedIn, isTrue);
       expect(auth.statusCode, isNull);
       expect(auth.recoverableUsername, isNull);
+      // (lxxxiii) clause 1 / F42: an EXISTING account is not a fresh one —
+      // it may already hold a phrase, so no offer at the door.
+      expect(auth.consumeFreshRegistration(), isFalse);
     });
 
     test("someone else's name is named, and offers the sign-in door",
@@ -95,6 +98,9 @@ void main() {
       expect(auth.statusCode, isNull);
       expect(auth.recoverableUsername, isNull);
       expect(calls, contains('POST /auth/login'));
+      // (lxxxiii) clause 1: the Chats screen offers the phrase exactly once.
+      expect(auth.consumeFreshRegistration(), isTrue);
+      expect(auth.consumeFreshRegistration(), isFalse);
     });
 
     test(
@@ -146,6 +152,8 @@ void main() {
         expect(auth.isLoggedIn, isTrue);
         expect(auth.statusCode, isNull);
         expect(registers, 1, reason: 'no blind re-register once signed in');
+        // (lxxxiii) clause 1: the lost request created it — offer the phrase.
+        expect(auth.consumeFreshRegistration(), isTrue);
       });
 
       test('the lost request did NOT create it: register is retried once',
