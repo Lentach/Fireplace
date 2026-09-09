@@ -97,6 +97,18 @@ export const RECOVERY_ARGON2_OPTIONS: argon2.HashOptions = {
   parallelism: 1,
 };
 
+/**
+ * A verifier of an arbitrary phrase under {@link RECOVERY_ARGON2_OPTIONS},
+ * verified against when there is NOTHING real to verify — an unknown
+ * identifier at `/auth/recover`, or a known account with no phrase enrolled —
+ * so neither answers faster than a wrong phrase would ((lxxxii) clause 2:
+ * the door is unauthenticated, and response time must not enumerate who
+ * exists or who enrolled). Login's `TIMING_SAFE_DUMMY_HASH` is the bcrypt
+ * precedent.
+ */
+export const TIMING_SAFE_DUMMY_VERIFIER =
+  '$argon2id$v=19$m=19456,p=1,t=2$w2BrHORjqgyeXxt8gHZoKg$cJ92sbtx0cBRD/dsML6P5/sN5qKUBQNSM3Et6pDD5T0';
+
 export type RequestResetStatus =
   | 'pending'
   | 'existing'
@@ -392,14 +404,21 @@ export class IdentityResetService {
    * the SHORTCUT as taken, and the (lxxviii) restore door ignores it for the
    * same reason. The age rule does not apply either: it defends the shortcut
    * against a phrase the thief minted, and minting one already requires the
-   * identity. No phrase enrolled reads as a wrong phrase, deliberately.
+   * identity. No phrase enrolled reads as a wrong phrase, deliberately — and
+   * COSTS the same: this door is unauthenticated, so the answer must not be
+   * faster for an account that never enrolled.
    */
   async verifyRecoveryPhrase(
     userId: number,
     phrase: string,
   ): Promise<'accepted' | 'invalid_phrase' | 'locked'> {
     const row = await this.recoveryRepo.findOne({ where: { userId } });
-    if (!row) return 'invalid_phrase';
+    if (!row) {
+      await argon2
+        .verify(TIMING_SAFE_DUMMY_VERIFIER, phrase)
+        .catch(() => false);
+      return 'invalid_phrase';
+    }
     return this.verifyAgainstRow(this.recoveryRepo, row, phrase);
   }
 

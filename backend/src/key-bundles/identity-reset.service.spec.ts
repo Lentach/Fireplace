@@ -659,12 +659,20 @@ describe('IdentityResetService (reset ceremony §6.2 / recovery key §6.2.1)', (
       );
     });
 
-    it('no phrase enrolled reads exactly like a wrong phrase', async () => {
+    it('no phrase enrolled reads exactly like a wrong phrase, and COSTS the same', async () => {
       recoveryRepo.findOne.mockResolvedValue(null);
 
+      // (F38) Unauthenticated door: an un-enrolled account must not answer
+      // faster than an enrolled one with a wrong phrase. The native argon2
+      // module cannot be spied on, so the COST itself is asserted: the
+      // 19 MiB / t=2 verify takes tens of milliseconds; the bare early return
+      // it replaces took none.
+      const started = performance.now();
       await expect(service.verifyRecoveryPhrase(7, phrase)).resolves.toBe(
         'invalid_phrase',
       );
+      expect(performance.now() - started).toBeGreaterThan(15);
+      expect(recoveryRepo.update).not.toHaveBeenCalled();
     });
   });
 

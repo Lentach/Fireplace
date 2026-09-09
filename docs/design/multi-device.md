@@ -2899,8 +2899,10 @@ that is the designed outcome).
     **Clause 2 — the phrase alone resets the password.** New REST door `POST /auth/recover
     { identifier, phrase, newPassword }`, UNAUTHENTICATED, throttled 5 / 15 min per IP (an
     Argon2id verify costs 19 MiB; the throttle is the whole DoS control). An unknown identifier
-    pays a DUMMY Argon2id verify (`TIMING_SAFE_DUMMY_ARGON2`, same parameters) and touches no
-    counter — login's bcrypt twin — so the door is not a timing oracle for which usernames exist.
+    pays a DUMMY Argon2id verify (`TIMING_SAFE_DUMMY_VERIFIER`, same parameters) and touches no
+    counter — login's bcrypt twin — so the door is not a timing oracle for which usernames exist;
+    a KNOWN account with no phrase enrolled pays the same dummy inside `verifyRecoveryPhrase`, so
+    it is not an oracle for who enrolled either (F38).
     (The first cut skipped the dummy "for the memory cost"; that argument did not hold, since an
     attacker who wants to burn Argon2 simply names a real account. Fixed in the same release.)
     Identifier
