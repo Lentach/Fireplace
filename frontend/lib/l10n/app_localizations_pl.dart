@@ -547,6 +547,18 @@ class AppLocalizationsPl extends AppLocalizations {
       'Serwer nie mógł tego teraz obsłużyć. Spróbuj za chwilę.';
 
   @override
+  String get authStatusPhraseRejected => 'Nazwa lub fraza nie pasuje.';
+
+  @override
+  String get authForgotPassword => 'Nie pamiętam hasła';
+
+  @override
+  String get authNewPasswordHint => 'Nowe hasło';
+
+  @override
+  String get authRecoverSubmit => 'Ustaw nowe hasło';
+
+  @override
   String get authGoToLogin => 'Przejdź do logowania';
 
   @override
@@ -702,7 +714,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get linkGateResetHint =>
-      'Reset: nowe klucze po 72 h, inne urządzenia wylogowane, stara historia przepada.';
+      'Reset: nowe klucze po 6 h, inne urządzenia wylogowane, stara historia przepada.';
 
   @override
   String get linkGateResetPendingTitle => 'Reset kluczy w toku';
@@ -714,7 +726,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get linkGateResetPhraseTooNew =>
-      'Klucz odzyskiwania ma mniej niż 3 dni — obowiązuje pełne 72 h.';
+      'Klucz odzyskiwania ma mniej niż 6 h — obowiązuje pełne 6 h.';
 
   @override
   String get linkGateCheckingTitle => 'Sprawdzam klucze tego urządzenia…';
@@ -782,7 +794,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get recoveryPhrasePromptBody =>
-      '12 słów skraca oczekiwanie z 72 h do 1 h.';
+      '12 słów skraca oczekiwanie z 6 h do 1 h.';
 
   @override
   String get recoveryPhrasePromptHint => 'dwanaście słów oddzielonych spacjami';
@@ -803,7 +815,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get identityResetPhraseTooNew =>
-      'Reset rozpoczęty. Klucz ma mniej niż 3 dni, więc czekasz pełne 72 h.';
+      'Reset rozpoczęty. Klucz ma mniej niż 6 h, więc czekasz pełne 6 h.';
 
   @override
   String get identityResetAlreadyRunning =>

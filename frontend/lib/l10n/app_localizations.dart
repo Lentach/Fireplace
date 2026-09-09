@@ -1040,6 +1040,30 @@ abstract class AppLocalizations {
   /// **'Serwer nie mógł tego teraz obsłużyć. Spróbuj za chwilę.'**
   String get authStatusServerError;
 
+  /// Auth surface status, localized from an AuthStatusCode: the recover door refused (unknown name, wrong phrase, or none enrolled — one wording by design).
+  ///
+  /// In pl, this message translates to:
+  /// **'Nazwa lub fraza nie pasuje.'**
+  String get authStatusPhraseRejected;
+
+  /// Link under the sign-in form that opens the recover-with-phrase form.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie pamiętam hasła'**
+  String get authForgotPassword;
+
+  /// Password field hint on the recover form.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nowe hasło'**
+  String get authNewPasswordHint;
+
+  /// Submit button of the recover form.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ustaw nowe hasło'**
+  String get authRecoverSubmit;
+
   /// Button that switches the auth screen to the sign-in tab with the username prefilled.
   ///
   /// In pl, this message translates to:
@@ -1253,7 +1277,7 @@ abstract class AppLocalizations {
   /// No description provided for @linkGateResetHint.
   ///
   /// In pl, this message translates to:
-  /// **'Reset: nowe klucze po 72 h, inne urządzenia wylogowane, stara historia przepada.'**
+  /// **'Reset: nowe klucze po 6 h, inne urządzenia wylogowane, stara historia przepada.'**
   String get linkGateResetHint;
 
   /// No description provided for @linkGateResetPendingTitle.
@@ -1271,7 +1295,7 @@ abstract class AppLocalizations {
   /// No description provided for @linkGateResetPhraseTooNew.
   ///
   /// In pl, this message translates to:
-  /// **'Klucz odzyskiwania ma mniej niż 3 dni — obowiązuje pełne 72 h.'**
+  /// **'Klucz odzyskiwania ma mniej niż 6 h — obowiązuje pełne 6 h.'**
   String get linkGateResetPhraseTooNew;
 
   /// No description provided for @linkGateCheckingTitle.
@@ -1391,7 +1415,7 @@ abstract class AppLocalizations {
   /// No description provided for @recoveryPhrasePromptBody.
   ///
   /// In pl, this message translates to:
-  /// **'12 słów skraca oczekiwanie z 72 h do 1 h.'**
+  /// **'12 słów skraca oczekiwanie z 6 h do 1 h.'**
   String get recoveryPhrasePromptBody;
 
   /// No description provided for @recoveryPhrasePromptHint.
@@ -1427,7 +1451,7 @@ abstract class AppLocalizations {
   /// No description provided for @identityResetPhraseTooNew.
   ///
   /// In pl, this message translates to:
-  /// **'Reset rozpoczęty. Klucz ma mniej niż 3 dni, więc czekasz pełne 72 h.'**
+  /// **'Reset rozpoczęty. Klucz ma mniej niż 6 h, więc czekasz pełne 6 h.'**
   String get identityResetPhraseTooNew;
 
   /// No description provided for @identityResetAlreadyRunning.

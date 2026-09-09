@@ -7,6 +7,7 @@ import { UsersService } from '../users/users.service';
 import { RefreshTokensService } from './refresh-tokens.service';
 import { User } from '../users/user.entity';
 import { DevicesService } from '../key-bundles/devices.service';
+import { IdentityResetService } from '../key-bundles/identity-reset.service';
 
 jest.mock('bcrypt', () => ({
   compare: jest.fn(),
@@ -24,6 +25,9 @@ describe('AuthService', () => {
     >
   >;
   let devicesService: jest.Mocked<Pick<DevicesService, 'resolveLoginDeviceId'>>;
+  let identityResetService: jest.Mocked<
+    Pick<IdentityResetService, 'verifyRecoveryPhrase'>
+  >;
 
   const mockUser: Partial<User> = {
     id: 1,
@@ -43,6 +47,7 @@ describe('AuthService', () => {
             findByUsername: jest.fn(),
             findByUsernameAndTag: jest.fn(),
             findById: jest.fn(),
+            setPassword: jest.fn(() => Promise.resolve(new Date())),
           },
         },
         {
@@ -68,6 +73,12 @@ describe('AuthService', () => {
             resolveLoginDeviceId: jest.fn(() => Promise.resolve(1)),
           },
         },
+        {
+          provide: IdentityResetService,
+          useValue: {
+            verifyRecoveryPhrase: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -76,6 +87,7 @@ describe('AuthService', () => {
     jwtService = module.get(JwtService);
     refreshTokensService = module.get(RefreshTokensService);
     devicesService = module.get(DevicesService);
+    identityResetService = module.get(IdentityResetService);
     jest.clearAllMocks();
   });
 
@@ -215,6 +227,102 @@ describe('AuthService', () => {
       expect(usersService.findByUsername).not.toHaveBeenCalled();
       // Constant-time guard still runs a real compare to defeat enumeration.
       expect(bcrypt.compare).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // Amendment (lxxxii) clause 2 — the recovery phrase as a credential.
+  describe('recoverPassword', () => {
+    const phrase =
+      'abandon ability able about above absent absorb abstract absurd abuse access accident';
+
+    it('a correct phrase sets the password and answers with login tokens', async () => {
+      usersService.findByUsernameAndTag.mockResolvedValue(mockUser as User);
+      identityResetService.verifyRecoveryPhrase.mockResolvedValue('accepted');
+
+      const result = await service.recoverPassword(
+        'testuser#0427',
+        phrase,
+        'NewPass1x',
+      );
+
+      expect(identityResetService.verifyRecoveryPhrase).toHaveBeenCalledWith(
+        1,
+        phrase,
+      );
+      expect(usersService.setPassword).toHaveBeenCalledWith(1, 'NewPass1x');
+      expect(devicesService.resolveLoginDeviceId).toHaveBeenCalledWith(1);
+      expect(result).toEqual({
+        access_token: 'mock_jwt_token',
+        refresh_token: 'mock_refresh_plain',
+      });
+    });
+
+    it('signs the token in a LATER second than passwordChangedAt, or JwtStrategy rejects it on arrival', async () => {
+      usersService.findByUsernameAndTag.mockResolvedValue(mockUser as User);
+      identityResetService.verifyRecoveryPhrase.mockResolvedValue('accepted');
+      let stamp = 0;
+      (usersService.setPassword as jest.Mock).mockImplementation(() => {
+        stamp = Date.now();
+        return Promise.resolve(new Date(stamp));
+      });
+      let signedAt = 0;
+      jwtService.sign.mockImplementation(() => {
+        signedAt = Date.now();
+        return 'mock_jwt_token';
+      });
+
+      await service.recoverPassword('testuser#0427', phrase, 'NewPass1x');
+
+      // `iat` is floored to the second and refused when <= the stamp's second.
+      expect(Math.floor(signedAt / 1000)).toBeGreaterThan(
+        Math.floor(stamp / 1000),
+      );
+    });
+
+    it('an unknown identifier is refused BEFORE any phrase verify', async () => {
+      usersService.findByUsername.mockResolvedValue([]);
+
+      await expect(
+        service.recoverPassword('nobody', phrase, 'NewPass1x'),
+      ).rejects.toThrow(UnauthorizedException);
+      // (F34) The Argon2id verify is the 19 MiB cost an attacker must never
+      // be able to spend on a name that resolves to nobody.
+      expect(identityResetService.verifyRecoveryPhrase).not.toHaveBeenCalled();
+      expect(usersService.setPassword).not.toHaveBeenCalled();
+    });
+
+    it('a wrong phrase is refused with the same wording as an unknown name', async () => {
+      usersService.findByUsernameAndTag.mockResolvedValue(mockUser as User);
+      identityResetService.verifyRecoveryPhrase.mockResolvedValue(
+        'invalid_phrase',
+      );
+
+      await expect(
+        service.recoverPassword('testuser#0427', 'wrong', 'NewPass1x'),
+      ).rejects.toThrow('Invalid credentials');
+      expect(usersService.setPassword).not.toHaveBeenCalled();
+    });
+
+    it('a lockout answers 423, distinct from a wrong phrase', async () => {
+      usersService.findByUsernameAndTag.mockResolvedValue(mockUser as User);
+      identityResetService.verifyRecoveryPhrase.mockResolvedValue('locked');
+
+      await expect(
+        service.recoverPassword('testuser#0427', phrase, 'NewPass1x'),
+      ).rejects.toMatchObject({ status: 423 });
+      expect(usersService.setPassword).not.toHaveBeenCalled();
+    });
+
+    it('an ambiguous bare username resolves to nobody', async () => {
+      usersService.findByUsername.mockResolvedValue([
+        mockUser as User,
+        { ...mockUser, id: 2, tag: '9999' } as User,
+      ]);
+
+      await expect(
+        service.recoverPassword('testuser', phrase, 'NewPass1x'),
+      ).rejects.toThrow(UnauthorizedException);
+      expect(identityResetService.verifyRecoveryPhrase).not.toHaveBeenCalled();
     });
   });
 

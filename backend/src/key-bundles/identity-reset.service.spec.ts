@@ -567,6 +567,118 @@ describe('IdentityResetService (reset ceremony §6.2 / recovery key §6.2.1)', (
     });
   });
 
+  // Amendment (lxxxii) clause 2: the phrase as a CREDENTIAL. Same verifier,
+  // same counter, same lockout as the §6.2 shortcut — but never spent, and
+  // `usedAt` ignored, because the phrase is the seed, not a ticket.
+  describe('verifyRecoveryPhrase (the password door)', () => {
+    const phrase =
+      'abandon ability able about above absent absorb abstract absurd abuse access accident';
+    let verifierHash: string;
+    beforeAll(async () => {
+      verifierHash = await argon2.hash(phrase, RECOVERY_ARGON2_OPTIONS);
+    });
+    const enrolled = (overrides: Record<string, unknown> = {}) => ({
+      id: 3,
+      userId: 7,
+      verifierHash,
+      usedAt: null,
+      failedAttempts: 0,
+      lockedUntil: null,
+      createdAt: new Date(),
+      ...overrides,
+    });
+
+    it('accepts the phrase without spending it', async () => {
+      recoveryRepo.findOne.mockResolvedValue(enrolled());
+
+      await expect(service.verifyRecoveryPhrase(7, phrase)).resolves.toBe(
+        'accepted',
+      );
+      expect(recoveryRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('a phrase already spent on the shortcut still opens the door', async () => {
+      recoveryRepo.findOne.mockResolvedValue(enrolled({ usedAt: new Date() }));
+
+      await expect(service.verifyRecoveryPhrase(7, phrase)).resolves.toBe(
+        'accepted',
+      );
+    });
+
+    it('a correct phrase after fumbles clears the count and still does not spend', async () => {
+      recoveryRepo.findOne.mockResolvedValue(enrolled({ failedAttempts: 4 }));
+
+      await expect(service.verifyRecoveryPhrase(7, phrase)).resolves.toBe(
+        'accepted',
+      );
+      expect(recoveryRepo.update).toHaveBeenCalledWith(
+        { id: 3 },
+        { failedAttempts: 0, lockedUntil: null },
+      );
+    });
+
+    it('a phrase minted a minute ago opens the door (no age rule here)', async () => {
+      recoveryRepo.findOne.mockResolvedValue(
+        enrolled({ createdAt: new Date(Date.now() - 60_000) }),
+      );
+
+      await expect(service.verifyRecoveryPhrase(7, phrase)).resolves.toBe(
+        'accepted',
+      );
+    });
+
+    it('a wrong phrase draws on the SAME counter the shortcut uses', async () => {
+      recoveryRepo.findOne.mockResolvedValue(enrolled());
+      recoveryBuilder.execute.mockResolvedValue({
+        affected: 1,
+        raw: [{ failedAttempts: 1 }],
+      });
+
+      await expect(service.verifyRecoveryPhrase(7, 'wrong')).resolves.toBe(
+        'invalid_phrase',
+      );
+      expect(setSql(recoveryBuilder.set)).toContain('"failedAttempts" + 1');
+    });
+
+    it('locks on the attempt that reaches the limit, and stays locked', async () => {
+      recoveryRepo.findOne.mockResolvedValue(enrolled());
+      recoveryBuilder.execute.mockResolvedValue({
+        affected: 1,
+        raw: [{ failedAttempts: RECOVERY_MAX_FAILED_ATTEMPTS }],
+      });
+      await expect(service.verifyRecoveryPhrase(7, 'wrong')).resolves.toBe(
+        'locked',
+      );
+
+      recoveryRepo.findOne.mockResolvedValue(
+        enrolled({ lockedUntil: new Date(Date.now() + 60_000) }),
+      );
+      // The RIGHT phrase is refused while locked — and not even verified.
+      await expect(service.verifyRecoveryPhrase(7, phrase)).resolves.toBe(
+        'locked',
+      );
+    });
+
+    it('no phrase enrolled reads exactly like a wrong phrase', async () => {
+      recoveryRepo.findOne.mockResolvedValue(null);
+
+      await expect(service.verifyRecoveryPhrase(7, phrase)).resolves.toBe(
+        'invalid_phrase',
+      );
+    });
+  });
+
+  // Amendment (lxxxii) clause 1: the delay is 6 h, and the (xlii) age floor
+  // is DEFINED as the delay, so it follows — a phrase minted after a
+  // compromise still cannot buy the shortcut inside the window it removes.
+  describe('delay constants', () => {
+    it('the reset delay is 6 hours and the age floor equals it', () => {
+      expect(RESET_DELAY_MS).toBe(6 * 60 * 60 * 1000);
+      expect(RECOVERY_MIN_AGE_MS).toBe(RESET_DELAY_MS);
+      expect(RESET_DELAY_RECOVERY_MS).toBeLessThan(RESET_DELAY_MS);
+    });
+  });
+
   describe('cancel / expiry serialization (falsification 10)', () => {
     it('cancels only a row that is still pending', async () => {
       resetBuilder.execute.mockResolvedValue({ affected: 1, raw: [] });

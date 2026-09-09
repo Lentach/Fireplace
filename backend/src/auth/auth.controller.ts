@@ -4,6 +4,7 @@ import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshBodyDto } from './dto/refresh-body.dto';
+import { RecoverPasswordDto } from './dto/recover-password.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -23,6 +24,23 @@ export class AuthController {
   @Post('login')
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto.identifier, dto.password);
+  }
+
+  /**
+   * POST /auth/recover — the recovery phrase alone sets a new password and
+   * answers with login tokens (spec §12 amendment (lxxxii) clause 2).
+   * Unauthenticated by design. 5 per 15 minutes per IP: every attempt with a
+   * real identifier costs a 19 MiB Argon2id verify, so the throttle is the
+   * DoS control, not a courtesy.
+   */
+  @Throttle({ default: { limit: 5, ttl: 900000 } })
+  @Post('recover')
+  recover(@Body() dto: RecoverPasswordDto) {
+    return this.authService.recoverPassword(
+      dto.identifier,
+      dto.phrase,
+      dto.newPassword,
+    );
   }
 
   /** Exchange opaque refresh token for a fresh access JWT and renewed sliding session. */

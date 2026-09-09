@@ -88,8 +88,9 @@ void main() {
       expect(message, isNot(l10n.identityResetStarted));
       // ...and distinct from a rejection, which is the wrong conclusion.
       expect(message, isNot(l10n.identityResetPhraseRejected));
-      // The wait it explains is the full one, so the number has to appear.
-      expect(message, contains('72'));
+      // The wait it explains is the full one, so the number has to appear
+      // (6 h since (lxxxii) clause 1).
+      expect(message, contains('6 h'));
     }
   });
 

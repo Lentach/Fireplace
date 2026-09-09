@@ -1,10 +1,17 @@
-import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  Logger,
+  HttpException,
+  HttpStatus,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { User } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
 import { RefreshTokensService } from './refresh-tokens.service';
 import { DevicesService } from '../key-bundles/devices.service';
+import { IdentityResetService } from '../key-bundles/identity-reset.service';
 import { DEFAULT_DEVICE_ID } from '../key-bundles/key-bundles.service';
 
 // Precomputed bcrypt hash used for a constant-time comparison when the
@@ -22,6 +29,7 @@ export class AuthService {
     private jwtService: JwtService,
     private refreshTokensService: RefreshTokensService,
     private devicesService: DevicesService,
+    private identityResetService: IdentityResetService,
   ) {}
 
   async register(username: string, password: string) {
@@ -31,26 +39,7 @@ export class AuthService {
   }
 
   async login(identifier: string, password: string) {
-    let user: User | null = null;
-    if (identifier.includes('#')) {
-      const [u, t] = identifier.split('#');
-      if (u && t)
-        user = await this.usersService.findByUsernameAndTag(u.trim(), t.trim());
-    } else {
-      const users = await this.usersService.findByUsername(identifier.trim());
-      if (users.length === 1) user = users[0];
-      else if (users.length > 1) {
-        // Ambiguous bare username: do NOT reveal that several accounts share
-        // this name (user enumeration) and do NOT short-circuit before the
-        // bcrypt compare below. Leaving `user` null routes this through the
-        // constant-time dummy-compare path, so an ambiguous username is
-        // indistinguishable — textually and by timing — from any other bad
-        // login. Username lookup stays case-insensitive (findByUsername).
-        this.auditLogger.log(
-          `login failed identifier=${identifier} (multiple users)`,
-        );
-      }
-    }
+    const user = await this.resolveIdentifier(identifier);
     if (!user) {
       // Constant-time guard: perform a real bcrypt compare so a missing user
       // is indistinguishable by timing from a wrong password.
@@ -68,7 +57,85 @@ export class AuthService {
     this.auditLogger.log(
       `login success userId=${user.id} username=${user.username}`,
     );
+    return this.issueSession(user);
+  }
 
+  /**
+   * The recovery phrase as a credential (spec §12 amendment (lxxxii) clause
+   * 2): a correct phrase sets a new password, drops every session, and
+   * answers with login tokens — the door proved ownership, so a second
+   * round-trip to sign in would be ceremony.
+   *
+   * Order is load-bearing: the identifier is resolved BEFORE any verify, so
+   * an unknown name never pays the 19 MiB Argon2id cost (the IP throttle on
+   * the route is the DoS control; no dummy hash here, for that same memory
+   * reason). One refusal wording for unknown name, wrong phrase and no phrase
+   * enrolled — no enumeration. The lockout is the SAME counter the §6.2
+   * shortcut spends, so guessing at either door draws on one budget.
+   */
+  async recoverPassword(
+    identifier: string,
+    phrase: string,
+    newPassword: string,
+  ) {
+    const user = await this.resolveIdentifier(identifier);
+    if (!user) {
+      this.auditLogger.log(`recoverPassword failed identifier=${identifier}`);
+      throw new UnauthorizedException('Invalid credentials');
+    }
+    const verdict = await this.identityResetService.verifyRecoveryPhrase(
+      user.id,
+      phrase,
+    );
+    if (verdict === 'locked') {
+      this.auditLogger.log(`recoverPassword locked userId=${user.id}`);
+      throw new HttpException('recovery_locked', HttpStatus.LOCKED);
+    }
+    if (verdict !== 'accepted') {
+      this.auditLogger.log(`recoverPassword failed userId=${user.id}`);
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const changedAt = await this.usersService.setPassword(user.id, newPassword);
+    this.auditLogger.log(
+      `recoverPassword success userId=${user.id} username=${user.username}`,
+    );
+    // `JwtStrategy` and the socket handshake reject `iat <= passwordChangedAt`
+    // in WHOLE SECONDS, and a JWT's `iat` is floored — a token signed in the
+    // same second as the stamp is dead on arrival. Wait for the next second
+    // (≤ 1 s) rather than back-dating the stamp, which would let a token
+    // stolen in that second survive the change.
+    const nextSecondMs = (Math.floor(changedAt.getTime() / 1000) + 1) * 1000;
+    const waitMs = nextSecondMs - Date.now();
+    if (waitMs > 0) {
+      // Executor form on purpose: the tsconfig lib predates Promise.withResolvers.
+      await new Promise<void>((resolve) => setTimeout(resolve, waitMs));
+    }
+    return this.issueSession(user);
+  }
+
+  /**
+   * `username#tag`, or a bare username that matches exactly one account. An
+   * ambiguous bare name resolves to nobody: revealing that several accounts
+   * share it is enumeration, and the callers route "nobody" through the same
+   * refusal as a wrong secret. Lookup stays case-insensitive (findByUsername).
+   */
+  private async resolveIdentifier(identifier: string): Promise<User | null> {
+    if (identifier.includes('#')) {
+      const [u, t] = identifier.split('#');
+      if (!u || !t) return null;
+      return this.usersService.findByUsernameAndTag(u.trim(), t.trim());
+    }
+    const users = await this.usersService.findByUsername(identifier.trim());
+    if (users.length > 1) {
+      this.auditLogger.log(
+        `login failed identifier=${identifier} (multiple users)`,
+      );
+    }
+    return users.length === 1 ? users[0] : null;
+  }
+
+  private async issueSession(user: User) {
     // Every session belongs to a device (Phase 1, spec §4). This is the
     // account's LIVE PRIMARY, never a hardcoded 1: a §6.2 reset revokes the
     // pre-reset roster and moves the account onto a freshly allocated id

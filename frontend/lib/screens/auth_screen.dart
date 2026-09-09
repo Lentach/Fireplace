@@ -19,10 +19,14 @@ class AuthScreen extends StatefulWidget {
 }
 
 class _AuthScreenState extends State<AuthScreen> {
-  bool _isLogin = true;
+  AuthFormMode _mode = AuthFormMode.login;
+
+  /// The recover door lives under the LOGOWANIE tab: it is a way to sign in.
+  bool get _isLogin => _mode != AuthFormMode.register;
 
   /// Prefills the username field when the screen itself puts one there (the
-  /// "sign in instead" jump after a taken name or a lost register answer).
+  /// "sign in instead" jump after a taken name, or the way into / out of the
+  /// recover door).
   String? _prefilledUsername;
 
   /// The status line to show, localized here because the provider has no
@@ -36,7 +40,7 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   void _switchTab(AuthProvider auth, {required bool login}) {
-    setState(() => _isLogin = login);
+    setState(() => _mode = login ? AuthFormMode.login : AuthFormMode.register);
     auth.clearStatus();
   }
 
@@ -45,9 +49,15 @@ class _AuthScreenState extends State<AuthScreen> {
   /// one move that guarantees they never reach an account they already own.
   void _goToLoginWith(AuthProvider auth, String username) {
     setState(() {
-      _isLogin = true;
+      _mode = AuthFormMode.login;
       _prefilledUsername = username;
     });
+    auth.clearStatus();
+  }
+
+  /// The recovery phrase as a credential (spec (lxxxii) clause 2).
+  void _goToRecover(AuthProvider auth) {
+    setState(() => _mode = AuthFormMode.recover);
     auth.clearStatus();
   }
 
@@ -185,7 +195,7 @@ class _AuthScreenState extends State<AuthScreen> {
                           ),
                           const SizedBox(height: 24),
                           AuthForm(
-                            isLogin: _isLogin,
+                            mode: _mode,
                             initialUsername: _prefilledUsername,
                             // A status describes ONE attempt. Leaving it under
                             // an edited form is how a stale "already taken"
@@ -193,29 +203,55 @@ class _AuthScreenState extends State<AuthScreen> {
                             onEdited: authProvider.statusCode == null
                                 ? null
                                 : authProvider.clearStatus,
-                            onSubmit: (username, password) async {
-                              if (_isLogin) {
-                                await authProvider.login(username, password);
-                              } else {
-                                final created = await authProvider.register(
-                                  username,
-                                  password,
-                                );
-                                // Registration signs the user in itself; the
-                                // shell takes over and this screen is gone. It
-                                // lands here only when that sign-in failed, so
-                                // the credentials are ready on the login tab.
-                                if (created &&
-                                    mounted &&
-                                    !authProvider.isLoggedIn) {
-                                  setState(() {
-                                    _isLogin = true;
-                                    _prefilledUsername = username;
-                                  });
-                                }
+                            onSubmit: (username, password, phrase) async {
+                              switch (_mode) {
+                                case AuthFormMode.login:
+                                  await authProvider.login(username, password);
+                                case AuthFormMode.recover:
+                                  await authProvider.recoverPassword(
+                                    username,
+                                    phrase!,
+                                    password,
+                                  );
+                                case AuthFormMode.register:
+                                  final created = await authProvider.register(
+                                    username,
+                                    password,
+                                  );
+                                  // Registration signs the user in itself; the
+                                  // shell takes over and this screen is gone.
+                                  // It lands here only when that sign-in
+                                  // failed, so the credentials are ready on
+                                  // the login tab.
+                                  if (created &&
+                                      mounted &&
+                                      !authProvider.isLoggedIn) {
+                                    setState(() {
+                                      _mode = AuthFormMode.login;
+                                      _prefilledUsername = username;
+                                    });
+                                  }
                               }
                             },
                           ),
+                          if (_mode == AuthFormMode.login) ...[
+                            const SizedBox(height: 4),
+                            TextButton(
+                              key: const Key('auth-forgot-password'),
+                              onPressed: () => _goToRecover(authProvider),
+                              child: Text(l10n.authForgotPassword),
+                            ),
+                          ] else if (_mode == AuthFormMode.recover) ...[
+                            const SizedBox(height: 4),
+                            TextButton(
+                              key: const Key('auth-recover-back'),
+                              onPressed: () => _switchTab(
+                                authProvider,
+                                login: true,
+                              ),
+                              child: Text(l10n.authGoToLogin),
+                            ),
+                          ],
                           // The provider holds no locale, so it reports a CODE
                           // and this layer picks the words. `statusMessage` is
                           // the pre-localized channel (the device-revoked
@@ -243,7 +279,7 @@ class _AuthScreenState extends State<AuthScreen> {
                           // standing on.
                           if (authProvider.recoverableUsername
                                   case final username?
-                              when !_isLogin) ...[
+                              when _mode == AuthFormMode.register) ...[
                             const SizedBox(height: 4),
                             TextButton(
                               key: const Key('auth-go-to-login'),

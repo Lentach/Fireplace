@@ -345,6 +345,62 @@ void main() {
     });
   });
 
+  // Amendment (lxxxii) clause 2 — the recovery phrase as a credential.
+  group('recover with the phrase', () {
+    const phrase =
+        'abandon ability able about above absent absorb abstract absurd abuse access accident';
+
+    test('a correct phrase sets the password and lands the user inside', () async {
+      final auth = _provider(
+        MockClient((req) async => switch (req.url.path) {
+              '/auth/recover' =>
+                _json({'access_token': _accessJwt, 'refresh_token': 'r'}, 201),
+              '/users/me' =>
+                _json({'id': 114, 'username': 'ma0i', 'tag': '5269'}, 200),
+              _ => throw StateError('unexpected ${req.url.path}'),
+            }),
+      );
+
+      expect(await auth.recoverPassword('ma0i#5269', phrase, 'NewPass1x'), isTrue);
+      expect(auth.isLoggedIn, isTrue);
+      expect(auth.statusCode, isNull);
+    });
+
+    test('a refused phrase names the phrase, never a password field', () async {
+      // (F35) 401 on this door is "name or phrase"; mapping it to
+      // invalidCredentials would point at a password the form never asked for.
+      final auth = _provider(
+        MockClient((req) async => _json({'message': 'Invalid credentials'}, 401)),
+      );
+
+      expect(await auth.recoverPassword('ma0i#5269', phrase, 'NewPass1x'), isFalse);
+      expect(auth.statusCode, AuthStatusCode.phraseRejected);
+    });
+
+    test('the lockout (423) reads as too many attempts', () async {
+      final auth = _provider(
+        MockClient((req) async => _json({'message': 'recovery_locked'}, 423)),
+      );
+
+      expect(await auth.recoverPassword('ma0i#5269', phrase, 'NewPass1x'), isFalse);
+      expect(auth.statusCode, AuthStatusCode.tooManyAttempts);
+    });
+
+    test('a lost answer is retried once, then reported', () async {
+      var calls = 0;
+      final auth = _provider(
+        MockClient((req) async {
+          calls++;
+          throw TimeoutException('x');
+        }),
+      );
+
+      expect(await auth.recoverPassword('ma0i#5269', phrase, 'NewPass1x'), isFalse);
+      expect(auth.statusCode, AuthStatusCode.serverUnreachable);
+      expect(calls, 2);
+    });
+  });
+
   group('a status describes the attempt in front of the user', () {
     test('a new attempt clears the previous verdict before it runs', () async {
       // First attempt: a name owned by SOMEONE ELSE (the recovery sign-in is

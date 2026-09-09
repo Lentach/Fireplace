@@ -1,10 +1,19 @@
 import 'package:flutter/material.dart';
 import '../theme/rpg_theme.dart';
 import '../l10n/app_localizations.dart';
+import '../services/recovery_phrase.dart';
+
+/// Which door the form is. `recover` is the recovery phrase as a credential
+/// (multi-device spec §12 amendment (lxxxii) clause 2): identifier, the 12
+/// words, and a NEW password under the register rules.
+enum AuthFormMode { login, register, recover }
 
 class AuthForm extends StatefulWidget {
-  final bool isLogin;
-  final Future<void> Function(String username, String password) onSubmit;
+  final AuthFormMode mode;
+
+  /// `phrase` is non-null only in [AuthFormMode.recover].
+  final Future<void> Function(String username, String password, String? phrase)
+  onSubmit;
 
   /// Username to start with. Set when the screen sends the user from the
   /// register tab to the sign-in tab, so they never retype a name the app
@@ -17,7 +26,7 @@ class AuthForm extends StatefulWidget {
 
   const AuthForm({
     super.key,
-    required this.isLogin,
+    required this.mode,
     required this.onSubmit,
     this.initialUsername,
     this.onEdited,
@@ -32,7 +41,11 @@ class _AuthFormState extends State<AuthForm> {
   late final TextEditingController _usernameController =
       TextEditingController(text: widget.initialUsername ?? '');
   final _passwordController = TextEditingController();
+  final _phraseController = TextEditingController();
   bool _loading = false;
+
+  bool get _isLogin => widget.mode == AuthFormMode.login;
+  bool get _isRecover => widget.mode == AuthFormMode.recover;
 
   @override
   void didUpdateWidget(AuthForm oldWidget) {
@@ -47,6 +60,7 @@ class _AuthFormState extends State<AuthForm> {
   void dispose() {
     _usernameController.dispose();
     _passwordController.dispose();
+    _phraseController.dispose();
     super.dispose();
   }
 
@@ -57,7 +71,7 @@ class _AuthFormState extends State<AuthForm> {
   String? _validateUsername(String? value, AppLocalizations l10n) {
     final username = value?.trim() ?? '';
     if (username.isEmpty) return l10n.authUsernameRequired;
-    if (widget.isLogin) return null;
+    if (widget.mode != AuthFormMode.register) return null;
     if (username.length < 3 ||
         username.length > 20 ||
         !_usernameCharset.hasMatch(username)) {
@@ -75,6 +89,11 @@ class _AuthFormState extends State<AuthForm> {
     return null;
   }
 
+  /// The same typo guard the gate's restore door applies before spending one
+  /// of the few server-side attempts the lockout allows.
+  String? _validatePhrase(String? value, AppLocalizations l10n) =>
+      RecoveryPhrase.isValid(value ?? '') ? null : l10n.recoveryPhraseMalformed;
+
   Future<void> _handleSubmit() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _loading = true);
@@ -82,6 +101,7 @@ class _AuthFormState extends State<AuthForm> {
       await widget.onSubmit(
         _usernameController.text.trim(),
         _passwordController.text,
+        _isRecover ? RecoveryPhrase.normalize(_phraseController.text) : null,
       );
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -107,6 +127,10 @@ class _AuthFormState extends State<AuthForm> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context);
+    final fieldStyle = RpgTheme.bodyFont(
+      fontSize: 14,
+      color: colorScheme.onSurface,
+    );
     return Form(
       key: _formKey,
       child: Column(
@@ -114,10 +138,7 @@ class _AuthFormState extends State<AuthForm> {
         children: [
           TextFormField(
             controller: _usernameController,
-            style: RpgTheme.bodyFont(
-              fontSize: 14,
-              color: colorScheme.onSurface,
-            ),
+            style: fieldStyle,
             decoration: RpgTheme.rpgInputDecoration(
               hintText: l10n.authUsernameHint,
               prefixIcon: Icons.person_outlined,
@@ -127,34 +148,55 @@ class _AuthFormState extends State<AuthForm> {
             onChanged: (_) => widget.onEdited?.call(),
             validator: (value) => _validateUsername(value, l10n),
           ),
-          if (!widget.isLogin) _rules(context, l10n.authUsernameRules),
+          if (widget.mode == AuthFormMode.register)
+            _rules(context, l10n.authUsernameRules),
           const SizedBox(height: 16),
+          if (_isRecover) ...[
+            TextFormField(
+              key: const Key('auth-recover-phrase'),
+              controller: _phraseController,
+              style: fieldStyle,
+              decoration: RpgTheme.rpgInputDecoration(
+                hintText: l10n.recoveryPhrasePromptHint,
+                prefixIcon: Icons.key_outlined,
+                context: context,
+              ),
+              minLines: 2,
+              maxLines: 3,
+              autocorrect: false,
+              enableSuggestions: false,
+              onChanged: (_) => widget.onEdited?.call(),
+              validator: (value) => _validatePhrase(value, l10n),
+            ),
+            const SizedBox(height: 16),
+          ],
           TextFormField(
             controller: _passwordController,
-            style: RpgTheme.bodyFont(
-              fontSize: 14,
-              color: colorScheme.onSurface,
-            ),
+            style: fieldStyle,
             decoration: RpgTheme.rpgInputDecoration(
-              hintText: widget.isLogin
-                  ? l10n.authPasswordHint
-                  : l10n.authPasswordHintRegister,
+              hintText: switch (widget.mode) {
+                AuthFormMode.login => l10n.authPasswordHint,
+                AuthFormMode.register => l10n.authPasswordHintRegister,
+                AuthFormMode.recover => l10n.authNewPasswordHint,
+              },
               prefixIcon: Icons.lock_outlined,
               context: context,
             ),
             obscureText: true,
             onFieldSubmitted: (_) => _handleSubmit(),
             onChanged: (_) => widget.onEdited?.call(),
-            // Enforce strength only on registration; login just needs non-empty
-            validator: widget.isLogin
+            // Enforce strength wherever a password is being SET; login just
+            // needs non-empty.
+            validator: _isLogin
                 ? (value) => (value == null || value.isEmpty)
                       ? l10n.passwordRequired
                       : null
                 : (value) => _validatePassword(value, l10n),
           ),
-          if (!widget.isLogin) _rules(context, l10n.authPasswordRules),
+          if (!_isLogin) _rules(context, l10n.authPasswordRules),
           const SizedBox(height: 24),
           ElevatedButton(
+            key: const Key('auth-submit'),
             onPressed: _loading ? null : _handleSubmit,
             child: _loading
                 ? SizedBox(
@@ -175,11 +217,11 @@ class _AuthFormState extends State<AuthForm> {
                           colorScheme.onPrimary,
                     ),
                   )
-                : Text(
-                    widget.isLogin
-                        ? l10n.authLoginButton
-                        : l10n.authCreateAccountButton,
-                  ),
+                : Text(switch (widget.mode) {
+                    AuthFormMode.login => l10n.authLoginButton,
+                    AuthFormMode.register => l10n.authCreateAccountButton,
+                    AuthFormMode.recover => l10n.authRecoverSubmit,
+                  }),
           ),
         ],
       ),

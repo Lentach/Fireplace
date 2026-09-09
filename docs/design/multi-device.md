@@ -2881,15 +2881,53 @@ that is the designed outcome).
     remove the retraction → the test that raises the alarm with no identity, then hydrates the
     same row with the identity loaded, stays alarmed; the control asserts a row with a
     different instant is NOT retracted.
-  - **Owner decisions recorded, NOT yet built (release 2):** (a) the §6.2 reset delay drops from
-    72 h to **6 h** (phrase-shortened 1 h unchanged; the "phrase younger than 3 days does not
-    shorten" rule unchanged); (b) the recovery phrase alone MAY reset the account password — a
-    new unauthenticated endpoint verifying the (lxxviii)-era Argon2id phrase verifier, setting a
-    new password and dropping every session. The lead stated the combined effect once (each
-    single stolen secret then suffices for takeover: a stolen phrase walks in with no alarm and
-    nothing to cancel; a stolen password waits 6 h, shorter than a night's sleep). The owner's
-    stated posture: "seed phrase > password" — the crypto-wallet model. Written into this record
-    as an explicit owner decision; the build waits on his one-word confirmation.
+  - **(lxxxii) — THE SEED IS THE ACCOUNT (owner-ratified 2026-09-08, "confirm all", after the lead
+    stated the combined effect once: every single stolen secret now suffices for takeover — a
+    stolen phrase walks in with no alarm and nothing to cancel; a stolen password waits 6 h,
+    shorter than a night's sleep. Owner's posture: "seed phrase > password", the crypto-wallet
+    model. Recorded here as an explicit owner decision; the two-factor shape it replaces was
+    (lxxviii)'s.)**
+    **Clause 1 — the §6.2 delay is 6 h.** `RESET_DELAY_MS` 72 h → 6 h. `RESET_DELAY_RECOVERY_MS`
+    stays 1 h, `CANCEL_COOLDOWN_MS` stays 24 h, `COMPLETED_GRANT_TTL_MS` stays 24 h.
+    `RECOVERY_MIN_AGE_MS` is DEFINED as `RESET_DELAY_MS` and therefore follows to 6 h — the (xlii)
+    argument is relational ("a phrase old enough to shorten the window predates a same-session
+    compromise by at least the window it removes") and survives the change unchanged. Copy: every
+    "72 h" becomes "6 h" and "3 days" becomes "6 h" (`linkGateResetHint`, `linkGateResetPhraseTooNew`,
+    `recoveryPhrasePromptBody`, `identityResetPhraseTooNew`; root `CLAUDE.md` §7 and
+    `frontend/CLAUDE.md` §5 follow). The push on `identityResetPending` is unchanged and is now
+    the ONLY thing standing between a password thief and the account for those 6 h.
+    **Clause 2 — the phrase alone resets the password.** New REST door `POST /auth/recover
+    { identifier, phrase, newPassword }`, UNAUTHENTICATED, throttled 5 / 15 min per IP (an
+    Argon2id verify costs 19 MiB; the throttle is the DoS control, and an unknown identifier is
+    refused BEFORE any verify — no dummy hash, the memory cost is the reason). Identifier
+    resolves exactly as `login` does (`username#tag`, or a bare username that matches exactly one
+    account; an ambiguous bare name resolves to nobody). The phrase is verified against the
+    (lxxviii) `recovery_keys.verifierHash` through the SAME failure counter and lockout the §6.2
+    shortcut uses (`RECOVERY_MAX_FAILED_ATTEMPTS` 5 → `RECOVERY_LOCKOUT_MS` 1 h, counted in SQL),
+    so guessing at either door spends the same budget. `usedAt` is IGNORED and the phrase is NOT
+    spent: `usedAt` marks the (§6.2.1) SHORTCUT as consumed, and the (lxxviii) restore door already
+    ignores it for the same reason — the phrase is the seed, not a ticket. `RECOVERY_MIN_AGE_MS`
+    does NOT apply: the age rule defends the shortcut against a phrase the thief minted himself,
+    and minting a phrase already requires holding the identity (the primary), i.e. owning the
+    account. On success, in this order: revoke every refresh session, then store the bcrypt hash
+    and stamp `passwordChangedAt` (the (existing) `resetPassword` ordering, for the same stolen-
+    refresh-token reason), audit-log `recoverPassword success userId=`, and answer with the
+    ordinary login tokens for the live primary device — the door proved ownership, so a second
+    round-trip to sign in would be ceremony. Refusals: unknown identifier, wrong phrase, no
+    phrase enrolled → 401 `Invalid credentials` (one wording, no enumeration); lockout → 423
+    `recovery_locked`; DTO shape (password rules) → 400. No push and no room broadcast on the
+    door itself: the owner's other devices learn on their next refresh (`refresh_invalid`) —
+    accepted as the "no alarm" the posture implies. Client: a "Nie pamiętam hasła" link under the
+    sign-in form opens the recover form (identifier prefilled, 12 words, new password with the
+    same rules the register tab shows); success adopts the returned session like a login and
+    lands wherever a login lands — the gate on an enrolled account, where the same 12 words then
+    restore the keys. `AuthStatusCode.phraseRejected` is the one new status ("Nazwa lub fraza
+    nie pasuje."); a 423 maps to the existing `tooManyAttempts`. Falsification (backend):
+    (F32) skip the counter on a wrong phrase → the lockout test at this door stays unlocked after
+    five failures; (F33) drop `revokeAllForUser` → a pre-recovery refresh token still refreshes;
+    (F34) verify before resolving → an unknown identifier pays the Argon2 cost (asserted by the
+    verify spy). Frontend: (F35) map 401 on the recover attempt to `invalidCredentials` → the
+    screen names a password field the form does not have.
 
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the

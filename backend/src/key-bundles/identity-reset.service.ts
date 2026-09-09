@@ -24,11 +24,14 @@ export interface IdentityBackupInput {
 export type IdentityBackupRecord = IdentityBackupInput;
 
 /**
- * Delay before a reset may replace the account identity. Long by design: push
- * is this app's only offline channel (no email), so the window has to survive
- * a phone being face-down overnight. Owner-confirmed at 72 h.
+ * Delay before a reset may replace the account identity. Owner-confirmed at
+ * 72 h on 2026-08 (push is this app's only offline channel, so the window had
+ * to survive a phone face-down overnight); lowered to 6 h by amendment
+ * (lxxxii) clause 1 under the "seed is the account" posture — the push on
+ * `identityResetPending` is now the only thing between a password thief and
+ * the account for those 6 h, and the owner accepted that.
  */
-export const RESET_DELAY_MS = 72 * 60 * 60 * 1000;
+export const RESET_DELAY_MS = 6 * 60 * 60 * 1000;
 
 /**
  * Delay when a valid recovery key is presented. Shortens the wait; it never
@@ -359,48 +362,8 @@ export class IdentityResetService {
     // only by a caller already authenticated AS the account, who can read the
     // enrolment state from their own settings screen anyway.
     if (!row || row.usedAt != null) return 'invalid_phrase';
-    if (row.lockedUntil != null && row.lockedUntil.getTime() > Date.now()) {
-      return 'locked';
-    }
-
-    const valid = await argon2
-      .verify(row.verifierHash, phrase)
-      .catch((error: unknown) => {
-        // A malformed stored hash must never authorize anything.
-        this.logger.error(
-          `[identity-reset] recovery verify failed userId=${userId}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-        return false;
-      });
-
-    if (!valid) {
-      // Counted in SQL, not read-modify-write: two failures landing together
-      // would otherwise both read the same count and both store count+1,
-      // quietly buying extra attempts before the lockout.
-      const updated = await recoveryRepo
-        .createQueryBuilder()
-        .update(RecoveryKey)
-        .set({
-          failedAttempts: () => '"failedAttempts" + 1',
-          lockedUntil: () =>
-            `CASE WHEN "failedAttempts" + 1 >= ${RECOVERY_MAX_FAILED_ATTEMPTS}` +
-            ` THEN :lockedUntil ELSE "lockedUntil" END`,
-        })
-        .where('id = :id', {
-          id: row.id,
-          lockedUntil: new Date(Date.now() + RECOVERY_LOCKOUT_MS),
-        })
-        .returning(['failedAttempts'])
-        .execute();
-      const stored = (updated.raw as Array<{ failedAttempts?: number }>)[0]
-        ?.failedAttempts;
-      const failedAttempts = Number(stored ?? row.failedAttempts + 1);
-      return failedAttempts >= RECOVERY_MAX_FAILED_ATTEMPTS
-        ? 'locked'
-        : 'invalid_phrase';
-    }
+    const verdict = await this.verifyAgainstRow(recoveryRepo, row, phrase);
+    if (verdict !== 'accepted') return verdict;
 
     // The phrase is correct. It may still be too YOUNG to buy the shortcut
     // (amendment (xlii)) — checked only now, after verification, so a wrong
@@ -420,6 +383,83 @@ export class IdentityResetService {
       { usedAt: new Date(), failedAttempts: 0, lockedUntil: null },
     );
     return 'accepted';
+  }
+
+  /**
+   * The phrase as a CREDENTIAL (amendment (lxxxii) clause 2): verified against
+   * the stored verifier through the same failure counter and lockout the
+   * §6.2 shortcut spends, never consumed, `usedAt` ignored — `usedAt` marks
+   * the SHORTCUT as taken, and the (lxxviii) restore door ignores it for the
+   * same reason. The age rule does not apply either: it defends the shortcut
+   * against a phrase the thief minted, and minting one already requires the
+   * identity. No phrase enrolled reads as a wrong phrase, deliberately.
+   */
+  async verifyRecoveryPhrase(
+    userId: number,
+    phrase: string,
+  ): Promise<'accepted' | 'invalid_phrase' | 'locked'> {
+    const row = await this.recoveryRepo.findOne({ where: { userId } });
+    if (!row) return 'invalid_phrase';
+    return this.verifyAgainstRow(this.recoveryRepo, row, phrase);
+  }
+
+  private async verifyAgainstRow(
+    recoveryRepo: Repository<RecoveryKey>,
+    row: RecoveryKey,
+    phrase: string,
+  ): Promise<'accepted' | 'invalid_phrase' | 'locked'> {
+    if (row.lockedUntil != null && row.lockedUntil.getTime() > Date.now()) {
+      return 'locked';
+    }
+
+    const valid = await argon2
+      .verify(row.verifierHash, phrase)
+      .catch((error: unknown) => {
+        // A malformed stored hash must never authorize anything.
+        this.logger.error(
+          `[identity-reset] recovery verify failed userId=${row.userId}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        return false;
+      });
+    if (valid) {
+      // A correct presentation clears the budget, as the shortcut does on
+      // spend — four fumbles before the right words must not leave the owner
+      // one typo from an hour's lockout.
+      if (row.failedAttempts > 0) {
+        await recoveryRepo.update(
+          { id: row.id },
+          { failedAttempts: 0, lockedUntil: null },
+        );
+      }
+      return 'accepted';
+    }
+
+    // Counted in SQL, not read-modify-write: two failures landing together
+    // would otherwise both read the same count and both store count+1,
+    // quietly buying extra attempts before the lockout.
+    const updated = await recoveryRepo
+      .createQueryBuilder()
+      .update(RecoveryKey)
+      .set({
+        failedAttempts: () => '"failedAttempts" + 1',
+        lockedUntil: () =>
+          `CASE WHEN "failedAttempts" + 1 >= ${RECOVERY_MAX_FAILED_ATTEMPTS}` +
+          ` THEN :lockedUntil ELSE "lockedUntil" END`,
+      })
+      .where('id = :id', {
+        id: row.id,
+        lockedUntil: new Date(Date.now() + RECOVERY_LOCKOUT_MS),
+      })
+      .returning(['failedAttempts'])
+      .execute();
+    const stored = (updated.raw as Array<{ failedAttempts?: number }>)[0]
+      ?.failedAttempts;
+    const failedAttempts = Number(stored ?? row.failedAttempts + 1);
+    return failedAttempts >= RECOVERY_MAX_FAILED_ATTEMPTS
+      ? 'locked'
+      : 'invalid_phrase';
   }
 
   /**

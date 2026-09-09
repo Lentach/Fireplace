@@ -175,6 +175,7 @@ void main() {
         AuthStatusCode.wrongPassword: en.authStatusWrongPassword,
         AuthStatusCode.tooManyAttempts: en.authStatusTooManyAttempts,
         AuthStatusCode.serverError: en.authStatusServerError,
+        AuthStatusCode.phraseRejected: en.authStatusPhraseRejected,
         AuthStatusCode.serverUnreachable: en.authStatusServerUnreachable,
         AuthStatusCode.unexpectedError: en.authStatusUnexpectedError,
       };

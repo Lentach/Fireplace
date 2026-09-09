@@ -300,20 +300,36 @@ export class UsersService {
     if (!isValidPassword) {
       throw new UnauthorizedException('Invalid old password');
     }
+    await this.setPassword(userId, newPassword, user);
+    this.auditLogger.log(`resetPassword success userId=${userId}`);
+  }
 
-    // Hash new password
+  /**
+   * Stores a new password for an already-AUTHORIZED change (the caller proved
+   * the old password, or the recovery phrase — spec §12 amendment (lxxxii)).
+   *
+   * Revoke every refresh token BEFORE stamping passwordChangedAt (stamped
+   * last). A refresh token stolen before the reset must not be exchangeable
+   * for a fresh 24h access JWT in the window between the stamp landing and
+   * the revoke: /auth/refresh finds no row once revocation ran first. Doing
+   * the revoke first also means a partial failure over-revokes (all sessions
+   * dropped) rather than leaving a usable stolen token behind.
+   */
+  async setPassword(
+    userId: number,
+    newPassword: string,
+    loaded?: User,
+  ): Promise<Date> {
+    const user = loaded ?? (await this.findById(userId));
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
     const hash = await bcrypt.hash(newPassword, 10);
-    // Revoke every refresh token BEFORE stamping passwordChangedAt (stamped
-    // last). A refresh token stolen before the reset must not be exchangeable
-    // for a fresh 24h access JWT in the window between the stamp landing and
-    // the revoke: /auth/refresh finds no row once revocation ran first. Doing
-    // the revoke first also means a partial failure over-revokes (all sessions
-    // dropped) rather than leaving a usable stolen token behind.
     await this.refreshTokensService.revokeAllForUser(userId);
     user.password = hash;
     user.passwordChangedAt = new Date();
     await this.usersRepo.save(user);
-    this.auditLogger.log(`resetPassword success userId=${userId}`);
+    return user.passwordChangedAt;
   }
 
   async deleteAccount(userId: number, password: string): Promise<void> {

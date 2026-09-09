@@ -75,4 +75,17 @@ describe('UsersService.resetPassword – refresh revocation ordering', () => {
     expect(mockRefreshTokens.revokeAllForUser).not.toHaveBeenCalled();
     expect(mockRepo.save).not.toHaveBeenCalled();
   });
+
+  // Amendment (lxxxii) clause 2: the recovery-phrase door reaches the same
+  // write with authorization already proven. The ordering law is the same.
+  it('setPassword (the phrase door) revokes all refresh tokens before the stamp', async () => {
+    await service.setPassword(7, 'NewValidPass1');
+
+    expect(mockRefreshTokens.revokeAllForUser).toHaveBeenCalledWith(7);
+    expect(
+      mockRefreshTokens.revokeAllForUser.mock.invocationCallOrder[0],
+    ).toBeLessThan(mockRepo.save.mock.invocationCallOrder[0]);
+    expect(mockUser.passwordChangedAt).toBeInstanceOf(Date);
+    expect(bcrypt.compare).not.toHaveBeenCalled();
+  });
 });

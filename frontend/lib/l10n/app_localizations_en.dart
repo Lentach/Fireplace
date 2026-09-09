@@ -541,6 +541,18 @@ class AppLocalizationsEn extends AppLocalizations {
       'The server could not handle that right now. Try again in a moment.';
 
   @override
+  String get authStatusPhraseRejected => 'Name or phrase does not match.';
+
+  @override
+  String get authForgotPassword => 'Forgot password';
+
+  @override
+  String get authNewPasswordHint => 'New password';
+
+  @override
+  String get authRecoverSubmit => 'Set new password';
+
+  @override
   String get authGoToLogin => 'Sign in instead';
 
   @override
@@ -692,7 +704,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get linkGateResetHint =>
-      'Reset: new keys after 72 h, other devices signed out, old history lost.';
+      'Reset: new keys after 6 h, other devices signed out, old history lost.';
 
   @override
   String get linkGateResetPendingTitle => 'Key reset in progress';
@@ -704,7 +716,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get linkGateResetPhraseTooNew =>
-      'Recovery key is under 3 days old — full 72 h apply.';
+      'Recovery key is under 6 h old — full 6 h apply.';
 
   @override
   String get linkGateCheckingTitle => 'Checking this device\'s keys…';
@@ -771,7 +783,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get recoveryPhrasePromptBody =>
-      'The 12 words cut the wait from 72 h to 1 h.';
+      'The 12 words cut the wait from 6 h to 1 h.';
 
   @override
   String get recoveryPhrasePromptHint => 'twelve words separated by spaces';
@@ -792,7 +804,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get identityResetPhraseTooNew =>
-      'Reset started. Key is under 3 days old, so the full 72 h apply.';
+      'Reset started. Key is under 6 h old, so the full 6 h apply.';
 
   @override
   String get identityResetAlreadyRunning =>

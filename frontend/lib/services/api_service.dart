@@ -135,6 +135,36 @@ class ApiService {
     return data;
   }
 
+  /// The recovery phrase as a credential (multi-device spec §12 amendment
+  /// (lxxxii) clause 2): sets a new password and answers with login tokens.
+  /// The server holds the 5 / 15 min throttle. Callers pass the phrase through
+  /// `RecoveryPhrase.normalize` — the same form `setRecoveryKey` stored the
+  /// verifier for, so the same words verify at both doors.
+  Future<Map<String, dynamic>> recoverPassword(
+    String identifier,
+    String phrase,
+    String newPassword,
+  ) async {
+    final response = await _httpClient.post(
+      Uri.parse('$baseUrl/auth/recover'),
+      headers: _authJsonHeaders,
+      body: jsonEncode({
+        'identifier': identifier,
+        'phrase': phrase,
+        'newPassword': newPassword,
+      }),
+    ).timeout(_kAuthTimeout);
+
+    if (response.statusCode != 201 && response.statusCode != 200) {
+      _fail(response, 'Recovery failed', 'POST /auth/recover');
+    }
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    if (data['access_token'] is! String || data['refresh_token'] is! String) {
+      throw Exception('Recovery response missing tokens');
+    }
+    return data;
+  }
+
   Future<Map<String, dynamic>> refreshSession(String refreshToken) async {
     try {
       final response = await _httpClient.post(

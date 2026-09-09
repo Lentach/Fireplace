@@ -20,6 +20,7 @@ String authStatusText(AppLocalizations l10n, AuthStatusCode code) {
     AuthStatusCode.wrongPassword => l10n.authStatusWrongPassword,
     AuthStatusCode.tooManyAttempts => l10n.authStatusTooManyAttempts,
     AuthStatusCode.serverError => l10n.authStatusServerError,
+    AuthStatusCode.phraseRejected => l10n.authStatusPhraseRejected,
     AuthStatusCode.serverUnreachable => l10n.authStatusServerUnreachable,
     AuthStatusCode.unexpectedError => l10n.authStatusUnexpectedError,
   };

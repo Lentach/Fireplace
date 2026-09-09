@@ -52,6 +52,11 @@ enum AuthStatusCode {
   /// the username there points at a field the user never touched.
   wrongPassword,
 
+  /// The recover door refused: unknown name, wrong phrase, or no phrase
+  /// enrolled — one wording by design (no enumeration). Naming a password
+  /// here would point at the NEW-password field, which is not what failed.
+  phraseRejected,
+
   /// The endpoint's rate limit refused this attempt (HTTP 429).
   tooManyAttempts,
 
@@ -76,7 +81,7 @@ enum AuthStatusCode {
 /// per door: a 400 on register is almost always the USERNAME rule (the form
 /// already enforces the password rule before sending), while a 400 on a
 /// password change is the new password.
-enum AuthAttempt { register, login, credentialChange }
+enum AuthAttempt { register, login, credentialChange, recover }
 
 /// Maps a failed credential call to what the user should be TOLD.
 ///
@@ -102,9 +107,13 @@ AuthStatusCode classifyAuthFailure(
         (attempt == AuthAttempt.register && !looksLikePassword)
             ? AuthStatusCode.usernameInvalid
             : AuthStatusCode.passwordTooWeak,
-      401 || 403 => attempt == AuthAttempt.credentialChange
-          ? AuthStatusCode.wrongPassword
-          : AuthStatusCode.invalidCredentials,
+      401 || 403 => switch (attempt) {
+        AuthAttempt.credentialChange => AuthStatusCode.wrongPassword,
+        AuthAttempt.recover => AuthStatusCode.phraseRejected,
+        _ => AuthStatusCode.invalidCredentials,
+      },
+      // 423: the recovery-phrase lockout (5 wrong phrases → 1 h).
+      423 => AuthStatusCode.tooManyAttempts,
       409 => AuthStatusCode.nicknameTaken,
       429 => AuthStatusCode.tooManyAttempts,
       >= 500 => AuthStatusCode.serverError,
@@ -683,6 +692,41 @@ class AuthProvider extends ChangeNotifier {
     return false;
   }
 
+  /// The recovery phrase as a credential (spec (lxxxii) clause 2): sets a new
+  /// password and signs in with the session the server answers with. A lost
+  /// answer is retried ONCE: the call is idempotent in effect — the same new
+  /// password set twice, sessions dropped twice — and the retry spends one of
+  /// the 5 / 15 min attempts, which a lost answer already cost.
+  Future<bool> recoverPassword(
+    String identifier,
+    String phrase,
+    String newPassword,
+  ) async {
+    clearStatus();
+    var code = await _recover(identifier, phrase, newPassword);
+    if (code == AuthStatusCode.serverUnreachable) {
+      code = await _recover(identifier, phrase, newPassword);
+    }
+    if (code == null) return true;
+    _report(code);
+    return false;
+  }
+
+  Future<AuthStatusCode?> _recover(
+    String identifier,
+    String phrase,
+    String newPassword,
+  ) async {
+    try {
+      await _adoptSession(
+        await _api.recoverPassword(identifier, phrase, newPassword),
+      );
+      return null;
+    } catch (e) {
+      return classifyAuthFailure(e, attempt: AuthAttempt.recover);
+    }
+  }
+
   /// Null when the account was created, else why not.
   Future<AuthStatusCode?> _register(String username, String password) async {
     try {
@@ -696,21 +740,26 @@ class AuthProvider extends ChangeNotifier {
   /// Null when signed in (session persisted, user loaded), else why not.
   Future<AuthStatusCode?> _signIn(String identifier, String password) async {
     try {
-      final body = await _api.login(identifier, password);
-      await _persistTokens(body);
-      final userData = await _api.fetchMe(_token!);
-      _currentUser = UserModel.fromJson(userData);
-
-      _statusMessage = null;
-      _statusCode = null;
-      _recoverableUsername = null;
-      _isError = false;
-      _startSessionRefreshTimer();
-      notifyListeners();
+      await _adoptSession(await _api.login(identifier, password));
       return null;
     } catch (e) {
       return classifyAuthFailure(e, attempt: AuthAttempt.login);
     }
+  }
+
+  /// Persists the tokens a credential door answered with, loads the user, and
+  /// clears every status: from here the shell takes over.
+  Future<void> _adoptSession(Map<String, dynamic> body) async {
+    await _persistTokens(body);
+    final userData = await _api.fetchMe(_token!);
+    _currentUser = UserModel.fromJson(userData);
+
+    _statusMessage = null;
+    _statusCode = null;
+    _recoverableUsername = null;
+    _isError = false;
+    _startSessionRefreshTimer();
+    notifyListeners();
   }
 
   void _report(AuthStatusCode code) {
