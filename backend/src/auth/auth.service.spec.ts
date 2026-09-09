@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import * as argon2 from 'argon2';
 import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { RefreshTokensService } from './refresh-tokens.service';
@@ -12,6 +13,11 @@ import { IdentityResetService } from '../key-bundles/identity-reset.service';
 jest.mock('bcrypt', () => ({
   compare: jest.fn(),
   hash: jest.fn((val: string) => Promise.resolve(`hashed_${val}`)),
+}));
+
+// The recover door's timing guard: a real verify would cost 19 MiB per test.
+jest.mock('argon2', () => ({
+  verify: jest.fn(() => Promise.resolve(false)),
 }));
 
 describe('AuthService', () => {
@@ -279,16 +285,32 @@ describe('AuthService', () => {
       );
     });
 
-    it('an unknown identifier is refused BEFORE any phrase verify', async () => {
+    it('an unknown identifier pays a dummy Argon2 verify and spends no counter', async () => {
       usersService.findByUsername.mockResolvedValue([]);
 
       await expect(
         service.recoverPassword('nobody', phrase, 'NewPass1x'),
       ).rejects.toThrow(UnauthorizedException);
-      // (F34) The Argon2id verify is the 19 MiB cost an attacker must never
-      // be able to spend on a name that resolves to nobody.
+      // (F34) Timing parity with a known name — the login door's bcrypt twin:
+      // "no such user" must cost the same verify as a wrong phrase, or the
+      // door enumerates usernames by response time.
+      expect(argon2.verify).toHaveBeenCalledTimes(1);
+      expect(argon2.verify).toHaveBeenCalledWith(expect.any(String), phrase);
+      // ...but no account's failure counter is touched.
       expect(identityResetService.verifyRecoveryPhrase).not.toHaveBeenCalled();
       expect(usersService.setPassword).not.toHaveBeenCalled();
+    });
+
+    it('a known identifier does NOT pay the dummy verify on top of the real one', async () => {
+      usersService.findByUsernameAndTag.mockResolvedValue(mockUser as User);
+      identityResetService.verifyRecoveryPhrase.mockResolvedValue(
+        'invalid_phrase',
+      );
+
+      await expect(
+        service.recoverPassword('testuser#0427', phrase, 'NewPass1x'),
+      ).rejects.toThrow(UnauthorizedException);
+      expect(argon2.verify).not.toHaveBeenCalled();
     });
 
     it('a wrong phrase is refused with the same wording as an unknown name', async () => {
@@ -323,6 +345,7 @@ describe('AuthService', () => {
         service.recoverPassword('testuser', phrase, 'NewPass1x'),
       ).rejects.toThrow(UnauthorizedException);
       expect(identityResetService.verifyRecoveryPhrase).not.toHaveBeenCalled();
+      expect(argon2.verify).toHaveBeenCalledTimes(1);
     });
   });
 

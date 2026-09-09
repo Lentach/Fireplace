@@ -2898,8 +2898,12 @@ that is the designed outcome).
     the ONLY thing standing between a password thief and the account for those 6 h.
     **Clause 2 — the phrase alone resets the password.** New REST door `POST /auth/recover
     { identifier, phrase, newPassword }`, UNAUTHENTICATED, throttled 5 / 15 min per IP (an
-    Argon2id verify costs 19 MiB; the throttle is the DoS control, and an unknown identifier is
-    refused BEFORE any verify — no dummy hash, the memory cost is the reason). Identifier
+    Argon2id verify costs 19 MiB; the throttle is the whole DoS control). An unknown identifier
+    pays a DUMMY Argon2id verify (`TIMING_SAFE_DUMMY_ARGON2`, same parameters) and touches no
+    counter — login's bcrypt twin — so the door is not a timing oracle for which usernames exist.
+    (The first cut skipped the dummy "for the memory cost"; that argument did not hold, since an
+    attacker who wants to burn Argon2 simply names a real account. Fixed in the same release.)
+    Identifier
     resolves exactly as `login` does (`username#tag`, or a bare username that matches exactly one
     account; an ambiguous bare name resolves to nobody). The phrase is verified against the
     (lxxviii) `recovery_keys.verifierHash` through the SAME failure counter and lockout the §6.2
@@ -2925,8 +2929,8 @@ that is the designed outcome).
     nie pasuje."); a 423 maps to the existing `tooManyAttempts`. Falsification (backend):
     (F32) skip the counter on a wrong phrase → the lockout test at this door stays unlocked after
     five failures; (F33) drop `revokeAllForUser` → a pre-recovery refresh token still refreshes;
-    (F34) verify before resolving → an unknown identifier pays the Argon2 cost (asserted by the
-    verify spy). Frontend: (F35) map 401 on the recover attempt to `invalidCredentials` → the
+    (F34) skip the dummy verify → an unknown identifier answers without paying the Argon2 cost
+    (asserted by the verify spy); (F37) same, on the ambiguous-bare-name path. Frontend: (F35) map 401 on the recover attempt to `invalidCredentials` → the
     screen names a password field the form does not have.
 
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase

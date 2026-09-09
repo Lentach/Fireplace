@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import * as argon2 from 'argon2';
 import { User } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
 import { RefreshTokensService } from './refresh-tokens.service';
@@ -19,6 +20,16 @@ import { DEFAULT_DEVICE_ID } from '../key-bundles/key-bundles.service';
 // password (defeats timing-based user enumeration). The value is arbitrary.
 const TIMING_SAFE_DUMMY_HASH =
   '$2b$10$pwiFDkB3zcAu0PKQqI13b.fGqVMlVlB8aCB22BL/qyvTghAEiP2N2';
+
+// The Argon2id twin of the above for `/auth/recover` (spec (lxxxii) clause
+// 2): an unknown identifier pays the same 19 MiB verify a known one does, so
+// the door is not a timing oracle for which usernames exist. Same parameters
+// as `RECOVERY_ARGON2_OPTIONS`; the phrase it hashes is arbitrary. The DoS
+// argument for skipping it did not hold — an attacker who wants to burn
+// Argon2 simply names a real account — so the per-IP throttle is the whole
+// DoS control either way.
+const TIMING_SAFE_DUMMY_ARGON2 =
+  '$argon2id$v=19$m=19456,p=1,t=2$w2BrHORjqgyeXxt8gHZoKg$cJ92sbtx0cBRD/dsML6P5/sN5qKUBQNSM3Et6pDD5T0';
 
 @Injectable()
 export class AuthService {
@@ -80,6 +91,9 @@ export class AuthService {
   ) {
     const user = await this.resolveIdentifier(identifier);
     if (!user) {
+      // Constant-time guard, as login's bcrypt twin: no per-account counter
+      // exists to spend, but the verify itself must cost the same.
+      await argon2.verify(TIMING_SAFE_DUMMY_ARGON2, phrase).catch(() => false);
       this.auditLogger.log(`recoverPassword failed identifier=${identifier}`);
       throw new UnauthorizedException('Invalid credentials');
     }
