@@ -137,3 +137,9 @@ Owner: "confirm all" after the combined-effect warning (any single stolen secret
 - **Deploy:** backend FIRST (route + constant), then web.
 
 - **Deployed:** backend `1e73567c` (`/version` 0.2.31, `/auth/recover` live: unknown name → 401), then web 0.2.31 / 1e73567, smoke 5/5. First CI run red (e2e `registration_lock_test` asserted `> 70` hours; backend count 1116 vs 1117 after the counter-reset test) — fixed in `1e73567`, CI 34294263704 green 5/5.
+
+## Addendum — 0.2.32 (`110c200`, both tiers): the door's timing oracle closed
+
+Review note, weighed and accepted: refusing an unknown identifier before any verify made `/auth/recover` enumerate usernames by response time, and my "memory cost" reason was hollow (an attacker names a real account to burn Argon2 anyway). `AuthService.recoverPassword` now runs `argon2.verify(TIMING_SAFE_DUMMY_ARGON2, phrase)` on the unknown/ambiguous path — same parameters as the real verifier — and spends no counter. `argon2` mocked in `auth.service.spec.ts`; three tests pin it; F37 killed. Ratchet held at 898 (one `any` access rewritten as `toHaveBeenCalledWith`). Deployed backend `110c200d` then web; prod unknown-name response ~120 ms (was instant).
+
+Not changed, on purpose: `RECOVERY_MIN_AGE_MS` follows `RESET_DELAY_MS` to 6 h — the ratified (lxxxii) text says so and the (xlii) argument is relational (floor ≥ the window the shortcut removes); the pre-decision draft's "unchanged" was superseded.
