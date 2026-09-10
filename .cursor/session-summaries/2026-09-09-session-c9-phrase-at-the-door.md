@@ -169,7 +169,7 @@ app-mode Chrome with `--use-fake-device-for-media-stream`: gate → Zeskanuj →
 `readyState 4`, playing; X → page restored (tracks stopped, `srcObject` null — the detached host element stays in the DOM); manual → the typed field; and a synthesized
 camera frame (the page's own n-code QR pasted into a `canvas.captureStream()`) → decoded → route
 popped → `_submitCode` → the controller's refusal "Nieprawidłowy kod…" on the page — the whole
-path through the route. **Not iOS/Android-verified** (mobile_scanner preview under the scrim, torch).
+path through the route. **iPhone-verified by the owner on prod 0.2.36** ("full screen camera works"); he also linked a desktop from the phone the day before. Android untested (no device).
 
 **Traps:** an occluded app-mode Chrome window is `visibilityState: hidden` → Flutter stops ticking →
 a CDP screenshot shows the Zoom page transition frozen at 99 % (previous route bleeding through);
