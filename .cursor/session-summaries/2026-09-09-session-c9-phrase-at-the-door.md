@@ -176,3 +176,9 @@ a CDP screenshot shows the Zoom page transition frozen at 99 % (previous route b
 `page.bringToFront()` does not un-occlude. The second scanner open needs ~4 s before its controls
 answer (camera re-acquire) — a 1.5 s wait read as "manual button dead". `docker compose up` on the
 bind-mounted backend rewrites `backend/package-lock.json` (48 `libc` lines) — revert every time.
+
+**Provenance note:** the 0.2.36 deploy-state commit `e292aee` was made with `git add .cursor/session-summaries`
+and swept in a PARALLEL session's finished work — the 2026-09-10 "Workflow 2.0" LATEST entry, its Dependabot
+rotation banner, and `2026-09-10-session-workflow-2.0.md`. Nothing of theirs was lost or altered; it just rides
+under my message. Left in place on purpose (rewriting master or deleting another session's evidence is worse).
+`docs/agents/workflow-2.0.md` is theirs and untracked. Lesson: `git add` named files, never the directory.
