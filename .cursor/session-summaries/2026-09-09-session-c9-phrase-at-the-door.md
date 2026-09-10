@@ -166,7 +166,7 @@ facade has no seam; untestable here). No new strings.
 waiting step animates, `pumpAndSettle` never returns). Flutter **2098/14**. Live on a rebuilt bundle in
 app-mode Chrome with `--use-fake-device-for-media-stream`: gate → Zeskanuj → full-screen scanner
 (screenshot 08: black, scrim, brackets, caption, X, manual), DOM `<video>` 464×805 = viewport,
-`readyState 4`, playing; X → page restored, video gone; manual → the typed field; and a synthesized
+`readyState 4`, playing; X → page restored (tracks stopped, `srcObject` null — the detached host element stays in the DOM); manual → the typed field; and a synthesized
 camera frame (the page's own n-code QR pasted into a `canvas.captureStream()`) → decoded → route
 popped → `_submitCode` → the controller's refusal "Nieprawidłowy kod…" on the page — the whole
 path through the route. **Not iOS/Android-verified** (mobile_scanner preview under the scrim, torch).
