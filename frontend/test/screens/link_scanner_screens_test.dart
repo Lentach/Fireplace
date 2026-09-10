@@ -1,8 +1,8 @@
 // Amendment (lxxvii) clause 3, falsification F6 — the scanner RESULT is fed
 // to the controller.
 //
-// Both ceremony screens now carry a `link-scan` door with an injected scanner
-// (tests need no camera). The pin on each side: firing the fake scanner's
+// Both ceremony screens carry a `link-scan` door that pushes the full-screen
+// `LinkScanScreen` with an injected scanner (tests need no camera). The pin on each side: firing the fake scanner's
 // `onCode` advances the ceremony (an emit proves the controller consumed the
 // scan), NOT firing it leaves the manual field empty and the wire silent —
 // a scanner whose result never reaches the controller fails both halves.
@@ -183,13 +183,14 @@ void main() {
       final controller = await pumpToShowCode(tester, scanResult: _nCode);
       await tester.ensureVisible(find.byKey(const Key('link-scan')));
       await tester.tap(find.byKey(const Key('link-scan')));
-      await tester.pump();
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       await tester.ensureVisible(find.byKey(const Key('fake-scan-hit')));
       await tester.tap(find.byKey(const Key('fake-scan-hit')));
+      // The ceremony's waiting step animates, so settle the route pop by
+      // hand: post-frame pop + the transition.
       await tester.pump();
-      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
 
       // The scan reached the controller: the hello left the device.
       expect(controller.primaryStep, PrimaryLinkStep.awaitingHelloAck);
@@ -219,12 +220,10 @@ void main() {
       await pumpToShowCode(tester);
       await tester.ensureVisible(find.byKey(const Key('link-scan')));
       await tester.tap(find.byKey(const Key('link-scan')));
-      await tester.pump();
-      await tester.pump();
+      await tester.pumpAndSettle();
       await tester.ensureVisible(find.byKey(const Key('fake-scan-unsupported')));
       await tester.tap(find.byKey(const Key('fake-scan-unsupported')));
-      await tester.pump();
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('link-scan-unsupported')), findsOneWidget);
       expect(find.byKey(const Key('link-code-field')), findsOneWidget);
@@ -275,13 +274,14 @@ void main() {
       final controller = await pumpBody(tester, scanResult: _pCode);
       await tester.ensureVisible(find.byKey(const Key('link-scan')));
       await tester.tap(find.byKey(const Key('link-scan')));
-      await tester.pump();
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       await tester.ensureVisible(find.byKey(const Key('fake-scan-hit')));
       await tester.tap(find.byKey(const Key('fake-scan-hit')));
+      // The ceremony's waiting step animates, so settle the route pop by
+      // hand: post-frame pop + the transition.
       await tester.pump();
-      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
 
       expect(controller.newDeviceStep, NewDeviceLinkStep.awaitingHelloAck);
       // Its OWN stage was cancelled before the hello left.
@@ -295,13 +295,14 @@ void main() {
       final controller = await pumpBody(tester, scanResult: _nCode);
       await tester.ensureVisible(find.byKey(const Key('link-scan')));
       await tester.tap(find.byKey(const Key('link-scan')));
-      await tester.pump();
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       await tester.ensureVisible(find.byKey(const Key('fake-scan-hit')));
       await tester.tap(find.byKey(const Key('fake-scan-hit')));
+      // The ceremony's waiting step animates, so settle the route pop by
+      // hand: post-frame pop + the transition.
       await tester.pump();
-      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
 
       expect(controller.newDeviceStep, NewDeviceLinkStep.showCode);
       expect(count('provisioningHello'), 0);
@@ -314,12 +315,10 @@ void main() {
       await pumpBody(tester);
       await tester.ensureVisible(find.byKey(const Key('link-scan')));
       await tester.tap(find.byKey(const Key('link-scan')));
-      await tester.pump();
-      await tester.pump();
+      await tester.pumpAndSettle();
       await tester.ensureVisible(find.byKey(const Key('fake-scan-unsupported')));
       await tester.tap(find.byKey(const Key('fake-scan-unsupported')));
-      await tester.pump();
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('link-scan-unsupported')), findsOneWidget);
       final field = tester.widget<TextField>(

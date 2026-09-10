@@ -139,3 +139,40 @@ UNKNOWN and shows nothing, the safe direction.
 **Traps:** Docker Desktop died mid-session (`npipe` gone) — restart it and wait ~2.5 min for the dev
 backend; `npm test` rewrote `backend/package-lock.json` (48 `libc` lines, npm-version noise) —
 reverted, not committed; `backend/test-output.txt` is now gitignored like the frontend one.
+
+---
+
+## Addendum — 0.2.36: the link scanner is a full-screen surface (web-only)
+
+**Owner's nit, with an iPhone screenshot:** in scan mode the camera was a 280 px tile under the QR
+and the code box — "looks like 2005 tec". Reference scanners (Signal iOS, WhatsApp, Telegram —
+[support.signal.org](https://support.signal.org/hc/en-us/articles/360007320551-Linked-Devices),
+[umnico Telegram guide](https://umnico.com/blog/telegram-web/), [WhatsApp Web guide](https://timelines.ai/whatsapp-web-qr-codes))
+all converge: camera fills the viewport, dark scrim with a square window and bracket corners, one
+caption, an X, the typed fallback at the bottom, and the hit hands over immediately.
+
+**Built:** `screens/link_scan_screen.dart` — `LinkScanScreen` pushed with `fullscreenDialog: true`
+from both ceremony screens; pops a sealed `LinkScanResult` (`LinkScanCode` / `LinkScanUnsupported` /
+`LinkScanManual` / null for X) exactly once (post-frame pop behind a `_popped` latch — the native
+`errorBuilder` fires during build). `Stack(fit: expand)`: `LinkQrScanner` fills; `IgnorePointer(CustomPaint)`
+scrim with a 0.68×shortest-side rounded window and four bracket arcs in `colorScheme.primary`; X and
+the caption+manual column are `PointerInterceptor` children (the web `<video>` is a platform view).
+The `_scanning` state, `link-scan-cancel` button and the 280 px `SizedBox` are gone from both
+screens; `scannerBuilder` is handed through so the existing tests stay camera-free. No torch (the
+facade has no seam; untestable here). No new strings.
+
+**Proof:** `link_scan_screen_test.dart` (4: the four exits + two callbacks in one frame pop ONCE);
+`link_scanner_screens_test.dart` re-pointed at the route (bounded pumps after a hit — the ceremony's
+waiting step animates, `pumpAndSettle` never returns). Flutter **2098/14**. Live on a rebuilt bundle in
+app-mode Chrome with `--use-fake-device-for-media-stream`: gate → Zeskanuj → full-screen scanner
+(screenshot 08: black, scrim, brackets, caption, X, manual), DOM `<video>` 464×805 = viewport,
+`readyState 4`, playing; X → page restored, video gone; manual → the typed field; and a synthesized
+camera frame (the page's own n-code QR pasted into a `canvas.captureStream()`) → decoded → route
+popped → `_submitCode` → the controller's refusal "Nieprawidłowy kod…" on the page — the whole
+path through the route. **Not iOS/Android-verified** (mobile_scanner preview under the scrim, torch).
+
+**Traps:** an occluded app-mode Chrome window is `visibilityState: hidden` → Flutter stops ticking →
+a CDP screenshot shows the Zoom page transition frozen at 99 % (previous route bleeding through);
+`page.bringToFront()` does not un-occlude. The second scanner open needs ~4 s before its controls
+answer (camera re-acquire) — a 1.5 s wait read as "manual button dead". `docker compose up` on the
+bind-mounted backend rewrites `backend/package-lock.json` (48 `libc` lines) — revert every time.

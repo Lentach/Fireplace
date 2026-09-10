@@ -10,8 +10,8 @@ import '../utils/link_fragment_stub.dart'
     if (dart.library.html) '../utils/link_fragment_web.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/glass/glass_top_bar.dart';
-import '../widgets/link_qr_scanner.dart';
 import '../widgets/top_snackbar.dart';
+import 'link_scan_screen.dart';
 
 /// The NEW-DEVICE side (N) of the §5.1 link ceremony (Phase 2 T3).
 ///
@@ -123,8 +123,8 @@ class LinkThisDeviceBody extends StatefulWidget {
   /// "Czekam na urządzenie główne…" in its own words.
   final String? waitingLabel;
 
-  /// Scanner injection seam: tests hand a fake that fires [LinkQrScanner]'s
-  /// callbacks without a camera. Null = the real [LinkQrScanner].
+  /// Scanner injection seam, handed through to [LinkScanScreen]: tests hand
+  /// a fake that fires the scanner's callbacks without a camera.
   final Widget Function({
     required void Function(String code) onCode,
     VoidCallback? onUnsupported,
@@ -139,9 +139,8 @@ class _LinkThisDeviceBodyState extends State<LinkThisDeviceBody> {
   bool _doneFired = false;
 
   /// Local surface state of the `showCode` step ((lxxvii) clause 3): the
-  /// scanner viewport (a `p` code from the primary runs the flipped flow),
-  /// the typed-field fallback, and the last refusal.
-  bool _scanning = false;
+  /// typed-field fallback, the unsupported-scanner notice and the last
+  /// refusal. Scanning itself is a pushed route.
   bool _manualEntry = false;
   bool _scanUnsupported = false;
   String? _codeError;
@@ -175,30 +174,29 @@ class _LinkThisDeviceBodyState extends State<LinkThisDeviceBody> {
     setState(() => _codeError = refusal);
   }
 
-  void _onScanned(String raw) {
-    if (!mounted) return;
-    setState(() => _scanning = false);
-    _submitCode(raw);
-  }
-
-  void _onScanUnsupported() {
-    if (!mounted) return;
-    setState(() {
-      _scanning = false;
-      _scanUnsupported = true;
-      _manualEntry = true;
-    });
-  }
-
-  Widget _buildScanner() {
-    final builder = widget.scannerBuilder;
-    if (builder != null) {
-      return builder(onCode: _onScanned, onUnsupported: _onScanUnsupported);
-    }
-    return LinkQrScanner(
-      onCode: _onScanned,
-      onUnsupported: _onScanUnsupported,
+  /// Scanning is its own full-screen surface (`LinkScanScreen`); what comes
+  /// back decides the next step here.
+  Future<void> _scan() async {
+    final result = await Navigator.of(context).push<LinkScanResult>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => LinkScanScreen(scannerBuilder: widget.scannerBuilder),
+      ),
     );
+    if (!mounted) return;
+    switch (result) {
+      case LinkScanCode(:final code):
+        _submitCode(code);
+      case LinkScanUnsupported():
+        setState(() {
+          _scanUnsupported = true;
+          _manualEntry = true;
+        });
+      case LinkScanManual():
+        setState(() => _manualEntry = true);
+      case null:
+        break;
+    }
   }
 
   @override
@@ -340,41 +338,23 @@ class _LinkThisDeviceBodyState extends State<LinkThisDeviceBody> {
               ),
             ),
             const SizedBox(height: 16),
-            if (_scanning) ...[
-              SizedBox(height: 280, child: _buildScanner()),
-              const SizedBox(height: 8),
-              Text(
-                l10n.linkScanHint,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colors.onSurfaceVariant,
-                ),
+            Semantics(
+              label: l10n.linkScanAction,
+              button: true,
+              child: OutlinedButton.icon(
+                key: const Key('link-scan'),
+                onPressed: _scan,
+                icon: const Icon(Icons.qr_code_scanner, size: 18),
+                label: Text(l10n.linkScanAction),
               ),
-              const SizedBox(height: 12),
-              OutlinedButton(
-                key: const Key('link-scan-cancel'),
-                onPressed: () => setState(() => _scanning = false),
-                child: Text(l10n.linkCancel),
+            ),
+            const SizedBox(height: 8),
+            if (!_manualEntry)
+              TextButton(
+                key: const Key('link-enter-manually'),
+                onPressed: () => setState(() => _manualEntry = true),
+                child: Text(l10n.linkEnterCodeManually),
               ),
-            ] else ...[
-              Semantics(
-                label: l10n.linkScanAction,
-                button: true,
-                child: OutlinedButton.icon(
-                  key: const Key('link-scan'),
-                  onPressed: () => setState(() => _scanning = true),
-                  icon: const Icon(Icons.qr_code_scanner, size: 18),
-                  label: Text(l10n.linkScanAction),
-                ),
-              ),
-              const SizedBox(height: 8),
-              if (!_manualEntry)
-                TextButton(
-                  key: const Key('link-enter-manually'),
-                  onPressed: () => setState(() => _manualEntry = true),
-                  child: Text(l10n.linkEnterCodeManually),
-                ),
-            ],
             if (_scanUnsupported) ...[
               const SizedBox(height: 8),
               Text(
