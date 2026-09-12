@@ -55,7 +55,7 @@ Standing warnings that used to live in the `LATEST.md` banner and in rotated-out
 ## Agent tooling / editing
 - **`String.replace` treats `$` in the REPLACEMENT as special** — a doc patch containing `` {1,32}$` `` spliced `CLAUDE.md` into itself twice; use `() => to` (`2026-09-08-session-d27-rename-and-review.md`).
 - The `edit` tool needs a tag from a `read`, never from `grep`; in a multi-worktree checkout give `edit` an ABSOLUTE path (`2026-09-08-session-d27-…`, `2026-09-08-session-dependabot-…`).
-- `git add -A` staged 51 files from the ignored-by-intent `local/` dir — check `git status` before staging wide (`2026-09-08-session-d27-rename-and-review.md`).
+- **This worktree is shared: other agents/the owner edit it concurrently** — foreign uncommitted diffs appeared mid-session twice (`local/` sweep 09-08; six frontend files 09-10). NEVER `git add -A` here; stage by explicit path and `git show --stat` the commit before pushing (`2026-09-08-session-d27-rename-and-review.md`, `2026-09-10-session-workflow-2.0.md`).
 - Flutter's `flt-semantics-placeholder` never populates from a synthetic click — `observe()` is useless; drive with two isolated Chromes on `--remote-debugging-port`, pixel clicks from screenshots, CDP `Input.insertText` (`2026-09-08-session-c7-final-review.md`).
 - A cold Chrome profile needs ~15 s before the first form paints (`2026-09-09-session-c9-phrase-at-the-door.md`).
 - Brand sweeps MUST eyeball the RENDERED page — split-span wordmarks defeat grep; re-verify subagent compliance claims, one fabricated its version bump (`2026-08-26-session.md`).
