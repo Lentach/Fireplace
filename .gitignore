@@ -5,14 +5,15 @@ dist/
 .env.staging
 *.log
 mcp.json
-# OMP agent state (sessions, logs, caches) is machine-local. Two files in .omp/ ARE
+# OMP agent state (sessions, logs, caches) is machine-local. Two things in .omp/ ARE
 # repo material: the project Dart MCP mount (secret-free — a local exe path plus
 # --disable flags; the path is THIS machine's, repoint it on another clone, see
-# docs/design/flutter-ui-playbook.md §0) and the project skills. Every OTHER
-# mcp.json stays ignored — a user-level one may carry keys.
+# docs/design/flutter-ui-playbook.md §0) and the edit-time area rules. Every OTHER
+# mcp.json stays ignored — a user-level one may carry keys. Project skills live in
+# .claude/skills/ (OMP discovers that path too; Claude Code discovers nothing else).
 .omp/*
 !.omp/mcp.json
-!.omp/skills/
+!.omp/rules/
 
 # User uploads (profile pictures)
 backend/uploads/

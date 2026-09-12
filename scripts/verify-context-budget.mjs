@@ -13,6 +13,7 @@ const WORKTREE = process.argv.includes("--worktree");
 const LATEST = ".cursor/session-summaries/LATEST.md";
 
 const BYTE_LIMITS = {
+  "AGENTS.md": 4_000, // the ONLY file OMP injects (shadows root CLAUDE.md at depth 0); hard rules + pointers, ≤40 lines
   "CLAUDE.md": 24_000, // 20.6 KB after §7 moved out (was 52 KB)
   "frontend/CLAUDE.md": 28_000, // 23.7 KB after §5/§7/§10 moved out (was 84 KB)
   "backend/CLAUDE.md": 26_000,
@@ -73,7 +74,7 @@ for (const { path, added } of summaryTargets()) {
   const s = content(path);
   if (s == null) continue;
   const n = bytesOf(s);
-  if (n > SUMMARY_MAX_BYTES) failures.push(`${path}: ${n} bytes > ${SUMMARY_MAX_BYTES}. Investigation narrative belongs in .planning/<task>/findings.md or docs/agents/workflow-2.0.md; the summary is Done / Proof / Open / Traps.`);
+  if (n > SUMMARY_MAX_BYTES) failures.push(`${path}: ${n} bytes > ${SUMMARY_MAX_BYTES}. Investigation narrative belongs in .planning/<task>/findings.md or docs/agents/workflow-2.0.md; the summary is What was done / Key files / Verification / Notes for next session.`);
   if (added) for (const h of SUMMARY_REQUIRED) if (!s.includes(h)) failures.push(`${path}: missing section "${h}".`);
 }
 

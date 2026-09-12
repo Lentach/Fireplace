@@ -12,8 +12,8 @@ The workflow is not short of tools; it is drowning in context and ceremony. A fr
 
 | File | Tokens (chars/4) | Loaded when |
 |---|---|---|
-| `CLAUDE.md` (root) | **12,987** | every request |
-| — of which §7 *Shared wire contracts* | **8,120** (62%) | every request, incl. pure UI/docs work |
+| `CLAUDE.md` (root) | **12,987** | every Claude Code request; **in OMP: NOT injected** — `AGENTS.md` shadows it at depth 0 (`omp://context-files.md`, proven 2026-09-10 by the harness research, `docs/research/2026-09-agent-harness-practice.md` §1), so it is a *deliberate read* that `AGENTS.md` mandates |
+| — of which §7 *Shared wire contracts* | **8,120** (62%) | with the root file, incl. pure UI/docs work |
 | `frontend/CLAUDE.md` | **21,043** | every frontend session |
 | — §5 *E2E and local storage invariants* | 6,579 | |
 | — §10 *Passcode Lock* | 5,870 | |
@@ -26,7 +26,7 @@ The workflow is not short of tools; it is drowning in context and ceremony. A fr
 | Skill descriptions — **OMP mounts 18** of the 37 dirs in `~/.claude/skills/` (the 18 that appear in the OMP system prompt) | ~450 [INFERENCE] | every OMP request |
 | 8 Claude Code plugins (`~/.claude/plugins/`) | **0 in OMP** — plugins are Claude-Code-only; `~/.omp/agent/` has no `skills/`/`agents/` dir and `config.yml` has no plugin keys | Claude Code sessions only |
 
-Frontend session floor ≈ **55k tokens**. Published 2026 guidance converges on ≤200–250 lines / ≤5% of context for the always-on file and "every rule needs an enforcement layer or an *advisory* tag" (sources §7). Root `CLAUDE.md` is 170 lines but 52 KB because lines are 800-char paragraphs.
+Frontend session floor ≈ **55k tokens in Claude Code**. **In OMP the always-on layer is only `AGENTS.md` (~0.3k) + the rulebook listing + skill/MCP metadata; the root and tier files are reads the agent makes because `AGENTS.md` tells it to** — the 55k is still what an obedient agent *consumes* before code, but the mechanism is instruction, not injection (correction 2026-09-10, after the harness research). Published 2026 guidance converges on ≤200–250 lines / ≤5% of context for the always-on file and "every rule needs an enforcement layer or an *advisory* tag" (sources §7). Root `CLAUDE.md` is 170 lines but 52 KB because lines are 800-char paragraphs.
 
 ### 1b. What the last 100 sessions actually used — two signals, not one
 
@@ -125,10 +125,10 @@ New shape — three files with three different lifetimes:
    ```
    # <title>
    **Date:** … **Version:** <before → after> **Tiers deployed:** web|backend|both|none
-   ## Done        (≤ 8 bullets, what changed, file:symbol)
-   ## Proof       (commands run + result lines, mutants killed, live drive summary)
-   ## Open        (owner decisions owed, NOT-verified surfaces e.g. iOS)
-   ## Traps       (each ALSO appended to docs/agents/traps.md)
+   ## What was done     (≤ 8 bullets, what changed, file:symbol)
+   ## Key files
+   ## Verification      (commands run + result lines, mutants killed, live drive summary)
+   ## Notes for next session   (owner decisions owed, NOT-verified surfaces, traps — each trap ALSO appended to docs/agents/traps.md)
    ```
    No narrative of the investigation — that is what `.planning/<task>/findings.md` is for when a task spans sessions.
 3. **`LATEST.md`** — *5 entries × ≤ 900 chars*: date · version · one-sentence outcome · open asks · link. One deploy-state line at the top. No banner.
@@ -155,7 +155,7 @@ The strongest evidence in this document is that **38 skills went unused across 2
 
 | Skill | Ships now? | Enforcement |
 |---|---|---|
-| `umbra-session-end` (`.omp/skills/umbra-session-end/SKILL.md`, committed) | **yes** | `.githooks/pre-commit` runs `scripts/verify-session-summary.mjs` (§6); a summary that misses the template or budget cannot be committed, so the skill is the ergonomic path to a green commit |
+| `umbra-session-end` (`.claude/skills/umbra-session-end/SKILL.md`, committed — OMP discovers project `.claude/skills` at priority 80 and Claude Code discovers nothing else, so one file serves both) | **yes** | `.githooks/pre-commit` runs `scripts/verify-session-summary.mjs` (§6); a summary that misses the template or budget cannot be committed, so the skill is the ergonomic path to a green commit |
 | Flutter live-verify loop (Dart MCP hot reload + the two-isolated-Chromes CDP recipe from `2026-09-08-session-c7-final-review.md`) | **no — becomes `frontend/CLAUDE.md` §9 text** | that section is already auto-loaded for frontend work; a skill would add a description line for a thing the tier doc must say anyway |
 | Release checklist (PATCH bump → push → `gh api …/commits/master/check-runs`, never `gh run list` → backend first → `deploy-web.ps1` → smoke) | **no — already covered** | `.cursor/rules/production-vm-deploy.mdc` auto-attaches on deploy keywords; add the check-runs line there |
 | Mutant falsification (F-numbers) | **no — doc section** | 8/100 sessions do it unprompted from the tier doc; not broken |
@@ -184,7 +184,11 @@ modelRoles:
 
 Ids verified against `~/.omp/agent/models.db` (`claude-opus-5`, `claude-haiku-4-5-20251001` present). Net change: four Opus 4.8 roles up to Opus 5, two down to Haiku.
 
-### 5d. CLI tools — no additions
+### 5d. Memory — decision recorded 2026-09-10
+
+OMP `memory.backend` / `autolearn` / managed skills stay OFF. They are machine-local (`~/.omp/agent`), extraction is priced at the `default` role on startup, subagents skip them, and a public repo cannot see them. `traps.md` + `LATEST.md` is the same vendor-endorsed structured-note-taking pattern (Anthropic, *Effective context engineering*) with repo-wide reach. Re-litigate only if a second machine joins. Source: `docs/research/2026-09-agent-harness-practice.md` §5.
+
+### 5e. CLI tools — no additions
 
 `gitleaks`, `osv-scanner`, `trivy` are installed and situational. Nothing surveyed this session changes the July verdicts (GitHub MCP, Sentry, SonarQube, knip, artillery all still C/B for the stated reasons). The one structural gap the July audit named — error tracking (GlitchTip) — remains the E2E-audit owner's call and is out of scope here.
 
@@ -194,13 +198,14 @@ Add `scripts/verify-context-budget.mjs`, wired into `.githooks/pre-commit` next 
 
 | Check | Limit | Fails commit when |
 |---|---|---|
-| `CLAUDE.md` bytes | 16,000 | exceeded |
-| `frontend/CLAUDE.md`, `backend/CLAUDE.md` bytes | 26,000 each | exceeded |
+| `CLAUDE.md` bytes | 24,000 (post-migration size 20.4 KB; §3a's 3.5k-token target = ~14 KB is the *next* ratchet step once §1/§6 history paragraphs move to `traps.md`) | exceeded |
+| `frontend/CLAUDE.md` bytes | 28,000 (post-migration 23.7 KB) | exceeded |
+| `backend/CLAUDE.md` bytes | 26,000 | exceeded |
 | `LATEST.md` entries | 5 (existing) | exceeded |
 | `LATEST.md` per-entry chars | 900 | exceeded |
 | `LATEST.md` total bytes | 10,000 | exceeded |
 | new dated summary bytes | 6,000 | exceeded |
-| new dated summary sections | `## Done`, `## Proof`, `## Open`, `## Traps` | missing |
+| new dated summary sections | `## What was done`, `## Key files`, `## Verification`, `## Notes for next session` (the headings root §1 has always required; the Done/Proof/Open/Traps draft was dropped 2026-09-10 to keep one template) | missing |
 
 Ratchet semantics like `lint-ratchet.mjs`: the limits are set at the *post-migration* sizes, so the check is green the day it lands and can only bite on regrowth. Tags in the docs: every rule that has no hook/CI/verifier behind it is marked `(advisory)` so readers know which sentences are enforced.
 
@@ -217,6 +222,25 @@ Each batch independently reversible; nothing later depends on earlier.
 | 5 | **Handoff 2.0** — `traps.md` seeded from the LATEST banner + last 30 summaries' "Traps" bullets; template; `umbra-session-end` skill; `verify-session-summary.mjs` + budget verifier in pre-commit | hook, scripts, LATEST rewrite | medium: hook edits need owner OK; first run rewrites LATEST |
 | 6 | **Model roles** — `slow`/`plan`/`designer`/`vision` → Opus 5; `smol`/`tiny` → Haiku (§5c); `default`/`commit`/`task`/`advisor` untouched | user config only | none; owner decided 2026-09-10 |
 | 7 | Nothing. The four deferred skills (`release`, `falsify`, `wire-change`, `incident`) stay as doc sections until a session is observed reaching for them (§5b) | — | — |
+
+### Batch 8 — from the 2026-09 research (`docs/research/`), each its own session with its own proof
+
+Applied 2026-09-10 (harness fixes 1,2,3,4,6,9,10,11 from `2026-09-agent-harness-practice.md` §9): `AGENTS.md` now carries the hard rules (it is the only file OMP injects); `.omp/rules/*.md` for the four area docs, **in the explicit form `condition: ".*"` + `scope: "tool:edit(<glob>), tool:write(<glob>), …"`** — the documented `condition:` file-glob shorthand did NOT register from a YAML list (probe: 2 edits on `chat.gateway.ts`, 0 injections); the explicit scope form fired on the first edit (`ttsr_injection` → `injectedRules: ["wire-contracts"]`, `docs/contracts/wire.md` delivered in the tool result). Fires at edit time, reaches subagents; `.cursor/rules` globs as YAML arrays; caps reconciled with §6; skill moved to `.claude/skills/` (both harnesses discover it); one summary template; memory decision recorded (§5d); "always-on" framing corrected (§1a).
+
+| # | Add | Why (evidence in the research file) | Gate |
+|---|---|---|---|
+| 8.1 | Pin Flutter in CI to the dev box's line, OR move both to **3.47** | CI floats to Dart 3.13.3, box is 3.12.2 — a tool with a floor between them passes CI and fails locally (`very_good_analysis` 11 is that case today). 3.47 also makes **Widget Previewer** stable (`@Preview` replaces booting the app to eyeball a widget) | `flutter --version` both sides equal; `.widget_preview/` gitignored |
+| 8.2 | `patrol` (CLI + web runner; NOT `patrol_mcp` yet) | Only surveyed E2E tool covering web AND Android; Apache-2.0, 4.9.0, installs on today's SDK; the Keystore/SQLCipher and link-ceremony paths are exactly what it reaches | one green Patrol run of an existing `integration_test` on both targets |
+| 8.3 | `knip` (`--include files,dependencies` first) | ISC, 6.35.1, first-class Nest plugin so DI providers are not false positives — the cheapest cleanup lever on the backend | first pass clean or every hit triaged in the PR |
+| 8.4 | `pg_stat_statements` on prod | bundled in PG16; the only VM change is a restart + bounded shared memory; answers "what is slow" without egress | `SELECT * FROM pg_stat_statements LIMIT 1` on prod |
+| 8.5 | Renovate replacing Dependabot | `ignoreDeps`≡`enabled:false` rules evaluate BEFORE grouping and its pub manager runs `flutter pub upgrade`, so the recorded unresolvable-group bug (#157/#169/#171/#173) cannot recur; has Dart/Flutter version datasources | first Renovate PR merges green; `dependabot.yml` deleted in the same PR |
+| 8.6 | `very_good_analysis` **10.3.0** (11 only after 8.1) | with a baseline; `async_return_with_no_await` is the rule this codebase wants | ratchet, like the backend lint floor |
+| 8.7 | Re-pull `diagnosing-bugs` + `grilling` bodies from `mattpocock/skills`; hand-pick from `kevmoo/dash_skills` | on-disk `diagnosing-bugs` is missing upstream's redaction section — the one change that matters on an E2EE repo; zero listing cost | diff shows the section present |
+| 8.8 | `artillery` in `scripts/smoke/`, run from the PC against the VM | built-in `socketio` engine; k6 closed #1306 without it | one scripted send/ack scenario passing |
+| 8.9 | `dependabot.yml`/Renovate: ignore `typescript` majors | TS 7 is out; `typescript-eslint` 8.70 peers `<6.1.0` — TS7 silently strands every type-aware lint | rule present |
+| 8.10 | Harness fixes 5, 7, 8 (`.claude/rules` `paths:` stubs; `.omp/RULES.md` sticky non-negotiables; guard hooks blocking `--no-verify` and `gh run list`) | complements, not replacements, for the git gate; in-process TS dodges the `.bat` limit | `rule://RULES` resolves; hook blocks in a dry run |
+
+Explicitly NOT, with the reason in the research: NestJS Observe/MCP (paid tier, egress, 4 GB), maestro (web Beta, fixed viewport, needs `Semantics` edits), DCM (50k-LOC free tier < 55.8k in `lib/` alone), docker scout (needs login + uploads), alchemist (6 months silent), Developer Knowledge MCP (all queries to Google), Postgres MCPs (`docker exec psql`), chrome-devtools-mcp standing (58 schemas, telemetry), Vitest migration (runner-agnostic APIs, zero correctness gain), superpowers (its `.pi` extension imports a package OMP lacks), OMP memory backends (§5d).
 
 Measure after 30 sessions: session-start token floor (target ≤ 17k), Dart MCP usage (target > 0 or remove), `docs` share of commits (target < 20%), average dated-summary size (target ≤ 6 KB).
 
@@ -261,4 +285,4 @@ Full reports with every file:line: `agent://AuditWire`, `agent://AuditE2E`, `age
 - MindStudio — progressive disclosure for agent skills: https://www.mindstudio.ai/blog/progressive-disclosure-ai-agents-context-management
 - Tembo / Firecrawl 2026 MCP surveys (baseline = GitHub, filesystem, Playwright, Context7, tracker; trend to remote OAuth servers): https://www.tembo.io/blog/best-mcp-servers · https://www.firecrawl.dev/blog/best-mcp-servers-for-developers
 - Practical DevSecOps — MCP security statistics 2026 (untrusted-text injection is the top reported MCP risk class): https://www.practical-devsecops.com/mcp-security-statistics-2026-report/
-- OMP harness docs (`omp://config-usage.md`, `omp://skills.md`): project skills at `.omp/skills/<name>/SKILL.md`, rules at `.omp/rules/*.md`, MCP at `.omp/mcp.json`.
+- OMP harness docs (`omp://config-usage.md`, `omp://skills.md`, `omp://context-files.md`, `omp://rulebook-matching-pipeline.md`): project skills discovered at `.claude/skills/` (priority 80) and `.omp/skills/`; edit-time rules at `.omp/rules/*.md` via `condition:` file globs; `AGENTS.md` shadows root `CLAUDE.md` at depth 0; MCP at `.omp/mcp.json`.

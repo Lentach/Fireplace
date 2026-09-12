@@ -1,20 +1,26 @@
-# AGENTS.md — Fireplace
+# AGENTS.md — Fireplace (Umbra)
 
-Universal agent entrypoint (Codex / Cursor / OMP / any AGENTS.md-reading harness).
-**All project knowledge lives in `CLAUDE.md` — this file only tells you to load it.**
+Universal agent entrypoint. **In Oh-My-Pi this is the ONLY project file injected automatically** (it shadows root `CLAUDE.md` at the same depth — `omp://context-files.md` "one project context file per directory depth"). Everything below is therefore load-bearing; everything else is a deliberate read.
 
-## Bootstrap (mandatory, in order)
+## Read, in order
 
-1. Read root `CLAUDE.md` — workflow rules, architecture, deploy safety, version/env contract, wire contracts.
-2. Tier work → read the tier file before your first change there: `backend/CLAUDE.md` (NestJS/Postgres) or `frontend/CLAUDE.md` (Flutter/PWA).
-3. Read `.cursor/session-summaries/LATEST.md` for context from previous sessions.
-4. Delegating? Tell every subagent to read these files explicitly — subagents do not inherit your context.
+1. Root `CLAUDE.md` — workflow, architecture, deploy safety, version contract.
+2. The tier file before your first change in that tier: `backend/CLAUDE.md` or `frontend/CLAUDE.md`.
+3. `.cursor/session-summaries/LATEST.md` (5 entries), then `grep docs/agents/traps.md` for the area you will touch — standing warnings live there, one line each.
+4. Area docs, before the first edit in a matching file (a rule fires on edit in OMP; Cursor/Claude Code see the same list in `.cursor/rules/`):
+   - `docs/contracts/wire.md` — `chat.gateway.ts`, `**/dto/**`, `key-bundles/`, `devices/`, `auth/`, `socket_service.dart`, `connection_provider.dart`, `messaging_provider.dart`
+   - `frontend/docs/e2e-invariants.md` — `services/encryption/**`, `encryption_service.dart`, `device_list/`, `device_link/`, `recovery_phrase.dart`, `encryption_provider.dart`
+   - `frontend/docs/composer-media.md` — `chat_input_bar*`, `composer*`, `chat_action_tiles.dart`, `web_file_input.dart`, `widgets/message/**`
+   - `frontend/docs/passcode-lock.md` — `**/passcode*`, `privacy_curtain*`, `content_key_wrap.dart`, `web/index.html`
+5. Delegating? Subagents inherit nothing: name the files above in the task.
 
-## Ground rules (details in `CLAUDE.md` §1)
+## Non-negotiable (details in root `CLAUDE.md` §1, §4, §6)
 
-- Code wins over any doc — when source conflicts with docs, trust source and fix the doc.
-- Change only what was asked; read files before editing them; never guess names.
-- At task end: write `.cursor/session-summaries/YYYY-MM-DD-session.md` + update `LATEST.md` (format in `CLAUDE.md` §1).
-- Production deploy is split and easy to get wrong — `CLAUDE.md` §4 first, full runbook in `.cursor/rules/production-vm-deploy.mdc`.
+- Code wins over docs. When they disagree, fix the doc in the same commit. Re-verify volatile claims (branch, versions, CI, counts) with a command you ran THIS session.
+- **This checkout is on `feat/passcode-lock`; `master` lives in the `fireplace-0a` worktree.** `git fetch && git status -sb` first. Push as `git push origin HEAD:master`, then the branch. **The worktree is shared — stage by explicit path, never `git add -A`.**
+- Change only what was asked. Composer/attachment picker: nothing ships without a green repro AND the owner's explicit OK; never `git revert 0cbf17b`.
+- Pre-commit runs `gitleaks git --staged` and `scripts/verify-context-budget.mjs`. Never `--no-verify`. Never trim a fresh summary to fit — move detail out.
+- Prod: deploy is split (web from the PC, backend on the VM); CI must be green first — `gh api repos/Lentach/Fireplace/commits/master/check-runs`, **never `gh run list`**. Never `docker compose down -v` / `volume rm` / bare `up -d` on prod. Never tell a user to clear site data.
+- Task end: dated summary ≤6 KB with the four sections, traps appended to `docs/agents/traps.md`, ≤900-char LATEST entry on top, oldest deleted. Skill: `umbra-session-end`.
 
-Maintain this file as a pointer only. New facts go in `CLAUDE.md` or a tier file, never here.
+Maintain this file as the always-on layer: ≤40 lines, hard rules + pointers only. New facts go in `CLAUDE.md`, a tier file, an area doc, or `traps.md`.

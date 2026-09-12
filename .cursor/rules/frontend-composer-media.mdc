@@ -1,6 +1,12 @@
 ---
 description: Use when touching the chat composer, attachment picker, file_picker/web_file_input, media/video/voice/image messages, the iOS composer viewport pin, or anything keyboard-adjacent in the chat screen.
-globs: frontend/lib/widgets/chat_input_bar*,frontend/lib/widgets/composer*,frontend/lib/widgets/chat_action_tiles.dart,frontend/lib/utils/web_file_input.dart,frontend/lib/widgets/message/**,frontend/lib/services/media*
+globs:
+  - frontend/lib/widgets/chat_input_bar*
+  - frontend/lib/widgets/composer*
+  - frontend/lib/widgets/chat_action_tiles.dart
+  - frontend/lib/utils/web_file_input.dart
+  - frontend/lib/widgets/message/**
+  - frontend/lib/services/media*
 ---
 
 # Composer, media, platform gotchas

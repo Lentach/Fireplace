@@ -1,6 +1,11 @@
 ---
 description: Use when touching the passcode lock — passcode screens, auto-lock timer, wake curtain (#fp-curtain), web key wrapping (KEK, fpwk1 envelopes), the erase panel, or lock-state routing.
-globs: frontend/lib/**/passcode*,frontend/lib/utils/privacy_curtain*,frontend/lib/services/e2e_lock_revoker.dart,frontend/lib/services/encryption/content_key_wrap.dart,frontend/web/index.html
+globs:
+  - frontend/lib/**/passcode*
+  - frontend/lib/utils/privacy_curtain*
+  - frontend/lib/services/e2e_lock_revoker.dart
+  - frontend/lib/services/encryption/content_key_wrap.dart
+  - frontend/web/index.html
 ---
 
 # Passcode lock

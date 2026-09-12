@@ -66,6 +66,8 @@ Standing warnings that used to live in the `LATEST.md` banner and in rotated-out
 - **2026-08-14, owner decision: per-entry WORD budgets (≤3900 total / ≤700 per entry) were REMOVED** — the shared banner counted as an "entry", so adding a genuinely new binding fact to it got the commit BLOCKED, and the cheapest escape was deleting evidence from a summary written minutes earlier; three sessions in a row burned time on the arithmetic instead of the handoff.
 - **2026-09-10, workflow 2.0 re-introduced a per-entry CHAR cap (≤900, hook 1000) — and the 08-14 failure mode is gone by construction:** there is no banner (standing warnings live here, one line each, uncapped), so nothing binding ever has to fit inside an entry; the entry only has to link the dated file. If the cap ever forces deleting evidence again, that is a regression of this exact decision — move the fact here or to the dated file, never trim it away.
 
+- **OMP injects only `AGENTS.md`** at depth 0 (it shadows root `CLAUDE.md`); root/tier files are deliberate reads. A `.omp/rules` edit-time rule needs `condition: ".*"` + explicit `scope: "tool:edit(<glob>), tool:write(<glob>)"` — the YAML-list `condition:` shorthand silently registers nothing; comma-string `globs:` in `.cursor/rules` is inert in OMP (YAML array works). Proven by fresh-session probes 2026-09-10 (`docs/research/2026-09-agent-harness-practice.md` §8) (`2026-09-10-session-workflow-2.0.md`).
+
 ## Owner-owed decisions (open)
 - README screenshot recapture, GitHub repo renames, the domain decision (`2026-08-26-session.md`).
 - Thief-with-password matrix answers (`2026-09-03-session-lxxii-reset-door.md`).

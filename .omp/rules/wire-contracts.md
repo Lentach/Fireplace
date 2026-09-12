@@ -1,14 +1,7 @@
 ---
 description: Use when touching the client⇄server wire — chat.gateway.ts, any @SubscribeMessage or socket.on( handler, DTOs under backend/src/**/dto, socket_service.dart, connection_provider.dart, messaging_provider.dart, message envelopes, key bundles, device lists, provisioning/revocation/reset ceremonies, or /auth/recover.
-globs:
-  - backend/src/chat/**
-  - backend/src/**/dto/**
-  - backend/src/key-bundles/**
-  - backend/src/devices/**
-  - backend/src/auth/**
-  - frontend/lib/services/socket_service.dart
-  - frontend/lib/providers/connection_provider.dart
-  - frontend/lib/providers/messaging_provider.dart
+condition: ".*"
+scope: "tool:edit(backend/src/chat/**), tool:write(backend/src/chat/**), tool:edit(backend/src/**/dto/**), tool:write(backend/src/**/dto/**), tool:edit(backend/src/key-bundles/**), tool:write(backend/src/key-bundles/**), tool:edit(backend/src/devices/**), tool:write(backend/src/devices/**), tool:edit(backend/src/auth/**), tool:write(backend/src/auth/**), tool:edit(frontend/lib/services/socket_service.dart), tool:write(frontend/lib/services/socket_service.dart), tool:edit(frontend/lib/providers/connection_provider.dart), tool:write(frontend/lib/providers/connection_provider.dart), tool:edit(frontend/lib/providers/messaging_provider.dart), tool:write(frontend/lib/providers/messaging_provider.dart)"
 ---
 
 # Wire contracts
