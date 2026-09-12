@@ -3029,12 +3029,19 @@ that is the designed outcome).
     which is populated before the chat's history arrives — without it the first render after a
     reload sees an EMPTY timeline, which cannot out-date anything, and the evicted line flashes
     (seen live, `fp-l1-A-reloaded-chat2.png`). And the eviction is DURABLE: the first build that
-    finds the note superseded calls `EncryptionService.dismissPeerKeyChangeNote(peerId)` (remove
-    + persist + `onPeerIdentityChanged`), once per note instant (`_dismissedNoteAt` latch), so a
-    cleared or expired history cannot bring a superseded line back. Accepted residual: the
-    instant is device-local and `createdAt` is server time, so a device clock behind the server
-    by more than the delivery latency lets the TRIGGERING message hide the line at once; a clock
-    ahead lets one extra message through. A muted, informational line; the warnings-ON red pill
+    finds the note superseded calls `EncryptionService.dismissPeerKeyChangeNote(peerId,
+    occurredAt:)` — a COMPARE-AND-REMOVE on the instant (review finding, 0.2.39: the screen
+    decides in `build` and calls after the frame, and `_demoteKeyChangeIfMuted` can write a fresh
+    instant in between; a peer-keyed remove deleted that never-superseded note and the latch hid
+    it) — plus persist + `onPeerIdentityChanged`, once per note instant (`_dismissedNoteAt`
+    latch, reset on pane switch), so a cleared or expired history cannot bring a superseded line
+    back. An unparseable instant (corrupt storage) counts as superseded and is dismissed rather
+    than pinned forever. Accepted residuals: the instant is device-local and `createdAt` is
+    server time, so a device clock behind the server by more than the delivery latency lets the
+    TRIGGERING message hide the line at once, a clock ahead lets one extra message through; and
+    `messages.last` is the newest by position, not by `createdAt` — an optimistic own row
+    (local `now`) followed by a server-stamped peer row can keep the line one message longer
+    until the next history merge re-sorts. A muted, informational line; the warnings-ON red pill
     is untouched by this amendment.
     **Rider — per-account peer state leaked across logins.** `EncryptionService` is a process
     singleton; `EncryptionProvider.clearAll` (logout) never cleared the service's
@@ -3057,7 +3064,8 @@ that is the designed outcome).
     in that set for good — so every later `peerIdentityChanged` for that peer was dropped as a
     duplicate. Invisible while the line was permanent; silent data loss once it is evicted. Now
     a repeat event with warnings OFF still runs the demotion (fresh note instant, persist,
-    notify); with warnings ON the repeat stays a no-op (the standing pill already says it).
+    notify; the `PEER_IDENTITY_CHANGED` breadcrumb carries `repeat: true`, so the diag ring shows
+    remints 2..n); with warnings ON the repeat stays a no-op (the standing pill already says it).
     The local libsignal path is unchanged: its demotion promotes a staged candidate, the anchor
     advances, and the set is cleared, so a second change there is already "fresh".
     Falsification: (F46) drop the timestamp comparison → the note still renders over a message
@@ -3067,7 +3075,8 @@ that is the designed outcome).
     older than the previous chat's rows is evicted and dismissed; (F47) drop the user-id guard in `initialize` → a note
     recorded for account 1 is present after `initialize(2)`; (F47b) clear unconditionally → a
     refusal recorded before a same-user re-initialise is gone after it; (F48) restore the early
-    return → a second server event after an evicted note writes nothing.
+    return → a second server event after an evicted note writes nothing; (F49) make the dismiss
+    peer-keyed → a dismissal carrying a stale instant removes a fresher note.
 
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the

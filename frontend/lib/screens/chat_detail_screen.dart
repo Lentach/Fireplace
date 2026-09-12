@@ -866,8 +866,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   /// an embedded-pane switch the build still holds the previous chat's list
   /// (`didUpdateWidget` reloads post-frame), and its newer rows must not
   /// evict, let alone durably dismiss, this peer's note. An unparseable
-  /// instant renders (the note was recorded; failing closed would silence
-  /// it), and a message stamped at the SAME instant does not evict it.
+  /// instant (corrupt storage — the writer is `toIso8601String`) counts as
+  /// superseded, so it gets dismissed rather than pinned forever. A message
+  /// stamped at the SAME instant does not evict.
   static bool _isNewestInTimeline(
     String occurredAt,
     List<MessageModel> messages,
@@ -875,7 +876,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     int conversationId,
   ) {
     final at = DateTime.tryParse(occurredAt);
-    if (at == null) return true;
+    if (at == null) return false;
     if (lastMessageAt != null && lastMessageAt.isAfter(at)) return false;
     if (messages.isEmpty || messages.last.conversationId != conversationId) {
       return true;
@@ -1013,17 +1014,20 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
           convs.lastMessages[widget.conversationId]?.createdAt,
           widget.conversationId,
         );
-    if (peerKeyChangeNoteAt != null &&
+    if (otherUser != null &&
+        peerKeyChangeNoteAt != null &&
         !peerKeyChangeNoted &&
         peerKeyChangeNoteAt != _dismissedNoteAt) {
       // Superseded: forget it durably so a later open does not flash the line
       // while history loads. Once per note instant — a later change writes a
-      // fresh instant and gets its own eviction.
+      // fresh instant and gets its own eviction; the service compares the
+      // instant before removing, so a note written between this build and
+      // the callback survives.
       _dismissedNoteAt = peerKeyChangeNoteAt;
       final enc = context.read<EncryptionProvider>();
-      final peerId = otherUser!.id;
+      final peerId = otherUser.id;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        enc.dismissPeerKeyChangeNote(peerId);
+        enc.dismissPeerKeyChangeNote(peerId, occurredAt: peerKeyChangeNoteAt);
       });
     }
     final activeConv = convs.getConversationById(widget.conversationId);

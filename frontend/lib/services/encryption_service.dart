@@ -353,11 +353,19 @@ class EncryptionService {
     } catch (_) {}
   }
 
-  /// (lxxxiv): the timeline moved past [peerId]'s muted note. Forget it
-  /// durably, so a later open of that chat does not re-render the line
-  /// while history is still loading (an empty timeline cannot out-date it).
-  Future<void> dismissPeerKeyChangeNote(int peerId) async {
-    if (_peerKeyChangeNotes.remove(peerId) == null) return;
+  /// (lxxxiv): the timeline moved past [peerId]'s muted note recorded at
+  /// [occurredAt]. Forget it durably, so a later open of that chat does not
+  /// re-render the line while history is still loading (an empty timeline
+  /// cannot out-date it). Compare-and-remove: the screen decides in `build`
+  /// and calls after the frame, and `_demoteKeyChangeIfMuted` can write a
+  /// FRESH instant in between — that note was never superseded and must
+  /// survive. Same discipline as the identity-anchor CAS above.
+  Future<void> dismissPeerKeyChangeNote(
+    int peerId, {
+    required String occurredAt,
+  }) async {
+    if (_peerKeyChangeNotes[peerId] != occurredAt) return;
+    _peerKeyChangeNotes.remove(peerId);
     await _persistKeyChangeNotes();
     onPeerIdentityChanged?.call(peerId);
   }
@@ -517,11 +525,12 @@ class EncryptionService {
     // line would fire once per peer, ever. With warnings ON the standing pill
     // already says it, and the repeat is the duplicate it always was.
     if (!fresh && keyChangeWarnings()) return;
+    E2ePersistentDiag.record('PEER_IDENTITY_CHANGED', {
+      'peerId': peerId,
+      'source': source,
+      if (!fresh) 'repeat': true,
+    });
     if (fresh) {
-      E2ePersistentDiag.record('PEER_IDENTITY_CHANGED', {
-        'peerId': peerId,
-        'source': source,
-      });
       onPeerIdentityChanged?.call(peerId);
       await _persistIdentityChanged();
     }
@@ -4250,6 +4259,12 @@ class EncryptionService {
 
   /// Clear all E2E encryption keys for this user from storage.
   /// Uses selective deletion (not deleteAll) to avoid wiping non-E2E data.
+  ///
+  /// Deliberately does NOT clear the per-account in-RAM collections (peer
+  /// warnings, key-change notes, refusals, rebuild intents, device-list pins):
+  /// `initialize` drops them when the account CHANGES ((lxxxiv) rider) —
+  /// nulling `_userId` here is what makes the next login take that branch.
+  /// A new per-account collection belongs on that list, not here.
   Future<void> clearAllKeys() async {
     final userId = _userId;
     if (userId != null) {

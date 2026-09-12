@@ -131,11 +131,20 @@ void main() {
     await alice.buildSession(bobId, flatBundleFrom(bob),
         expectedIdentityBase64: null);
     await alice.recordPeerIdentityChangedFromServer(bobId);
-    expect(alice.peerKeyChangeNotes, contains(bobId));
+    final at = alice.peerKeyChangeNotes[bobId];
+    expect(at, isNotNull);
     var notified = 0;
     alice.onPeerIdentityChanged = (_) => notified++;
 
-    await alice.dismissPeerKeyChangeNote(bobId);
+    // F49: a stale instant is a fresher note's evidence — must not remove.
+    await alice.dismissPeerKeyChangeNote(bobId,
+        occurredAt: '2000-01-01T00:00:00.000Z');
+    expect(alice.peerKeyChangeNotes[bobId], at,
+        reason: 'compare-and-remove: the screen decided on an older instant; '
+            'a note written since was never superseded (F49)');
+    expect(notified, 0);
+
+    await alice.dismissPeerKeyChangeNote(bobId, occurredAt: at!);
 
     expect(alice.peerKeyChangeNotes, isEmpty);
     expect(notified, 1, reason: 'the open chat must rebuild without the line');
@@ -146,7 +155,7 @@ void main() {
         reason: 'a dismissed note that came back on relaunch would flash the '
             'line on the next open');
 
-    await alice.dismissPeerKeyChangeNote(bobId);
+    await alice.dismissPeerKeyChangeNote(bobId, occurredAt: at);
     expect(notified, 1, reason: 'dismissing an absent note is a silent no-op');
   });
 
@@ -158,7 +167,8 @@ void main() {
     await alice.recordPeerIdentityChangedFromServer(bobId);
     // The muted ack has nothing staged, so the standing set keeps bob.
     expect(alice.peersWithChangedIdentity, contains(bobId));
-    await alice.dismissPeerKeyChangeNote(bobId);
+    await alice.dismissPeerKeyChangeNote(bobId,
+        occurredAt: alice.peerKeyChangeNotes[bobId]!);
     expect(alice.peerKeyChangeNotes, isEmpty);
     var notified = 0;
     alice.onPeerIdentityChanged = (_) => notified++;

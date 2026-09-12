@@ -44,9 +44,9 @@ const _peerId = 2;
 class _AlarmedEncryption extends EncryptionProvider {
   _AlarmedEncryption({
     this.changedPeers = const <int>{},
-    this.notedPeers = const <int, String>{},
+    Map<int, String> notedPeers = const <int, String>{},
     this.refusedPeers = const <int>{},
-  });
+  }) : notedPeers = Map<int, String>.of(notedPeers);
 
   final Set<int> refusedPeers;
 
@@ -54,6 +54,9 @@ class _AlarmedEncryption extends EncryptionProvider {
   Set<int> get peersRefusedIdentity => refusedPeers;
 
   final Set<int> changedPeers;
+
+  /// Mutable, like the service's map: a dismissal must make the next build
+  /// see NO note, or the test proves nothing about convergence.
   final Map<int, String> notedPeers;
 
   @override
@@ -65,9 +68,18 @@ class _AlarmedEncryption extends EncryptionProvider {
   /// (lxxxiv): peers whose superseded note the screen asked to forget.
   final List<int> dismissed = <int>[];
 
+  /// Mirrors `EncryptionService.dismissPeerKeyChangeNote`: compare-and-remove
+  /// on the instant, then the callback the real provider wires to
+  /// `notifyListeners`.
   @override
-  Future<void> dismissPeerKeyChangeNote(int peerId) async {
+  Future<void> dismissPeerKeyChangeNote(
+    int peerId, {
+    required String occurredAt,
+  }) async {
     dismissed.add(peerId);
+    if (notedPeers[peerId] != occurredAt) return;
+    notedPeers.remove(peerId);
+    notifyListeners();
   }
 
   @override
