@@ -1,76 +1,144 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "description": "Replaces .github/dependabot.yml (workflow-2.0 Batch 8.5). Every ignore below is a transcribed dependabot.yml rule with its reason; keep both files in sync until dependabot.yml is deleted after the first green Renovate PR.",
-  "extends": ["config:recommended", ":disableRateLimiting"],
+  "extends": [
+    "config:recommended",
+    ":disableRateLimiting"
+  ],
   "timezone": "Europe/Warsaw",
-  "schedule": ["before 6am on the first day of the month"],
+  "schedule": [
+    "before 6am on the first day of the month"
+  ],
   "prConcurrentLimit": 3,
-  "enabledManagers": ["npm", "pub", "github-actions"],
-  "lockFileMaintenance": { "enabled": false },
+  "enabledManagers": [
+    "npm",
+    "pub",
+    "github-actions"
+  ],
+  "lockFileMaintenance": {
+    "enabled": false
+  },
   "packageRules": [
     {
       "description": "Backend: minor+patch grouped monthly (was dependabot group backend-minor-patch).",
-      "matchManagers": ["npm"],
-      "matchUpdateTypes": ["minor", "patch"],
+      "matchManagers": [
+        "npm"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
       "groupName": "backend-minor-patch"
     },
     {
       "description": "@types/node must describe the runtime: node:22-alpine in backend/Dockerfile, CI node-version 22, engines.node >=22. Bump base image + types in one commit, then drop this rule.",
-      "matchManagers": ["npm"],
-      "matchPackageNames": ["@types/node"],
-      "matchUpdateTypes": ["major"],
+      "matchManagers": [
+        "npm"
+      ],
+      "matchPackageNames": [
+        "@types/node"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
       "enabled": false
     },
     {
       "description": "Nest family moves as ONE major and cannot yet: @nestjs/throttler peers ^11 only, Nest 12 breaks WsThrottlerGuard. Re-check when throttler peers ^12; then do the family in one PR and delete this rule.",
-      "matchManagers": ["npm"],
-      "matchPackageNames": ["/^@nestjs//"],
-      "matchUpdateTypes": ["major"],
+      "matchManagers": [
+        "npm"
+      ],
+      "matchPackageNames": [
+        "/^@nestjs//"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
       "enabled": false
     },
     {
       "description": "TypeScript 7 strands type-aware lint: typescript-eslint 8.70 peers typescript <6.1.0 (Batch 8.9). Drop when typescript-eslint peers TS 7.",
-      "matchManagers": ["npm"],
-      "matchPackageNames": ["typescript"],
-      "matchUpdateTypes": ["major"],
+      "matchManagers": [
+        "npm"
+      ],
+      "matchPackageNames": [
+        "typescript"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
       "enabled": false
     },
     {
       "description": "Frontend: NO groupName on purpose — dependabot's grouped pub PRs (#157/#169/#171/#173) were unresolvable. One PR per package; Renovate runs flutter pub upgrade per PR so an unresolvable set fails loudly. Add a pub groupName only after one grouped pub PR is proven to resolve.",
-      "matchManagers": ["pub"],
-      "matchUpdateTypes": ["minor", "patch"],
+      "matchManagers": [
+        "pub"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
       "prPriority": 0
     },
     {
       "description": "webcrypto pinned in pubspec.yaml: >=0.6.1 native-assets hook needs CMake + MSVC C++ on the build PC; the asset ships nowhere (web=JS path, Android=NDK). Security advisories still surface via GitHub Dependabot alerts (kept on).",
-      "matchManagers": ["pub"],
-      "matchPackageNames": ["webcrypto"],
+      "matchManagers": [
+        "pub"
+      ],
+      "matchPackageNames": [
+        "webcrypto"
+      ],
       "enabled": false
     },
     {
       "description": "Encrypted content store: sqlite3 3.x removed package:sqlite3/open.dart which content_db.dart imports for the SQLCipher open override; drift/drift_dev move with it; sqlcipher_flutter_libs 0.7.0 is +eol. Taking these = rewriting the open override with an on-device integration run.",
-      "matchManagers": ["pub"],
-      "matchPackageNames": ["drift", "drift_dev", "sqlite3", "sqlcipher_flutter_libs"],
+      "matchManagers": [
+        "pub"
+      ],
+      "matchPackageNames": [
+        "drift",
+        "drift_dev",
+        "sqlite3",
+        "sqlcipher_flutter_libs"
+      ],
       "enabled": false
     },
     {
       "description": "Pinned by the Flutter SDK, not by us: flutter_test pins clock 1.1.2; build_runner 2.16+ wants analyzer >=13.3 (SDK meta 1.18.0) and is capped by drift_dev's analyzer <11. Re-check after a Flutter SDK upgrade.",
-      "matchManagers": ["pub"],
-      "matchPackageNames": ["clock", "build_runner"],
+      "matchManagers": [
+        "pub"
+      ],
+      "matchPackageNames": [
+        "clock",
+        "build_runner"
+      ],
       "enabled": false
     },
     {
       "description": "environment.sdk / environment.flutter are extracted as deps named dart / flutter (no depType). Pinned deliberately: CI parity via flutter-version-file (Batch 8.1); bumps are a one-line manual edit.",
-      "matchManagers": ["pub"],
-      "matchPackageNames": ["dart", "flutter"],
-      "matchDatasources": ["dart-version", "flutter-version"],
+      "matchManagers": [
+        "pub"
+      ],
+      "matchPackageNames": [
+        "dart",
+        "flutter"
+      ],
+      "matchDatasources": [
+        "dart-version",
+        "flutter-version"
+      ],
       "enabled": false
     },
     {
       "description": "GitHub Actions: grouped monthly (was dependabot open-pull-requests-limit 2).",
-      "matchManagers": ["github-actions"],
+      "matchManagers": [
+        "github-actions"
+      ],
       "groupName": "github-actions",
       "prPriority": -1
     }
+  ],
+  "ignorePaths": [
+    "**/.claude/skills/**"
   ]
 }

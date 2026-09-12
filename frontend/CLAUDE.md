@@ -84,9 +84,10 @@ orchestrator in `android/app/build.gradle.kts`, `androidTest/.../MainActivityTes
 `pubspec.yaml` (`test_directory: integration_test`). Only `patrolTest(...)` files run under it —
 `integration_test/patrol_harness_test.dart` is the framework-only self-test (green on the Pixel_7 AVD, 1/1).
 The four `testWidgets` device files above are NOT ported: under `patrol test` the run sat in "Executing
-tests" for 40 min; keep `flutter test integration_test -d`. Web leg (`-d chrome`) not yet green: the
-served bundle never exposed `__patrol__getTests`, so Playwright listed 0 tests — retry serially (the
-first attempt ran concurrently with the Android build) before blaming the pair. Needs `ANDROID_HOME`
+tests" for 40 min; keep `flutter test integration_test -d`. Web leg (`-d chrome`) NOT green after two
+attempts: run 1 (concurrent with the Android build) served the bundle but Playwright listed 0 tests
+(`web_runner/tests/setup.ts` got no `__patrol__getTests`); run 2 (serial) hung 100 min at `npx playwright
+install chromium`. Owner stopped further runs — treat as owner-owed, not a pending retry. Needs `ANDROID_HOME`
 and `<sdk>/platform-tools` on PATH; `patrol.bat` lives in `%LOCALAPPDATA%\Pub\Cache\bin`.
 
 Local devices:
