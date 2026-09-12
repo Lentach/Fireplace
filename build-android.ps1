@@ -149,5 +149,5 @@ $sha = (Get-FileHash $apk -Algorithm SHA256).Hash.ToLower()
 Write-Host "APK:         $apk  (${size} MB)" -ForegroundColor Green
 Write-Host "version:     $ver ($commit)  versionCode=$buildNumber"
 Write-Host "SHA256:      $sha"
-Write-Host "`nNext: smoke-test on a real device, then attach to a GitHub Release with the SHA256."
-Write-Host "Distribution + migration wording (log OUT of the PWA, never delete accounts): docs/runbooks/android-release.md"
+Write-Host "`nNext: smoke-test on a real device (checklist items 1-7, incl. the LINK ceremony), then attach to a GitHub Release with the SHA256."
+Write-Host "Distribution + user wording (LINK the phone as a 2nd device; enable linking on the web FIRST; never delete accounts or clear site data): docs/runbooks/android-release.md"

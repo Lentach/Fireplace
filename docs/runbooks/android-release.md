@@ -132,6 +132,17 @@ build-tools (for `apksigner`) via `ANDROID_HOME`/`ANDROID_SDK_ROOT`/`%LOCALAPPDA
 would REFUSE it as a downgrade. Every build meant to install over an existing one must bump
 `frontend/pubspec.yaml` past the highest version ever installed — regardless of branch.
 
+**Build record — 0.2.41, 2026-09-13 (the friends-test candidate).** `master` @ `3122cc1` →
+versionCode `20041`, **105.2 MB**, SHA256
+`9fdc7ef106449a32e95d83ff25ce8af2869cb7d33039412aa1022ef5adc57c10`. Signer verified
+`CN=Rick Sanches`, certificate SHA-256 **matches the record-of-truth fingerprint above**
+(`8e9a6b…5cdf405d`) — this APK is updatable from the USB/cloud keystore backups. 16KB gate 16/16
+(incl. `libsqlcipher`, `libwebcrypto`, `libbarhopper_v3`). Universal APK: three ABIs
+(`arm64-v8a`, `armeabi-v7a`, `x86_64` — the gate checks the two 64-bit ones by design). NOT yet
+installed anywhere and NOT smoke-tested; the floor becomes 20041 the moment it is.
+`--split-per-abi` would roughly halve the download but interacts with both the versionCode
+formula and Play's monotonicity — not done, deliberately.
+
 **Release builds cannot be screenshotted** — `MainActivity.kt` sets `FLAG_SECURE` when not
 debuggable, so `screencap` returns rc=1 while the app window is live (even from recents). Verify
 release behavior via logcat, the prod DB, and the notification shade with the app dead.
