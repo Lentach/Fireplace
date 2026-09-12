@@ -136,6 +136,13 @@ jobs:
       - name: Analyze Flutter code
         run: flutter analyze --no-fatal-infos
 
+      # Dart lint RATCHET (very_good_analysis 10.3.0 since 2026-09-12), same contract as
+      # the backend one: errors/warnings are already fatal in the step above; this fails
+      # only when the INFO-level count rises above scripts/dart-lint-baseline.json.
+      - name: Frontend lint ratchet
+        working-directory: .
+        run: node scripts/dart-lint-ratchet.mjs
+
       # Single run, log captured by redirect rather than `| tee` so the step's exit
       # status is Flutter's own and never depends on pipefail being set.
       - name: Run Flutter tests

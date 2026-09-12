@@ -76,7 +76,7 @@ void main() {
   void expectSocketReadyServerTime(dynamic payload, String clientLabel) {
     expect(
       payload,
-      isA<Map>(),
+      isA<Map<dynamic, dynamic>>(),
       reason: '$clientLabel socketReady must carry an object payload',
     );
     final serverTime = (payload as Map)['serverTime'];
@@ -2022,7 +2022,7 @@ void main() {
         final refusal = await bob.awaitDeviceListStale(tempId);
         expect(refusal['success'], isFalse);
         expect(refusal['error'], 'device_list_stale');
-        final lists = (refusal['lists'] as List).cast<Map>();
+        final lists = (refusal['lists'] as List).cast<Map<dynamic, dynamic>>();
         final aliceEntry = lists.firstWhere((e) => e['userId'] == alice.userId);
         expect(aliceEntry['version'], auth['listVersion']);
         expect(aliceEntry['listCanonical'], auth['listCanonical']);
@@ -2060,7 +2060,7 @@ void main() {
 
         final refusal = await bob.awaitDeviceListStale(tempId);
         expect(
-          (refusal['lists'] as List).cast<Map>().firstWhere(
+          (refusal['lists'] as List).cast<Map<dynamic, dynamic>>().firstWhere(
             (e) => e['userId'] == alice.userId,
           )['version'],
           auth['listVersion'],
@@ -2165,7 +2165,7 @@ void main() {
                   reason: 'late device history',
                 )
                 as Map;
-        final rows = (history['messages'] as List).cast<Map>();
+        final rows = (history['messages'] as List).cast<Map<dynamic, dynamic>>();
         expect(rows, isNotEmpty, reason: 'the conversation has history');
 
         // Every E2E row predates this device's link, so every one of them is
@@ -2721,7 +2721,7 @@ void main() {
                 )
                 as Map;
         final row = (history['messages'] as List)
-            .cast<Map>()
+            .cast<Map<dynamic, dynamic>>()
             .firstWhere((m) => m['id'] == messageId);
         expect(
           row['encryptedContent'],

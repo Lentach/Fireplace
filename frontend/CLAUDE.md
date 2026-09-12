@@ -7,10 +7,13 @@ Root rules, production safety, shared wire contracts, version policy, and env ov
 ```powershell
 cd frontend
 flutter pub get
-flutter analyze --no-fatal-infos
+flutter analyze --no-fatal-infos          # very_good_analysis 10.3.0 base; errors/warnings fatal
+node ..\scripts\dart-lint-ratchet.mjs     # CI gate: INFO count must not rise above scripts/dart-lint-baseline.json
 flutter test
 flutter run -d chrome
 ```
+
+Lint conventions are recorded in `frontend/analysis_options.yaml` (relative imports, no `public_member_api_docs`, no 80-col rule; `strict-casts`/`strict-inference` off until the `dynamic` crypto params are typed). Pay lint debt only in files you touch; `--update` lowers the floor.
 
 Targeted examples:
 
