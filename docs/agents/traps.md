@@ -59,7 +59,7 @@ Standing warnings that used to live in the `LATEST.md` banner and in rotated-out
 - Flutter's `flt-semantics-placeholder` never populates from a synthetic click — `observe()` is useless; drive with two isolated Chromes on `--remote-debugging-port`, pixel clicks from screenshots, CDP `Input.insertText` (`2026-09-08-session-c7-final-review.md`).
 - A cold Chrome profile needs ~15 s before the first form paints (`2026-09-09-session-c9-phrase-at-the-door.md`).
 - Brand sweeps MUST eyeball the RENDERED page — split-span wordmarks defeat grep; re-verify subagent compliance claims, one fabricated its version bump (`2026-08-26-session.md`).
-- Subagents doing long audits tend to `yield` with null data after 7–10 min of real work — the edits are on disk and the context is intact; `hub send … await:true` asking for the report recovers it, do not rerun (`2026-09-10-session-workflow-2.0.md`).
+- **Subagents on 7–15 min tasks null-yield ~half the time** (3 of 6 auditors, 2026-09-10) — the work is on disk, the context is intact. Two rules: (1) write the task so the FILE is the deliverable and the yield is a one-line pointer to it (the four researchers did this: 0 losses); (2) if a yield is still null, `hub send … await:true` asking for the report — never rerun (`2026-09-10-session-workflow-2.0.md`).
 - `read` of `LATEST.md` truncates lines at 768 chars — measure with `wc`, not by eye (`2026-09-10-session-workflow-2.0.md`).
 
 ## Handoff / LATEST budget history
