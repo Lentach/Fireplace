@@ -183,6 +183,24 @@ impossible, see `FLAG_SECURE` above).
   updates are refused on those installs (different cert) and the only path left is uninstall —
   which destroys the user's Signal identity and local history. Decide the cert before the first
   APK leaves the building; rotation later does not repair already-installed sideloads.
+- **Foreground-service declaration (Play only, and avoidable).** `light_compressor_v2-1.9.1`'s
+  library manifest merges `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_DATA_SYNC` and a
+  `CompressionForegroundService` (`foregroundServiceType="dataSync"`) into our APK
+  unconditionally. At targetSdk 34+ Play then requires an App-content declaration for that type:
+  use-case description, user impact, **and a link to a demo video showing the user steps that
+  trigger it** — a mismatch is a rejection. **We never start that service**: `transcodeVideoToFit`
+  (`frontend/lib/utils/video_transcode_io.dart:37-56`) passes no `BackgroundConfig`, which is the
+  plugin's opt-in for background execution. So the honest options are (a) strip the service and
+  both permissions with `tools:node="remove"` in our manifest and re-verify against the MERGED
+  manifest, or (b) file a declaration plus a video for a service that cannot run. Prefer (a).
+  Unrelated but recorded from the same README: that plugin needs no R8/ProGuard keep rules.
+- **The permission set Play sees is the MERGED one, not our manifest.** Plugin manifests add
+  `RECORD_AUDIO` (record_android), `VIBRATE` (flutter_local_notifications), `WAKE_LOCK` /
+  `ACCESS_NETWORK_STATE` / `BIND_JOB_SERVICE` (firebase_messaging) and the two FGS ones above.
+  No `READ_MEDIA_*`/`READ_EXTERNAL_STORAGE` (image_picker/file_picker declare none), so the
+  Photo and Video Permissions policy does not apply. Read
+  `frontend/build/app/intermediates/merged_manifests/release/AndroidManifest.xml` after a build
+  before filling any Play form.
 
 ## User wording (APK) — rewritten 2026-09-13: LINK THE DEVICE, never a new account
 
@@ -213,13 +231,16 @@ Two starting states, and they do NOT behave the same:
 History does NOT transfer on link (Phase 4 "history-on-link" is unbuilt, §9): the phone starts
 empty and fills from new traffic. Old history stays readable on the device that already has it.
 
-Use EXACTLY this:
+**NOT device-proven** — nobody has run the link ceremony from a release APK yet; that is smoke
+checklist item 6. Until item 6 passes on a real phone, this is the wording we INTEND to ship, and
+it must not be sent to a user. Use EXACTLY this:
 
 > Umbra for Android joins your existing account as a second device — **do not create a new
 > account**. On the web app first: turn on linked devices. Then install the app and log in — **the
-> phone will show a QR code** (and the same code as text, if the camera won't cooperate). On the
-> web app, open your devices screen and **scan the code off the phone's screen**. Both screens then
-> show the same short list of words: check they match, and approve on the web app. Your old
+> phone will show a QR code**, with the same code underneath as text you can copy. On the web app,
+> open your devices screen and **scan the code off the phone's screen** — or, if that machine has
+> no camera (most desktops), paste the text code there instead. Both screens then show the same
+> short list of words: check they match, and approve on the web app. Your old
 > messages stay on the web — the phone starts fresh and receives everything sent from then on. Up
 > to three devices per account. **Never delete your web account and never clear the browser's site
 > data.** iPhone users: keep using the web app as-is.
