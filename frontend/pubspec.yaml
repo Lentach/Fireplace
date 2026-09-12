@@ -10,6 +10,9 @@ version: 0.2.39
 
 environment:
   sdk: ^3.10.7
+  # Exact pin: CI reads this via flutter-version-file so it tests the SDK the dev box runs
+  # (3.44.6 ↔ Dart 3.12.2). Bump deliberately, here, not by letting CI float.
+  flutter: 3.44.6
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions

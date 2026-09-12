@@ -4,7 +4,6 @@ globs:
   - backend/src/chat/**
   - backend/src/**/dto/**
   - backend/src/key-bundles/**
-  - backend/src/devices/**
   - backend/src/auth/**
   - frontend/lib/services/socket_service.dart
   - frontend/lib/providers/connection_provider.dart

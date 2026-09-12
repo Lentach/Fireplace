@@ -726,6 +726,10 @@ work under OMP.
 
 ---
 
+## Resolution of the `skill-creator` conflict (2026-09-10)
+
+This file's item 9 recommends installing `skill-creator`; the same evening's cull (`docs/agents/workflow-2.0.md` §2) uninstalled it as 0/226-use. **The cull stands.** The recommendation was for its eval/description-tuning loop, which is only valuable when authoring skills at volume — this repo ships one skill and the 5b rule says a new one ships only when hook-enforced. Reinstall on the day a second project skill is written, not before.
+
 ## Sources
 
 Every URL below was read directly for this file.

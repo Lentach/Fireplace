@@ -122,6 +122,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version-file: frontend/pubspec.yaml
           cache: true
 
       - name: Install Flutter dependencies
@@ -173,6 +174,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version-file: frontend/pubspec.yaml
           cache: true
 
       - name: Install Flutter dependencies
@@ -231,6 +233,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version-file: frontend/pubspec.yaml
           cache: true
 
       - name: Install Flutter dependencies
@@ -311,6 +314,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version-file: frontend/pubspec.yaml
           cache: true
 
       - name: Install Flutter dependencies

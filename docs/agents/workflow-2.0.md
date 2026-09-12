@@ -4,7 +4,7 @@
 
 ## 0. Verdict in one paragraph
 
-The workflow is not short of tools; it is drowning in context and ceremony. A frontend session pays **~55k tokens of instruction files before reading one line of code** (root `CLAUDE.md` 13k, `frontend/CLAUDE.md` 21k, `LATEST.md` 9k, deploy rule 5k, Dart MCP schemas ~2k, 18 skill descriptions ~0.5k). **38% of all commits since the last audit are `docs` commits and 49% touch session summaries.** The tools installed to make work faster go uncalled by agents — Dart MCP **0/100 sessions** (mount verified working this session; the tier doc never names it), `impact.mjs` **1/100**, graphify output **0/100**, skills **2/100** — while the things that *are* pulling weight run from hooks and CI, invisible to mention-counts (gitleaks 1 mention, every commit). The July cull was written and never executed, and most of it is Claude-Code-only hygiene worth **0 OMP tokens**. Workflow 2.0 is three moves: (1) cut the always-on context by ~70% with progressive disclosure — that is where the tokens are; (2) make the handoff ritual a bounded, validated template instead of a growing essay; (3) delete dead tooling, put the Dart MCP on a hard 30-session probation with routing fixed, and ship exactly one new skill (the hook-enforced one).
+The workflow is not short of tools; it is drowning in context and ceremony. A frontend session pays **~55k tokens of instruction files before reading one line of code — injected in Claude Code; in OMP the same files are *reads* that `AGENTS.md` mandates, since OMP injects only `AGENTS.md` (§1a, corrected 2026-09-10)** (root `CLAUDE.md` 13k, `frontend/CLAUDE.md` 21k, `LATEST.md` 9k, deploy rule 5k, Dart MCP schemas ~2k, 18 skill descriptions ~0.5k). **38% of all commits since the last audit are `docs` commits and 49% touch session summaries.** The tools installed to make work faster go uncalled by agents — Dart MCP **0/100 sessions** (mount verified working this session; the tier doc never names it), `impact.mjs` **1/100**, graphify output **0/100**, skills **2/100** — while the things that *are* pulling weight run from hooks and CI, invisible to mention-counts (gitleaks 1 mention, every commit). The July cull was written and never executed, and most of it is Claude-Code-only hygiene worth **0 OMP tokens**. Workflow 2.0 is three moves: (1) cut the always-on context by ~70% with progressive disclosure — that is where the tokens are; (2) make the handoff ritual a bounded, validated template instead of a growing essay; (3) delete dead tooling, put the Dart MCP on a hard 30-session probation with routing fixed, and ship exactly one new skill (the hook-enforced one).
 
 ## 1. Measurements (this session, `2026-09-10`)
 
@@ -155,7 +155,7 @@ The strongest evidence in this document is that **38 skills went unused across 2
 
 | Skill | Ships now? | Enforcement |
 |---|---|---|
-| `umbra-session-end` (`.claude/skills/umbra-session-end/SKILL.md`, committed — OMP discovers project `.claude/skills` at priority 80 and Claude Code discovers nothing else, so one file serves both) | **yes** | `.githooks/pre-commit` runs `scripts/verify-session-summary.mjs` (§6); a summary that misses the template or budget cannot be committed, so the skill is the ergonomic path to a green commit |
+| `umbra-session-end` (`.claude/skills/umbra-session-end/SKILL.md`, committed — OMP discovers project `.claude/skills` at priority 80 and Claude Code discovers nothing else, so one file serves both) | **yes** | `.githooks/pre-commit` runs `scripts/verify-context-budget.mjs` (§6); a summary that misses the template or budget cannot be committed, so the skill is the ergonomic path to a green commit |
 | Flutter live-verify loop (Dart MCP hot reload + the two-isolated-Chromes CDP recipe from `2026-09-08-session-c7-final-review.md`) | **no — becomes `frontend/CLAUDE.md` §9 text** | that section is already auto-loaded for frontend work; a skill would add a description line for a thing the tier doc must say anyway |
 | Release checklist (PATCH bump → push → `gh api …/commits/master/check-runs`, never `gh run list` → backend first → `deploy-web.ps1` → smoke) | **no — already covered** | `.cursor/rules/production-vm-deploy.mdc` auto-attaches on deploy keywords; add the check-runs line there |
 | Mutant falsification (F-numbers) | **no — doc section** | 8/100 sessions do it unprompted from the tier doc; not broken |
@@ -202,9 +202,9 @@ Add `scripts/verify-context-budget.mjs`, wired into `.githooks/pre-commit` next 
 | `frontend/CLAUDE.md` bytes | 28,000 (post-migration 23.7 KB) | exceeded |
 | `backend/CLAUDE.md` bytes | 26,000 | exceeded |
 | `LATEST.md` entries | 5 (existing) | exceeded |
-| `LATEST.md` per-entry chars | 900 | exceeded |
+| `LATEST.md` per-entry chars | 900 advertised; **hook fails at 1,000** (100 chars slack for links) | exceeded |
 | `LATEST.md` total bytes | 10,000 | exceeded |
-| new dated summary bytes | 6,000 | exceeded |
+| new dated summary bytes | 6 KB advertised; **hook fails at 8,000** (slack for proof tables) — applies to added AND modified summaries | exceeded |
 | new dated summary sections | `## What was done`, `## Key files`, `## Verification`, `## Notes for next session` (the headings root §1 has always required; the Done/Proof/Open/Traps draft was dropped 2026-09-10 to keep one template) | missing |
 
 Ratchet semantics like `lint-ratchet.mjs`: the limits are set at the *post-migration* sizes, so the check is green the day it lands and can only bite on regrowth. Tags in the docs: every rule that has no hook/CI/verifier behind it is marked `(advisory)` so readers know which sentences are enforced.
