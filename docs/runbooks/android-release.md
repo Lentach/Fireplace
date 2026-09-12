@@ -149,9 +149,16 @@ Build from a **fresh clone** at least once (proves no local-only file is load-be
    until the user launches the app again. A force-stopped app receiving nothing is not a push bug.
 4. Voice note record + playback; image send/receive (validates the 16KB-patched webcrypto at runtime).
 5. Delete-for-everyone + expiry: plaintext purged locally (Privacy & Safety diags clean).
-6. **Same-account flip-flop drill**: log the SAME account into APK + PWA, force reconnects on both →
-   observe identity thrash (peers see repeated identity-changed banners). Log OUT of the PWA → epochs
-   stabilize, E2E round trip recovers. We ship migration instructions we have watched fail and recover.
+6. **Link ceremony on the release build** (the instructions we now ship — see "User wording"): web
+   primary enables linked devices → APK logs in → `DeviceLinkGateScreen` appears → **the PHONE
+   displays the QR/out-of-band code and the WEB PRIMARY scans it** (spec §5.1: `ephPubN` travels
+   only over that scan) → the same SAS words appear on both screens → **approve on the primary**.
+   Then: both devices receive a peer's message, a send from the phone self-syncs to the web, and
+   revoking the phone from the web kicks it.
+7. **Un-enrolled flip-flop drill** (the hazard the wording steers users away from): on an account
+   that never enabled linking, log in on APK + PWA and force reconnects on both → identity thrash
+   (peers see repeated identity-changed notices). Log OUT of the PWA → epochs stabilize, E2E round
+   trip recovers. Ship no instruction we have not watched fail and recover.
 
 **Emulator pre-smoke of the first release build (2026-09-02, Pixel_7 AVD, prod backend):** items 1
 and 3 PASS on the release-signed, R8-minified APK — fresh account registered on prod, `fcm_token` row
@@ -167,33 +174,58 @@ impossible, see `FLAG_SECURE` above).
 - Attach `app-release.apk` + its SHA256 to a GitHub Release on `Lentach/Fireplace`.
 - No auto-update exists for sideloaded APKs: announce updates in-app/manually; users re-install
   over the top (same signature = data survives).
-- Play Store later: needs `flutter build appbundle` (same gates apply), data-safety forms, and the
-  16KB + targetSdk requirements already satisfied here.
+- Play Store later: needs `flutter build appbundle` — and the signer + 16KB gates must move onto the
+  BUNDLE's output, because `build-android.ps1` only ever inspects an APK — plus a privacy policy,
+  the data-safety form, and an in-app report path (UGC policy); 16KB + targetSdk are already met.
+- **The signing certificate is a one-way door.** No APK has ever been published (`gh release list`
+  empty, 2026-09-13), so Play App Signing can still adopt THIS keystore (PEPK) as the app signing
+  key. Once sideloaded APKs are in users' hands, letting Google generate its own key means Play
+  updates are refused on those installs (different cert) and the only path left is uninstall —
+  which destroys the user's Signal identity and local history. Decide the cert before the first
+  APK leaves the building; rotation later does not repair already-installed sideloads.
 
-## User wording (APK) — decision 2026-09-02: NEW ACCOUNTS ONLY (until multi-device DEPLOYS)
+## User wording (APK) — rewritten 2026-09-13: LINK THE DEVICE, never a new account
 
-The 0.1.24 APK was built from `feat/video-messages`, i.e. the single-device protocol prod runs today
-(one key bundle per account, no `deviceId`): an existing PWA user logging into it would either
-thrash identities (both live) or have to abandon the PWA. **PR #144 (multi-device, linked devices)
-merged to master on 2026-09-02 but is NOT deployed** — once it ships on both tiers AND the APK is
-rebuilt from master, replace this section with the link-device ceremony wording
-(`docs/design/multi-device.md`). Until then the APK is marketed as **a fresh start** — use EXACTLY this:
+**Multi-device is LIVE on prod** (verified 2026-09-13: `/version` → `0.2.41 / 49c77c10`,
+`/version.json` → `0.2.41 / 9d13d25`; `git merge-base --is-ancestor 2c553b2 <each>` passes for the
+PR #144 merge). The previous "NEW ACCOUNTS ONLY / one account works on one device" text was written
+while #144 was merged-but-undeployed and is now simply false.
 
-> Umbra for Android is a new install: **create a new account in the app** (pick a new username — your
-> web account stays as it is). One account works on one device; don't log the same account into the
-> app and the web at the same time. Friends can re-add you by your new `username#tag`.
-> **Never delete your web account and never clear the browser's site data** — that destroys your web
-> history for nothing. iPhone users: keep using the web app as-is; nothing changes for you.
+The model (`docs/design/multi-device.md` §1, §5.1, §8): one account = **1 primary + up to 2 linked
+= 3 concurrent devices**; adding one REQUIRES physical possession of the primary (QR + SAS word
+comparison; the QR is a link step, never a credential — I3). **Logging in does not create a
+device**: `resolveLoginDeviceId` (`backend/src/auth/auth.service.ts:158`) hands a fresh install the
+LIVE PRIMARY's id.
 
-(Superseded 2026-09-02: the previous "log in with your existing account, then log out of the web app"
-migration text. It still works technically — see the flip-flop drill — but is no longer what we tell
-users.) A Play listing must state one-account-one-device.
+Two starting states, and they do NOT behave the same:
 
-Why logout matters: the client re-uploads its key bundle on EVERY socket connect
-(`encryption_provider.dart`), so two live devices on one account clobber each other's identity epoch
-on every reconnect (not "last one wins" — a permanent flip-flop that burns both sides' prekeys and
-spams identity banners). A logged-out PWA never authenticates the socket, so it goes quiet; its local
-keys deliberately survive logout (frontend/CLAUDE.md §5), so old history stays readable on the old device.
+1. **Account already enrolled** (linked devices enabled on the web): the §6.1 registration lock
+   refuses a password-only identity replacement, and `AuthGate` renders `DeviceLinkGateScreen`
+   (`frontend/lib/screens/device_link_gate_screen.dart:24-35`) — link here, or take the
+   recovery-phrase / reset path. This is the happy path.
+2. **Account NOT enrolled** (linking never enabled): §6.1 is not armed (§8, amendment (lxxiii)), so
+   the phone silently re-mints the identity **into the primary slot** — and because every client
+   re-uploads its key bundle on EVERY socket connect (`encryption_provider.dart`), two live devices
+   then clobber each other's identity epoch on every reconnect: a permanent flip-flop that burns
+   both sides' prekeys and spams identity notices. **Enable linking on the web FIRST, then link the
+   phone.** Never install-and-log-in on an un-enrolled account while the PWA is still live.
+
+History does NOT transfer on link (Phase 4 "history-on-link" is unbuilt, §9): the phone starts
+empty and fills from new traffic. Old history stays readable on the device that already has it.
+
+Use EXACTLY this:
+
+> Umbra for Android joins your existing account as a second device — **do not create a new
+> account**. On the web app first: turn on linked devices. Then install the app and log in — **the
+> phone will show a QR code** (and the same code as text, if the camera won't cooperate). On the
+> web app, open your devices screen and **scan the code off the phone's screen**. Both screens then
+> show the same short list of words: check they match, and approve on the web app. Your old
+> messages stay on the web — the phone starts fresh and receives everything sent from then on. Up
+> to three devices per account. **Never delete your web account and never clear the browser's site
+> data.** iPhone users: keep using the web app as-is.
+
+A Play listing must state **up to 3 devices per account, and adding one needs the first device in
+hand** — the old "one account, one device" claim must not ship.
 
 ## Known-not-done (tracked, do not rediscover)
 
