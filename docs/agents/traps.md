@@ -9,6 +9,7 @@ Standing warnings that used to live in the `LATEST.md` banner and in rotated-out
 - A route pushed over the chat must RELEASE the inline video slot (`2026-09-05-session-video-nits.md`).
 - The WebKit `videoWidth == 0` probe fix is **NOT iOS-verified** — owner owes a recording from the iPhone PWA camera (`2026-09-05-session-video-nits.md`).
 - The attach picker must stay EXEMPT from the passcode lock, or a 0 s auto-lock loses the pick (`2026-09-05-session-video-merge-e2e-fix.md`).
+- **Composer focus must NEVER move the bar:** `bottomInteractivePadding`'s `keyboardVisible` may only read real insets (`viewInsets.bottom`/shared visualViewport) — folding `_focusNode.hasFocus` in (H1) dropped the input row by the whole resting clearance on every tap, behind the bottom nav on desktop web (`2026-09-12-session-composer-focus-drop.md`).
 
 ## Deploy / CI / release
 - **Check CI with `gh api repos/Lentach/Fireplace/commits/master/check-runs`, never `gh run list --branch master`** — it returned weeks-old rows twice (`2026-09-08-session-dependabot-sweep-and-pc-health.md`).

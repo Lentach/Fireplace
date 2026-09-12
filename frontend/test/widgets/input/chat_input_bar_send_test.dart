@@ -445,44 +445,28 @@ void main() {
     expect(find.byType(ChatActionTiles), findsNothing);
   });
 
-  // H1: bottomInteractivePadding folds `_focusNode.hasFocus` into
-  // keyboardVisible, so the ergonomic bottom buffer collapses the instant the
-  // composer focuses — BEFORE any keyboard animation — and restores on blur,
-  // never mid-flight. On the VM there is no keyboard inset at all, so focus is
-  // the ONLY driver here; the buffer is read via ChatActionTiles.bottomPadding
-  // (the panel is opened while unfocused so it renders the buffer).
-  testWidgets(
-    'composer focus collapses the ergonomic bottom buffer and blur restores it',
-    (tester) async {
-      final state = await _pumpWithBottomInset(tester);
-      await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
-      await tester.pump();
+  // Focus must NEVER move the composer (owner report 2026-09-12, desktop +
+  // mobile screenshots; reverts H1). The ergonomic buffer is resting
+  // clearance over the home indicator / bottom nav, so collapsing it on focus
+  // shrank the bar and — in the real bottom-anchored layout — slid the input
+  // row DOWN by that clearance with nothing lifting it (behind the bottom nav
+  // on desktop web, where no soft keyboard ever arrives). Bar height is the
+  // observable: only a real keyboard inset may shrink it (test above).
+  testWidgets('composer focus leaves the bar geometry untouched', (
+    tester,
+  ) async {
+    await _pumpWithBottomInset(tester);
+    final restingHeight = tester.getSize(find.byType(ChatInputBar)).height;
 
-      double buffer() => tester
-          .widget<ChatActionTiles>(find.byType(ChatActionTiles))
-          .bottomPadding;
-      FocusNode focusNode() =>
-          tester.widget<TextField>(find.byType(TextField)).focusNode!;
+    await tester.tap(find.byType(TextField));
+    await tester.pump();
 
-      // Panel open, field unfocused, no keyboard inset -> buffer applied.
-      expect(state.isActionPanelOpenForTest, isTrue);
-      expect(focusNode().hasFocus, isFalse);
-      expect(buffer(), greaterThan(0));
-
-      // Focus alone collapses the buffer (H1); the panel survives the focus.
-      await tester.tap(find.byType(TextField));
-      await tester.pump();
-      expect(focusNode().hasFocus, isTrue);
-      expect(state.isActionPanelOpenForTest, isTrue);
-      expect(buffer(), 0);
-
-      // Blur restores it (insets were 0 throughout).
-      focusNode().unfocus();
-      await tester.pump();
-      expect(focusNode().hasFocus, isFalse);
-      expect(buffer(), greaterThan(0));
-    },
-  );
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus,
+      isTrue,
+    );
+    expect(tester.getSize(find.byType(ChatInputBar)).height, restingHeight);
+  });
 
   // 07-03 contract, extended 0.0.99: a chat-surface tap with the action panel
   // open suppresses the follow-up composer-TapRegion outside-tap so the panel
