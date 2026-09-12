@@ -194,13 +194,18 @@ impossible, see `FLAG_SECURE` above).
   both permissions with `tools:node="remove"` in our manifest and re-verify against the MERGED
   manifest, or (b) file a declaration plus a video for a service that cannot run. Prefer (a).
   Unrelated but recorded from the same README: that plugin needs no R8/ProGuard keep rules.
-- **The permission set Play sees is the MERGED one, not our manifest.** Plugin manifests add
-  `RECORD_AUDIO` (record_android), `VIBRATE` (flutter_local_notifications), `WAKE_LOCK` /
-  `ACCESS_NETWORK_STATE` / `BIND_JOB_SERVICE` (firebase_messaging) and the two FGS ones above.
-  No `READ_MEDIA_*`/`READ_EXTERNAL_STORAGE` (image_picker/file_picker declare none), so the
-  Photo and Video Permissions policy does not apply. Read
-  `frontend/build/app/intermediates/merged_manifests/release/AndroidManifest.xml` after a build
-  before filling any Play form.
+- **The permission set Play sees is the MERGED one — MEASURED 2026-09-13, not inferred.** Generate
+  it with `cd frontend/android && sh ./gradlew :app:processReleaseManifest` (~2.5 min, needs NO
+  keystore — the signing gate fires at `packageRelease`), then read
+  `frontend/build/app/intermediates/merged_manifest/release/outputReleaseAppLinkSettings/AndroidManifest.xml`.
+  Exactly nine `uses-permission` entries: `INTERNET`, `POST_NOTIFICATIONS`, `CAMERA` (ours),
+  `RECORD_AUDIO` (record_android), `VIBRATE` (flutter_local_notifications), `WAKE_LOCK` +
+  `ACCESS_NETWORK_STATE` (firebase_messaging), `FOREGROUND_SERVICE` +
+  `FOREGROUND_SERVICE_DATA_SYNC` (light_compressor_v2, with its
+  `foregroundServiceType="dataSync"` service at line 237). `BIND_JOB_SERVICE`/`DUMP` appear only
+  as `android:permission` attributes on Google services — they are NOT requested permissions.
+  **No `READ_MEDIA_*`/`READ_EXTERNAL_STORAGE`** (image_picker/file_picker declare none), so Play's
+  Photo and Video Permissions policy does not apply. Re-measure after any plugin bump.
 
 ## User wording (APK) — rewritten 2026-09-13: LINK THE DEVICE, never a new account
 
