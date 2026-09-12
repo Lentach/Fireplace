@@ -122,6 +122,7 @@ dev_dependencies:
   drift_dev: ">=2.31.0 <2.32.0"
   build_runner: ^2.15.1
   very_good_analysis: 10.3.0
+  patrol: 4.9.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -165,3 +166,12 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# Patrol E2E runner (workflow-2.0 Batch 8.2): `patrol test -t integration_test/<file> -d <device>`.
+# Only `patrolTest(...)` files run under it (the existing testWidgets *_device_test.dart files
+# keep `flutter test integration_test -d <id>`); proven on Android, web leg open — frontend/CLAUDE.md §1.
+patrol:
+  app_name: Fireplace
+  test_directory: integration_test
+  android:
+    package_name: com.fireplace.app

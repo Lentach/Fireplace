@@ -92,3 +92,9 @@ deploy-web.config.ps1
 # Glob, not an exact path: a `.bak-*` copy of this file carries the same secrets and
 # would otherwise be untracked-but-committable.
 .claude/settings.local.json*
+
+# Patrol (Batch 8.2): generated test bundle + local dart-defines
+**/test_bundle.dart
+.patrol.env
+frontend/playwright-report/
+frontend/test-results/

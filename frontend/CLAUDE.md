@@ -79,6 +79,16 @@ flutter test integration_test -d <deviceId>   # 17 tests, ~2-9 min incl. the gra
 flutter test integration_test/identity_recovery_durability_device_test.dart -d <deviceId>
 ```
 
+Patrol (`patrol` 4.9.0 + `patrol_cli` 4.7.0, since 2026-09-12) is wired for Android: `PatrolJUnitRunner` +
+orchestrator in `android/app/build.gradle.kts`, `androidTest/.../MainActivityTest.java`, `patrol:` block in
+`pubspec.yaml` (`test_directory: integration_test`). Only `patrolTest(...)` files run under it —
+`integration_test/patrol_harness_test.dart` is the framework-only self-test (green on the Pixel_7 AVD, 1/1).
+The four `testWidgets` device files above are NOT ported: under `patrol test` the run sat in "Executing
+tests" for 40 min; keep `flutter test integration_test -d`. Web leg (`-d chrome`) not yet green: the
+served bundle never exposed `__patrol__getTests`, so Playwright listed 0 tests — retry serially (the
+first attempt ran concurrently with the Android build) before blaming the pair. Needs `ANDROID_HOME`
+and `<sdk>/platform-tools` on PATH; `patrol.bat` lives in `%LOCALAPPDATA%\Pub\Cache\bin`.
+
 Local devices:
 
 - Android emulator: `cd frontend && flutter run -d <deviceId> --dart-define=BASE_URL=http://10.0.2.2:3000`.
