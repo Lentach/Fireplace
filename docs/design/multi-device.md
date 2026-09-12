@@ -3013,7 +3013,7 @@ that is the designed outcome).
     it). Deploy order: backend FIRST — a 0.2.35 client against a 0.2.33 server sees no field and
     shows nothing, which is the safe direction.
   - **(lxxxiv) — THE MUTED KEY-CHANGE LINE LIVES UNTIL THE NEXT MESSAGE (owner pick "a",
-    2026-09-11, asked "how long is the strip visible" — answer from source: forever).** (lxxix)
+    2026-09-12, asked "how long is the strip visible" — answer from source: forever).** (lxxix)
     said "persisted", meaning survives a reload; the implementation made it permanent: the note
     (`peerKeyChangeNotes[peerId]` = ISO instant, `e2e_<uid>_peer_key_change_notes_v1`) was
     written on the change, re-inserted on a repeat, evicted only past the 200-peer cap, and
@@ -3022,7 +3022,10 @@ that is the designed outcome).
     sender) has `createdAt` strictly after the note's instant. The first message after the
     change pushes it out for good; a later change writes a fresh instant and the line returns
     at the top. Two sources answer "is anything newer": the loaded timeline
-    (`messages.last.createdAt`, ascending) and the conversations list's `lastMessages[convId]`,
+    (`messages.last.createdAt`, ascending — and ONLY when `messages.last.conversationId` is this
+    conversation: the build right after an embedded-pane switch still holds the previous chat's
+    rows, `didUpdateWidget` reloads post-frame, and a newer foreign row would durably delete a
+    note that was never superseded) and the conversations list's `lastMessages[convId]`,
     which is populated before the chat's history arrives — without it the first render after a
     reload sees an EMPTY timeline, which cannot out-date anything, and the evicted line flashes
     (seen live, `fp-l1-A-reloaded-chat2.png`). And the eviction is DURABLE: the first build that
@@ -3038,10 +3041,12 @@ that is the designed outcome).
     `_peerKeyChangeNotes` / `_peersWithChangedIdentity` / `_peersRefusedIdentity` /
     `_pendingSessionRebuilds` / `_deviceListPins`, and `initialize(userId)` only ADDED the new
     account's stored entries on top of the previous account's — so after A logs out and B logs
-    in (same tab, no reload) B's chats showed A's notes and pills, A's rebuild intents and
-    device-list pins applied to B's peers (a pin is the (xix) rollback FLOOR: A's verified
-    version 5 for peer P makes B refuse P's honest version 3 — fail-closed against the wrong
-    account), and the next persist wrote A's entries under B's storage key. `initialize` now
+    in (same tab, no reload) B's chats showed A's notes and pills, A's rebuild intents
+    (`peerId:deviceId` — A's sessions, not B's) drove B's sends, and A's device-list pins were
+    re-persisted under B's storage key. The pins are a scoping/hygiene matter, not a false
+    refusal: a list version is peer P's property, so a floor A saw is true for B too — but B's
+    floor must come from B's own storage (`e2e_<B>_devicelist_pins_v1`), which the loader
+    restores right after the clear. `initialize` now
     clears the five when the user id DIFFERS from the one it last initialised; a same-user
     re-run (passcode re-lock → `revokeForPasscodeLock` → unlock) keeps them, because a refusal
     is session-scoped and unpersisted and must survive a re-lock.
@@ -3058,7 +3063,8 @@ that is the designed outcome).
     Falsification: (F46) drop the timestamp comparison → the note still renders over a message
     newer than it; (F46b) ignore the list's `lastMessages` → the note renders on an empty
     timeline whose list preview is newer; (F46c) drop the `dismissPeerKeyChangeNote` call → the
-    superseded note is still in the map; (F47) drop the user-id guard in `initialize` → a note
+    superseded note is still in the map; (F46d) trust rows of another conversation → a note
+    older than the previous chat's rows is evicted and dismissed; (F47) drop the user-id guard in `initialize` → a note
     recorded for account 1 is present after `initialize(2)`; (F47b) clear unconditionally → a
     refusal recorded before a same-user re-initialise is gone after it; (F48) restore the early
     return → a second server event after an evicted note writes nothing.

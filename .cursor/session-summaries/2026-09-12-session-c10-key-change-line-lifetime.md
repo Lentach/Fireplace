@@ -1,4 +1,4 @@
-# 2026-09-11 — c10: the muted key-change line lives until the next message (spec (lxxxiv), 0.2.37, web-only)
+# 2026-09-12 — c10: the muted key-change line lives until the next message (spec (lxxxiv), 0.2.37, web-only)
 
 ## What was done
 
@@ -78,7 +78,7 @@ needs a pinned anchor — tests must `buildSession` with the peer first. Fixture
 The parallel workflow-2.0 session moved `frontend/CLAUDE.md` §5 to `frontend/docs/e2e-invariants.md`
 and landed on master mid-session (`dedb8dd`, `0f6e8b9`, `db2d94b`) — its untracked file is gone.
 
-**Release.** 0.2.37 web-only (no backend change).
+**Release.** 0.2.37 web-only (no backend change), then 0.2.38 web-only: advisory review found the embedded-pane switch frame — the build after `didUpdateWidget` still holds the PREVIOUS chat's rows, so a newer foreign row could durably dismiss an un-superseded note; `_isNewestInTimeline` now trusts only rows whose `conversationId` is this chat (F46d), `_dismissedNoteAt` resets on switch, and the pins rationale in the spec was corrected (a list version is P's property; the leak is scoping hygiene, not a false refusal). Pre-existing, NOT touched: after a muted server-event demotion the peer stays in `e2e_<uid>_peer_identity_changed_v1` by (lxxix) design, so flipping warnings ON later shows a red pill for an already auto-acked change.
 
 **Open.** Guarded phrase replace (owner's "seed phrase like crypto" — proposal made, no go/no yet;
 needs `recoveryPhraseCreatedAt` on the wire → BOTH tiers, spec (lxxxv) first). Standing items

@@ -403,6 +403,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
       _isLoadingMoreLocal = false;
       _prePaginationScrollOffset = null;
       _prePaginationScrollExtent = null;
+      _dismissedNoteAt = null;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         final convs = context.read<ConversationsProvider>();
@@ -859,20 +860,26 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   }
 
   /// (lxxxiv): whether a key-change note recorded at [occurredAt] (ISO-8601)
-  /// is still the newest thing in the conversation: nothing in the ascending
-  /// [messages] timeline and no [lastMessageAt] known to the list is after
-  /// it. An unparseable instant renders (the note was recorded; failing
-  /// closed would silence it), and a message stamped at the SAME instant does
-  /// not evict it.
+  /// is still the newest thing in conversation [conversationId]: nothing in
+  /// the ascending [messages] timeline and no [lastMessageAt] known to the
+  /// list is after it. Rows of ANOTHER conversation are ignored — right after
+  /// an embedded-pane switch the build still holds the previous chat's list
+  /// (`didUpdateWidget` reloads post-frame), and its newer rows must not
+  /// evict, let alone durably dismiss, this peer's note. An unparseable
+  /// instant renders (the note was recorded; failing closed would silence
+  /// it), and a message stamped at the SAME instant does not evict it.
   static bool _isNewestInTimeline(
     String occurredAt,
     List<MessageModel> messages,
     DateTime? lastMessageAt,
+    int conversationId,
   ) {
     final at = DateTime.tryParse(occurredAt);
     if (at == null) return true;
     if (lastMessageAt != null && lastMessageAt.isAfter(at)) return false;
-    if (messages.isEmpty) return true;
+    if (messages.isEmpty || messages.last.conversationId != conversationId) {
+      return true;
+    }
     return !messages.last.createdAt.isAfter(at);
   }
 
@@ -1004,6 +1011,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
           peerKeyChangeNoteAt,
           messages,
           convs.lastMessages[widget.conversationId]?.createdAt,
+          widget.conversationId,
         );
     if (peerKeyChangeNoteAt != null &&
         !peerKeyChangeNoted &&

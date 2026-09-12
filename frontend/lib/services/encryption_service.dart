@@ -1085,9 +1085,9 @@ class EncryptionService {
     // (lxxxiv) rider: this service is a process singleton reused across
     // logins, and the loaders below ADD to these collections. Left standing,
     // account A's peer notes and pills render in B's chats, A's rebuild
-    // intents and device-list pins apply to B's peers (a pin is a rollback
-    // FLOOR — A's version 5 makes B refuse P's honest version 3), and the
-    // next persist writes them under B's key. Cleared only when the account
+    // intents (A's sessions) drive B's sends, and A's device-list pins get
+    // re-persisted under B's key (B's floor must come from B's own storage;
+    // the loader below restores it). Cleared only when the account
     // CHANGES — a same-user re-run (passcode re-lock → unlock) must keep the
     // unpersisted refusals.
     if (_userId != userId) {

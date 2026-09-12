@@ -88,12 +88,12 @@ Map<String, dynamic> _conversationJson({String? lastMessageAt}) => {
       : {..._messageJson(2000), 'createdAt': lastMessageAt},
 };
 
-Map<String, dynamic> _messageJson(int id) => {
+Map<String, dynamic> _messageJson(int id, {int conversationId = 10}) => {
   'id': id,
   'content': 'note $id',
   'senderId': 1,
   'senderUsername': 'alice',
-  'conversationId': 10,
+  'conversationId': conversationId,
   'deliveryStatus': 'DELIVERED',
   'messageType': 'TEXT',
   'createdAt': DateTime.utc(2026, 1, 1, 12, id % 60).toIso8601String(),
@@ -115,6 +115,9 @@ Future<_AlarmedEncryption> _pumpChat(
   // (lxxxiv): what the conversations LIST knows as the newest message, for
   // the window before this chat's history has loaded.
   String? listLastMessageAt,
+  // (lxxxiv): the loaded rows belong to ANOTHER conversation — the frame
+  // right after an embedded-pane switch, before `didUpdateWidget` reloads.
+  int messagesConversationId = 10,
 }) async {
   SharedPreferences.setMockInitialValues({
     'key_change_warnings': keyChangeWarnings,
@@ -136,7 +139,10 @@ Future<_AlarmedEncryption> _pumpChat(
   messaging.setActiveConversationIdForTest(10);
   messaging.seedCacheForTest(10, [
     if (withMessages)
-      for (var i = 0; i < 3; i++) MessageModel.fromJson(_messageJson(1000 + i)),
+      for (var i = 0; i < 3; i++)
+        MessageModel.fromJson(
+          _messageJson(1000 + i, conversationId: messagesConversationId),
+        ),
   ]);
   messaging.loadCachedMessages(10);
 
@@ -329,6 +335,29 @@ void main() {
     expect(
       find.byKey(const ValueKey('peer-identity-changed-note')),
       findsOneWidget,
+    );
+    expect(enc.dismissed, isEmpty);
+  });
+
+  testWidgets(
+      'F46d: the loaded rows belong to ANOTHER conversation (the frame right '
+      'after a pane switch) → note stays and is NOT dismissed', (tester) async {
+    final enc = await _pumpChat(
+      tester,
+      alarmed: false,
+      noted: true,
+      // Older than every loaded row — but those rows are conversation 11's.
+      noteAt: '2026-01-01T12:00:00.000Z',
+      keyChangeWarnings: false,
+      withMessages: true,
+      messagesConversationId: 11,
+    );
+
+    expect(
+      find.byKey(const ValueKey('peer-identity-changed-note')),
+      findsOneWidget,
+      reason: 'the previous chat\'s newer rows are not evidence about THIS '
+          'peer; evicting here would durably delete an un-superseded note',
     );
     expect(enc.dismissed, isEmpty);
   });
