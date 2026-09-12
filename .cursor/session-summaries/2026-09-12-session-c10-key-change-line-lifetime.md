@@ -23,8 +23,7 @@ time (clock skew moves the eviction by one message at most). Warnings-ON red pil
    ADDED B's stored entries on top of A's — A's notes/pills rendered in B's chats, A's rollback pins
    made B refuse a peer's honest lower-version list, and the next persist wrote A's ids under B's
    key. `initialize` now clears the five when the user id DIFFERS from the last one; a same-user
-   re-run (passcode re-lock → unlock) keeps the unpersisted refusals. (Advisory flagged
-   `clearAllKeys`; source showed plain logout was the wider path.)
+   re-run (passcode re-lock → unlock) keeps the unpersisted refusals.
 2. **The muted line fired ONCE PER PEER, EVER.** Found by the live drive: the same peer's second
    remint produced no line. `recordPeerIdentityChangedFromServer` returned early when the peer was
    already in `_peersWithChangedIdentity`, and the muted server-event demotion acks with nothing
@@ -67,20 +66,11 @@ durable dismiss are for.
 
 ## Notes for next session
 
-**Traps.** Two app-mode Chromes launched at the same default position occlude each other →
-`visibilityState: hidden` → Flutter stalls (a "Odszyfrowywanie…" bubble that never resolves, a
-20 s skeleton list, a tap that lands seconds late). Move windows apart with
-`Browser.setWindowBounds` or `--window-position`, and kill extra debug Chromes before judging. A
-`browser.run` timeout kills the tab; reattach with a NEW name. `recordPeerIdentityChangedFromServer`
-needs a pinned anchor — tests must `buildSession` with the peer first. Fixture messages in
-`chat_detail_identity_row_test.dart` are stamped `12:(id % 60)` = 12:40–12:42, not 12:00–12:02.
-`?q=` vision polls flaked ("list never painted" while the list was painted) — trust the pixels.
-The parallel workflow-2.0 session moved `frontend/CLAUDE.md` §5 to `frontend/docs/e2e-invariants.md`
-and landed on master mid-session (`dedb8dd`, `0f6e8b9`, `db2d94b`) — its untracked file is gone.
+**Traps.** Two app-mode Chromes at the same default position occlude each other → `visibilityState: hidden` → Flutter stalls (frozen "Odszyfrowywanie…", 20 s skeleton, late taps): `Browser.setWindowBounds` / `--window-position`, kill extra debug Chromes. A `browser.run` timeout kills the tab — reattach under a NEW name. `recordPeerIdentityChangedFromServer` needs a pinned anchor (`buildSession` first). Fixture rows in `chat_detail_identity_row_test.dart` are stamped `12:(id % 60)` = 12:40–12:42. `?q=` vision polls flake — trust pixels. The workflow-2.0 session landed mid-session (`dedb8dd`…) and moved `frontend/CLAUDE.md` §5 to `frontend/docs/e2e-invariants.md`.
 
 **Release.** 0.2.37 web-only (no backend change), then 0.2.38 web-only: advisory review found the embedded-pane switch frame — the build after `didUpdateWidget` still holds the PREVIOUS chat's rows, so a newer foreign row could durably dismiss an un-superseded note; `_isNewestInTimeline` now trusts only rows whose `conversationId` is this chat (F46d), `_dismissedNoteAt` resets on switch, and the pins rationale in the spec was corrected (a list version is P's property; the leak is scoping hygiene, not a false refusal). Then 0.2.39 after the owner's "review it" (two reviewer subagents, Standards + Spec, fixed point `85f5ce5`): Spec found the dismiss was peer-keyed — a fresh note written between the build and the post-frame call was deleted and the latch hid it — now compare-and-remove on the instant (F49, mutant killed); a corrupt instant is dropped by `_loadKeyChangeNotes` at the boundary (0.2.40, F50; first done as screen-side dismissal in 0.2.39, moved on review); repeat server events leave a `repeat: true` breadcrumb; the `messages.last` positional residual is recorded in the spec. Standards: no hard violations; took the honest test fake (map shrinks + notify), the `clearAllKeys` pointer, and the dropped bang; left the `id % 60` fixture and the per-build `tryParse`. Pre-existing, NOT touched: after a muted server-event demotion the peer stays in `e2e_<uid>_peer_identity_changed_v1` by (lxxix) design, so flipping warnings ON later shows a red pill for an already auto-acked change.
 
-**Open.** Guarded phrase replace (owner's "seed phrase like crypto" — proposal made, no go/no yet;
-needs `recoveryPhraseCreatedAt` on the wire → BOTH tiers, spec (lxxxv) first). Standing items
-unchanged (assetlinks, dead worktree, change-password iOS pin, install-day screen, link-with-code,
-torch).
+**Owner at session end (chat only — "do not implement anything"):** brainstormed the seed phrase. Options A (today) / B (guarded: no button, "Zgubiłem frazę" → warning → password) / C (B + old phrase) / D (never); argued D locks out anyone who lost the paper; the transferable crypto instinct is visibility (notify other devices on change), not immutability. Answered: no phrase + lost password + logged out = account gone by design; PWA cache wipe + password = un-enrolled account silently remints (history unreadable, peers get the line), enrolled hits the gate. He picked nothing.
+
+**Open.** Guarded phrase replace (owner's "seed phrase like crypto" — proposal made, brainstormed, no go/no yet;
+needs `recoveryPhraseCreatedAt` on the wire → BOTH tiers, spec (lxxxv) first). Standing items unchanged (see LATEST 09-09 entry).
