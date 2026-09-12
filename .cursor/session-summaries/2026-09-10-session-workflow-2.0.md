@@ -25,7 +25,7 @@
 ## Verification
 
 - Sizes from `wc -c`/`wc -w`; section tokens from a chars/4 split on `## ` headings; usage counts from regex over `.cursor/session-summaries/2026-07-2[89]*..2026-09-*` (100 files); commit mix from `git log --since=2026-07-28`. All reproducible; the script is inline in the session transcript, not committed.
-- Gate hole closed after it let an 8.4 KB summary through: size cap now applies to added AND modified summaries, template check to added only, and `--worktree` mode diffs against HEAD; re-proven (modified oversize → exit 1 in both modes).
+- Gate hole closed (size cap on added+modified, template on added, worktree mode diffs HEAD); re-proven both modes.
 - Gate proven both ways: `node scripts/verify-context-budget.mjs` → OK on the staged tree; a synthetic 6th LATEST entry → exit 1 with the rotation message; restored → OK. `sh .githooks/pre-commit` on the real index → exit 0.
 - No app code changed; no tier tests run. Hook change proven by running the new gitleaks form; CI command proven live; graphify numbers from a script over `graphify-out/graph.json` BEFORE deletion (2,430/1,003/43).
 
@@ -34,6 +34,7 @@
 - **Owner, a reversal of your 2026-08-14 decision:** per-entry LATEST caps are back (≤900 chars, hook 1000). The 08-14 failure mode (banner counted as an entry → evidence deleted to fit) is gone by construction: no banner, standing facts go to `traps.md` uncapped. Rationale kept in `traps.md § Handoff`.
 - **Accuracy audit DONE (owner asked):** six parallel auditors, code-only evidence, one file each — **~574 claims checked, 42 corrected in place**, every correction with file:line (reports: `agent://Audit{Wire,E2E,Composer,Passcode,BackendTier,RootAndFrontendTier}`; digest + the five source-comment rot findings in `docs/agents/workflow-2.0.md` § Accuracy audit). Dead globs in two rules + two stubs replaced with real paths. **Spot-checked 9 of the highest-impact corrections against source myself — all resolve as reported.** Comment-only source fixes applied: stale "72 h" prose → 6 h in `identity-reset.service.ts` (7 sites) + `chat-key-exchange.service.ts` (2); the "Owner decision pending" OTP-ordering note rewritten as settled for the identity-upload path (stash-on-ack, `stale_otp_epoch_test.dart` mirrors it) while naming the two emitters that are NOT races (replenishment; un-enrolled remint carve-out). `git diff --cached -- backend/src` non-comment lines: 0. Test counts / in-doc version dates: not verifiable from source.
 
+- **Trap at commit time:** checkout is on `feat/passcode-lock` (master locked in worktree `fireplace-0a`); commits fast-forwarded to master via `git push origin HEAD:master`. Root §1 claimed master — corrected. Code-only audits cannot catch git-state claims.
 - **Nothing owed.** Every batch is applied. Next-session checks: `read rule://wire-contracts` (rules load at startup), and `read skill://umbra-session-end`.
 - **Not mine, left unstaged:** one-line edit in `2026-09-09-session-c9-phrase-at-the-door.md` (scanner teardown wording). Commit or drop it deliberately.
 - **Trap:** `read` of `LATEST.md` truncates lines at 768 chars — the banner and deploy-state line are far longer than they look; measure with `wc`, not by eye.

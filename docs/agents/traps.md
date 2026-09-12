@@ -22,6 +22,8 @@ Standing warnings that used to live in the `LATEST.md` banner and in rotated-out
 - CI lint ratchet is a release gate: hand-formatted backend edits fail the run AFTER tests pass — prettier only the files you touched (`2026-09-08-session-d27-rename-and-review.md`).
 - Actions billing/CI economics history: `2026-08-18-session-actions-billing-and-0.1.16.md`.
 
+- **`Desktop/Fireplace` is on `feat/passcode-lock`, not master, and master is LOCKED in the `fireplace-0a` worktree** — root §1 claimed master until 2026-09-10 and the accuracy audit missed it (a git-state claim, not a code claim); push docs commits with `git push origin HEAD:master`, then push the branch too (`2026-09-10-session-workflow-2.0.md`).
+
 ## Tests / harness / falsification
 - **If a mutant survives, the test is the thing that is wrong** — assert behaviour from the real gated state, never a diag marker (`2026-09-08-session-d27-rename-and-review.md`).
 - **A harness can only find bugs in the shapes it builds** — the never-enrolled reset had a live population of exactly 0 (`2026-08-26-session-t10-reset-addressability.md`).
