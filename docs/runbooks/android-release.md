@@ -275,7 +275,28 @@ hand** — the old "one account, one device" claim must not ship.
   rendered as retired ids rather than `[Decryption failed]`.
   Acceptance is executable: `cd frontend && flutter test integration_test -d <deviceId>` (8 tests,
   including a real-Keystore content-key wipe that must retire history, never crash).
-- R8/minify is OFF (default): enable later with keep-rules if APK size matters; not a security gate.
+- **APK size anatomy (measured on the 0.2.41 build).** 105.2 MB, of which **100.3 MB is native
+  libraries in three ABIs** — `x86_64` 37.2 (emulator only), `arm64-v8a` 33.9, `armeabi-v7a` 29.2;
+  everything else is 5.6 MB dex + 2.4 MB assets/res. Per-ABI on arm64: `libapp.so` 12.8 (our Dart
+  AOT), `libflutter.so` 11.0 (engine), `libsqlcipher.so` 4.9, `libbarhopper_v3.so` 4.7 (ML Kit
+  barcode model). Levers, in order of payoff:
+  1. `--target-platform android-arm64` / `--split-per-abi` → **~42 MB**, the single biggest win.
+     NOT applied: Flutter's split convention adds a 1000×ABI offset to versionCode, which collides
+     with our `major*1e6+minor*1e4+patch` formula and with Play's monotonicity. Decide once.
+  2. `--split-debug-info=<dir>` strips `libapp.so` symbols (~3-5 MB) and still allows symbolizing.
+     Avoid `--obfuscate` while there is no crash reporting — logcat is the only diagnostic channel.
+  3. `dev.steenbakker.mobile_scanner.useUnbundled=true` in `frontend/android/gradle.properties`
+     swaps the bundled ML Kit model for the Play-Services one (`mobile_scanner-7.4.0`
+     `android/build.gradle:63-69`): 4.7 MB → ~600 KB per ABI. **Evaluated 2026-09-13, NOT applied:**
+     the model then downloads on FIRST USE, and the scanner's only job is the link ceremony, so a
+     weak connection breaks the one flow a new install must complete. Degradation is graceful
+     (`LinkScanUnsupported` + the mandatory typed-code path, spec §12(i)) and Play Services is
+     already required for FCM, so the dependency itself is not new — revisit once the ceremony is
+     device-proven, and note it matters less on Play, where the AAB splits ABIs anyway.
+- R8/minify is OFF (default): enable later with keep-rules if APK size matters; not a security
+  gate — and per the measurement above there is only 5.6 MB of dex to shrink, so the payoff is
+  small next to the ABI split. `light_compressor_v2` needs no keep-rules (its README); libsignal,
+  drift and Firebase are unassessed.
 - `network_security_config` now EXISTS and is deliberately narrow: `frontend/android/app/src/main/res/xml/`
   permits cleartext to `127.0.0.1`/`localhost` ONLY (just_audio serves unsealed voice bytes through a
   loopback proxy; API 28+ blocks that otherwise), with no `base-config`, so every other host keeps
