@@ -43,7 +43,7 @@ Standing warnings that used to live in the `LATEST.md` banner and in rotated-out
 - **`flutter analyze` prints "N issues found" on stderr; Node ≥ 20 needs `shell: true` to spawn `flutter.bat`** — scrape both streams (`scripts/dart-lint-ratchet.mjs`) (`2026-09-12-session-batch-8-tooling.md`).
 - **Take the Dart lint baseline on a clean worktree** — the main checkout flapped ±30 infos while a concurrent session edited `chat_input_bar.dart` (`2026-09-12-session-batch-8-tooling.md`).
 - **Existing `testWidgets` device files are not Patrol tests** — under `patrol test` they hang in "Executing tests"; keep `flutter test integration_test -d` (`2026-09-12-session-batch-8-tooling.md`).
-
+- **`auth.service.spec` recoverPassword second-boundary test flakes on slow runners** (equal second, expected greater) — rerun once; if it recurs, fake the clock (`2026-09-12-session-batch-8-tooling.md`).
 
 ## E2E / multi-device / recovery
 - Registration lock is OPT-IN — arms only once `account_authorizations` has a row; a client that sees no `linkingEnabled` field fails CLOSED to the old gate (`2026-09-05-session-optin-lock-gate.md`).
@@ -76,7 +76,8 @@ Standing warnings that used to live in the `LATEST.md` banner and in rotated-out
 - `read` of `LATEST.md` truncates lines at 768 chars — measure with `wc`, not by eye (`2026-09-10-session-workflow-2.0.md`).
 - **npm override of a dep you also depend on directly needs the `"$pkg"` reference form** — `overrides.multer: "$multer"` + `multer ^2.3.0`; a nested literal is ignored and `npm ls` shows `invalid` (`2026-09-12-session-batch-8-tooling.md`).
 - **`/auth/register` throttles 10 per 15 min per IP** — repeated smoke runs 429; reuse a throwaway account via `FP_SMOKE_USER/PASS` (`2026-09-12-session-batch-8-tooling.md`).
-
+- **In the shared worktree, `git commit` ships whatever the OTHER session has STAGED** — explicit-path `git add` does not protect you; run `git diff --cached --stat` and `git reset -q -- <foreign>` before every commit (`2026-09-12-session-batch-8-tooling.md`).
+- **`gh run rerun` on an old run cancels the master tip's run via the concurrency group** — rerun the tip's own run id, never an older one (`2026-09-12-session-batch-8-tooling.md`).
 
 ## Handoff / LATEST budget history
 - **2026-08-14, owner decision: per-entry WORD budgets (≤3900 total / ≤700 per entry) were REMOVED** — the shared banner counted as an "entry", so adding a genuinely new binding fact to it got the commit BLOCKED, and the cheapest escape was deleting evidence from a summary written minutes earlier; three sessions in a row burned time on the arithmetic instead of the handoff.
