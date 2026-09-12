@@ -68,6 +68,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   int _newMessagesCount = 0;
   int _lastMessageCount = 0;
   int _lastLinkPreviewCount = 0;
+  /// (lxxxiv): the note instant whose durable eviction this screen already
+  /// requested; stops repeated builds from re-requesting it.
+  String? _dismissedNoteAt;
   final Set<int> _knownMessageIds = <int>{};
   double _lastKeyboardHeight = 0;
   // Cached so dispose removes the listener from the SAME instance initState
@@ -855,6 +858,24 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     );
   }
 
+  /// (lxxxiv): whether a key-change note recorded at [occurredAt] (ISO-8601)
+  /// is still the newest thing in the conversation: nothing in the ascending
+  /// [messages] timeline and no [lastMessageAt] known to the list is after
+  /// it. An unparseable instant renders (the note was recorded; failing
+  /// closed would silence it), and a message stamped at the SAME instant does
+  /// not evict it.
+  static bool _isNewestInTimeline(
+    String occurredAt,
+    List<MessageModel> messages,
+    DateTime? lastMessageAt,
+  ) {
+    final at = DateTime.tryParse(occurredAt);
+    if (at == null) return true;
+    if (lastMessageAt != null && lastMessageAt.isAfter(at)) return false;
+    if (messages.isEmpty) return true;
+    return !messages.last.createdAt.isAfter(at);
+  }
+
   Widget _buildComposerFooter({
     required UserModel? otherUser,
     required Color mutedColor,
@@ -967,13 +988,36 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
             context.select<EncryptionProvider, bool>(
               (e) => e.peersWithChangedIdentity.contains(otherUser.id),
             ));
+    // (lxxxiv): the muted note lives until the next message — it renders only
+    // while nothing in the conversation is newer than the change it
+    // announces. The list's `lastMessages` entry covers the window before
+    // history has loaded (an empty `messages` cannot out-date anything).
+    final peerKeyChangeNoteAt =
+        otherUser != null && !peerIdentityChanged && !warnOnKeyChange
+        ? context.select<EncryptionProvider, String?>(
+            (e) => e.peerKeyChangeNotes[otherUser.id],
+          )
+        : null;
     final peerKeyChangeNoted =
-        otherUser != null &&
-        !peerIdentityChanged &&
-        !warnOnKeyChange &&
-        context.select<EncryptionProvider, bool>(
-          (e) => e.peerKeyChangeNotes.containsKey(otherUser.id),
+        peerKeyChangeNoteAt != null &&
+        _isNewestInTimeline(
+          peerKeyChangeNoteAt,
+          messages,
+          convs.lastMessages[widget.conversationId]?.createdAt,
         );
+    if (peerKeyChangeNoteAt != null &&
+        !peerKeyChangeNoted &&
+        peerKeyChangeNoteAt != _dismissedNoteAt) {
+      // Superseded: forget it durably so a later open does not flash the line
+      // while history loads. Once per note instant — a later change writes a
+      // fresh instant and gets its own eviction.
+      _dismissedNoteAt = peerKeyChangeNoteAt;
+      final enc = context.read<EncryptionProvider>();
+      final peerId = otherUser!.id;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        enc.dismissPeerKeyChangeNote(peerId);
+      });
+    }
     final activeConv = convs.getConversationById(widget.conversationId);
     final statusText = _getHeaderStatusText(context, messaging);
     // Long-press the title toggles the iOS keyboard-diagnostics overlay (dev

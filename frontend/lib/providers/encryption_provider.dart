@@ -171,6 +171,11 @@ class EncryptionProvider extends ChangeNotifier {
   Map<int, String> get peerKeyChangeNotes =>
       _encryptionService.peerKeyChangeNotes;
 
+  /// (lxxxiv): the chat moved past [peerId]'s muted note; forget it durably.
+  /// The service's callback (`onPeerIdentityChanged`) notifies listeners.
+  Future<void> dismissPeerKeyChangeNote(int peerId) =>
+      _encryptionService.dismissPeerKeyChangeNote(peerId);
+
   /// (lxxix): whether the user opted back into manual key-change
   /// confirmation. Wired from `SettingsProvider` (ConversationsScreen
   /// initState); default matches the spec default (warnings demoted).

@@ -125,6 +125,65 @@ void main() {
         checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
     expect(restarted.peerKeyChangeNotes, contains(bobId));
   });
+
+  test('(lxxxiv) dismissPeerKeyChangeNote forgets the note across a relaunch',
+      () async {
+    await alice.buildSession(bobId, flatBundleFrom(bob),
+        expectedIdentityBase64: null);
+    await alice.recordPeerIdentityChangedFromServer(bobId);
+    expect(alice.peerKeyChangeNotes, contains(bobId));
+    var notified = 0;
+    alice.onPeerIdentityChanged = (_) => notified++;
+
+    await alice.dismissPeerKeyChangeNote(bobId);
+
+    expect(alice.peerKeyChangeNotes, isEmpty);
+    expect(notified, 1, reason: 'the open chat must rebuild without the line');
+    final restarted = EncryptionService();
+    await restarted.initialize(aliceId,
+        checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
+    expect(restarted.peerKeyChangeNotes, isEmpty,
+        reason: 'a dismissed note that came back on relaunch would flash the '
+            'line on the next open');
+
+    await alice.dismissPeerKeyChangeNote(bobId);
+    expect(notified, 1, reason: 'dismissing an absent note is a silent no-op');
+  });
+
+  test(
+      'F48: setting OFF — a SECOND server-reported change for the same peer '
+      'writes a fresh note after the first was evicted', () async {
+    await alice.buildSession(bobId, flatBundleFrom(bob),
+        expectedIdentityBase64: null);
+    await alice.recordPeerIdentityChangedFromServer(bobId);
+    // The muted ack has nothing staged, so the standing set keeps bob.
+    expect(alice.peersWithChangedIdentity, contains(bobId));
+    await alice.dismissPeerKeyChangeNote(bobId);
+    expect(alice.peerKeyChangeNotes, isEmpty);
+    var notified = 0;
+    alice.onPeerIdentityChanged = (_) => notified++;
+
+    await alice.recordPeerIdentityChangedFromServer(bobId);
+
+    expect(alice.peerKeyChangeNotes, contains(bobId),
+        reason: 'bob linked ANOTHER device; the line must come back (F48)');
+    expect(notified, greaterThanOrEqualTo(1));
+  });
+
+  test('setting ON — a repeat server event while the pill stands is a no-op',
+      () async {
+    alice.keyChangeWarnings = () => true;
+    await alice.buildSession(bobId, flatBundleFrom(bob),
+        expectedIdentityBase64: null);
+    await alice.recordPeerIdentityChangedFromServer(bobId);
+    var notified = 0;
+    alice.onPeerIdentityChanged = (_) => notified++;
+
+    await alice.recordPeerIdentityChangedFromServer(bobId);
+
+    expect(notified, 0);
+    expect(alice.peerKeyChangeNotes, isEmpty);
+  });
   test(
       'setting OFF — an account-identity refusal ((lv)) is NOT demoted: '
       'fail-closed, no auto-ack, no note, refused-set raised', () async {
@@ -178,5 +237,58 @@ void main() {
     expect(alice.peersWithChangedIdentity, contains(bobId));
     expect(alice.peersRefusedIdentity, contains(bobId));
     expect(alice.peerKeyChangeNotes, isEmpty);
+  });
+
+  // ---- Amendment (lxxxiv) rider: per-account state must not cross logins ----
+
+  test(
+      'F47: initialising the SAME service for another account drops the '
+      'previous account\'s notes, pills, and device-list pins', () async {
+    await alice.buildSession(bobId, flatBundleFrom(bob),
+        expectedIdentityBase64: null);
+    await alice.recordPeerIdentityChangedFromServer(bobId);
+    await alice.recordDeviceListPin(bobId, 5);
+    // A second peer with warnings ON lands in the red-pill set, not the notes.
+    await alice.buildSession(malloryId, flatBundleFrom(mallory),
+        expectedIdentityBase64: null);
+    alice.keyChangeWarnings = () => true;
+    await alice.recordPeerIdentityChangedFromServer(malloryId);
+    expect(alice.peerKeyChangeNotes, contains(bobId));
+    expect(alice.peersWithChangedIdentity, contains(malloryId));
+    expect(alice.deviceListPins[bobId], 5);
+
+    // Logout does not rebuild the singleton; the next login re-initialises it.
+    await alice.initialize(4,
+        checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
+
+    expect(alice.peerKeyChangeNotes, isEmpty,
+        reason: 'account 1\'s muted note would render in account 4\'s chat');
+    expect(alice.peersWithChangedIdentity, isEmpty,
+        reason: 'account 1\'s red pill would render in account 4\'s chat');
+    expect(alice.deviceListPins, isEmpty,
+        reason: 'account 1\'s rollback floor would make account 4 refuse '
+            'peer 2\'s honest lower-version list');
+  });
+
+  test(
+      'F47b: a same-account re-initialise (passcode re-lock → unlock) keeps '
+      'the unpersisted refusal', () async {
+    await alice.buildSession(bobId, flatBundleFrom(bob),
+        expectedIdentityBase64: null);
+    final pinned = await alice.peerTofuIdentityBase64(bobId);
+    await expectLater(
+      alice.buildSession(bobId, flatBundleFrom(mallory),
+          expectedIdentityBase64: pinned),
+      throwsA(isA<AccountIdentityMismatch>()),
+    );
+    expect(alice.peersRefusedIdentity, contains(bobId));
+
+    await alice.initialize(aliceId,
+        checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
+
+    expect(alice.peersRefusedIdentity, contains(bobId),
+        reason: 'a refusal blocks sending and is not persisted; clearing it '
+            'on a same-user re-run would drop the only door to the ceremony');
+    expect(alice.peersWithChangedIdentity, contains(bobId));
   });
 }

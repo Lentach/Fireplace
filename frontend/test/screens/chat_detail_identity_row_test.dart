@@ -62,6 +62,14 @@ class _AlarmedEncryption extends EncryptionProvider {
   @override
   Map<int, String> get peerKeyChangeNotes => notedPeers;
 
+  /// (lxxxiv): peers whose superseded note the screen asked to forget.
+  final List<int> dismissed = <int>[];
+
+  @override
+  Future<void> dismissPeerKeyChangeNote(int peerId) async {
+    dismissed.add(peerId);
+  }
+
   @override
   Future<String?> getPeerIdentityFingerprint(int peerId) async => 'AAAA BBBB';
 
@@ -69,13 +77,15 @@ class _AlarmedEncryption extends EncryptionProvider {
   Future<String?> getIdentityFingerprint() async => 'CCCC DDDD';
 }
 
-Map<String, dynamic> _conversationJson() => {
+Map<String, dynamic> _conversationJson({String? lastMessageAt}) => {
   'id': 10,
   'userOne': {'id': 1, 'username': 'alice', 'tag': '0001'},
   'userTwo': {'id': _peerId, 'username': 'bob', 'tag': '0002'},
   'createdAt': '2026-01-01T00:00:00.000Z',
   'unreadCount': 0,
-  'lastMessage': null,
+  'lastMessage': lastMessageAt == null
+      ? null
+      : {..._messageJson(2000), 'createdAt': lastMessageAt},
 };
 
 Map<String, dynamic> _messageJson(int id) => {
@@ -89,7 +99,7 @@ Map<String, dynamic> _messageJson(int id) => {
   'createdAt': DateTime.utc(2026, 1, 1, 12, id % 60).toIso8601String(),
 };
 
-Future<void> _pumpChat(
+Future<_AlarmedEncryption> _pumpChat(
   WidgetTester tester, {
   required bool alarmed,
   required bool withMessages,
@@ -97,14 +107,23 @@ Future<void> _pumpChat(
   // opt back in because they assert the manual-confirmation red pill.
   bool keyChangeWarnings = true,
   bool noted = false,
+  // (lxxxiv): the note's instant. The fixture messages are stamped
+  // 2026-01-01T12:40–12:42 (`id % 60`), so the default keeps the note NEWER
+  // than all of them.
+  String noteAt = '2026-09-08T00:00:00.000Z',
   bool refused = false,
+  // (lxxxiv): what the conversations LIST knows as the newest message, for
+  // the window before this chat's history has loaded.
+  String? listLastMessageAt,
 }) async {
   SharedPreferences.setMockInitialValues({
     'key_change_warnings': keyChangeWarnings,
   });
 
   final conversations = ConversationsProvider()..setCurrentUserId(1);
-  conversations.onConversationsList([_conversationJson()]);
+  conversations.onConversationsList([
+    _conversationJson(lastMessageAt: listLastMessageAt),
+  ]);
   conversations.openConversation(10, notify: false);
 
   final messaging = MessagingProvider();
@@ -123,6 +142,11 @@ Future<void> _pumpChat(
 
   final auth = AuthProvider()..setAccessTokenForTest(_currentUserJwt);
 
+  final encryption = _AlarmedEncryption(
+    changedPeers: alarmed ? const {_peerId} : const <int>{},
+    notedPeers: noted ? {_peerId: noteAt} : const <int, String>{},
+    refusedPeers: refused ? const {_peerId} : const <int>{},
+  );
   await tester.pumpWidget(
     MultiProvider(
       providers: [
@@ -132,15 +156,7 @@ Future<void> _pumpChat(
         ChangeNotifierProvider<MessagingProvider>.value(value: messaging),
         ChangeNotifierProvider<AuthProvider>.value(value: auth),
         ChangeNotifierProvider(create: (_) => FriendsProvider()),
-        ChangeNotifierProvider<EncryptionProvider>.value(
-          value: _AlarmedEncryption(
-            changedPeers: alarmed ? const {_peerId} : const <int>{},
-            notedPeers: noted
-                ? const {_peerId: '2026-09-08T00:00:00.000Z'}
-                : const <int, String>{},
-            refusedPeers: refused ? const {_peerId} : const <int>{},
-          ),
-        ),
+        ChangeNotifierProvider<EncryptionProvider>.value(value: encryption),
         ChangeNotifierProvider(
           create: (_) => SettingsProvider(initialThemePreference: 'dark'),
         ),
@@ -157,6 +173,7 @@ Future<void> _pumpChat(
   await tester.pump();
   // Let the SettingsProvider async prefs load land before asserting.
   await tester.pump();
+  return encryption;
 }
 
 void main() {
@@ -228,6 +245,92 @@ void main() {
       reason: 'toggle ignored → the red pill would render with the setting '
           'off (F11)',
     );
+  });
+
+  // ---- Amendment (lxxxiv): the note lives until the next message ----
+
+  testWidgets(
+      'F46: a message NEWER than the note evicts it, and the note is forgotten '
+      'durably', (tester) async {
+    final enc = await _pumpChat(
+      tester,
+      alarmed: false,
+      noted: true,
+      // Between the last two fixture messages: only the newest is after it.
+      noteAt: '2026-01-01T12:41:30.000Z',
+      keyChangeWarnings: false,
+      withMessages: true,
+    );
+
+    expect(
+      find.byKey(const ValueKey('peer-identity-changed-note')),
+      findsNothing,
+      reason: 'the first message after the change pushes the line out (F46)',
+    );
+    expect(enc.dismissed, [_peerId],
+        reason: 'left in storage, the line would flash on every later open '
+            'of this chat until history loads');
+  });
+
+  testWidgets(
+      'a message stamped at the SAME instant as the note does not evict it',
+      (tester) async {
+    final enc = await _pumpChat(
+      tester,
+      alarmed: false,
+      noted: true,
+      noteAt: '2026-01-01T12:42:00.000Z',
+      keyChangeWarnings: false,
+      withMessages: true,
+    );
+
+    expect(
+      find.byKey(const ValueKey('peer-identity-changed-note')),
+      findsOneWidget,
+    );
+    expect(enc.dismissed, isEmpty);
+  });
+
+  testWidgets(
+      'F46b: history not loaded yet, but the LIST knows a newer message → '
+      'no note (the post-reload window)', (tester) async {
+    final enc = await _pumpChat(
+      tester,
+      alarmed: false,
+      noted: true,
+      noteAt: '2026-01-01T12:41:30.000Z',
+      keyChangeWarnings: false,
+      withMessages: false,
+      listLastMessageAt: '2026-01-01T12:43:00.000Z',
+    );
+
+    expect(
+      find.byKey(const ValueKey('peer-identity-changed-note')),
+      findsNothing,
+      reason: 'an empty timeline cannot out-date the note; the list preview '
+          'can, and must, or the evicted line flashes on every open',
+    );
+    expect(enc.dismissed, [_peerId]);
+  });
+
+  testWidgets(
+      'history not loaded and the LIST\'s newest message is OLDER → note stays',
+      (tester) async {
+    final enc = await _pumpChat(
+      tester,
+      alarmed: false,
+      noted: true,
+      noteAt: '2026-01-01T12:41:30.000Z',
+      keyChangeWarnings: false,
+      withMessages: false,
+      listLastMessageAt: '2026-01-01T12:40:00.000Z',
+    );
+
+    expect(
+      find.byKey(const ValueKey('peer-identity-changed-note')),
+      findsOneWidget,
+    );
+    expect(enc.dismissed, isEmpty);
   });
 
   testWidgets('F11: setting OFF + noted peer, empty chat → muted note only',

@@ -353,6 +353,15 @@ class EncryptionService {
     } catch (_) {}
   }
 
+  /// (lxxxiv): the timeline moved past [peerId]'s muted note. Forget it
+  /// durably, so a later open of that chat does not re-render the line
+  /// while history is still loading (an empty timeline cannot out-date it).
+  Future<void> dismissPeerKeyChangeNote(int peerId) async {
+    if (_peerKeyChangeNotes.remove(peerId) == null) return;
+    await _persistKeyChangeNotes();
+    onPeerIdentityChanged?.call(peerId);
+  }
+
   /// The user compared [peerId]'s fingerprint out of band and accepted it.
   /// Returns whether the account anchor actually advanced.
   ///
@@ -500,13 +509,22 @@ class EncryptionService {
       });
       return;
     }
-    if (!_peersWithChangedIdentity.add(peerId)) return;
-    E2ePersistentDiag.record('PEER_IDENTITY_CHANGED', {
-      'peerId': peerId,
-      'source': source,
-    });
-    onPeerIdentityChanged?.call(peerId);
-    await _persistIdentityChanged();
+    final fresh = _peersWithChangedIdentity.add(peerId);
+    // (lxxxiv): with warnings OFF the muted demotion below acknowledges
+    // without a staged candidate, so the anchor does not advance and the peer
+    // STAYS in this set. Returning here on a repeat would drop every later
+    // server-reported change for that peer — the "new device or browser"
+    // line would fire once per peer, ever. With warnings ON the standing pill
+    // already says it, and the repeat is the duplicate it always was.
+    if (!fresh && keyChangeWarnings()) return;
+    if (fresh) {
+      E2ePersistentDiag.record('PEER_IDENTITY_CHANGED', {
+        'peerId': peerId,
+        'source': source,
+      });
+      onPeerIdentityChanged?.call(peerId);
+      await _persistIdentityChanged();
+    }
     await _demoteKeyChangeIfMuted(peerId);
   }
 
@@ -1064,6 +1082,21 @@ class EncryptionService {
     int userId, {
     Future<ServerIdentityGuard?> Function()? checkServerIdentity,
   }) async {
+    // (lxxxiv) rider: this service is a process singleton reused across
+    // logins, and the loaders below ADD to these collections. Left standing,
+    // account A's peer notes and pills render in B's chats, A's rebuild
+    // intents and device-list pins apply to B's peers (a pin is a rollback
+    // FLOOR — A's version 5 makes B refuse P's honest version 3), and the
+    // next persist writes them under B's key. Cleared only when the account
+    // CHANGES — a same-user re-run (passcode re-lock → unlock) must keep the
+    // unpersisted refusals.
+    if (_userId != userId) {
+      _peersWithChangedIdentity.clear();
+      _peerKeyChangeNotes.clear();
+      _peersRefusedIdentity.clear();
+      _pendingSessionRebuilds.clear();
+      _deviceListPins.clear();
+    }
     _userId = userId;
     final p = 'e2e_${userId}_'; // per-user storage key prefix
 
