@@ -1,0 +1,34 @@
+# Batch 8 applied: knip + Renovate + guard hooks + VGA ratchet + artillery + pg_stat_statements + Patrol (Android)
+
+**Date:** 2026-09-12 · **Version:** unchanged (0.2.40 frontend / 0.2.35 backend on prod) · **Tiers deployed:** none (prod db-only recreate, backend image untouched)
+
+## What was done
+- `backend/knip.json` + `npm run knip` (`--include files,dependencies`), hard CI step after the lint ratchet; 5 Nest-starter devDeps removed; `overrides.multer=$multer` + `multer ^2.3.0` closes the 4 Dependabot alerts on the copy nested under `@nestjs/platform-express` (pins 2.2.0 exactly, even at 12.x).
+- `renovate.json` transcribes every `dependabot.yml` rule with reason (`renovate-config-validator --strict` on 44.82.1); `typescript` semver-major ignored in both files (8.9). Mend app NOT installed — owner step; `dependabot.yml` stays until the first Renovate PR merges.
+- Harness (8.10): `.omp/RULES.md`, `.omp/hooks/pre/guard.ts` + `.claude/hooks/guard.mjs`/`.claude/settings.json` (block `git commit --no-verify|-n`, `gh run list`), `.claude/rules/*.md` `paths:` stubs from the Cursor globs; `.gitignore` un-ignores `.omp/hooks/`, `.omp/RULES.md`.
+- Skills (8.7): `diagnosing-bugs` (with `## Redact`) + `grilling` re-pulled into `~/.agents/skills` from `mattpocock/skills@3cca18b368`; 4 `kevmoo/dash_skills@ea5aa807` skills into repo `.claude/skills/`. Dart MCP → 1.1.1.
+- `frontend/analysis_options.yaml` on `very_good_analysis: 10.3.0` (strict-casts/inference OFF: 11 errors + 59 warnings all `dynamic` into typed crypto params; strict-raw-types ON, 5 `Map` raw types typed in `test_e2e`); `scripts/dart-lint-ratchet.mjs` + baseline 3175 infos as a CI step after `flutter analyze`.
+- `scripts/smoke/artillery-socket.{yml,mjs}`, `npm run socket [target]`: runner mints one JWT → `FP_SMOKE_TOKEN` → artillery socketio scenario `getConversations` → exact `conversationsList [[]]`; `plugins.ensure` sets the exit code.
+- `docker-compose.prod.yml` db `command:` preloads `pg_stat_statements` (max 1000, track top); applied on the VM (`git pull`, `up -d --no-deps db`, `docker restart fireplace-backend-1`, `CREATE EXTENSION`). Runbook line added.
+- Patrol (8.2): `patrol` 4.9.0 + `patrol_cli` 4.7.0, `patrol:` block (`test_directory: integration_test`), `PatrolJUnitRunner`/orchestrator in `build.gradle.kts`, `androidTest/.../MainActivityTest.java`, `integration_test/patrol_harness_test.dart`; `**/test_bundle.dart`, `.patrol.env`, `frontend/{playwright-report,test-results}/` ignored. Owner stopped further Patrol runs ("taking too long").
+
+## Key files
+- Edited: `backend/package.json`, `backend/package-lock.json`, `.github/workflows/ci.yml`, `.github/dependabot.yml`, `CLAUDE.md`, `frontend/CLAUDE.md`, `.gitignore`, `docker-compose.prod.yml`, `.cursor/rules/production-vm-deploy.mdc`, `frontend/analysis_options.yaml`, `frontend/pubspec.yaml`, `frontend/android/app/build.gradle.kts`, `frontend/test_e2e/full_stack_e2e_test.dart`, `docs/design/flutter-ui-playbook.md`, `docs/agents/workflow-2.0.md` (§7 Batch 8 rows carry per-item proof).
+- New: `backend/knip.json`, `renovate.json`, `.omp/RULES.md`, `.omp/hooks/pre/guard.ts`, `.claude/{settings.json,hooks/guard.mjs,rules/*.md,skills/dart-*,skills/profile-dart-code}`, `scripts/dart-lint-ratchet.mjs`, `scripts/dart-lint-baseline.json`, `scripts/smoke/artillery-socket.{yml,mjs}`, `frontend/integration_test/patrol_harness_test.dart`, `frontend/android/app/src/androidTest/java/com/fireplace/app/MainActivityTest.java`.
+- Read only (load-bearing): `docs/research/2026-09-*.md`, `scripts/lint-ratchet.mjs`, `patrol_cli-4.7.0/lib/src/web/web_test_backend.dart`, `patrol-4.9.0/web_runner/tests/{setup,test.spec}.ts`, `artillery/lib/core/engine_socketio.ts`.
+
+## Verification
+- Backend, unpiped exit codes: `npm ci` 0, `nest build` 0, knip 0, lint ratchet 0 (898 held), `npm test` 62/62 suites, 1119 tests.
+- Frontend: `flutter analyze --no-fatal-infos` exit 0; `dart-lint-ratchet` PASS ×2 at 3175 on a clean `cc6c888` worktree (main checkout flapped ±30 — concurrent session editing `chat_input_bar.dart`); forced `catch (e)`+`print` probe → FAIL +1.
+- Guards: OMP hook via stub `pi` and Claude hook via stdin JSON both block the 3 forbidden forms, allow `git commit -m ok`/`gh api`.
+- Artillery vs local docker backend: 5/5 VUs, p95 76 ms, exit 0; bogus token → 5 failed, exit 1.
+- Prod: `SHOW shared_preload_libraries` → `pg_stat_statements`; `SELECT … FROM pg_stat_statements LIMIT 1` returns a row; `/health` ok in+out; `/version` still `0.2.35 / e6ccae0a`.
+- Patrol Android (Pixel_7 AVD): `patrol_harness_test` Total 1 / Successful 1 (2 m 29 s). Existing `identity_recovery_durability_device_test` under `patrol test`: hung in "Executing tests" to the 2400 s timeout. Web `-d chrome`: run 1 served the bundle but Playwright listed 0 tests (`setup.ts` got no `__patrol__getTests`, overlapped the Android build); serial retry hung at `npx playwright install chromium`. NOT green.
+- CI: `cc6c888` 6/6 green (knip step ran); `3874af1` 6/6 green (Dart ratchet step ran); `30247d5` 6/6 repo jobs green + a NEW `Analyze (java-kotlin)` CodeQL default-setup job FAILED (autobuild on the Flutter module, triggered by the first `.java` file). Default setup re-pinned via `PATCH …/code-scanning/default-setup` to `["actions"]` — verify on the next push.
+- NOT verified: Patrol web; Kotlin entry-point variant (tried, reverted unproven); Renovate app run; prod pg_stat_statements query load over time.
+
+## Notes for next session
+- Owner-owed: install the Mend Renovate GitHub App, then delete `.github/dependabot.yml` in the PR that merges its first green PR. Confirm the CodeQL `java-kotlin` job is gone on the next master push; if not, Settings → Code security → CodeQL → languages.
+- Owner-owed: deploy backend when convenient — `deploy-backend.sh` ships the multer 2.3.0 override + comment-only fixes (undeployed since 0.2.35). Dependabot #119 (1 moderate) opened on push — triage.
+- Patrol web leg: retry serially on an idle box with `--web-server-timeout 600`; expect Chromium download on first run. Existing `testWidgets` device files are NOT patrol tests; keep `flutter test integration_test -d`.
+- Traps (also in `docs/agents/traps.md`): artillery socketio token must come from env (`{{ $processEnvironment.X }}`), launcher drops unresolved config templates and connects before flow steps; `flutter analyze` summary line is on stderr; Node ≥ 20 needs `shell: true` to spawn `flutter.bat`; npm nested-dep override needs `"$pkg"` reference form; a `.java` file wakes CodeQL default-setup java-kotlin autobuild; register throttle 10/15 min bites repeated smoke runs; Dart ratchet baseline must be taken on a clean worktree while another session edits.

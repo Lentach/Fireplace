@@ -26,6 +26,9 @@ Standing warnings that used to live in the `LATEST.md` banner and in rotated-out
 - **`Desktop/Fireplace` is on `feat/passcode-lock`, not master, and master is LOCKED in the `fireplace-0a` worktree** — root §1 claimed master until 2026-09-10 and the accuracy audit missed it (a git-state claim, not a code claim); push docs commits with `git push origin HEAD:master`, then push the branch too (`2026-09-10-session-workflow-2.0.md`).
 
 - **CI Flutter is pinned through `frontend/pubspec.yaml` `environment.flutter:` (`flutter-version-file`)** — before 2026-09-10 CI floated on `channel: stable` (Dart 3.13) while the box ran 3.12, so a green CI could mean a different SDK than you tested. Bump the SDK by editing that one line; never re-float it (`2026-09-10-session-workflow-2.0.md`).
+- **A `.java` file wakes CodeQL default-setup `Analyze (java-kotlin)` autobuild, which cannot build a Flutter module** — master went red on an unrelated check; default setup re-pinned to `["actions"]` via `PATCH …/code-scanning/default-setup` (`2026-09-12-session-batch-8-tooling.md`).
+- **`up -d --no-deps db` drops the backend pool** — `docker restart fireplace-backend-1` after any db recreate; backend image/`/version` stay untouched (`2026-09-12-session-batch-8-tooling.md`).
+
 
 ## Tests / harness / falsification
 - **If a mutant survives, the test is the thing that is wrong** — assert behaviour from the real gated state, never a diag marker (`2026-09-08-session-d27-rename-and-review.md`).
@@ -36,6 +39,11 @@ Standing warnings that used to live in the `LATEST.md` banner and in rotated-out
 - A unit suite that pre-arms the engine cannot fail — the revoke button failed live with nothing in the log; drive the production path (`2026-08-21-session-t6-revocation.md`).
 - `find.textContaining('dev')` also matches "device" — pin exact strings (`2026-09-09-session-c9-phrase-at-the-door.md`).
 - A `str.count`/grep matcher must be CRLF-aware — F42 found 0 occurrences until it was; a CRLF-blind `sed` once missed the pubspec bump (`2026-09-09-…`, `2026-09-08-session-c8-…`).
+- **Artillery socketio: the token can only reach `auth` as `{{ $processEnvironment.X }}`** — the launcher templates `config.socketio` before workers start (unresolved vars dropped) and the engine connects before the first flow step; `response` validates immediately only on an exact `data` match (`2026-09-12-session-batch-8-tooling.md`).
+- **`flutter analyze` prints "N issues found" on stderr; Node ≥ 20 needs `shell: true` to spawn `flutter.bat`** — scrape both streams (`scripts/dart-lint-ratchet.mjs`) (`2026-09-12-session-batch-8-tooling.md`).
+- **Take the Dart lint baseline on a clean worktree** — the main checkout flapped ±30 infos while a concurrent session edited `chat_input_bar.dart` (`2026-09-12-session-batch-8-tooling.md`).
+- **Existing `testWidgets` device files are not Patrol tests** — under `patrol test` they hang in "Executing tests"; keep `flutter test integration_test -d` (`2026-09-12-session-batch-8-tooling.md`).
+
 
 ## E2E / multi-device / recovery
 - Registration lock is OPT-IN — arms only once `account_authorizations` has a row; a client that sees no `linkingEnabled` field fails CLOSED to the old gate (`2026-09-05-session-optin-lock-gate.md`).
@@ -64,6 +72,9 @@ Standing warnings that used to live in the `LATEST.md` banner and in rotated-out
 - Brand sweeps MUST eyeball the RENDERED page — split-span wordmarks defeat grep; re-verify subagent compliance claims, one fabricated its version bump (`2026-08-26-session.md`).
 - **Subagents on 7–15 min tasks null-yield ~half the time** (3 of 6 auditors, 2026-09-10) — the work is on disk, the context is intact. Two rules: (1) write the task so the FILE is the deliverable and the yield is a one-line pointer to it (the four researchers did this: 0 losses); (2) if a yield is still null, `hub send … await:true` asking for the report — never rerun (`2026-09-10-session-workflow-2.0.md`).
 - `read` of `LATEST.md` truncates lines at 768 chars — measure with `wc`, not by eye (`2026-09-10-session-workflow-2.0.md`).
+- **npm override of a dep you also depend on directly needs the `"$pkg"` reference form** — `overrides.multer: "$multer"` + `multer ^2.3.0`; a nested literal is ignored and `npm ls` shows `invalid` (`2026-09-12-session-batch-8-tooling.md`).
+- **`/auth/register` throttles 10 per 15 min per IP** — repeated smoke runs 429; reuse a throwaway account via `FP_SMOKE_USER/PASS` (`2026-09-12-session-batch-8-tooling.md`).
+
 
 ## Handoff / LATEST budget history
 - **2026-08-14, owner decision: per-entry WORD budgets (≤3900 total / ≤700 per entry) were REMOVED** — the shared banner counted as an "entry", so adding a genuinely new binding fact to it got the commit BLOCKED, and the cheapest escape was deleting evidence from a summary written minutes earlier; three sessions in a row burned time on the arithmetic instead of the handoff.
@@ -77,3 +88,4 @@ Standing warnings that used to live in the `LATEST.md` banner and in rotated-out
 - iPhone PWA camera recording for the WebKit probe fix; iOS eyeballing of reset-ceremony statuses, revoke/mismatch notices, fingerprint sheet, phrase reveal (`2026-09-08-session-c8-register-ceremony.md`).
 - Signed 0.1.24+ APK release waits on the passcode feature (now shipped) — re-plan (`2026-09-02-session-fcm-e2e.md`).
 - `dependabot.yml` group fix UNPROVEN; Kaspersky not running + Defender stood down — the dev box is unprotected; 5× Kernel-Power 41 (`2026-09-08-session-dependabot-sweep-and-pc-health.md`).
+- Install the Mend Renovate app, then delete `.github/dependabot.yml` in the first green Renovate PR; deploy backend (multer 2.3.0 override pending since 0.2.35); Patrol web leg still not green (`2026-09-12-session-batch-8-tooling.md`).
