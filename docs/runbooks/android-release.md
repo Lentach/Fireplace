@@ -160,12 +160,11 @@ Build from a **fresh clone** at least once (proves no local-only file is load-be
    until the user launches the app again. A force-stopped app receiving nothing is not a push bug.
 4. Voice note record + playback; image send/receive (validates the 16KB-patched webcrypto at runtime).
 5. Delete-for-everyone + expiry: plaintext purged locally (Privacy & Safety diags clean).
-6. **Link ceremony on the release build** (the instructions we now ship — see "User wording"): web
-   primary enables linked devices → APK logs in → `DeviceLinkGateScreen` appears → **the PHONE
-   displays the QR/out-of-band code and the WEB PRIMARY scans it** (spec §5.1: `ephPubN` travels
-   only over that scan) → the same SAS words appear on both screens → **approve on the primary**.
-   Then: both devices receive a peer's message, a send from the phone self-syncs to the web, and
-   revoking the phone from the web kicks it.
+6. **Link ceremony on the release build** (the instructions we ship — see "User wording"):
+   primary (INSTALLED PWA) enables linking → APK logs in → `DeviceLinkGateScreen` → either side
+   displays its code and the other scans/types it → the same **6-digit** code on both screens →
+   **approve on the primary**. Then: a send from the phone self-syncs to the primary, and
+   revoking the phone from the primary kicks it.
 7. **Un-enrolled flip-flop drill** (the hazard the wording steers users away from): on an account
    that never enabled linking, log in on APK + PWA and force reconnects on both → identity thrash
    (peers see repeated identity-changed notices). Log OUT of the PWA → epochs stabilize, E2E round
@@ -179,6 +178,23 @@ shade shows "Umbra / You have a new message" with the hex icon, tap cold-starts 
 Screenshots (gitignored): `.planning/push-release-shade.png`, `.planning/push-release-statusbar.png`.
 Items 2, 4, 5, 6 and "tap opens the RIGHT chat" remain for the real phone (release screenshots are
 impossible, see `FLAG_SECURE` above).
+
+**Emulator smoke of the 0.2.41 build (2026-09-13, Pixel_7 AVD `emulator-5554`, prod backend,
+driven over `uiautomator` + `adb input` because `FLAG_SECURE` blocks `screencap`):**
+
+| # | Item | Result |
+|---|---|---|
+| 1 | install → register → shell | **PASS** — `apkeae3#4259` registered on prod; recovery phrase offered right after registration ((lxxxiii)), generated + word-3 challenge passed |
+| 2 | E2E round trip with a web peer | **PASS** — APK→web PreKey leg and web→APK whisper leg both decrypted |
+| 3 | push with the app KILLED (`am kill`) | **PASS** — notification `conversation-129` within 5 s; "Umbra / You have a new message"; **tap cold-started into the RIGHT chat** (the leg left open on 2026-09-02) |
+| 6 | link ceremony | **PASS** — SAS `334 092` matched; `android · #2` committed; gate closed; **self-sync proven** (phone→primary own-message); the primary's own history stayed decryptable throughout |
+| 4, 5, 7 | voice/image, delete-for-everyone, un-enrolled drill | **NOT RUN** |
+
+Incidental but load-bearing: after `am kill`, the cold start rendered previously-decrypted
+plaintext — the SQLCipher store + Keystore content keys work on a real device, not just in tests.
+**Two defects found, see "User wording" state 1 and `docs/agents/traps.md`:** the link gate can be
+covered by a route pushed after the verdict, and a pending notification deep-link survived a
+logout→login in the SAME process and was consumed by the NEXT account.
 
 ## Distribution (decision 2026-07-29: direct APK first, Play later)
 
@@ -233,10 +249,16 @@ LIVE PRIMARY's id.
 
 Two starting states, and they do NOT behave the same:
 
-1. **Account already enrolled** (linked devices enabled on the web): the §6.1 registration lock
-   refuses a password-only identity replacement, and `AuthGate` renders `DeviceLinkGateScreen`
-   (`frontend/lib/screens/device_link_gate_screen.dart:24-35`) — link here, or take the
-   recovery-phrase / reset path. This is the happy path.
+1. **Account already enrolled** (linked devices enabled on the primary): the §6.1 registration lock
+   refuses a password-only identity replacement — device-proven 2026-09-13, logcat reads
+   `[EncryptionService] Identity incomplete — refusing to regenerate` — and `AuthGate` renders
+   `DeviceLinkGateScreen` (`frontend/lib/screens/device_link_gate_screen.dart:24-35`). **⚠ The gate
+   can be COVERED (defect found 2026-09-13):** it is a `Stack` child, not a route
+   (`main.dart:283-288`), and its `popUntil` defence fires ONCE on the gated edge
+   (`main.dart:276-281`). A route pushed AFTER the verdict — e.g. a pending notification
+   deep-link that survived a logout→login in the same process — renders on top, and the user sees
+   a keyless shell full of `[encrypted]` with no hint that a link is required. Pressing Back
+   reveals the gate. Reproduced end-to-end below.
 2. **Account NOT enrolled** (linking never enabled): §6.1 is not armed (§8, amendment (lxxiii)), so
    the phone silently re-mints the identity **into the primary slot** — and because every client
    re-uploads its key bundle on EVERY socket connect (`encryption_provider.dart`), two live devices
@@ -247,19 +269,37 @@ Two starting states, and they do NOT behave the same:
 History does NOT transfer on link (Phase 4 "history-on-link" is unbuilt, §9): the phone starts
 empty and fills from new traffic. Old history stays readable on the device that already has it.
 
-**NOT device-proven** — nobody has run the link ceremony from a release APK yet; that is smoke
-checklist item 6. Until item 6 passes on a real phone, this is the wording we INTEND to ship, and
-it must not be sent to a user. Use EXACTLY this:
+**Device-proven 2026-09-13** on the 0.2.41 release APK (Pixel_7 AVD, prod backend): enroll → code
+→ SAS `334 092` identical on both screens → approve on primary → `android · #2` in the device
+list → gate closes → self-sync works. Corrections the run forced on the earlier draft: the
+PRIMARY must be an INSTALLED PWA (a browser tab shows only "Najpierw zainstaluj Umbra jako
+aplikację" — `devices_screen.dart:425-426`, `isInstalledDisplayMode()`), the ceremony is
+SYMMETRIC (both sides display a code — `.web.p` and `.android.n`; either side may scan or type
+the other's), and the comparison code is a **6-digit number, not words**. Use EXACTLY this:
 
 > Umbra for Android joins your existing account as a second device — **do not create a new
-> account**. On the web app first: turn on linked devices. Then install the app and log in — **the
-> phone will show a QR code**, with the same code underneath as text you can copy. On the web app,
-> open your devices screen and **scan the code off the phone's screen** — or, if that machine has
-> no camera (most desktops), paste the text code there instead. Both screens then show the same
-> short list of words: check they match, and approve on the web app. Your old
-> messages stay on the web — the phone starts fresh and receives everything sent from then on. Up
-> to three devices per account. **Never delete your web account and never clear the browser's site
-> data.** iPhone users: keep using the web app as-is.
+> account**.
+>
+> **On your computer/phone browser first:** Umbra must be INSTALLED as an app (browser menu →
+> Install / Add to Home Screen), otherwise the Devices screen only tells you to install it. Then:
+> Settings → Devices → **turn on linking**. You will be asked to write down 12 recovery words —
+> do it, on paper; they are the only way back if you lose the device.
+>
+> **Then on the phone:** install the app, log in with the SAME username and password. The app
+> shows a "Link this device" screen with a QR code.
+>
+> **Now connect them:** on the primary, Settings → Devices → **Link device**. It shows its own QR
+> code, and the phone can scan it — or scan/paste the phone's code there instead. Either
+> direction works. Both screens then show **the same 6-digit number**: check they match, then
+> approve on the primary.
+>
+> Your old messages stay where they are — the phone starts from "History from before this device
+> was linked" and receives everything sent from then on. Up to three devices per account.
+> **Never delete your account, never clear site data, and on the phone never uninstall or use
+> "Clear storage"** — that destroys that device's history. iPhone: keep using the web app as-is.
+>
+> If the phone lands in a chat showing `[encrypted]` instead of the link screen, press Back — the
+> link screen is behind it.
 
 A Play listing must state **up to 3 devices per account, and adding one needs the first device in
 hand** — the old "one account, one device" claim must not ship.

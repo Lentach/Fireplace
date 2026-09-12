@@ -1,66 +1,59 @@
-# Android release: the runbook's distribution story was three-ways wrong; Play gates mapped, nothing built
+# Android release: runbook was three-ways wrong, 0.2.41 APK built and smoke-driven, two defects found
 
 **Date:** 2026-09-13 · **Version:** unchanged (0.2.41) · **Tiers deployed:** none
 
 ## What was done
-- `docs/runbooks/android-release.md` "User wording" rewritten: multi-device IS live, so the
-  "create a new account / one-account-one-device" text is retired for the link ceremony.
-- Same section, ceremony DIRECTION corrected after a first wrong draft: the NEW device shows the
-  QR, the PRIMARY scans and approves (`multi-device.md:182-188`). Desktop primaries with no camera
-  get the typed/pasted code path (`link_this_device_screen.dart:18-19`).
-- Un-enrolled accounts documented as the live hazard: `needsDeviceLink`
-  (`encryption_provider.dart:2116`) is driven by `_identityIncomplete`, set only on a guard FAILURE
-  (`:1523`) — a clean fresh install meets NO gate and silently re-mints into the primary slot.
-- Smoke checklist: link ceremony added as item 6 (release build), the flip-flop drill demoted to
-  item 7 as the hazard drill. The wording block is marked NOT device-proven pending item 6.
-- Distribution bullets added: appbundle gates must move onto the BUNDLE output (`build-android.ps1`
-  only inspects an APK), and the signing-cert one-way door while `gh release list` is still empty.
-- Foreground-service gate recorded: `light_compressor_v2-1.9.1` merges `CompressionForegroundService`
-  (`foregroundServiceType="dataSync"`) + 2 permissions, but `transcodeVideoToFit`
-  (`video_transcode_io.dart:37-56`) passes no `BackgroundConfig`, so it can never start.
-- Merged manifest MEASURED and the inferred list it replaced corrected (`BIND_JOB_SERVICE` is an
-  `android:permission` attribute, not a requested permission).
+- `docs/runbooks/android-release.md` user wording retired the pre-multi-device "create a new
+  account / one-account-one-device" text for the link ceremony; corrected again after the live run
+  (see Verification). `build-android.ps1:152-153` printed the same retired guidance — fixed.
+- Built the release APK from `master@3122cc1`: 0.2.41, versionCode 20041, 105.2 MB, SHA256
+  `9fdc7ef1…`, signer cert SHA-256 **matches the recorded keystore-backup fingerprint**, 16KB 16/16.
+- Measured the merged manifest (`:app:processReleaseManifest`, no keystore): exactly 9
+  `uses-permission`; `BIND_JOB_SERVICE` is an attribute, not a request; no `READ_MEDIA_*`.
+- Found the Play FGS gate: `light_compressor_v2` merges `CompressionForegroundService`
+  (`dataSync`) + 2 permissions, but `video_transcode_io.dart:37-56` passes no `BackgroundConfig`,
+  so it can never start — Play would demand a demo video for dead code. Strip option recorded.
+- Recorded the APK size anatomy (100.3 of 105.2 MB is 3 ABIs) and ranked the size levers;
+  `useUnbundled` for ML Kit evaluated and deliberately NOT applied.
+- Drove the full smoke on the release APK (emulator + real prod + a real browser peer).
 
 ## Key files
-- Edited: `docs/runbooks/android-release.md` (commits `c1e537f`, `5fda105`, `584980f`).
-- New: none.
-- Read only (load-bearing): `docs/design/multi-device.md` §1/§5.1/§8/§9,
-  `frontend/lib/screens/device_link_gate_screen.dart`, `link_this_device_screen.dart`,
-  `frontend/lib/providers/encryption_provider.dart:2116,1523`,
-  `backend/src/auth/auth.service.ts:158`, `frontend/lib/utils/video_transcode_io.dart`,
-  `build-android.ps1`, `frontend/android/app/build.gradle.kts`.
+- Edited: `docs/runbooks/android-release.md`, `build-android.ps1`, `docs/agents/traps.md`.
+- Read only (load-bearing): `docs/design/multi-device.md` §1/§5.1/§8/§9, `main.dart:255-292`,
+  `device_link_gate_screen.dart`, `link_crypto.dart:379-431`, `devices_screen.dart:425-426`,
+  `encryption_provider.dart:2116,1523`, `backend/src/auth/auth.service.ts:158`.
 
 ## Verification
-- Prod: `/version` → `0.2.41 / 49c77c10`, `/version.json` → `0.2.41 / 9d13d25`.
-  `git merge-base --is-ancestor 2c553b2 <each>` PASSES (PR #144 multi-device is in both deployed
-  commits) — that, not LATEST, is why the runbook was rewritten.
-- `gh release list --repo Lentach/Fireplace` → EMPTY. No APK has ever been published, so the Play
-  App Signing cert choice is still free.
-- `curl https://fireplace.ignorelist.com/.well-known/assetlinks.json` and `/privacy` → HTTP 200 but
-  the body is the Flutter SPA shell. Neither exists; App Links cannot verify.
-- `cd frontend/android && cmd /c gradlew.bat :app:processReleaseManifest` (also works as
-  `sh ./gradlew …`) → BUILD SUCCESSFUL, no keystore needed. Merged output
-  `frontend/build/app/intermediates/merged_manifest/release/outputReleaseAppLinkSettings/AndroidManifest.xml`
-  holds exactly 9 `uses-permission` entries and the dataSync service at line 237.
-- grep: no report-user code, no terms/privacy ARB strings, no analytics/crash SDK in `pubspec.yaml`.
-- NOT verified: no APK built, no device run, no link ceremony exercised, no Play Console touched.
-  Nothing was deployed. External Play/verification dates are from vendor docs read this session,
-  not from a console.
+- Prod: `/version` `0.2.41/49c77c10`, `/version.json` `0.2.41/9d13d25`;
+  `git merge-base --is-ancestor 2c553b2 <both>` PASSES → multi-device IS deployed.
+- `gh release list` EMPTY → no APK ever published → the Play App Signing cert choice is still free.
+- `/privacy` and `/.well-known/assetlinks.json` return 200 with the **SPA shell**; neither exists.
+- **Smoke on 0.2.41, Pixel_7 AVD, prod backend** (driven via `uiautomator` + `adb input`;
+  `FLAG_SECURE` blocks `screencap`): item 1 PASS (`apkeae3#4259` registered, phrase offered +
+  confirmed), item 2 PASS (PreKey APK→web, whisper web→APK, both decrypted), item 3 PASS
+  (`am kill` → FCM notification in <5 s → **tap cold-started into the RIGHT chat**, the leg open
+  since 2026-09-02), item 6 PASS (enroll → SAS `334 092` identical → approve → `android · #2` →
+  gate closed → **self-sync phone→primary proven**; the primary kept decrypting its own history).
+  Items 4, 5, 7 NOT RUN.
+- Cold start after `am kill` rendered previously-decrypted plaintext ⇒ SQLCipher + Keystore
+  content keys work on a real device.
+- NOT verified: physical phone (emulator only), voice/image, delete-for-everyone, the un-enrolled
+  flip-flop drill, iOS, Play Console (nothing touched).
 
 ## Notes for next session
-- **Owner-owed, blocking everything else:** (1) Play, or sideload forever? (2) Play Console account
-  — exists, personal or organisation, created when? (decides 12 testers x 14 active days).
-  (3) The un-enrolled re-mint hazard: mechanism, or keep betting on wording? (4) Report-user UX
-  shape. (5) Who writes privacy policy + ToS. (6) R8 for libsignal/drift/Firebase (the transcoder
-  is confirmed keep-rule-free by its README).
-- Play blockers if the answer is Play: no privacy policy, no ToS/UGC acceptance, no in-app report
-  (block exists), no web account-deletion URL, no AAB pipeline, FGS declaration (or strip it).
-  Store screenshots cannot come from a release build — `FLAG_SECURE`.
-- Dates that matter: developer verification enforces 2026-09-30 in BR/ID/SG/TH via participating
-  stores only (direct sideload unaffected this phase), global 2027; targetSdk 36 already met.
-- The FGS strip (`tools:node="remove"` on the service + 2 permissions) is a proven runtime no-op
-  but was NOT applied — it only pays off under Play, and needs a comment warning that a future
-  `BackgroundConfig` opt-in would then fail at `startForeground`.
-- Traps appended to `docs/agents/traps.md`: SPA 200-fallback fakes file existence; merged manifest
-  != source manifest; inherited dataSync FGS; link ceremony direction + un-enrolled re-mint;
-  `gradlew.bat` path resolution and `$?` after a pipe.
+- **DEFECT 1 (user-visible):** the device-link gate is a `Stack` child (`main.dart:283-288`) and
+  its `popUntil` defence is edge-triggered once (`:276-281`). A route pushed AFTER the verdict
+  covers it — observed: a pending notification deep-link survived logout→login in the SAME process
+  and pushed a chat over the gate, leaving a keyless `[encrypted]` shell with no hint. Back
+  reveals the gate. Fix candidates: make the gate a route, or re-assert `popUntil` while gated.
+- **DEFECT 2:** that pending deep-link was consumed by the NEXT account; only a shared
+  conversation id made it look harmless. Cross-account pending state should be cleared on logout.
+- Owner-owed, unchanged: Play vs sideload-forever; Play Console account status; report-user UX;
+  who writes privacy policy + ToS; R8 for libsignal/drift/Firebase.
+- **Never let Play generate the app signing key** — PEPK-transfer this `.jks` instead, or every
+  sideloaded friend is stranded (uninstall = identity + history loss).
+- Before any friends build: linking cannot be enabled from a browser TAB (must be an installed
+  PWA), the match code is 6 digits, and the ceremony is symmetric — the shipped wording now says so.
+- Test fixtures on prod: `apkeae3#4259` / `webb2e6#6353` (both `SmokeTest2609`, phrases in the
+  transcript); `test_web_sender#7207` was logged OUT of the dev browser (password unknown, keys
+  still in that profile's localStorage).
