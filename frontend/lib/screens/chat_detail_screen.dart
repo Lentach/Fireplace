@@ -865,10 +865,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   /// list is after it. Rows of ANOTHER conversation are ignored — right after
   /// an embedded-pane switch the build still holds the previous chat's list
   /// (`didUpdateWidget` reloads post-frame), and its newer rows must not
-  /// evict, let alone durably dismiss, this peer's note. An unparseable
-  /// instant (corrupt storage — the writer is `toIso8601String`) counts as
-  /// superseded, so it gets dismissed rather than pinned forever. A message
-  /// stamped at the SAME instant does not evict.
+  /// evict, let alone durably dismiss, this peer's note. A message stamped at
+  /// the SAME instant does not evict. The instant always parses: the writer
+  /// is `toIso8601String()` and `_loadKeyChangeNotes` drops anything else at
+  /// the boundary, so the null branch is "no evidence of newer", not a
+  /// second meaning.
   static bool _isNewestInTimeline(
     String occurredAt,
     List<MessageModel> messages,
@@ -876,7 +877,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     int conversationId,
   ) {
     final at = DateTime.tryParse(occurredAt);
-    if (at == null) return false;
+    if (at == null) return true;
     if (lastMessageAt != null && lastMessageAt.isAfter(at)) return false;
     if (messages.isEmpty || messages.last.conversationId != conversationId) {
       return true;

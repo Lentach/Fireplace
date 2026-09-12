@@ -347,7 +347,11 @@ class EncryptionService {
         if (entry is! Map) continue;
         final peerId = entry['peerId'];
         final occurredAt = entry['occurredAt'];
+        // The writer is `toIso8601String()`; anything else is corrupt storage
+        // and is dropped HERE, so the screen's "is anything newer?" question
+        // never meets a value it cannot order ((lxxxiv)).
         if (peerId is! int || occurredAt is! String) continue;
+        if (DateTime.tryParse(occurredAt) == null) continue;
         _peerKeyChangeNotes[peerId] = occurredAt;
       }
     } catch (_) {}

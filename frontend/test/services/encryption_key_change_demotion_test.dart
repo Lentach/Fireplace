@@ -159,6 +159,24 @@ void main() {
     expect(notified, 1, reason: 'dismissing an absent note is a silent no-op');
   });
 
+  test('(lxxxiv) a corrupt note instant in storage is dropped at load',
+      () async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      'e2e_${aliceId}_peer_key_change_notes_v1',
+      '[{"peerId":$bobId,"occurredAt":"not-a-date"},'
+      '{"peerId":$malloryId,"occurredAt":"2026-09-12T00:00:00.000Z"}]',
+    );
+
+    final restarted = EncryptionService();
+    await restarted.initialize(aliceId,
+        checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
+
+    expect(restarted.peerKeyChangeNotes.keys, [malloryId],
+        reason: 'the screen orders notes against message times; a value it '
+            'cannot order must never reach it');
+  });
+
   test(
       'F48: setting OFF — a SECOND server-reported change for the same peer '
       'writes a fresh note after the first was evicted', () async {

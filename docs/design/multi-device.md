@@ -3035,8 +3035,9 @@ that is the designed outcome).
     instant in between; a peer-keyed remove deleted that never-superseded note and the latch hid
     it) — plus persist + `onPeerIdentityChanged`, once per note instant (`_dismissedNoteAt`
     latch, reset on pane switch), so a cleared or expired history cannot bring a superseded line
-    back. An unparseable instant (corrupt storage) counts as superseded and is dismissed rather
-    than pinned forever. Accepted residuals: the instant is device-local and `createdAt` is
+    back. An unparseable instant (corrupt storage — the writer is `toIso8601String()`) is dropped
+    by `_loadKeyChangeNotes` at the boundary, so the screen's question stays "is anything newer?"
+    and never gains a second meaning. Accepted residuals: the instant is device-local and `createdAt` is
     server time, so a device clock behind the server by more than the delivery latency lets the
     TRIGGERING message hide the line at once, a clock ahead lets one extra message through; and
     `messages.last` is the newest by position, not by `createdAt` — an optimistic own row
@@ -3076,7 +3077,8 @@ that is the designed outcome).
     recorded for account 1 is present after `initialize(2)`; (F47b) clear unconditionally → a
     refusal recorded before a same-user re-initialise is gone after it; (F48) restore the early
     return → a second server event after an evicted note writes nothing; (F49) make the dismiss
-    peer-keyed → a dismissal carrying a stale instant removes a fresher note.
+    peer-keyed → a dismissal carrying a stale instant removes a fresher note; (F50) let the loader
+    accept any string → an unparseable instant reaches the screen.
 
 - **Next gate:** T11 implementation review, then the T1–T11 merge decision. The T1–T8 phase
   gate itself is CLOSED 2026-08-22: three reviewers, verdicts SHIP / SHIP WITH FIXES ×2; the
