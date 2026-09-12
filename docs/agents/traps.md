@@ -21,6 +21,7 @@ Standing warnings that used to live in the `LATEST.md` banner and in rotated-out
 - Deploy order is BACKEND FIRST whenever the change adds a wire field or a migration (D26 `0017`, D27 `platform`/`identityReplacedTo`, (lxxiii) opt-in lock).
 - **Rollback hazards:** never serve a web build below `d446a9d` to a browser with the passcode ON; never below 0.2.23 to an account with a phrase backup; never below 0.2.26 (0.2.25 gates an install for the life of the process after one mistyped phrase). Tag `pre-multidevice-master` = `9b6ea1a`; migration `0015` is not code-reversible.
 - CI lint ratchet is a release gate: hand-formatted backend edits fail the run AFTER tests pass — prettier only the files you touched (`2026-09-08-session-d27-rename-and-review.md`).
+- **nginx serves the SPA `index.html` with HTTP 200 for unknown paths** — `/privacy` and `/.well-known/assetlinks.json` "exist" by status code while neither is a real file; check the BODY, never the status (`2026-09-13-session-android-release-research.md`).
 - Actions billing/CI economics history: `2026-08-18-session-actions-billing-and-0.1.16.md`.
 
 - **`Desktop/Fireplace` is on `feat/passcode-lock`, not master, and master is LOCKED in the `fireplace-0a` worktree** — root §1 claimed master until 2026-09-10 and the accuracy audit missed it (a git-state claim, not a code claim); push docs commits with `git push origin HEAD:master`, then push the branch too (`2026-09-10-session-workflow-2.0.md`).
@@ -62,6 +63,10 @@ Standing warnings that used to live in the `LATEST.md` banner and in rotated-out
 ## Android / push
 - **versionCode floor 10024**; `am force-stop` silently drops FCM; `FLAG_SECURE` blocks screencap; verify an installed APK's dart-defines by byte-searching `kernel_blob.bin` (`2026-09-02-session-fcm-e2e.md`).
 - PWA notification regression history: `2026-08-20-session-notif-regression.md`.
+- **The permission set Play sees is the MERGED manifest, not ours** — `cd frontend/android && cmd /c gradlew.bat :app:processReleaseManifest` (no keystore needed) → `frontend/build/app/intermediates/merged_manifest/release/outputReleaseAppLinkSettings/AndroidManifest.xml`: 9 permissions where the source declares 3 (`2026-09-13-session-android-release-research.md`).
+- **`light_compressor_v2` merges a `dataSync` foreground service we never start** — no `BackgroundConfig` is passed, yet Play would demand an FGS declaration + demo video for it; strip with `tools:node="remove"` or declare dead code (`2026-09-13-session-android-release-research.md`).
+- **Link ceremony direction: the NEW device SHOWS the QR, the primary SCANS and approves** — and logging in never adds a device (`resolveLoginDeviceId` returns the live primary); an UN-ENROLLED account meets no gate and silently re-mints, so linking must be enabled on the web FIRST (`2026-09-13-session-android-release-research.md`).
+- **No APK has ever been published** (`gh release list` empty) — while that holds, Play App Signing can still adopt the existing `.jks` via PEPK; after the first sideload ships, a Google-generated cert means those installs can never update (`2026-09-13-session-android-release-research.md`).
 
 ## Agent tooling / editing
 - **`String.replace` treats `$` in the REPLACEMENT as special** — a doc patch containing `` {1,32}$` `` spliced `CLAUDE.md` into itself twice; use `() => to` (`2026-09-08-session-d27-rename-and-review.md`).
@@ -79,6 +84,7 @@ Standing warnings that used to live in the `LATEST.md` banner and in rotated-out
 - **`/auth/register` throttles 10 per 15 min per IP** — repeated smoke runs 429; reuse a throwaway account via `FP_SMOKE_USER/PASS` (`2026-09-12-session-batch-8-tooling.md`).
 - **In the shared worktree, `git commit` ships whatever the OTHER session has STAGED** — explicit-path `git add` does not protect you; run `git diff --cached --stat` and `git reset -q -- <foreign>` before every commit (`2026-09-12-session-batch-8-tooling.md`).
 - **`gh run rerun` on an old run cancels the master tip's run via the concurrency group** — rerun the tip's own run id, never an older one (`2026-09-12-session-batch-8-tooling.md`).
+- **`./gradlew.bat` from the bash tool resolves against the REPO ROOT, not `cwd`** — use `cmd /c gradlew.bat …` or `sh ./gradlew …`; and `$?` after a pipe is the LAST stage's (`tail`), so check `${PIPESTATUS[0]}` (`2026-09-13-session-android-release-research.md`).
 
 ## Handoff / LATEST budget history
 - **2026-08-14, owner decision: per-entry WORD budgets (≤3900 total / ≤700 per entry) were REMOVED** — the shared banner counted as an "entry", so adding a genuinely new binding fact to it got the commit BLOCKED, and the cheapest escape was deleting evidence from a summary written minutes earlier; three sessions in a row burned time on the arithmetic instead of the handoff.
@@ -90,6 +96,6 @@ Standing warnings that used to live in the `LATEST.md` banner and in rotated-out
 - README screenshot recapture, GitHub repo renames, the domain decision (`2026-08-26-session.md`).
 - Thief-with-password matrix answers (`2026-09-03-session-lxxii-reset-door.md`).
 - iPhone PWA camera recording for the WebKit probe fix; iOS eyeballing of reset-ceremony statuses, revoke/mismatch notices, fingerprint sheet, phrase reveal (`2026-09-08-session-c8-register-ceremony.md`).
-- Signed 0.1.24+ APK release waits on the passcode feature (now shipped) — re-plan (`2026-09-02-session-fcm-e2e.md`).
+- Android release is re-planned but UNANSWERED: Play vs sideload-forever, Play Console account status, the un-enrolled re-mint hazard (mechanism or wording), report-user UX, who writes privacy policy + ToS, R8 for libsignal/drift/Firebase (`2026-09-13-session-android-release-research.md`).
 - `dependabot.yml` group fix UNPROVEN; Kaspersky not running + Defender stood down — the dev box is unprotected; 5× Kernel-Power 41 (`2026-09-08-session-dependabot-sweep-and-pc-health.md`).
 - Install the Mend Renovate app, then delete `.github/dependabot.yml` in the first green Renovate PR; Patrol web leg still not green; the artillery socket smoke is **4/5 locally** (one reproducible `errors.response timeout`, `vusers.failed == 0` red on `e5cd287`) despite the batch-8 "5/5" claim (`2026-09-12-session-batch-8-tooling.md`, `2026-09-12-session-alert-119-csv-parse.md`).
