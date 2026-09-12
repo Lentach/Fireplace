@@ -591,17 +591,19 @@ export class KeyBundlesService {
     ) {
       // Two races are legitimate and must NOT be refused: a first upload whose
       // own bundle has not landed yet (no published row at all, handled above),
-      // and an authorized rotation in flight — the client emits the bundle and
-      // the keys back to back, and socket.io does not await handlers, so the
-      // new epoch's keys can arrive first. A COMPLETED, unspent ceremony is
-      // that authorization; reading it never spends it (the bundle upload
-      // does). A merely PENDING ceremony authorizes nothing — the countdown
+      // and an authorized rotation in flight. The enrolled client has stashed
+      // its keys until the `keyBundleUploaded` ack since 2026-08-19 (see
+      // `ChatKeyExchangeService.handleUploadOneTimePreKeys`), so that race is
+      // rare there now, but the branch stays: a COMPLETED, unspent ceremony is
+      // the authorization, reading it never spends it (the bundle upload
+      // does), and a merely PENDING ceremony authorizes nothing — the countdown
       // exists so the owner can cancel it.
       const reset = await this.identityResetService.getStatusForUser(userId);
       // (lxxiii) clause 1 — the OTP site is exempted for an UN-ENROLLED
-      // account too: the client emits bundle + OTPs back to back and the keys
-      // can land first, so refusing here would strand an un-enrolled remint
-      // without its OTP batch — the (lxiv) pool-loss shape for no gain.
+      // account too: pre-2026-08-19 clients still emit bundle + OTPs back to
+      // back and the keys can land first, so refusing here would strand an
+      // un-enrolled remint without its OTP batch — the (lxiv) pool-loss shape
+      // for no gain.
       if (reset?.status !== 'completed' && (await this.isEnrolled(userId))) {
         this.logger.warn(
           `[identity-lock] REFUSED one-time pre-keys under an unpublished identity userId=${userId} deviceId=${deviceId} publishedPrefix=${published.identityPublicKey.slice(0, 12)} attemptedPrefix=${identityPublicKey.slice(0, 12)}`,

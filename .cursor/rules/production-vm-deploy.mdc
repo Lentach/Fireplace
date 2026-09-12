@@ -11,6 +11,16 @@ Deploy is **split**: small servers cannot build the Flutter web bundle (dart2js 
 the **frontend is built on a dev PC** and published to the server; the **backend is built on
 the server** from a production Docker image.
 
+**Before EITHER half: CI on `master` must be green** (root `CLAUDE.md` §3 — there is no merge gate, so this
+is the gate). Check with the commit-scoped API, never `gh run list --branch master` (it returned weeks-old
+rows twice, 2026-09-08):
+
+```bash
+gh api repos/Lentach/Fireplace/commits/master/check-runs --jq '.check_runs[] | [.name, .conclusion] | @tsv'
+```
+
+Every row `success` (or `skipped` for opt-in probes). Any `failure` → do not deploy.
+
 ## Paths (do not guess `~/Fireplace`)
 
 | What | Path |

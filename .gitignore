@@ -12,9 +12,6 @@ backend/uploads/
 # Jest coverage (npm run test:cov) — local only
 backend/coverage/
 
-# Graphify knowledge graph output (graphify update .) — local only
-graphify-out/
-
 # Scratch screenshots / screen recordings dropped in the repo root while reviewing UI.
 # Root only — real assets live under frontend/assets/ and stay tracked.
 /*.jpg

@@ -28,16 +28,16 @@ cd ~/fireplace
 
 ## 2. Runtime architecture
 
-- `AppModule` imports Config, Schedule, Throttler, TypeORM, and domain modules: auth, media, users, conversations, messages, friends, blocked, FCM tokens, web push subscriptions, key bundles, push notifications, chat, secret notes, health, version.
+- `AppModule` imports Config, Schedule, Throttler, TypeORM, and domain modules: auth, media, users, conversations, messages, friends, blocked, FCM tokens, web push subscriptions, key bundles, push notifications, chat, conversation notification preferences, secret notes, health, version.
 - `main.ts` sets trust proxy, helmet, global `ValidationPipe({ whitelist:true })`, CORS, and listens on `PORT || 3000` at `0.0.0.0`.
 - Production logger omits debug/verbose. Production CORS is restricted to `ALLOWED_ORIGINS`; dev allows localhost/127.0.0.1/192.168/10.*.
-- `ChatGateway` authenticates Socket.IO with `handshake.auth.token`, rejects stale JWTs after password change, joins `user:<id>` room, tracks `onlineUsers: Map<userId, socketId>`, and delegates event handlers.
-- Chat service map: `chat-message`, `chat-friend-request`, `chat-conversation`, `chat-key-exchange`, `chat-presence`, `chat-block`, `chat-search`, `chat-reaction`, `chat-link-preview`; shared `ChatValidationService` lives in `ChatValidationModule`.
+- `ChatGateway` authenticates Socket.IO with `handshake.auth.token`, rejects stale JWTs after password change, joins `user:<id>` AND `device:<userId>:<deviceId>` rooms, emits `socketReady`, and delegates event handlers. Presence is room occupancy (`isUserOnline` in `chat/utils/user-room.ts`); the old `onlineUsers: Map<userId, socketId>` is retired.
+- Chat service map: `chat-message`, `chat-friend-request`, `chat-conversation`, `chat-key-exchange`, `chat-presence`, `chat-block`, `chat-search`, `chat-reaction`, `chat-link-preview`, `chat-device-list`, `chat-device-revocation`, `chat-provisioning`; shared `ChatValidationService` lives in `ChatValidationModule`.
 - DTO validation uses `validateDto()` and class-validator decorators. Do not bypass it with ad hoc object checks.
 
 ## 3. Docker and environment
 
-- Local `docker-compose.yml`: dev only, Node 20 bind mount, `NODE_ENV=development`, command `npm install && npm run start:dev`, Postgres 16 exposed at host `5433`, TypeORM auto-sync enabled by source.
+- Local `docker-compose.yml`: dev only, Node 22 bind mount, `NODE_ENV=development`, command `npm install && npm run start:dev`, Postgres 16 exposed at host `5433`, TypeORM auto-sync enabled by source.
 - Prod `docker-compose.prod.yml`: built image from `backend/Dockerfile`, backend and DB bound to localhost only, `NODE_ENV=production`, persistent `pgdata` and `media_storage`, healthcheck on `http://127.0.0.1:3000/health`, and json-file log rotation capped per service (`max-size: 10m`, `max-file: 3`) so stdout logs cannot grow unbounded on disk. Prod logger is `error/warn/log` only; per-message, push, and key-refresh logs are `debug` (prod-silent) so container-log breach/seizure does not expose recipient IDs, online rosters, or push timing.
 - `backend/Dockerfile`: multi-stage build, runtime installs prod deps only, copies `dist` + `migrations/`, sets `NODE_ENV=production`, runs `node dist/main.js` as non-root `USER node` (uid 1000). The media volume must be node-owned: fresh volumes inherit it from the image; volumes created by older root images are chown'd idempotently by `deploy-backend.sh` / `staging.ps1`.
 - `deploy.sh` is legacy/all-in-one; do not use it as backend production deploy path.
@@ -81,11 +81,11 @@ Entities in `backend/src/**/*.entity.ts` define the dev schema (TypeORM `synchro
 - JWT TTL is 24h. Refresh tokens are stable opaque 365-day sliding sessions: `/auth/refresh` extends the existing row and returns the same refresh token value; do **not** reintroduce single-use rotation because a lost refresh response would strand the client on login. SHA-256 only is stored in `refresh_tokens`.
 - `POST /auth/logout` revokes the current refresh token. Password reset sets `passwordChangedAt`, revokes all refresh tokens, and `JwtStrategy.validate()` rejects old tokens with `iat <= passwordChangedAt`.
 - Register/login use username#tag model; tag is a 4-digit string.
-- Delete account deletes profile avatar, FCM tokens, Web Push subscriptions, key bundles/OTPs, conversation media, messages/conversations/friend requests, then user. Refresh tokens are removed by FK cascade.
+- Delete account revokes all refresh tokens FIRST, then deletes messages/conversations/friend requests and the user row in one transaction (FCM tokens, Web Push subscriptions, key bundles/OTPs and secret notes fall away by FK cascade). Only after that commit does it run the idempotent side-table purge plus profile-avatar and conversation-media unlinks.
 
 ## 6. Socket.IO contracts and rate limits
 
-- Guarded disconnect is load-bearing: only delete `onlineUsers[userId]` if the disconnecting socket id still matches. iOS resume can connect a new socket before the old one times out.
+- Disconnect needs no presence bookkeeping: Socket.IO drops the socket from `user:<id>` itself, so the room empties only when the LAST tab goes. This retired the old guarded delete of `onlineUsers[userId]`, which an iOS resume (new socket connected before the old one times out) could get wrong.
 - `ChatValidationService.validateCanMessage(senderId, recipientId)` is the shared blocked+friendship gate for messaging/start conversation.
 - `handleStartConversation` requires friendship; emits `openConversation` only to caller and `conversationsList` updates as needed.
 - `handleGetMessages` must load the conversation and verify caller membership before querying history. Non-members receive empty `messageHistory`.
@@ -109,13 +109,13 @@ Gateway throttles are source-truth in `chat.gateway.ts`:
 - Expired-message cleanup runs every minute and deletes media files before removing rows.
 - Delivery status never downgrades; enforced via `DELIVERY_STATUS_ORDER`.
 - Delete-for-everyone deletes media before row removal and clears pin if the deleted message was pinned.
-- Edit message: sender-only, TEXT-only, 15-minute window from `createdAt`; stores new ciphertext, stamps `editedAt`, leaves expiry/status untouched; rejects with `editMessageFailed` reason `not_sender`, `window_expired`, `not_text`, or `not_found`.
+- Edit message: sender-only, TEXT-only, 15-minute window from `createdAt`; stores new ciphertext, stamps `editedAt`, leaves expiry/status untouched; rejects with `editMessageFailed` reason `not_sender`, `window_expired`, `not_text`, `not_found`, or an envelope/device-list refusal (`duplicate_envelope_device`, `self_envelope_for_origin_device`, `unknown_recipient_device`, owed-replacement bounce).
 - Reactions: WS `addReaction` / `removeReaction` `{ messageId, emoji }`; DTOs accept one emoji grapheme (basic emoji, VS16, skin tones, ZWJ sequences, flags, keycaps) with a 32-code-unit cap, not the old six-emoji allowlist. Participant-checked in `ChatReactionService`; `MessagesService` JSON-parse/stringifies the text column; emits `reactionUpdated` to both sides.
 - Pin/unpin validates conversation membership and message state; delete-for-everyone clears the pin.
 
 ## 8. Media and cleanup
 
-- `POST /media/upload`: JWT-guarded, 20/min, 21 MiB limit; handles `image`, `voice`, `gif`, `file`, `avatar`. Voice returns `mediaDuration`; file returns `fileName`; avatar validates magic bytes.
+- `POST /media/upload`: JWT-guarded, 20/min, 21 MiB limit; handles `image`, `voice`, `gif`, `file`, `video`, `avatar`. Voice returns `mediaDuration`; file returns `fileName`; video takes the same opaque `msgs/` path as `file` and echoes `mediaDuration`; avatar validates magic bytes.
 - Avatars are public. `GET /media/msgs/:filename` is JWT-guarded. Filename must be a basename; no path traversal.
 - `LocalStorageService` writes avatars to `avatars/<uuid>.(jpg|png)` and encrypted message blobs to `msgs/<uuid>.bin` under `MEDIA_DIR`.
 - `MEDIA_URL_REGEX` allows either legacy Cloudinary HTTPS upload URLs or exact self-hosted `${MEDIA_BASE_URL}/media/(avatars|msgs)/<filename>.<ext>` with one path segment. This prevents SSRF/path traversal because URLs later become unlink targets.
@@ -151,7 +151,7 @@ Gateway throttles are source-truth in `chat.gateway.ts`:
 - Secret Notes (“Anti-Quantum Note”) are separate from chat E2E.
 - `POST /notes` (JWT) stores ciphertext and returns a random 16-byte hex token. `expiresIn` is whitelisted to 1h/6h/12h/24h (any other value → 6h default). Ciphertext max 65536 chars.
 - `GET /note/:token` is public server-rendered HTML. AES-GCM key is in URL fragment (`#key`), never sent to server.
-- `POST /note/:token/reveal` is public read-once: atomic `DELETE ... WHERE token AND expires_at > NOW() RETURNING ciphertext`.
+- `POST /note/:token/reveal` is public read-once: atomic `DELETE ... WHERE token AND "expiresAt" > NOW() RETURNING ciphertext`.
 - `GET /note/:token/status` (JWT, 120/min) returns `{ alive }` for the in-chat banner: the client flips the card to "burned — it was read" when the note is gone before its `e=` fragment clock ran out. Legacy links without `e=` cannot distinguish read-vs-expired and keep the generic destroyed state; after the clock passes, read-vs-expired is indistinguishable by design (the row is deleted on reveal).
 - Expired notes are lazy-deleted on reveal and swept **every minute** (`@Cron(EVERY_MINUTE)`, matching `MessageCleanupService`). It was daily-at-03:00 until 2026-08-02, which left an UNREAD expired note's ciphertext in the table for up to ~24h past its TTL — the API refuses to serve it, but the AES key travels in the note URL and that URL is stored as ordinary plaintext message content, so DB access plus device access read a note the UI already called self-destructed. The cadence is pinned by a test; do not relax it.
 

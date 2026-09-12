@@ -353,7 +353,7 @@ export class ChatKeyExchangeService {
       // ack timed out, the app was killed — would otherwise stay un-addressable
       // forever: the roster block above runs ONLY on the upload that consumes
       // the ceremony, so nothing re-fires on a later launch, and the account is
-      // left fail-closed by clause 2 with no way back except another 72 h
+      // left fail-closed by clause 2 with no way back except another 6 h
       // ceremony. The server already knows this state exactly (it is the same
       // predicate clause 2 refuses on), so it re-offers the terms on any
       // authenticated upload and the client simply retries.
@@ -531,19 +531,22 @@ export class ChatKeyExchangeService {
     if (!userId) return;
 
     try {
-      // NOTE (open decision, 2026-08-19): the real client emits
-      // `uploadKeyBundle` and `uploadOneTimePreKeys` back to back without
-      // awaiting either, and the keys are frequently dispatched FIRST — pinned
-      // as production reality by `stale_otp_epoch_test.dart:72,76`. The service
-      // refuses a tag the account does not publish, so a signature-authorized
-      // rotation whose bundle has not landed yet is refused too and starts with
-      // an empty pool until the next peer fetch triggers `preKeysLow`. Two
-      // order-based rescues were tried and rejected: awaiting this socket's
-      // in-flight bundle upload after one macrotask (the trailing frame is
-      // dispatched later, so the marker is unset — proven insufficient), and a
-      // timed poll for it (makes a lock's verdict depend on wall-clock latency).
-      // The real fix is client-side ordering: publish the identity, THEN the
-      // keys. Owner decision pending.
+      // ORDER IS CLIENT-SIDE, SETTLED for the identity-upload path (was an
+      // open decision on 2026-08-19): when the client publishes an identity it
+      // STASHES the one-time pre-keys and releases them only on the
+      // `keyBundleUploaded { success:true }` ack (`encryption_provider.dart`,
+      // `_pendingOneTimePreKeyUpload`; a refusal drops the stash and records
+      // `OTP_UPLOAD_DROPPED`; `test_e2e/stale_otp_epoch_test.dart` mirrors the
+      // order). So a signature-authorized rotation no longer has its keys
+      // arrive before its bundle. Two other emitters remain and are NOT
+      // races: `preKeysLow` replenishment (`encryption_provider.dart`
+      // `_replenishOneTimePreKeys`) sends under the CURRENT published identity
+      // with no bundle in flight, and the un-enrolled remint carve-out in
+      // `KeyBundlesService.uploadOneTimePreKeys` still tolerates keys-first
+      // for that population. The server-side rescues tried and rejected before
+      // the client fix (awaiting this socket's in-flight bundle upload after
+      // one macrotask; a timed poll for it) stay rejected: the refusal below is
+      // the identity pin doing its job, not a race to paper over.
       const dto = validateDto(UploadOneTimePreKeysDto, data);
       // Session-bound, like the bundle above.
       const deviceId = socketData(client).user?.deviceId ?? DEFAULT_DEVICE_ID;
@@ -648,7 +651,7 @@ export class ChatKeyExchangeService {
               deadlineAt: reset.deadlineAt.toISOString(),
               // Same flag the live broadcast carries, so a session that
               // reconnects INTO a recovery-key ceremony describes the 1 h
-              // wait as 1 h rather than as the default 72 h.
+              // wait as 1 h rather than as the default 6 h.
               shortened: reset.shortened,
             }
           : null,

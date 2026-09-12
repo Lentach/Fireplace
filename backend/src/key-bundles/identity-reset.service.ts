@@ -64,10 +64,10 @@ export const RECOVERY_LOCKOUT_MS = 60 * 60 * 1000;
  * reset (spec §12 amendment (xlii)).
  *
  * The actor this defends against is a PASSWORD thief, and the point that
- * decides the design is that such a thief can already run the ordinary 72 h
+ * decides the design is that such a thief can already run the ordinary 6 h
  * credentials-only ceremony — that is the documented lost-device path. What
  * they must not also get is the SHORTCUT: enrol a phrase they chose, spend it
- * in the next message, and cut the owner's cancel window from 72 h to 1 h.
+ * in the next message, and cut the owner's cancel window from 6 h to 1 h.
  * Password re-authentication would not stop them (they have the password), so
  * the age is the control that actually bites: any phrase minted after the
  * compromise is younger than this and buys nothing.
@@ -135,7 +135,7 @@ export interface RequestResetResult {
    *
    * Reported rather than swallowed because the silent form is indistinguishable
    * from "no phrase given", which leaves an owner who typed their phrase
-   * correctly staring at 72 h with no idea why. This discloses nothing new: a
+   * correctly staring at 6 h with no idea why. This discloses nothing new: a
    * WRONG phrase already answers `invalid_phrase`, so phrase correctness is
    * already observable — this only explains a delay the caller can see anyway.
    */
@@ -148,7 +148,7 @@ export interface IdentityResetStatusSummary {
   /**
    * Whether a recovery key shortened this ceremony (§6.2.1). Carried so a
    * session that reconnects INTO a running ceremony can say the same thing the
-   * live broadcast said, instead of describing a 1 h wait as the 72 h one.
+   * live broadcast said, instead of describing a 1 h wait as the default 6 h one.
    */
   shortened: boolean;
 }
@@ -160,7 +160,7 @@ export interface IdentityResetStatusSummary {
  * Thrown so the transaction ROLLS BACK. The loser may have presented a valid
  * recovery phrase, and that phrase is single-use: committing here would spend
  * it on a ceremony it did not create, leaving the account on the winner's
- * un-shortened 72 h deadline with no phrase left to shorten a retry.
+ * un-shortened 6 h deadline with no phrase left to shorten a retry.
  */
 class PendingResetConflict extends Error {
   constructor(readonly insertError: unknown) {
@@ -247,7 +247,7 @@ export class IdentityResetService {
     // cancel must not keep the owner locked out of a legitimate ceremony.
     // Deliberately narrow: a PENDING ceremony is never cancelled here (rows
     // carry no requester attribution — cancelling could discard the owner's
-    // own in-flight 72h wait), and a cancel AFTER the password change still
+    // own in-flight 6 h wait), and a cancel AFTER the password change still
     // cools down as before.
     const recentCancel = await this.resetRepo
       .createQueryBuilder('r')
@@ -286,7 +286,7 @@ export class IdentityResetService {
           );
           // `too_new` is the ONLY non-accepted outcome that still starts a
           // ceremony (amendment (xlii)): the phrase was right but cannot buy
-          // the shortcut, so the owner keeps the full 72 h to notice and
+          // the shortcut, so the owner keeps the full 6 h to notice and
           // cancel. Refusing outright would break the lost-device path that
           // §6.2 exists to serve.
           if (outcome !== 'accepted' && outcome !== 'too_new') {
