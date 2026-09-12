@@ -153,6 +153,9 @@ all of `/contact*`. Fastify + SQLite + web-push, one Docker container.
 - **`.env`** in `~/fireplace/.env` is gitignored / not overwritten by `git pull`; it supplies all
   secrets + origins for compose interpolation. Re-run `deploy-backend.sh` (or restart backend) after edits.
 - **Postgres:** DB name is **`chatdb`**: `docker compose -f docker-compose.prod.yml exec db psql -U postgres -d chatdb`.
+  `pg_stat_statements` is preloaded (compose `command:`, since 2026-09-12; extension created in `chatdb`):
+  `SELECT calls, mean_exec_time, left(query,80) FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 20;`
+  A db recreate (`up -d --no-deps db`) drops the backend's pool — `docker restart fireplace-backend-1` after it.
 
 ## Backups & monitoring
 
