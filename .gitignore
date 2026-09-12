@@ -5,10 +5,14 @@ dist/
 .env.staging
 *.log
 mcp.json
-# The project Dart MCP mount is secret-free (local exe path + --disable flags) and
-# is the only MCP the workflow relies on (docs/agents/workflow-2.0.md §5a). Keep
-# every OTHER mcp.json ignored — a user-level one may carry keys.
+# OMP agent state (sessions, logs, caches) is machine-local. Two files in .omp/ ARE
+# repo material: the project Dart MCP mount (secret-free — a local exe path plus
+# --disable flags; the path is THIS machine's, repoint it on another clone, see
+# docs/design/flutter-ui-playbook.md §0) and the project skills. Every OTHER
+# mcp.json stays ignored — a user-level one may carry keys.
+.omp/*
 !.omp/mcp.json
+!.omp/skills/
 
 # User uploads (profile pictures)
 backend/uploads/
