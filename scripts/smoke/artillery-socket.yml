@@ -1,0 +1,45 @@
+# Socket.IO send/response smoke for the chat gateway (workflow-2.0 Batch 8.8).
+#
+#   cd scripts/smoke && npm install                    # one-time (adds artillery)
+#   npm run socket                                     # local docker backend, throwaway user
+#   FP_SMOKE_USER=name#0427 FP_SMOKE_PASS=... npm run socket -- https://fireplace.ignorelist.com
+#
+# `npm run socket` = node artillery-socket.mjs: mints ONE JWT (register-or-login locally,
+# login-only against prod), then runs this file with FP_SMOKE_TOKEN in the environment.
+# The token cannot come from a processor: the launcher templates `config.socketio` in
+# the main process before workers start (unresolved vars are dropped), and the socketio
+# engine opens the socket before the first flow step — so only an env var reaches `auth`.
+#
+# Read-only against the account it logs in with. `getConversations` answers with
+# `conversationsList` (emit, not ack — docs/contracts/wire.md); the engine validates a
+# `response` immediately only on an exact `data` match, so the account MUST have no
+# conversations (`[[]]` = one argument, the empty list). Anything else = timeout = fail.
+# Against prod this counts as device logins for that account (socketReady/takeover
+# semantics in the same doc): use a dedicated smoke account, never a real user's.
+config:
+  target: "http://localhost:3000"
+  timeout: 5
+  phases:
+    - duration: 5
+      arrivalRate: 1
+      name: five connections, one per second
+  socketio:
+    auth:
+      token: "{{ $processEnvironment.FP_SMOKE_TOKEN }}"
+  plugins:
+    ensure: {}
+  ensure:
+    thresholds:
+      - "socketio.response_time.p95": 1000
+    conditions:
+      - expression: "vusers.failed == 0"
+scenarios:
+  - name: connect (socketReady), getConversations -> conversationsList
+    engine: socketio
+    flow:
+      - emit:
+          channel: "getConversations"
+          data: {}
+        response:
+          channel: "conversationsList"
+          data: [[]]

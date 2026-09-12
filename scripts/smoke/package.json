@@ -4,9 +4,11 @@
   "type": "module",
   "description": "Post-deploy smoke test — run on the PC after deploy-web.ps1 / deploy-backend.sh",
   "scripts": {
-    "smoke": "node post-deploy-smoke.mjs"
+    "smoke": "node post-deploy-smoke.mjs",
+    "socket": "node artillery-socket.mjs"
   },
   "devDependencies": {
+    "artillery": "2.0.34",
     "playwright": "^1.53.0"
   }
 }
