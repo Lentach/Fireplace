@@ -5,6 +5,10 @@ dist/
 .env.staging
 *.log
 mcp.json
+# The project Dart MCP mount is secret-free (local exe path + --disable flags) and
+# is the only MCP the workflow relies on (docs/agents/workflow-2.0.md §5a). Keep
+# every OTHER mcp.json ignored — a user-level one may carry keys.
+!.omp/mcp.json
 
 # User uploads (profile pictures)
 backend/uploads/

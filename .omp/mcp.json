@@ -1,0 +1,19 @@
+{
+  "$schema": "https://raw.githubusercontent.com/can1357/oh-my-pi/main/packages/coding-agent/src/config/mcp-schema.json",
+  "mcpServers": {
+    "dart": {
+      "type": "stdio",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "C:\\Users\\Lentach\\AppData\\Local\\Pub\\Cache\\bin\\dart_mcp_server.bat",
+        "--disable",
+        "pub_dev_search",
+        "--disable",
+        "create_project",
+        "--disable",
+        "flutter_driver_user_journey_test"
+      ]
+    }
+  }
+}
