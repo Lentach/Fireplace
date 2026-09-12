@@ -1,0 +1,12 @@
+---
+paths:
+  - "frontend/lib/widgets/chat_input_bar*"
+  - "frontend/lib/widgets/composer*"
+  - "frontend/lib/widgets/chat_action_tiles.dart"
+  - "frontend/lib/utils/web_file_input.dart"
+  - "frontend/lib/widgets/message/**"
+  - "frontend/lib/services/media*"
+---
+# Composer, media, platform gotchas
+
+Read **`frontend/docs/composer-media.md`** before the first edit (verbatim former `frontend/CLAUDE.md` §7). **2026-08-19 composer rule: nothing ships here without a green repro AND the owner's explicit OK; never `git revert 0cbf17b`.** Dependabot #174 (`file_picker` 11.0.3) is deliberately open for this reason.

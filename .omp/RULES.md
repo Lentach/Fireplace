@@ -1,0 +1,7 @@
+- Shared worktree on `feat/passcode-lock`: stage by explicit path only, never `git add -A`; push `git push origin HEAD:master` then the branch.
+- Never `git commit --no-verify`; never trim a fresh session summary to fit the gate — move detail out.
+- Never `gh run list`; CI = `gh api repos/Lentach/Fireplace/commits/master/check-runs`.
+- Never `git revert 0cbf17b`; composer/attachment-picker changes ship only with a green repro AND the owner's explicit OK.
+- Prod: never `docker compose down -v`, `volume rm`, or bare `up -d`; never tell a user to clear site data.
+- Change only what was asked; code wins over docs — fix the doc in the same commit.
+- Session end: run the `umbra-session-end` skill.

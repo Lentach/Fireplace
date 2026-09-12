@@ -20,7 +20,8 @@
     "test:watch": "jest --config jest.config.json --watch",
     "test:cov": "jest --config jest.config.json --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "lint:check": "eslint \"{src,apps,libs,test}/**/*.ts\""
+    "lint:check": "eslint \"{src,apps,libs,test}/**/*.ts\"",
+    "knip": "knip --include files,dependencies"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.28",
@@ -43,7 +44,7 @@
     "dotenv": "17.4.2",
     "firebase-admin": "^13.6.1",
     "helmet": "^8.3.0",
-    "multer": "^2.0.2",
+    "multer": "^2.3.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "pg": "^8.22.0",
@@ -54,7 +55,6 @@
     "web-push": "^3.6.7"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3.3.6",
     "@eslint/js": "^10.0.1",
     "@nestjs/cli": "^11.0.24",
     "@nestjs/schematics": "^11.1.0",
@@ -65,17 +65,14 @@
     "@types/node": "^22.10.7",
     "@types/passport-jwt": "^4.0.1",
     "@types/pg": "^8.20.0",
-    "@types/supertest": "^7.2.1",
     "eslint": "^10.8.0",
     "eslint-config-prettier": "^10.0.1",
     "eslint-plugin-prettier": "^5.5.6",
     "globals": "^17.12.0",
     "jest": "^30.4.2",
+    "knip": "6.35.1",
     "prettier": "^3.9.6",
-    "source-map-support": "^0.5.21",
-    "supertest": "^7.0.0",
     "ts-jest": "^29.4.12",
-    "ts-loader": "^9.6.2",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.7.3",
@@ -84,7 +81,8 @@
   "overrides": {
     "firebase-admin": {
       "uuid": "^11.1.1"
-    }
+    },
+    "multer": "$multer"
   },
   "jest": {
     "moduleFileExtensions": [

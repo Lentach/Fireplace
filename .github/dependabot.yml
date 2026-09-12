@@ -37,6 +37,13 @@ updates:
         update-types:
           - version-update:semver-major
 
+      # TypeScript 7 is out and typescript-eslint 8.70 peers `typescript <6.1.0`
+      # — TS7 would silently strand every type-aware lint rule while the build
+      # stays green. Drop when typescript-eslint peers ^7. Major only.
+      - dependency-name: typescript
+        update-types:
+          - version-update:semver-major
+
   - package-ecosystem: pub
     directory: /frontend
     schedule:
