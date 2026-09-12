@@ -20,6 +20,12 @@ services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
+    # pg_stat_statements (bundled in postgres:16): answers "which query is slow" with
+    # no egress. Takes effect on the next db recreate (deploy-backend.sh `up -d`), then
+    # ONCE per database:  docker compose -f docker-compose.prod.yml exec db \
+    #   psql -U postgres -d chatdb -c 'CREATE EXTENSION IF NOT EXISTS pg_stat_statements'
+    # max=1000 bounds the shared-memory slice (~1 MB) on the 4 GB VM.
+    command: ["postgres", "-c", "shared_preload_libraries=pg_stat_statements", "-c", "pg_stat_statements.max=1000", "-c", "pg_stat_statements.track=top"]
     logging:
       driver: json-file
       options:
