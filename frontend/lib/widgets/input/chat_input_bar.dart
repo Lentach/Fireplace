@@ -168,6 +168,9 @@ class ChatInputBarState extends State<ChatInputBar>
     // exclusive. Any composer focus gain (field tap, reply/edit refocus)
     // closes the panel so they never stack.
     _focusNode.addListener(_closeEmojiPickerOnFocusGain);
+    // H1: keyboardVisible folds in composer focus, so the ergonomic buffer
+    // collapses/restores on focus flips — rebuild on them.
+    _focusNode.addListener(_onComposerFocusChangedRebuild);
     _sharedInsetSource = sharedKeyboardInsetSource();
     if (kIsWeb) {
       _focusNode.addListener(_onComposerFocusForWebViewport);
@@ -310,6 +313,13 @@ class ChatInputBarState extends State<ChatInputBar>
     }
     if (!isIOSWebKit()) return;
     setIOSComposerViewportPin(true);
+  }
+
+  void _onComposerFocusChangedRebuild() {
+    // H1: bottomInteractivePadding derives from keyboardVisible, which folds
+    // in focus — the buffer then collapses at focus time (BEFORE the keyboard
+    // animation) instead of mid-flight when the inset first ticks up.
+    if (mounted) setState(() {});
   }
 
   void _onSharedKeyboardInsetChanged() {
@@ -564,6 +574,7 @@ class ChatInputBarState extends State<ChatInputBar>
     // the viewport is unmounted and its listener no-ops on the mounted guard).
     scheduleMicrotask(() => composerBottomPanelPinned.value = false);
     _focusNode.removeListener(_closeEmojiPickerOnFocusGain);
+    _focusNode.removeListener(_onComposerFocusChangedRebuild);
     if (kIsWeb) {
       _focusNode.removeListener(_onComposerFocusForWebViewport);
       _sharedInsetSource.inset.removeListener(_onSharedKeyboardInsetChanged);
@@ -1072,20 +1083,13 @@ class ChatInputBarState extends State<ChatInputBar>
     // Single source of truth (D2 fix): MediaQuery.viewInsets reads 0 on iOS
     // WebKit while the keyboard is up — fold in the shared visualViewport
     // inset so the ergonomic bottom buffer never renders underneath a raised
-    // keyboard.
-    //
-    // FOCUS IS DELIBERATELY NOT A TERM HERE (H1 reverted 2026-09-12, owner
-    // report + desktop/mobile screenshots). The buffer is the composer's
-    // resting clearance over the home indicator and — inside MainShell's
-    // `extendBody: true` Scaffold, where the bottom nav height arrives as
-    // MediaQuery.padding.bottom — over the bottom nav. Collapsing it on focus
-    // moved the composer DOWN by that clearance with nothing lifting it:
-    // desktop web (no soft keyboard at all) buried the input row behind the
-    // nav bar, and on phones it dropped to the physical bottom edge in the
-    // window before the keyboard inset ticks up. Only a real inset — which
-    // simultaneously lifts the composer via ChatComposerViewport's
-    // `bottom: effectiveInset` — may collapse it.
+    // keyboard. Composer focus folds in too (H1): the buffer then collapses
+    // the moment the field focuses — BEFORE the keyboard animation — and
+    // returns only after blur once the insets settle back to 0, never
+    // mid-flight (with the action panel open, a mid-animation flip relayouts
+    // the whole ~300px block and reads as a bounce/void).
     final keyboardVisible =
+        _focusNode.hasFocus ||
         mediaQuery.viewInsets.bottom > 0 ||
         _sharedInsetSource.inset.value > 0;
     final bottomSystemInset = math.max(

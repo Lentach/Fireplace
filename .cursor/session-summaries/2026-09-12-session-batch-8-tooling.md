@@ -1,6 +1,6 @@
 # Batch 8 applied: knip + Renovate + guard hooks + VGA ratchet + artillery + pg_stat_statements + Patrol (Android)
 
-**Date:** 2026-09-12 · **Version:** unchanged (0.2.40 frontend / 0.2.35 backend on prod) · **Tiers deployed:** none (prod db-only recreate, backend image untouched)
+**Date:** 2026-09-12 · **Version:** unchanged (0.2.40 frontend / 0.2.35 backend on prod) · **Tiers deployed:** backend (`0.2.41 / 49c77c10`, 18:17Z, after the owner's go); web NOT deployed
 
 ## What was done
 - `backend/knip.json` + `npm run knip` (`--include files,dependencies`), hard CI step after the lint ratchet; 5 Nest-starter devDeps removed; `overrides.multer=$multer` + `multer ^2.3.0` closes the 4 Dependabot alerts on the copy nested under `@nestjs/platform-express` (pins 2.2.0 exactly, even at 12.x).
@@ -29,6 +29,6 @@
 
 ## Notes for next session
 - Owner-owed: install the Mend Renovate GitHub App, then delete `.github/dependabot.yml` in the PR that merges its first green PR. CodeQL re-pin PROVEN: `071902e` ran only `Analyze (actions)`.
-- Owner-owed: deploy backend when convenient — `deploy-backend.sh` ships the multer 2.3.0 override + comment-only fixes (undeployed since 0.2.35). Dependabot #119 = `csv-parse` (medium) in `scripts/smoke/package-lock.json`, artillery's transitive tree; no Dependabot entry covers that dir and Renovate is npm-wide but the fix is a manual `npm update csv-parse` in `scripts/smoke`.
+- Backend DEPLOYED 18:17Z at owner's request: `/version` `0.2.41 / 49c77c10`, `/health` ok, image has one `multer 2.3.0` (nested 2.2.0 gone). Frontend 0.2.41 still NOT deployed (concurrent session's call). Dependabot #119 = `csv-parse` (medium) in `scripts/smoke/package-lock.json`, artillery's transitive tree; no Dependabot entry covers that dir and Renovate is npm-wide but the fix is a manual `npm update csv-parse` in `scripts/smoke`.
 - Patrol web leg: retry serially on an idle box with `--web-server-timeout 600`; expect Chromium download on first run. Existing `testWidgets` device files are NOT patrol tests; keep `flutter test integration_test -d`.
 - Traps (also in `docs/agents/traps.md`): artillery socketio token must come from env (`{{ $processEnvironment.X }}`), launcher drops unresolved config templates and connects before flow steps; `flutter analyze` summary line is on stderr; Node ≥ 20 needs `shell: true` to spawn `flutter.bat`; npm nested-dep override needs `"$pkg"` reference form; a `.java` file wakes CodeQL default-setup java-kotlin autobuild; register throttle 10/15 min bites repeated smoke runs; Dart ratchet baseline must be taken on a clean worktree while another session edits.
