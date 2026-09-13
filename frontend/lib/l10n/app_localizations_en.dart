@@ -502,7 +502,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get messageSendBlockedKeysChanged =>
-      'Not sent: this contact\'s security keys changed. Open the warning above and compare your safety numbers, then retry.';
+      'Not sent: this contact\'s security keys changed. Open the red warning in this chat and compare your safety numbers, then retry.';
 
   @override
   String get authStatusSavedSessionUnreadable =>

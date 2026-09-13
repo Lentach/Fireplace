@@ -974,10 +974,10 @@ abstract class AppLocalizations {
   /// **'Ponów'**
   String get messageRetrySend;
 
-  /// Sits on a failed own message when the account-anchor gate refused the send (amendments (xxxix)/(lv)). Without it the row offers only 'Retry', which silently fails again — the remedy is the fingerprint comparison the red pill opens, not another attempt.
+  /// Sits on a failed own message when the account-anchor gate refused the send (amendments (xxxix)/(lv)). Without it the row offers only 'Retry', which silently fails again — the remedy is the fingerprint comparison the red pill opens, not another attempt. Deliberately direction-free: the pill is item 0 of a reverse:true list, so it renders BELOW the newest bubble, and 'above' would point the wrong way.
   ///
   /// In pl, this message translates to:
-  /// **'Nie wysłano: klucze bezpieczeństwa tego kontaktu się zmieniły. Otwórz ostrzeżenie powyżej i porównajcie odciski, a potem ponów.'**
+  /// **'Nie wysłano: klucze bezpieczeństwa tego kontaktu się zmieniły. Otwórz czerwone ostrzeżenie w tym czacie i porównajcie odciski, a potem ponów.'**
   String get messageSendBlockedKeysChanged;
 
   /// Auth surface status, localized from an AuthStatusCode.

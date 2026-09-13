@@ -4,43 +4,35 @@
 
 ## What was done
 - **One sentinel mapping, two body surfaces.** `sentinelDisplayText`
-  (`utils/message_display_text.dart`) now owns the whole sentinel→string decision and BOTH
-  bodies delegate: the bubble (`TextMessageContent._displayBody`) and `messageDisplayContent`,
-  used by `ChatMessageBubble` and the provider-free long-press replica. They used to decide
-  separately, and the first cut of this change made them disagree in a user-visible way — the
-  replica said "Odszyfrowanie nie powiodło się" over a bubble reading "Nie można odczytać…".
-  Each keeps only its own tail (raw content vs `unsupportedMessageType`), so an empty decrypted
-  row still renders empty.
-- The raw `[encrypted]` / `[Decryption failed]` sentinels no longer render anywhere. Both map to
-  `messageUnreadableOnThisDevice`; **display-only**, `MessageModel.content` is never rewritten
-  (the failed label is persisted and the durable cache must keep seeing it). The helper also
-  fixed a standing leak: `[Encryption not initialized]` reached the bubble raw, because only the
-  replica's path had ever mapped it.
-- Scoped the `[encrypted]` half deliberately: **OWN rows only, pass idle.** A peer `[encrypted]`
-  row may just be waiting for the decrypt pass, so relabelling it would flash a false "can't be
-  read" on every cold chat entry; unresolved peer rows become `[Decryption failed]` via the
-  post-retry sweep and are caught there instead.
-- Keyed on the LITERAL, not `displayAsEncryptedPlaceholder`: that predicate needs ciphertext, and
-  a fan-out own-send row carries none for its own origin device (ix) — so the predicate misses the
-  exact row the owner asked about (their own message after a reinstall).
+  (`utils/message_display_text.dart`) owns the whole sentinel→string decision; the bubble
+  (`TextMessageContent._displayBody`) and `messageDisplayContent` (`ChatMessageBubble` + the
+  provider-free long-press replica) both delegate, each keeping only its own tail. The first cut
+  left them deciding separately and they disagreed on screen — the replica said "Odszyfrowanie
+  nie powiodło się" over a bubble reading "Nie można odczytać…".
+- The raw `[encrypted]` / `[Decryption failed]` sentinels no longer render; both map to
+  `messageUnreadableOnThisDevice`, display-only. Also fixed a standing leak:
+  `[Encryption not initialized]` reached the bubble raw, because only the replica mapped it.
+  Scoping (OWN rows only, pass idle, keyed on the LITERAL not `displayAsEncryptedPlaceholder`)
+  and the reasons for each choice: `frontend/docs/e2e-invariants.md` bullets 27–29.
+- Quote previews (`utils/reply_preview_helper.dart`) are a THIRD surface and stay separate by
+  design — a quoted failed row still reads "Wiadomość zaszyfrowana". Documented, not unified.
 - `kDecryptionFailedLabel` / `kEncryptedPlaceholderLabel` promoted from private to public
   (LSP rename, 20 call sites across the three `messaging_provider` part files).
 - `chat_detail_screen`: `PeerIdentityChangedRow` is **no longer gated on
-  `SettingsProvider.keyChangeWarnings`**. A peer in `peersWithChangedIdentity` means the account
-  anchor never advanced, which means every send to them fails closed — so the door to the ceremony
-  now appears when the change arrives, not after a message has bounced. The muted (lxxix) note is
-  suppressed automatically (`peerKeyChangeNoteAt` is computed under `!peerIdentityChanged`).
-- **A bounced row now names the refusal.** With the chat's peer in `peersRefusedIdentity`,
-  `ChatMessageBubble` puts `messageSendBlockedKeysChanged` above the retry button — while the
-  anchor is stale every retry fails identically, so "Ponów" alone invited an endless loop. An
-  ordinary failure (timeout, dropped socket) still shows "Ponów" ALONE; both directions are
-  pinned, and flipping the gate turned both red.
-- **Found and documented, NOT wired:** `_markMessageFailed` discards its `errorMsg` argument at
-  all ~15 call sites, so every reason the send path computes (including the whole
-  `_userFriendlySendError` ladder) reaches nobody. That is why the row said only "Ponów". The
-  reason above is rendered from live state instead — those strings are unlocalized English and
-  would ship into a Polish UI. Localizing the other ~14 is an owner copy decision.
-- New ARB key + PL/EN strings; `flutter gen-l10n` added exactly 18 lines, no churn.
+  `SettingsProvider.keyChangeWarnings`** — membership in `peersWithChangedIdentity` IS "every
+  send to this peer fails closed", so the ceremony door must precede composing. The muted
+  (lxxix) note is suppressed automatically. Full reasoning: `e2e-invariants.md` bullet 26.
+- **A bounced row now names the refusal**: with the peer in `peersRefusedIdentity`,
+  `messageSendBlockedKeysChanged` sits above the retry button, because while the anchor is stale
+  every retry fails identically. An ordinary failure still shows "Ponów" ALONE (`e2e-invariants.md`
+  bullet 27).
+- **Root cause of the bare "Ponów", found and documented, NOT wired:** `_markMessageFailed`
+  discards its `errorMsg` argument at all ~15 call sites, so every reason the send path computes
+  reaches nobody — and those strings are unlocalized English (`traps.md` § E2E).
+- Two new ARB keys (+ the `decryptionFailed` retirement below). The blocked-send sentence is
+  deliberately DIRECTION-FREE ("the red warning in this chat", not "above"): the pill is item 0
+  of a `reverse: true` list, so it renders BELOW the newest bubble — the first draft said
+  "above" and pointed the wrong way.
 - Retired the now-unreferenced `decryptionFailed` ARB key ("Decryption failed" / "Odszyfrowanie
   nie powiodło się") — the replica's mapping was its only caller. `flutter gen-l10n` removed
   exactly 14 lines, zero churn.
@@ -55,12 +47,15 @@
   rename only), `frontend/lib/l10n/app_{en,pl}.arb` (+ generated),
   `frontend/lib/services/encryption_service.dart` (comment only),
   `frontend/pubspec.yaml` (0.2.43), `CLAUDE.md` (test count),
+  `scripts/dart-lint-baseline.json` (floor 3174 → 3173),
   `frontend/docs/e2e-invariants.md`, `docs/runbooks/e2e-decryption-failed.md`,
   `docs/runbooks/android-release.md`, `docs/agents/traps.md`, `LATEST.md`.
 - Tests: `frontend/test/widgets/message/decrypting_label_test.dart` (+4),
   `frontend/test/utils/message_display_text_test.dart` (own vs peer `[encrypted]`),
-  `frontend/test/screens/chat_detail_identity_row_test.dart` (F11 re-pointed, +2 for the
-  bounced-row reason and its falsification).
+  `frontend/test/screens/chat_detail_identity_row_test.dart` (+2 for the bounced-row reason and
+  its falsification; the alarmed-peer case at :244 re-pointed and retitled "supersedes F11", and
+  one rename at :408 — the F11 case at :391 itself is UNTOUCHED, so do not go hunting for a
+  modified F11).
 
 ## Verification
 - `flutter test` **2119 passed / 14 skipped / 0 failed** (was 2112); `CLAUDE.md` §3 updated and
@@ -83,7 +78,8 @@
   0.2.43 strings have never been seen on a phone.
 
 ## Notes for next session
-- **REVIEW WANTED on the pill gate.** It re-points falsification `F11` of amendment (lxxix),
+- **REVIEW WANTED on the pill gate.** It re-points the alarmed-peer falsification of amendment
+  (lxxix) (`chat_detail_identity_row_test.dart:244`, now "supersedes F11"),
   which deliberately honoured the setting for an alarmed peer. Justification: that assumed a
   demoted change was absorbed, which is false when the anchor did not advance (field-observed
   2026-09-13). The absorbed shape still has its own case (`alarmed: false` → note, no pill). If
@@ -99,5 +95,5 @@
   sites. The identity refusal is now rendered from live state, but the other ~14 (media too
   large, upload failed, connection reset…) still show a bare "Ponów", and their existing strings
   are English-only. Localizing them is a copy task, not plumbing.
-- Traps: 3 E2E (incl. the discarded `errorMsg`), 1 agent tooling (the `git status` CRLF trap —
-  my own mistake this session).
+- Traps: 4 E2E (the discarded `errorMsg` and the quote-preview surface among them), 1 agent
+  tooling (the `git status` CRLF trap — my own mistake this session).

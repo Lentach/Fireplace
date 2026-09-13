@@ -506,7 +506,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get messageSendBlockedKeysChanged =>
-      'Nie wysłano: klucze bezpieczeństwa tego kontaktu się zmieniły. Otwórz ostrzeżenie powyżej i porównajcie odciski, a potem ponów.';
+      'Nie wysłano: klucze bezpieczeństwa tego kontaktu się zmieniły. Otwórz czerwone ostrzeżenie w tym czacie i porównajcie odciski, a potem ponów.';
 
   @override
   String get authStatusSavedSessionUnreadable =>
