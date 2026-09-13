@@ -59,6 +59,11 @@
 
 ## Notes for next session
 - **Ship verdict: `7818786…` is NOT blocked by this.** The remaining owner call is wording, not code.
+- **Best red-first test candidate, falls out of the corrected `needsKeyUpload` fact:** the flag is
+  process-wide and peer-AGNOSTIC, so for the whole life of a minting process an UNRELATED peer's
+  transient `noSession`/`unknown` takes the `identityReset` branch — `markContentFailed: true`,
+  `retryAction: none`, plus a `requestSessionRebuild` that peer never needed. Bounded by
+  `persist: false`. Not field-observed, not fixed (out of scope for the wipe question).
 - **Owner-owed (new):** after a phrase restore the device id REBINDS, and a peer app that is
   already open keeps sending to the old id (`Bad state: Recipient has no key bundle (… deviceId=1)`,
   ~90 s of retries) while the restored device's first message sits as `[encrypted]` on their side.
@@ -68,4 +73,5 @@
   `frontend/docs/e2e-invariants.md` says the phrase shortens it to 1 h — one of the two is stale.
 - `Włącz łączenie` forces REGENERATING the phrase even when the account already has one
   ("Masz już frazę. Nowe słowa ją zastąpią") — there is no "I already have it" path.
-- Traps appended to `docs/agents/traps.md` (5 E2E, 1 Android, 4 agent tooling, 1 owner-owed).
+- Traps appended to `docs/agents/traps.md` (6 E2E, 4 agent tooling, 1 owner-owed) + corrected two
+  contradicted E2E lines and the `/auth/register` throttle window.

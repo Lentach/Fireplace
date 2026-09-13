@@ -264,6 +264,18 @@ that did not itself mint (`E2E_INIT_DONE {needsKeyUpload: false}`) — which is 
 `OWN_IDENTITY_REPLACED` is already recorded durably, both emit paths already fire, and the missed
 classification costs nothing observable. There is no receiver-side fix to make here.
 
+**One real defect DOES fall out of the corrected fact, and it is the best red-first test
+candidate here.** `needsKeyUpload` is process-wide and peer-AGNOSTIC, so for the whole lifetime
+of a minting process `hadIdentityReset` is true for EVERY peer — not just the ones affected by
+the identity change. `decideDecryptionFailure` therefore routes an UNRELATED peer's transient
+`noSession`/`unknown` down the `identityReset` branch: `markContentFailed: true` with
+`retryAction: none`, plus a `requestSessionRebuild` that peer never needed (their OTP burns).
+Bounded — `persistTerminalFailure` is false, so a later launch re-attempts and can still recover
+the row — but during that first post-reinstall session a one-off hiccup is shown as
+`[Decryption failed]` with no retry at all. Not observed in the field yet; not fixed here
+(out of scope for the wipe question). A fix would scope the flag per peer, or gate the branch on
+the peer actually having been affected.
+
 ### What actually blocks the conversation: the SENDER's account-identity anchor
 
 The peer's first send after your re-mint FAILS locally, before the wire:

@@ -307,8 +307,8 @@ Two starting states, and they do NOT behave the same:
    pushed while gated, and the cold-start tap is delivered once per process. Re-verified on the
    0.2.42 APK: the same sequence lands on the gate, and the gate's own scanner still opens.
 2. **Account NOT enrolled** (linking never enabled) — **the re-mint is device-proven (a `pm clear`
-   install logged in with no gate and the peer saw "nowe urządzenie — klucze zaktualizowane"), but
-   the FLIP-FLOP itself is still INFERENCE, never exercised:** §6.1 is not armed (§8, amendment
+   install logged in with no gate), but the FLIP-FLOP itself is still INFERENCE, never
+   exercised:** §6.1 is not armed (§8, amendment
    (lxxiii)), so the phone re-mints the identity **into the primary slot** — and because every
    client
    re-uploads its key bundle on EVERY socket connect (`encryption_provider.dart`), two live devices
@@ -319,6 +319,10 @@ Two starting states, and they do NOT behave the same:
    12 words saved but linking off, `pm clear` → log in re-mints silently
    (`Generating new keys (fresh install)`) and never offers the restore door. The phrase becomes
    usable only once linking is on, because the door lives on the device-link gate.
+   **And the peer does not merely see a muted note:** the "nowe urządzenie — klucze
+   zaktualizowane" line is only half of it — their next send hard-fails with
+   `AccountIdentityMismatch` until they confirm the new safety number (full account in
+   § "What a reinstall / Clear storage costs" below).
 
 History does NOT transfer on link (Phase 4 "history-on-link" is unbuilt, §9): the phone starts
 empty and fills from new traffic. Old history stays readable on the device that already has it.
@@ -375,9 +379,13 @@ Device-proven on the shippable 0.2.42 APK (`7818786…`, Pixel_7 AVD, prod) acro
   their first send bounces with "Ponów" and a red "Klucze … się zmieniły. Dotknij, aby sprawdzić"
   pill until they tap it and confirm "Odciski się zgadzają". Sending them a message first does
   NOT spare them this.
-- **The way to avoid all of it:** linked devices ON + the 12 words on paper. Then a reinstall
-  meets the gate's "Mam frazę odzyskiwania", the SAME identity comes back, and no peer sees a key
-  change. With linking off the login re-mints silently and never asks for the phrase.
+- **The way to avoid the confirmation:** linked devices ON + the 12 words on paper. Then a
+  reinstall meets the gate's "Mam frazę odzyskiwania", the SAME identity comes back, and no peer
+  sees a key change. With linking off the login re-mints silently and never asks for the phrase.
+  **It is not completely free:** the restore REBINDS the device id, so a friend whose app was
+  already open keeps sending to the old one
+  (`Bad state: Recipient has no key bundle (… deviceId=1)`) and sees your first message as
+  `[encrypted]` until they close and reopen the app once — measured across ~90 s of retries.
 
 Add this to the friend-facing text:
 
@@ -387,7 +395,8 @@ Add this to the friend-facing text:
 > and their first message to you bounces with "Ponów" until they tap it and confirm the codes
 > match. To avoid that entirely: turn on linked devices, write the 12 words down on paper, and
 > after a reinstall use **"Mam frazę odzyskiwania"** instead of just logging in — that brings the
-> same keys back and nobody has to confirm anything.
+> same keys back, so nobody has to confirm a code. If a friend had the app open while you did it,
+> they may need to close and reopen it once before messages flow again.
 
 ## Known-not-done (tracked, do not rediscover)
 
