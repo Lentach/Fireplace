@@ -319,10 +319,21 @@ export class ChatConversationService {
       seconds: data.seconds,
     };
 
-    // Emit to both users
-    client.emit('disappearingTimerUpdated', payload);
-
-    server.to(userRoom(otherUserId)).emit('disappearingTimerUpdated', payload);
+    // Both users' FULL device rooms in ONE emit, never the calling socket
+    // alone. The timer is conversation METADATA, and the user room exists
+    // precisely so "every device still sees it" (`chat.gateway.ts:176-178`);
+    // `client.emit` reached only the socket that made the change, so the
+    // setter's OTHER linked devices kept displaying the timer they had just
+    // displaced — field-found on a 3-device account 2026-09-14. A device
+    // showing a stale timer is a stale SAFETY PROMISE, the same harm
+    // `WsThrottlerGuard` refuses to cause when it declines to echo an
+    // unapplied value (`ws-throttler.guard.ts:77-81`). The originating socket
+    // is in its own user room, so it is still told. Chained `.to()` fans to the
+    // UNION of both rooms and socket.io delivers once per socket.
+    server
+      .to(userRoom(userId))
+      .to(userRoom(otherUserId))
+      .emit('disappearingTimerUpdated', payload);
 
     this.logger.debug(
       `User ${userId} set disappearing timer to ${data.seconds}s for conversation ${data.conversationId}`,

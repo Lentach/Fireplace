@@ -8,6 +8,7 @@ import { ChatValidationService } from './chat-validation.service';
 import { MediaCleanupService } from '../../media/media-cleanup.service';
 import { ConversationNotificationPreferencesService } from '../../conversation-notification-preferences/conversation-notification-preferences.service';
 import { Socket, Server } from 'socket.io';
+import { Conversation } from '../../conversations/conversation.entity';
 
 describe('ChatConversationService', () => {
   let service: ChatConversationService;
@@ -34,6 +35,7 @@ describe('ChatConversationService', () => {
             findById: jest.fn(),
             setPinnedMessage: jest.fn(),
             clearPinnedMessage: jest.fn(),
+            updateDisappearingTimer: jest.fn(),
           },
         },
         {
@@ -399,6 +401,52 @@ describe('ChatConversationService', () => {
 
       expect(server.to).toHaveBeenCalledWith('user:2');
       expect(server.to).not.toHaveBeenCalledWith('tab-a');
+    });
+
+    it('delivers disappearingTimerUpdated to BOTH users rooms, never the calling socket alone', async () => {
+      // Field-found 2026-09-14 on a 3-device account: the setter's OTHER
+      // linked devices kept showing the timer they had just displaced, because
+      // the update went to `client` instead of the setter's user room. A stale
+      // timer is a stale SAFETY PROMISE — the user is told messages will vanish
+      // on a schedule that is no longer in force.
+      //
+      // Doubles are LOCAL consts rather than `mockServer`/`mockClient` so the
+      // assertions read a plain `jest.fn` instead of a member access, which is
+      // what keeps eslint's `unbound-method` count flat — `scripts/lint-ratchet.mjs`
+      // fails CI when real errors rise above the recorded floor.
+      const to = jest.fn().mockReturnThis();
+      const roomEmit = jest.fn();
+      const clientEmit = jest.fn();
+      const server = { to, emit: roomEmit } as unknown as Server;
+      const client = {
+        data: { user: { id: 1 } },
+        emit: clientEmit,
+      } as unknown as Socket;
+      // Partial double: the handler reads only these three fields off the row.
+      const conversation = {
+        id: 10,
+        userOne: { id: 1 },
+        userTwo: { id: 2 },
+      } as unknown as Conversation;
+      conversationsService.findById.mockResolvedValue(conversation);
+      conversationsService.updateDisappearingTimer.mockResolvedValue(
+        conversation,
+      );
+
+      await service.handleSetDisappearingTimer(
+        client,
+        { conversationId: 10, seconds: 60 },
+        server,
+      );
+
+      // The SETTER's own devices, which the old code never told.
+      expect(to).toHaveBeenCalledWith('user:1');
+      // The peer's devices, which always worked.
+      expect(to).toHaveBeenCalledWith('user:2');
+      expect(clientEmit).not.toHaveBeenCalledWith(
+        'disappearingTimerUpdated',
+        expect.anything(),
+      );
     });
   });
 });
