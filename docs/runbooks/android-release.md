@@ -143,21 +143,24 @@ installed anywhere and NOT smoke-tested; the floor becomes 20041 the moment it i
 `--split-per-abi` would roughly halve the download but interacts with both the versionCode
 formula and Play's monotonicity — not done, deliberately.
 
-**Build record — 0.2.42, 2026-09-13 (the fix build, supersedes 0.2.41 above).** `master` @
-**`fa97358`** → versionCode `20042`, 105.2 MB, SHA256
-`7c8bb2cee84e2790fc3e88973e7e0fd5a4bf6e2d891f757d22107661b3477b37`, same signer cert, 16KB 16/16.
-Carries BOTH arms of the issue-#175 fix (`23be77d` route guard + local-notification latch,
-`fa97358` terminated-state FCM latch). Installs and launches clean; footer reads `fa97358`.
+**Build record — 0.2.42, 2026-09-13 (CURRENT, supersedes 0.2.41 above).** `master` @
+**`633f4dd`** → versionCode `20042`, 105.2 MB, SHA256
+`7818786948ca79e11674a48e4999cc291bd749ba061361a9197efca200085bf0`, same signer cert, 16KB 16/16,
+CI 6/6 green on that commit. Installs and launches; footer reads `633f4dd`. Carries both arms of
+the issue-#175 fix (`23be77d` route guard + local-notification latch, `fa97358` terminated-state
+FCM latch) AND the per-login `onTokenRefresh` cancel (`633f4dd`).
 
-⚠️ **An earlier 0.2.42 build (SHA256 `601248e0…`) is NOT recordable and must not be shipped:** it
-was built from a working tree whose fix was still uncommitted, so its embedded `GIT_COMMIT`
-(`f35ef7b`) names a tree that does NOT contain the fix. Always build from a committed tree, or
-the footer and the SHA256↔commit pairing lie to whoever is testing.
+⚠️ **Two earlier 0.2.42 builds exist and must NOT be shipped.** `601248e0…` was built from a
+working tree whose fix was still uncommitted, so its embedded `GIT_COMMIT` (`f35ef7b`) names a
+tree WITHOUT the fix. `7c8bb2ce…` (`fa97358`) was honest but predates the listener fix. Rule:
+**build from the tip of a pushed commit, and re-record the hash whenever code lands after it** —
+otherwise the footer and the SHA256↔commit pairing lie to whoever is testing.
 
 The device drill (push wakes a killed app <5 s; notification-tap → logout → login-as-enrolled
-lands on the link gate; the gate's own scanner survives the sweep) was run on `601248e0…`. The
-only code delta since is the second latch, which guards a branch that drill never entered, and
-the gate behaviour it verified is covered by `auth_gate_link_gate_stays_on_top_test.dart`.
+lands on the link gate; the gate's own scanner survives the sweep) was run on `601248e0…`. Deltas
+since are the second latch and the listener cancel — neither touches a path that drill entered,
+and the gate behaviour it verified is covered by `auth_gate_link_gate_stays_on_top_test.dart`.
+**Re-run the drill on `7818786…` before distributing** (needs two fresh throwaway accounts).
 
 **Release builds cannot be screenshotted** — `MainActivity.kt` sets `FLAG_SECURE` when not
 debuggable, so `screencap` returns rc=1 while the app window is live (even from recents). Verify
