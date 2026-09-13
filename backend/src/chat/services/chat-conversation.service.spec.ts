@@ -9,6 +9,7 @@ import { MediaCleanupService } from '../../media/media-cleanup.service';
 import { ConversationNotificationPreferencesService } from '../../conversation-notification-preferences/conversation-notification-preferences.service';
 import { Socket, Server } from 'socket.io';
 import { Conversation } from '../../conversations/conversation.entity';
+import { Message } from '../../messages/message.entity';
 
 describe('ChatConversationService', () => {
   let service: ChatConversationService;
@@ -198,11 +199,13 @@ describe('ChatConversationService', () => {
         101,
         1,
       );
-      expect(mockClient.emit).toHaveBeenCalledWith(
+      // The pin is now fanned to both participants' user rooms rather than
+      // echoed to the pinning socket, so the observable is the ROOM emit.
+      expect(mockServer.emit).toHaveBeenCalledWith(
         'messagePinned',
         expect.objectContaining({ pinnedMessageId: 100 }),
       );
-      expect(mockClient.emit).toHaveBeenCalledWith(
+      expect(mockServer.emit).toHaveBeenCalledWith(
         'messagePinned',
         expect.objectContaining({ pinnedMessageId: 101 }),
       );
@@ -282,10 +285,11 @@ describe('ChatConversationService', () => {
         userTwo: { id: 3 },
       } as never);
 
-      await service.handleSetConversationMute(mockClient as unknown as Socket, {
-        conversationId: 10,
-        duration: '8h',
-      });
+      await service.handleSetConversationMute(
+        mockClient as unknown as Socket,
+        { conversationId: 10, duration: '8h' },
+        mockServer as Server,
+      );
 
       expect(mockClient.emit).toHaveBeenCalledWith('error', {
         message: 'Unauthorized',
@@ -294,6 +298,17 @@ describe('ChatConversationService', () => {
     });
 
     it('stores an allowed viewer-private duration and emits only to that viewer', async () => {
+      // Still "only that viewer" — but now to the viewer's whole USER ROOM, so
+      // their other linked devices stop buzzing too. The peer must stay
+      // uninformed: knowing you were muted is a leak.
+      const to = jest.fn().mockReturnThis();
+      const roomEmit = jest.fn();
+      const clientEmit = jest.fn();
+      const server = { to, emit: roomEmit } as unknown as Server;
+      const client = {
+        data: { user: { id: 1 } },
+        emit: clientEmit,
+      } as unknown as Socket;
       conversationsService.findById.mockResolvedValue({
         id: 10,
         userOne: { id: 1 },
@@ -304,13 +319,16 @@ describe('ChatConversationService', () => {
         until: new Date('2026-07-13T10:00:00.000Z'),
       });
 
-      await service.handleSetConversationMute(mockClient as unknown as Socket, {
-        conversationId: 10,
-        duration: '8h',
-      });
+      await service.handleSetConversationMute(
+        client,
+        { conversationId: 10, duration: '8h' },
+        server,
+      );
 
       expect(notificationPreferences.setMute).toHaveBeenCalledWith(1, 10, '8h');
-      expect(mockClient.emit).toHaveBeenCalledWith('conversationMuteUpdated', {
+      expect(to).toHaveBeenCalledWith('user:1');
+      expect(to).not.toHaveBeenCalledWith('user:2');
+      expect(roomEmit).toHaveBeenCalledWith('conversationMuteUpdated', {
         conversationId: 10,
         muted: true,
         mutedUntil: new Date('2026-07-13T10:00:00.000Z'),
@@ -445,6 +463,96 @@ describe('ChatConversationService', () => {
       expect(to).toHaveBeenCalledWith('user:2');
       expect(clientEmit).not.toHaveBeenCalledWith(
         'disappearingTimerUpdated',
+        expect.anything(),
+      );
+    });
+
+    // Same defect class as the timer above, found by reading the siblings after
+    // the owner's report: every one of these used `client.emit`, so the ACTING
+    // user's other devices were the only participants left uninformed.
+    const localDoubles = () => {
+      const to = jest.fn().mockReturnThis();
+      const clientEmit = jest.fn();
+      return {
+        to,
+        clientEmit,
+        server: { to, emit: jest.fn() } as unknown as Server,
+        client: {
+          data: { user: { id: 1 } },
+          emit: clientEmit,
+        } as unknown as Socket,
+        conversation: {
+          id: 10,
+          userOne: { id: 1 },
+          userTwo: { id: 2 },
+        } as unknown as Conversation,
+      };
+    };
+
+    it('delivers messagePinned to BOTH users rooms, never the pinning socket alone', async () => {
+      const { to, clientEmit, server, client, conversation } = localDoubles();
+      conversationsService.findById.mockResolvedValue(conversation);
+      conversationsService.setPinnedMessage.mockResolvedValue(conversation);
+      messagesService.findByIdWithConversation.mockResolvedValue({
+        id: 100,
+        content: 'a',
+        conversation,
+        createdAt: new Date(),
+        expiresAt: null,
+        disappearAfterSeconds: null,
+      } as unknown as Message);
+
+      await service.handlePinMessage(
+        client,
+        { conversationId: 10, messageId: 100 },
+        server,
+      );
+
+      expect(to).toHaveBeenCalledWith('user:1');
+      expect(to).toHaveBeenCalledWith('user:2');
+      expect(clientEmit).not.toHaveBeenCalledWith(
+        'messagePinned',
+        expect.anything(),
+      );
+    });
+
+    it('delivers messageUnpinned to BOTH users rooms, never the unpinning socket alone', async () => {
+      const { to, clientEmit, server, client, conversation } = localDoubles();
+      conversationsService.findById.mockResolvedValue(conversation);
+      // clearPinnedMessage resolves void, not the row.
+      conversationsService.clearPinnedMessage.mockResolvedValue(undefined);
+
+      await service.handleUnpinMessage(client, { conversationId: 10 }, server);
+
+      expect(to).toHaveBeenCalledWith('user:1');
+      expect(to).toHaveBeenCalledWith('user:2');
+      expect(clientEmit).not.toHaveBeenCalledWith(
+        'messageUnpinned',
+        expect.anything(),
+      );
+    });
+
+    it('delivers conversationMuteUpdated to the MUTERs room and never to the peer', async () => {
+      // Mute is a private per-account preference: the other devices must learn
+      // it (or one keeps buzzing), and the peer must NOT — that would leak
+      // being muted.
+      const { to, clientEmit, server, client, conversation } = localDoubles();
+      conversationsService.findById.mockResolvedValue(conversation);
+      notificationPreferences.setMute.mockResolvedValue({
+        muted: true,
+        until: null,
+      });
+
+      await service.handleSetConversationMute(
+        client,
+        { conversationId: 10, duration: 'forever' },
+        server,
+      );
+
+      expect(to).toHaveBeenCalledWith('user:1');
+      expect(to).not.toHaveBeenCalledWith('user:2');
+      expect(clientEmit).not.toHaveBeenCalledWith(
+        'conversationMuteUpdated',
         expect.anything(),
       );
     });

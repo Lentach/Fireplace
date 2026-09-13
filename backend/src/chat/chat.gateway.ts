@@ -761,7 +761,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: unknown,
   ) {
-    return this.chatConversationService.handleSetConversationMute(client, data);
+    return this.chatConversationService.handleSetConversationMute(
+      client,
+      data,
+      this.server,
+    );
   }
 
   @UseGuards(WsThrottlerGuard)

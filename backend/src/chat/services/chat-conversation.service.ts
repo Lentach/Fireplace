@@ -397,13 +397,18 @@ export class ChatConversationService {
       pinnedByUserId: userId,
       pinnedAt: conv.pinnedAt,
     };
-    client.emit('messagePinned', payload);
-
     const otherUserId =
       conversation.userOne.id === userId
         ? conversation.userTwo.id
         : conversation.userOne.id;
-    server.to(userRoom(otherUserId)).emit('messagePinned', payload);
+    // Same metadata law as `disappearingTimerUpdated` (see that handler): a pin
+    // belongs to the CONVERSATION, so every device of both participants must
+    // see it. `client.emit` told only the pinning socket, leaving the pinner's
+    // other devices showing no pin at all.
+    server
+      .to(userRoom(userId))
+      .to(userRoom(otherUserId))
+      .emit('messagePinned', payload);
 
     this.logger.debug(
       `User ${userId} pinned message ${dto.messageId} in conversation ${dto.conversationId}`,
@@ -442,19 +447,25 @@ export class ChatConversationService {
 
     await this.conversationsService.clearPinnedMessage(dto.conversationId);
     const payload = { conversationId: dto.conversationId };
-    client.emit('messageUnpinned', payload);
-
     const otherUserId =
       conversation.userOne.id === userId
         ? conversation.userTwo.id
         : conversation.userOne.id;
-    server.to(userRoom(otherUserId)).emit('messageUnpinned', payload);
+    server
+      .to(userRoom(userId))
+      .to(userRoom(otherUserId))
+      .emit('messageUnpinned', payload);
 
     this.logger.debug(
       `User ${userId} unpinned conversation ${dto.conversationId}`,
     );
   }
-  async handleSetConversationMute(client: Socket, data: unknown) {
+
+  async handleSetConversationMute(
+    client: Socket,
+    data: unknown,
+    server: Server,
+  ) {
     const userId: number | undefined = client.data.user?.id;
     if (!userId) return;
     let dto: SetConversationMuteDto;
@@ -483,7 +494,12 @@ export class ChatConversationService {
       dto.conversationId,
       dto.duration,
     );
-    client.emit('conversationMuteUpdated', {
+    // The MUTER's own room ONLY — never the peer. Mute is a private per-account
+    // notification preference (`conversation_notification_preferences`, keyed
+    // `(userId, conversationId)`), so it must reach this user's other devices
+    // or the phone stays silent while the tablet keeps buzzing; telling the
+    // peer would leak that they were muted.
+    server.to(userRoom(userId)).emit('conversationMuteUpdated', {
       conversationId: dto.conversationId,
       muted: state.muted,
       mutedUntil: state.until,
