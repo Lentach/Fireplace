@@ -69,7 +69,8 @@
 - Before any friends build: linking cannot be enabled from a browser TAB (must be an installed
   PWA), the match code is 6 digits, and the ceremony is symmetric — the shipped wording now says so.
 - Test fixtures on prod: `apkeae3#4259` / `webb2e6#6353` were throwaway smoke accounts sharing one
-  password (`<REDACTED>` — it WAS committed in `f35ef7b` on this PUBLIC repo, so both accounts
-  were DELETED at session end; never put a working credential in a summary again).
+  password (`<REDACTED>` — it WAS committed in `f35ef7b` on this PUBLIC repo). Both accounts were
+  DELETED at session end and the exposed password now returns `401 Invalid credentials` on
+  `POST /auth/login` for both identifiers. **Never put a working credential in a summary.**
   `test_web_sender#7207` was logged OUT of the dev browser (password unknown, keys still in that
   profile's localStorage).
