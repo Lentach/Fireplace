@@ -89,12 +89,11 @@
 - **Still owner-owned:** `_demoteKeyChangeIfMuted` writes a note for an UNABSORBED change that
   the screen never renders — dead state, and removing the write edits (lxxix) itself (5 service
   tests, incl. F47/F48). Both items in `.planning/review-0.2.43/findings.md`.
-- **WITHDRAWN proposal:** parking a blocked message and auto-sending after confirmation — it
-  would need a NEW store holding unencrypted message text at rest, a different security posture.
-  Owner call; reasoning in `.planning/review-0.2.43/findings.md`.
-- **Owner copy decision left open:** `_markMessageFailed` throws away the reason at ~15 call
-  sites. The identity refusal is now rendered from live state, but the other ~14 (media too
-  large, upload failed, connection reset…) still show a bare "Ponów", and their existing strings
-  are English-only. Localizing them is a copy task, not plumbing.
-- Traps: 4 E2E (the discarded `errorMsg` and the quote-preview surface among them), 1 agent
-  tooling (the `git status` CRLF trap — my own mistake this session).
+- **WITHDRAWN:** parking a blocked message for auto-send after confirmation — it would need a new
+  store holding unencrypted text at rest. Owner call; why in `.planning/review-0.2.43/findings.md`.
+- **Owner copy decision left open:** the other ~14 reasons `_markMessageFailed` throws away
+  (media too large, upload failed, connection reset…) still show a bare "Ponów" and their
+  existing strings are English-only — a copy task, not plumbing (`traps.md` § E2E).
+- Traps: **4 new** under § E2E (pill gate, sentinel mapping, quote-preview surface, discarded
+  `errorMsg`), **1 amended** there (the account-anchor line gained its 0.2.43 clause), **1 new**
+  under § Agent tooling (the `git status` CRLF trap). Grepping this slug returns 6 lines, not 5.
