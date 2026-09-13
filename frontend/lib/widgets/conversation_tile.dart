@@ -12,6 +12,7 @@ import 'hex_avatar.dart';
 import 'hearth_fade_arc.dart';
 import '../utils/jumbo_emoji.dart';
 import '../utils/anti_quantum_note_link.dart';
+import '../utils/message_display_text.dart';
 
 class ConversationTile extends StatelessWidget {
   final int conversationId;
@@ -63,6 +64,12 @@ class ConversationTile extends StatelessWidget {
     if (lastMessage.messageType == MessageType.file) {
       return l10n.attachmentOptionDocument;
     }
+    // AFTER the media branches on purpose: a keyed media row keeps
+    // `content == '[encrypted]'` forever (its payload is the mediaKey, not
+    // text), and it must render as "Photo"/"Voice message", not as an
+    // unreadable row.
+    final sentinel = sentinelPreviewText(context, lastMessage);
+    if (sentinel != null) return sentinel;
     if (lastMessage.displayAsEncryptedPlaceholder ||
         lastMessage.content == 'Encrypted message') {
       return l10n.encryptedMessage;

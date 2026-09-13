@@ -7,6 +7,7 @@ import '../providers/messaging_provider.dart'
         kDecryptionFailedLabel,
         kEncryptedPlaceholderLabel,
         kEncryptionNotInitializedLabel,
+        kNotLinkedYetMessageLabel,
         kRetiredMessageLabel;
 
 /// The localized sentence for a row whose CONTENT is an internal sentinel, or
@@ -90,4 +91,43 @@ String messageDisplayContent(
   if (mapped != null) return mapped;
   if (message.content.isNotEmpty) return message.content;
   return AppLocalizations.of(context).unsupportedMessageType;
+}
+
+/// The one-line PREVIEW text for a row whose content is an internal sentinel,
+/// or null when the row carries real content.
+///
+/// Separate from [sentinelDisplayText] by necessity, not taste: a preview knows
+/// neither `isMine` nor whether a decrypt pass is running, and a
+/// conversation-list row never went through the history mapping that turns a
+/// `none_for_device` row into [kNotLinkedYetMessageLabel] — the list's rows come
+/// from `getLastMessagesBatch(convIds, userId)`, which resolves no per-device
+/// envelope, so `envelopeStatus` is ALWAYS absent there and
+/// `displayAsEncryptedPlaceholder` misses every new-model row (its ciphertext
+/// lives only in `message_envelopes`, never in the legacy column). Result before
+/// this existed: a freshly linked phone's ENTIRE chat list read `[encrypted]`
+/// while rows that happened to carry a legacy ciphertext read the localized
+/// label (field test 2026-09-13, device #11 on a real phone).
+String? sentinelPreviewText(BuildContext context, MessageModel message) {
+  final content = message.content;
+  if (content.isEmpty) return null;
+  if (content == kNotLinkedYetMessageLabel) {
+    return AppLocalizations.of(context).historyBeforeDeviceLinked;
+  }
+  if (content == kRetiredMessageLabel) {
+    return AppLocalizations.of(context).messageNoLongerStoredOnThisDevice;
+  }
+  if (content == kEncryptionNotInitializedLabel) {
+    return AppLocalizations.of(context).encryptionNotInitialized;
+  }
+  if (content == kDecryptionFailedLabel) {
+    return AppLocalizations.of(context).messageUnreadableOnThisDevice;
+  }
+  // Deliberately the NEUTRAL label, not "can't be read on this device": a
+  // `[encrypted]` preview may still resolve — the decrypt/merge path calls
+  // `ConversationsProvider.updateLastMessage` and the row becomes plaintext —
+  // so a preview must not accuse a row that is merely waiting for the pass.
+  if (content == kEncryptedPlaceholderLabel) {
+    return AppLocalizations.of(context).encryptedMessage;
+  }
+  return null;
 }
