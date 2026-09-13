@@ -65,6 +65,11 @@ const String kDecryptionFailedLabel = '[Decryption failed]';
 const String kEncryptedPlaceholderLabel = '[encrypted]';
 const String kRetiredMessageLabel = '[Message no longer stored on this device]';
 
+/// Written when a send is attempted with no E2E stack ready. A sentinel like
+/// the three above, so it gets a named constant like them — matching it by
+/// hand is what let it reach a bubble raw (live QA 2026-08-31).
+const String kEncryptionNotInitializedLabel = '[Encryption not initialized]';
+
 /// A row the server marked `none_for_device` (spec §5.3 + §12 amendment
 /// (viii)): it predates this device's link, so no envelope exists for it and
 /// nothing can be decrypted. Distinct from `[Decryption failed]` on purpose —
@@ -171,6 +176,32 @@ class MessagingProvider extends ChangeNotifier {
   /// recipient an undecryptable duplicate. Released on send failure (so user
   /// retry works); cleared on connect/logout with [_pendingSendContent].
   final Set<String> _emittedSendTempIds = {};
+
+  /// tempIds whose LAST send attempt was refused by the account-anchor gate
+  /// (`AccountIdentityMismatch`, amendments (xxxix)/(lv)).
+  ///
+  /// Per-ROW on purpose. The peer-level `peersRefusedIdentity` answers "is a
+  /// ceremony outstanding for this chat", which is NOT the same question as
+  /// "is THIS row the one that bounced on it": a timeout, a dropped socket or
+  /// an "Image too large" refusal in the same chat would otherwise be
+  /// explained to the user as a key change. Rewritten on every attempt for
+  /// that tempId, so a retry that fails differently re-labels itself.
+  final Set<String> _identityRefusedSendTempIds = {};
+
+  /// True when [tempId]'s last send attempt was refused by the account-anchor
+  /// gate. Read by the failed bubble to decide whether it may name the cause.
+  bool sendRefusedForIdentity(String? tempId) =>
+      tempId != null && _identityRefusedSendTempIds.contains(tempId);
+
+  /// Test-only: record the same per-row verdict the send path writes when
+  /// `buildSession` throws `AccountIdentityMismatch`
+  /// (`messaging_provider.send.dart`, in the `_encryptAndSend` catch). A screen
+  /// test cannot reach that throw without a full E2E stack, so the seam exists
+  /// to drive the RENDER decision; the throw-to-flag classification itself is
+  /// three lines beside the diag record at the catch.
+  @visibleForTesting
+  void markSendRefusedForIdentityForTest(String tempId) =>
+      _identityRefusedSendTempIds.add(tempId);
 
   /// The `sendToken` minted per tempId (spec §5.4 + §12 amendment (ix)).
   ///
@@ -613,6 +644,7 @@ class MessagingProvider extends ChangeNotifier {
       _pendingEdits.clear();
       _pendingSendContent.clear();
       _emittedSendTempIds.clear();
+      _identityRefusedSendTempIds.clear();
       _sendTokenByTempId.clear();
       _staleResendAttempts.clear();
       _staleResendTempIds.clear();
@@ -640,6 +672,7 @@ class MessagingProvider extends ChangeNotifier {
       _pendingSendContent
           .clear(); // retry was cancelled; orphaned entries serve no purpose
       _emittedSendTempIds.clear();
+      _identityRefusedSendTempIds.clear();
       _sendTokenByTempId.clear();
       _staleResendAttempts.clear();
       _staleResendTempIds.clear();
@@ -688,6 +721,7 @@ class MessagingProvider extends ChangeNotifier {
     _rebuildRequestedPeers.clear();
     _pingEffectFiredIds.clear();
     _emittedSendTempIds.clear();
+    _identityRefusedSendTempIds.clear();
     _sendTokenByTempId.clear();
     _staleResendAttempts.clear();
     _staleResendTempIds.clear();

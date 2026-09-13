@@ -1,6 +1,9 @@
-// The bubble BODY renders through `TextMessageContent._displayBody`, not
-// `messageDisplayContent`, so a sentinel it does not map reaches the user raw
-// (live QA 2026-08-31 saw exactly that). This file pins the body path itself.
+// The bubble BODY renders through `TextMessageContent._displayBody`, which
+// since 0.2.43 delegates to the shared `sentinelDisplayText` — the same
+// mapping `messageDisplayContent` uses, so the two surfaces can no longer
+// disagree (they did: live QA 2026-08-31 saw the body print a sentinel raw
+// while the long-press replica localized it). This file pins the body path
+// itself, which is what a user actually reads.
 // The pre-link sentinel no longer reaches a bubble at all — amendment (lxxxi)
 // hides those rows at `MessagingProvider.messages`.
 

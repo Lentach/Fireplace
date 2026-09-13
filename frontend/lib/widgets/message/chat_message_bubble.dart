@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/conversations_provider.dart';
 import '../../providers/encryption_provider.dart';
 import '../../providers/messaging_provider.dart';
 import '../../providers/settings_provider.dart';
@@ -32,14 +31,34 @@ class ChatMessageBubble extends StatelessWidget {
   final MessageModel message;
   final bool isMine;
 
+  /// True when the account-anchor gate is still refusing sends to this chat's
+  /// peer (`EncryptionProvider.peersRefusedIdentity`), i.e. the fingerprint
+  /// ceremony is outstanding.
+  ///
+  /// Passed in rather than derived here. `ChatDetailScreen` already computes
+  /// it with a `context.select` from state it owns (`:1000-1004`), and it is
+  /// the ONLY construction site — re-deriving it inside the bubble meant
+  /// walking `ConversationsProvider` to find the peer, which also silently
+  /// skipped the subscription whenever the conversation had not loaded yet.
+  final bool peerRefusedIdentity;
+
   const ChatMessageBubble({
     super.key,
     required this.message,
     required this.isMine,
+    this.peerRefusedIdentity = false,
   });
 
-  String _displayContent(BuildContext context) =>
-      messageDisplayContent(context, message, isMine: isMine);
+  String _displayContent(BuildContext context) => messageDisplayContent(
+    context,
+    message,
+    isMine: isMine,
+    // Must match what the BODY renders: this string also feeds the
+    // inline-vs-stacked timestamp probe, so measuring the unreadable sentence
+    // while `TextMessageContent` paints "Decrypting…" can flip that layout
+    // decision for the duration of the pass.
+    decryptInProgress: historyDecryptInFlight(context),
+  );
 
   String _replyDisplayContent(BuildContext context, ReplyToPreview replyTo) {
     final l10n = AppLocalizations.of(context);
@@ -78,27 +97,20 @@ class ChatMessageBubble extends StatelessWidget {
     );
   }
 
-  /// True when the account-anchor gate is REFUSING sends to this chat's peer.
+  /// True when THIS row may tell the user their peer's keys changed.
   ///
-  /// `peersRefusedIdentity` is written by the send path itself when
-  /// `buildSession` throws `AccountIdentityMismatch` ((xxxix)/(lv)), so this is
-  /// the recorded reason the row bounced, not a guess correlated after the
-  /// fact. It is also what un-gates the red pill, so the sentence below and the
-  /// pill that fixes it appear and disappear together.
-  ///
-  /// Read, not selected, for the conversation lookup: the peer of an open 1:1
-  /// chat does not change under us, and the refusal set IS selected, so the
-  /// row still rebuilds the moment the anchor advances.
-  bool _sendRefusedForIdentity(BuildContext context) {
-    final conv = context.read<ConversationsProvider>().getConversationById(
-      message.conversationId,
-    );
-    if (conv == null) return false;
-    final peerId = context.read<ConversationsProvider>().getOtherUserId(conv);
-    return context.select<EncryptionProvider, bool>(
-      (e) => e.peersRefusedIdentity.contains(peerId),
-    );
-  }
+  /// Two conditions, and both are load-bearing:
+  ///  * the row's own last send attempt was refused by the account-anchor gate
+  ///    (`AccountIdentityMismatch`, recorded per tempId by the send path) — so
+  ///    a timeout or an "Image too large" bounce in the same chat is not
+  ///    explained away as a key change;
+  ///  * the ceremony is STILL outstanding ([peerRefusedIdentity]) — once the
+  ///    user has compared fingerprints the remedy really is just "Retry", and
+  ///    repeating the instruction would send them back through a ceremony they
+  ///    already completed.
+  bool _mayNameTheRefusal(BuildContext context) =>
+      peerRefusedIdentity &&
+      context.read<MessagingProvider>().sendRefusedForIdentity(message.tempId);
 
   void _openContextMenu(BuildContext context) {
     final messaging = context.read<MessagingProvider>();
@@ -114,11 +126,17 @@ class ChatMessageBubble extends StatelessWidget {
       bubbleRenderBox: renderBox,
       isMine: isMine,
       currentUserId: auth.currentUser?.id,
+      // `decryptInProgress` is captured HERE, where providers are in scope,
+      // and handed over as a plain field: the replica itself stays
+      // provider-free (it mounts in an Overlay), but it must not disagree with
+      // the bubble underneath it. Without this an own `[encrypted]` row read
+      // "Decrypting…" in the bubble and "can't be read" in the overlay.
       bubblePreviewBuilder: (_) => MessageContextMenuBubbleHighlight(
         message: message,
         isMine: isMine,
         maxWidth: bubbleSize.width,
         themePreference: themePreference,
+        decryptInProgress: historyDecryptInFlight(context, listen: false),
       ),
       onReply: () => messaging.setReplyingTo(message),
       onCopy: !message.hasCopyablePlaintext
@@ -192,7 +210,7 @@ class ChatMessageBubble extends StatelessWidget {
             if (retryBtn == null) return const SizedBox.shrink();
             // "Retry" alone is a trap here: while the anchor is stale every
             // attempt fails the same way, so the row has to name the remedy.
-            final refused = _sendRefusedForIdentity(ctx);
+            final refused = _mayNameTheRefusal(ctx);
             return Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: isMine
@@ -206,9 +224,16 @@ class ChatMessageBubble extends StatelessWidget {
                     child: Text(
                       AppLocalizations.of(ctx).messageSendBlockedKeysChanged,
                       textAlign: isMine ? TextAlign.end : TextAlign.start,
+                      // The bubble's OWN text color, not `colorScheme.error`:
+                      // painted on the sent-bubble fill, error red lands on a
+                      // saturated blue in the blue/cosmic themes and a whole
+                      // wrapped paragraph of it is unreadable (seen, §9 loop).
+                      // The red retry button right below still carries the
+                      // error signal; weight carries the emphasis here.
                       style: RpgTheme.bodyFont(
                         fontSize: 12,
-                        color: Theme.of(ctx).colorScheme.error,
+                        color: textColor,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),

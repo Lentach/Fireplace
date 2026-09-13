@@ -151,6 +151,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     required MessageModel msg,
     required bool showDate,
     required bool isMine,
+    // Computed once in build() with a `context.select` (`:1000`): the bubble
+    // must not re-derive it, which would mean walking ConversationsProvider
+    // for the peer and silently skipping the subscription before that list
+    // has loaded.
+    required bool peerRefused,
   }) {
     final scrollKey = listIndex == _scrollTargetListIndex
         ? (_scrollTargetKey ??= GlobalKey())
@@ -160,7 +165,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
       children: [
         if (showDate) MessageDateSeparator(date: msg.createdAt),
         if (showDate) const SizedBox(height: 8),
-        ChatMessageBubble(message: msg, isMine: isMine),
+        ChatMessageBubble(
+          message: msg,
+          isMine: isMine,
+          peerRefusedIdentity: peerRefused,
+        ),
       ],
     );
     if (scrollKey == null) return bubble;
@@ -699,6 +708,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     required Color messagesAreaBg,
     required UserModel? peer,
     required bool peerIdentityChanged,
+    required bool peerRefused,
     required bool peerKeyChangeNoted,
     required int currentUserId,
   }) {
@@ -850,6 +860,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                         msg: msg,
                         showDate: showDate,
                         isMine: msg.senderId == currentUserId,
+                        peerRefused: peerRefused,
                       );
                     },
                   ),
@@ -1121,6 +1132,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
               currentUserId: currentUserId,
               peer: otherUser,
               peerIdentityChanged: peerIdentityChanged,
+              peerRefused: peerRefused,
               peerKeyChangeNoted: peerKeyChangeNoted,
             ),
           ),
@@ -1153,6 +1165,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                 currentUserId: currentUserId,
                 peer: otherUser,
                 peerIdentityChanged: peerIdentityChanged,
+                peerRefused: peerRefused,
                 peerKeyChangeNoted: peerKeyChangeNoted,
               ),
               composer: composerFooter,

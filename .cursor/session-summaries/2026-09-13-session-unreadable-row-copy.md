@@ -22,13 +22,24 @@
   `SettingsProvider.keyChangeWarnings`** — membership in `peersWithChangedIdentity` IS "every
   send to this peer fails closed", so the ceremony door must precede composing. The muted
   (lxxix) note is suppressed automatically. Full reasoning: `e2e-invariants.md` bullet 26.
-- **A bounced row now names the refusal**: with the peer in `peersRefusedIdentity`,
-  `messageSendBlockedKeysChanged` sits above the retry button, because while the anchor is stale
-  every retry fails identically. An ordinary failure still shows "Ponów" ALONE (`e2e-invariants.md`
-  bullet 27).
-- **Root cause of the bare "Ponów", found and documented, NOT wired:** `_markMessageFailed`
-  discards its `errorMsg` argument at all ~15 call sites, so every reason the send path computes
-  reaches nobody — and those strings are unlocalized English (`traps.md` § E2E).
+- **A bounced row now names the refusal** instead of offering a retry that cannot succeed. It
+  takes TWO conditions — that row's own `AccountIdentityMismatch` verdict AND an outstanding
+  ceremony — so an ordinary failure still shows "Ponów" ALONE (`e2e-invariants.md` bullet 27).
+  Root cause of the bare "Ponów": `_markMessageFailed` discards its `errorMsg` argument at all
+  ~15 call sites, so every reason the send path computes reaches nobody, and those strings are
+  unlocalized English — documented in `traps.md` § E2E, deliberately NOT wired.
+- **A two-axis review (Standards + Spec, parallel reviewers, `4ffd595...HEAD`) found real defects;
+  all fixed in the same session.** Worst one: the reason was keyed on the PEER alone, so a
+  timeout or "Image too large" bounce in a chat awaiting the ceremony was explained as a key
+  change — it now also needs THAT row's own `AccountIdentityMismatch` verdict. Also: the bubble
+  no longer re-derives the peer (its early return skipped the subscription), the long-press
+  replica no longer defaults `decryptInProgress`, `[Encryption not initialized]` got a constant,
+  and the renamed pill test that stopped discriminating was deleted. Rationale for each:
+  `e2e-invariants.md` bullets 27 + 30, `traps.md` § E2E. Reports: `.planning/review-0.2.43/`.
+- **§9 visual loop closed, and it caught what no test would.** The real bubble painted in all five
+  themes showed `colorScheme.error` unreadable as a wrapped paragraph on the saturated blue sent
+  fill (blue/cosmic); it now uses the bubble's own text color at `w600`, with the red retry button
+  still carrying the error signal. Throwaway harness + goldens deleted.
 - Two new ARB keys (+ the `decryptionFailed` retirement below). The blocked-send sentence is
   deliberately DIRECTION-FREE ("the red warning in this chat", not "above"): the pill is item 0
   of a `reverse: true` list, so it renders BELOW the newest bubble — the first draft said
@@ -38,24 +49,19 @@
   exactly 14 lines, zero churn.
 
 ## Key files
-- Edited: `frontend/lib/utils/message_display_text.dart`,
-  `frontend/lib/widgets/message/text_message_content.dart`,
-  `frontend/lib/widgets/message/chat_message_bubble.dart`,
-  `frontend/lib/widgets/message/message_context_menu_bubble_highlight.dart`,
-  `frontend/lib/screens/chat_detail_screen.dart`,
-  `frontend/lib/providers/messaging_provider.dart` (+ `.decrypt`, `.history`, `.events` parts —
-  rename only), `frontend/lib/l10n/app_{en,pl}.arb` (+ generated),
-  `frontend/lib/services/encryption_service.dart` (comment only),
-  `frontend/pubspec.yaml` (0.2.43), `CLAUDE.md` (test count),
-  `scripts/dart-lint-baseline.json` (floor 3174 → 3173),
-  `frontend/docs/e2e-invariants.md`, `docs/runbooks/e2e-decryption-failed.md`,
-  `docs/runbooks/android-release.md`, `docs/agents/traps.md`, `LATEST.md`.
+- Core: `frontend/lib/utils/message_display_text.dart` (the shared mapping),
+  `widgets/message/{text_message_content,chat_message_bubble,message_content_factory,
+  message_context_menu_bubble_highlight}.dart`, `screens/chat_detail_screen.dart`,
+  `providers/messaging_provider.dart` (+ `.send` part), `lib/l10n/app_{en,pl}.arb` (+ generated).
+- Contracts/versions: `frontend/pubspec.yaml` (0.2.43), `CLAUDE.md` (test count),
+  `scripts/dart-lint-baseline.json` (3174 → 3173). Full list: `git show --stat`.
+- Docs: `frontend/docs/e2e-invariants.md`, `docs/agents/traps.md`,
+  `docs/runbooks/{e2e-decryption-failed,android-release}.md`, `LATEST.md`.
 - Tests: `frontend/test/widgets/message/decrypting_label_test.dart` (+4),
   `frontend/test/utils/message_display_text_test.dart` (own vs peer `[encrypted]`),
-  `frontend/test/screens/chat_detail_identity_row_test.dart` (+2 for the bounced-row reason and
-  its falsification; the alarmed-peer case at :244 re-pointed and retitled "supersedes F11", and
-  one rename at :408 — the F11 case at :391 itself is UNTOUCHED, so do not go hunting for a
-  modified F11).
+  `frontend/test/screens/chat_detail_identity_row_test.dart` (+3 bounced-row cases, −1 pill case
+  that stopped discriminating; the alarmed-peer case at :244 retitled "supersedes F11" — the F11
+  case itself is UNTOUCHED, so do not hunt for a modified F11).
 
 ## Verification
 - `flutter test` **2119 passed / 14 skipped / 0 failed** (was 2112); `CLAUDE.md` §3 updated and
@@ -64,18 +70,12 @@
   CAUGHT a +1 I introduced (a misplaced import → `directives_ordering`); sorting that block
   properly cleared a pre-existing finding too, so the floor went 3174 → **3173**
   (`scripts/dart-lint-baseline.json` updated in the same commit).
-- **Falsified the new behaviour:** `sed`-mutated both `messageUnreadableOnThisDevice` returns to
-  `content` → 3 tests red (terminal-failure, own-row, and the leak assertion); and flipped the
-  bounced-row gate to `if (!refused)` → both new cases red in OPPOSITE directions (the refused
-  row lost its sentence, the ordinary one gained it). Restored green each time; `git diff`
-  confirmed no mutant and no backup left on disk.
-- **The suite caught a regression I introduced TWICE**: hoisting `AppLocalizations.of(context)` to
-  the top of the mapping made a plain-text bubble require a localizations ancestor it never
-  needed, crashing `bubble_redesign_test.dart` on a null check — once in `_displayBody`, again
-  after the mapping moved into `sentinelDisplayText`. Fixed at the cause both times (lazy
-  per-branch lookup), never by adding delegates to the test.
+- **Both new behaviours mutation-falsified** (sentinel relabel → 3 red; bounced-row gate flipped
+  → both cases red in opposite directions), and the suite caught two regressions I introduced
+  mid-session. Full narrative, including the §9 visual loop and what it found:
+  `.planning/review-0.2.43/findings.md`.
 - **NOT verified on a device.** Everything here is widget-level; no emulator run, no prod. The
-  0.2.43 strings have never been seen on a phone.
+  0.2.43 strings have never been seen on a phone, and the distributable APK `7818786…` is 0.2.42.
 
 ## Notes for next session
 - **REVIEW WANTED on the pill gate.** It re-points the alarmed-peer falsification of amendment
@@ -84,13 +84,12 @@
   demoted change was absorbed, which is false when the anchor did not advance (field-observed
   2026-09-13). The absorbed shape still has its own case (`alarmed: false` → note, no pill). If
   the owner disagrees, revert `chat_detail_screen.dart` only — nothing else depends on it.
-- **Deliberately NOT done:** rewriting `_demoteKeyChangeIfMuted` to skip the note when the anchor
-  did not advance. It broke 5 service tests including falsifications F47/F48, i.e. it rewrites
-  spec (lxxix) itself. Unnecessary — the screen already suppresses the note when the pill shows.
-- **WITHDRAWN proposal:** parking a blocked message and auto-sending after confirmation. The
-  durable pending-send record is written at `SEND_EMIT` keyed by the emitted ciphertext, and
-  `AccountIdentityMismatch` fails BEFORE encryption — so this would need a NEW store holding
-  unencrypted message text at rest. Owner call, not plumbing.
+- **Deliberately NOT done:** rewriting `_demoteKeyChangeIfMuted`. It broke 5 service tests
+  including falsifications F47/F48, i.e. it rewrites spec (lxxix) itself — and it is unnecessary,
+  since the screen already suppresses the note whenever the pill shows.
+- **WITHDRAWN proposal:** parking a blocked message and auto-sending after confirmation — it
+  would need a NEW store holding unencrypted message text at rest, a different security posture.
+  Owner call; reasoning in `.planning/review-0.2.43/findings.md`.
 - **Owner copy decision left open:** `_markMessageFailed` throws away the reason at ~15 call
   sites. The identity refusal is now rendered from live state, but the other ~14 (media too
   large, upload failed, connection reset…) still show a bare "Ponów", and their existing strings

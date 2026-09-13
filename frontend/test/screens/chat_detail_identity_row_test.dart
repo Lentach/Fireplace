@@ -132,6 +132,10 @@ Future<_AlarmedEncryption> _pumpChat(
   int messagesConversationId = 10,
   // Seeds one OWN row stuck on `failed`, i.e. a send that already bounced.
   bool failedOwnRow = false,
+  // Whether THAT row's last send attempt was the one the account-anchor gate
+  // refused. Independent of [refused] on purpose: a chat can be awaiting the
+  // ceremony while a given row bounced on something else entirely.
+  bool rowRefusedForIdentity = false,
 }) async {
   SharedPreferences.setMockInitialValues({
     'key_change_warnings': keyChangeWarnings,
@@ -165,6 +169,9 @@ Future<_AlarmedEncryption> _pumpChat(
       }),
   ]);
   messaging.loadCachedMessages(10);
+  if (failedOwnRow && rowRefusedForIdentity) {
+    messaging.markSendRefusedForIdentityForTest('temp-1003');
+  }
 
   final auth = AuthProvider()..setAccessTokenForTest(_currentUserJwt);
 
@@ -413,26 +420,6 @@ void main() {
     expect(find.byType(PeerIdentityChangedRow), findsNothing);
   });
 
-  testWidgets('an alarmed peer gets the pill and never the muted note',
-      (tester) async {
-    await _pumpChat(
-      tester,
-      alarmed: true,
-      // A note may coexist in storage; the pill always wins. Since the gate
-      // came off (0.2.43) the setting no longer discriminates — the
-      // "supersedes F11" case pins this same precedence with warnings OFF.
-      noted: true,
-      keyChangeWarnings: true,
-      withMessages: true,
-    );
-
-    expect(find.byType(PeerIdentityChangedRow), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('peer-identity-changed-note')),
-      findsNothing,
-    );
-  });
-
   testWidgets('setting OFF with no note shows neither surface', (tester) async {
     await _pumpChat(
       tester,
@@ -495,6 +482,7 @@ void main() {
       keyChangeWarnings: false,
       withMessages: true,
       failedOwnRow: true,
+      rowRefusedForIdentity: true,
     );
     final en = await AppLocalizations.delegate.load(const Locale('en'));
 
@@ -524,6 +512,34 @@ void main() {
       findsNothing,
       reason: 'a timeout or a dropped socket IS worth retrying; blaming the '
           "peer's keys for it would send the user on a pointless ceremony",
+    );
+  });
+
+  testWidgets(
+      'a NON-identity failure in a refused chat still says only "Retry"',
+      (tester) async {
+    // The peer-level refusal answers "is a ceremony outstanding for this
+    // chat", which is NOT "is THIS row the one that bounced on it". Keying the
+    // sentence on the peer alone blamed the key change for an "Image too
+    // large" or timeout bounce in the same chat.
+    await _pumpChat(
+      tester,
+      alarmed: true,
+      refused: true,
+      keyChangeWarnings: false,
+      withMessages: true,
+      failedOwnRow: true,
+      rowRefusedForIdentity: false,
+    );
+    final en = await AppLocalizations.delegate.load(const Locale('en'));
+
+    expect(find.byType(PeerIdentityChangedRow), findsOneWidget);
+    expect(find.text(en.messageRetrySend), findsOneWidget);
+    expect(
+      find.text(en.messageSendBlockedKeysChanged),
+      findsNothing,
+      reason: 'this row did not bounce on the anchor, so it must not claim the '
+          "peer's keys are why",
     );
   });
 }

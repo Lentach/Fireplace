@@ -47,7 +47,7 @@ class MessageContentFactory {
           // content == "[encrypted]" forever (its payload is the mediaKey, not
           // text) and renders through the media widgets, so it can never pick
           // up a "Decrypting…" that would never resolve.
-          decryptInProgress: _historyDecryptInFlight(context),
+          decryptInProgress: historyDecryptInFlight(context),
         );
 
       case MessageType.ping:
@@ -73,8 +73,22 @@ class MessageContentFactory {
 /// Falls back to false when there is no [MessagingProvider] above this widget —
 /// bubbles are also rendered by previews and widget tests outside the app tree,
 /// and a missing provider must degrade to the plain sentinel rather than throw.
-bool _historyDecryptInFlight(BuildContext context) {
+///
+/// Public because every surface that renders a message body has to agree on
+/// this flag: the body itself, `ChatMessageBubble`'s layout probe, and the
+/// value handed to the provider-free long-press replica. Two of them reading
+/// it and one defaulting to false is what let the overlay contradict the
+/// bubble underneath it.
+///
+/// [listen] must be false OUTSIDE a build phase: `context.select` is only
+/// legal while the element is building, so a tap callback (the long-press menu
+/// captures the bubble's context) has to `read` instead or Provider throws
+/// "Tried to use context.select outside of the build method".
+bool historyDecryptInFlight(BuildContext context, {bool listen = true}) {
   try {
+    if (!listen) {
+      return context.read<MessagingProvider>().isDecryptingHistory;
+    }
     return context.select<MessagingProvider, bool>(
       (m) => m.isDecryptingHistory,
     );

@@ -289,10 +289,12 @@ state is knowable the moment the change arrives, and it is exactly the state in 
 fails. Before that fix the default (warnings OFF) demoted it to a calm "klucze zaktualizowane"
 note and the pill appeared only AFTER a refused send had set `peersRefusedIdentity`, so the first
 symptom a user ever saw was a message bouncing with "Ponów" and no explanation. The bounced
-bubble now names the cause too: with the peer in `peersRefusedIdentity` the row carries
-"Nie wysłano: klucze bezpieczeństwa tego kontaktu się zmieniły…" above the retry button, because
-while the anchor is stale every retry fails identically. An ordinary failure (timeout, dropped
-socket) still shows "Ponów" alone — there, retrying IS the remedy.
+bubble now names the cause too: a row whose OWN last attempt threw `AccountIdentityMismatch`
+carries "Nie wysłano: klucze bezpieczeństwa tego kontaktu się zmieniły…" above the retry button
+while the ceremony is outstanding, because until the anchor advances every retry fails
+identically. Two conditions, not one: a timeout or an "Image too large" bounce in the SAME chat
+keeps showing "Ponów" alone — there, retrying IS the remedy — and the sentence disappears once
+fingerprints are compared, leaving the plain retry.
 
 This is DESIGN, not a bug. The anchor moves only through a human confirmation (amendment (xlvi));
 the demoted auto-acknowledge can only promote a candidate this device RECORDED, and a plain

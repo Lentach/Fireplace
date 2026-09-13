@@ -1426,6 +1426,10 @@ extension MessagingSend on MessagingProvider {
       });
       return false;
     }
+    // This attempt has not been refused yet: drop any verdict the PREVIOUS
+    // attempt for this row left behind, so a retry that fails for a different
+    // reason (or succeeds) stops claiming the peer's keys changed.
+    _identityRefusedSendTempIds.remove(tempId);
 
     try {
       // 1. Fetch client-side link preview before encrypting (TEXT only).
@@ -1617,6 +1621,15 @@ extension MessagingSend on MessagingProvider {
         'error': e.toString(),
       });
       _logMediaOrphanLikely(tempId, mediaUrl);
+      // Per-ROW verdict for the failed bubble: only a row that actually
+      // bounced on the account anchor may tell the user their peer's keys
+      // changed. Classified from the THROWN error, not from the peer's
+      // standing alarm, so a timeout in a chat awaiting a ceremony keeps
+      // saying "Retry" — which is the correct remedy there.
+      if (e is AccountIdentityMismatch ||
+          e.toString().contains('AccountIdentityMismatch')) {
+        _identityRefusedSendTempIds.add(tempId);
+      }
       final String userMsg = _userFriendlySendError(e, recipientId);
       _markMessageFailed(tempId, userMsg);
       if (_isKeyBundleOrTimeoutError(e)) {

@@ -6,6 +6,7 @@ import '../providers/messaging_provider.dart'
     show
         kDecryptionFailedLabel,
         kEncryptedPlaceholderLabel,
+        kEncryptionNotInitializedLabel,
         kRetiredMessageLabel;
 
 /// The localized sentence for a row whose CONTENT is an internal sentinel, or
@@ -35,7 +36,7 @@ String? sentinelDisplayText(
   if (content == kRetiredMessageLabel) {
     return AppLocalizations.of(context).messageNoLongerStoredOnThisDevice;
   }
-  if (content == '[Encryption not initialized]') {
+  if (content == kEncryptionNotInitializedLabel) {
     return AppLocalizations.of(context).encryptionNotInitialized;
   }
   // Still working on it: it WILL resolve. Keeps the model's own predicate, so a
