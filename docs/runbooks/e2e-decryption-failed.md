@@ -41,7 +41,7 @@ were not what they claimed to be.
 | `kind:badMac` | Peer encrypting from a stale sender ratchet or session mismatch | Existing rebuild-request machinery handles it; investigate only if looping |
 | `ENCRYPT_OVERLAP` events | INFO only: proves sends were concurrent. Expected and safe under the lock | Ignore |
 | Own SENT message shows `[encrypted]` on the SENDER's device only; recipient reads it fine; NO `DECRYPT_DECISION` for it; log shows `SEND_EMIT` followed by `SOCKET_DISCONNECT` within seconds and no `RECV_MSG` echo. CAVEAT: those events live only in the in-memory ring (wiped on restart) — capture in-session, or add a durable `SEND_UNACKED` event first | **Lost `messageSent` ack** (07-08 field case, msg 14667): socket died inside the ack window, so the tempId→realId mapping never happened and the plaintext was never persisted under the real id. NOT an E2E failure — the wire was fine, the recipient got it; a Signal sender cannot decrypt its own ciphertext, so the sender's copy stays `[encrypted]`. Message content is recoverable only by resending | **FIXED (0.0.102, `fix/lost-ack-pending-send-reconcile`)**: durable pending-send records — ONE SharedPreferences key per EXACT emitted ciphertext (`e2e_${uid}_pendsend_v1_<ciphertext>`, NOT a shared JSON blob: concurrent-save RMW on one blob is the `_sessionTails` lost-update shape), written at `SEND_EMIT`, consumed on ack, TTL 72h + cap 40; history merge reconciles an own `[encrypted]` row via peek → persist under real id → VERIFY by read-back (`saveDecryptedContent` swallows failures) → take, emitting durable `SEND_ACK_RECONCILED`. Wiped by `clearAllKeys`/`clearDecryptedContentCache` (plaintext at rest); deliberately NOT cleared on reconnect. NEVER replace the exact-ciphertext matcher with heuristics: review rejected timestamp proximity because a wrong match persists the WRONG plaintext under a real id — permanent, worse than `[encrypted]` |
-| `kind:noSession` + `hadSession:false` + **`idReset:false`** on messages sent AFTER this device wiped/reinstalled and re-minted | The device re-minted its identity in an EARLIER process, so `hadIdentityReset` (an unpersisted in-memory flag) is false by the time these decrypt — the `identityReset` rule never fires | **Step 3G** |
+| `kind:noSession` + `hadSession:false` on messages sent AFTER this device wiped/reinstalled and re-minted (`rule` is `identityReset` in the process that minted, `noSession`/`badMac` in a later one) | Expected post-wipe damage, NOT a receiver bug: the pre-wipe backlog is unrecoverable, the peer IS asked to re-key, and new messages decrypt once the peer confirms your new safety number | **Step 3G** — settled, do not re-derive |
 
 **Dating rule (learned twice — msg 14149, then msgs 14389/14423):** a
 `DECRYPT_DECISION` timestamp is when the receiver ATTEMPTED the decrypt, not
@@ -214,56 +214,111 @@ resolution is the two humans confirming over another channel.
 
 ## Step 3G — everything from a peer fails after THIS device was wiped/reinstalled
 
-Signature: `peer <id> · noSession · N messages`, every row
-`DECRYPT_DECISION {kind: noSession, rule: noSession, isHistory: true, idReset: false,
-hadSession: false, persist: false, markFailed: false, retry: markHistoryPeerForRetry,
-notifyPeer: false}` — on messages the peer sent AFTER this device re-minted.
+**SETTLED 2026-09-13 — the receiver side is not the defect, and this does not kill the channel.**
+Device-proven on the 0.2.42 APK (`7818786…`, Pixel_7 AVD, prod backend) across four
+`pm clear` → re-login cycles. Read the verdict before re-deriving anything.
 
-First: `kind:noSession` with `hadSession:false` means the RECEIVER has no session to open the
-message with. It is NOT `badMac`, so "the peer encrypted to a stale identity" is ruled out.
-[INFERENCE] the peer sent a whisper (`2:`) rather than a PreKey (`3:`) — a PreKey message needs
-no prior session and would have decrypted.
+Signature: `peer <id> · noSession · N messages` on messages the peer sent AFTER this device
+re-minted. `kind:noSession` with `hadSession:false` means the RECEIVER has no session to open the
+message with; it is NOT `badMac`, so "the peer encrypted to a stale identity" is ruled out. The
+peer sent a whisper, not a PreKey — **confirmed, no longer inference**:
+`DECRYPT_START {msgId: …, ctype: 2, hasSession: true}`.
 
-**Why `idReset:false` even though the identity WAS replaced.** `hadIdentityReset` is
-`_encryptionService.needsKeyUpload` (`encryption_provider.dart:119`), a plain in-memory field
-(`encryption_service.dart:234`) that is set on mint/adopt (`:1223`, `:1434`, `:1666`), cleared on
-upload/reset (`:1473`, `:4296`, `:4336`) and **never persisted**. So it is false in any process
-that did not itself mint. Observed 2026-09-13 on `7818786…`:
+### Verdict: the peer IS told, every time, and the channel comes back
+
+`notifyPeer: true` in every failing row observed, and the request reaches the peer at the wire
+level. Two independent emit paths cover the two process shapes:
+
+| Process that decrypts | rule | emit path |
+|---|---|---|
+| the one that MINTED (reinstall → log in → open chat) | `identityReset` | immediate `requestSessionRebuild` (`messaging_provider.decrypt.dart:1546-1557`) |
+| a LATER one (FCM-woken, cold start) | `noSession` / `badMac` | `_retryDecryptForPeers` → `_requestSessionRebuildForPeer` → durable `SESSION_RESET` (`:1149-1168`, `:467-491`) |
+
+Backend relays it as `sessionRebuildNeeded {fromUserId}` **and remembers it**, replaying to a
+recipient that connects later (`chat-key-exchange.service.ts:1090-1103`, `:1021`) — so an offline
+peer still gets it. Observed rows:
 
 ```
-pid 11214  04:26:50  IDENTITY_MINTED {reason: server-bundle-unlocked-remint}   <- flag set here
-           (app killed; FCM wakes a NEW process)
-pid 11694  04:28:08  [E2E] Re-uploaded key bundle on connect   <- the ELSE of if(needsKeyUpload)
-pid 11694  04:28:09  DECRYPT_DECISION ... idReset: false       <- flag was never true here
+05:06:00 IDENTITY_MINTED {userId: 123, reason: server-bundle-unlocked-remint}
+05:07:10 DECRYPT_DECISION {msgId: 24332, kind: noSession, rule: identityReset, isHistory: true,
+         idReset: true, hadSession: false, persist: false, markFailed: true, retry: none,
+         notifyPeer: true}
+05:14:30 DECRYPT_DECISION {msgId: 24332, kind: badMac, rule: badMac, idReset: false,
+         hadSession: true, notifyPeer: true}        <- later process, session now exists
+05:14:30 SESSION_RESET {peerId: 124, trigger: badMac}
 ```
 
-`decideDecryptionFailure` (`utils/decryption_failure_policy.dart:132-153`) therefore takes the
-`noSession` branch, not `identityReset` (`:135-142`) — so the **immediate** `notifyPeerRebuild`
-(`messaging_provider.decrypt.dart:1546-1549`) is skipped. A re-mint followed by any app restart —
-i.e. every reinstall — is invisible to that policy.
+plus, on a socket joined to the PEER's own user room: `<- sessionRebuildNeeded {"fromUserId":123}`.
 
-⚠️ **Do not conclude "the peer was never told."** `_retryDecryptForPeers`
-(`messaging_provider.decrypt.dart:1149-1168`) separately calls `_requestSessionRebuildForPeer`
-once per pass for every peer with rows still needing decryption, and `noSession` leaves
-`markFailed:false`, so those rows qualify. Settle which it is before assigning an owner:
+**`idReset` correction (the 2026-07/09 write-ups had this wrong).** `hadIdentityReset` is
+`_encryptionService.needsKeyUpload` (`encryption_provider.dart:119`), an in-memory field
+(`encryption_service.dart:234`) set on mint/adopt (`:1223`, `:1434`, `:1666`) and **never
+persisted**. The bundle upload does NOT clear it — `encryption_provider.dart:1469` only READS it;
+the only clear sites are `:1473` (link-identity discard), `:4296` and `:4336` (clearAllKeys /
+reset). So it stays TRUE for the whole lifetime of the minting process, and the ordinary
+reinstall sequence takes the `identityReset` branch. `idReset:false` appears only in a process
+that did not itself mint (`E2E_INIT_DONE {needsKeyUpload: false}`) — which is what the first
+2026-09-13 observation caught, via FCM.
 
-1. On the receiver, look for `SESSION_RESET` / a rebuild request for that peer in the same pass.
-2. On the sender (web), check whether the request arrived and whether
-   `sig_e2e_<uid>_session_<peer>_<device>` was REPLACED after it.
+**Do NOT build the proposed durable "identity replaced; peer N not yet re-keyed" marker.**
+`OWN_IDENTITY_REPLACED` is already recorded durably, both emit paths already fire, and the missed
+classification costs nothing observable. There is no receiver-side fix to make here.
 
-- Request emitted, peer ignored it → sender-side bug.
-- Request never emitted → the missed `identityReset` classification above is the defect; the fix
-  shape is a DURABLE "identity replaced; peer N not yet re-keyed" marker (`OWN_IDENTITY_REPLACED`
-  is already recorded durably), cleared per peer on acknowledgement — not an in-memory
-  upload-pending flag.
+### What actually blocks the conversation: the SENDER's account-identity anchor
+
+The peer's first send after your re-mint FAILS locally, before the wire:
+`SEND_FAIL {error: AccountIdentityMismatch: the bundle served for userId=… deviceId=1 carries an
+identity key that is not the account's}` (`encryption_service.dart:1864-1872`). Their UI shows
+"Ponów" plus the red `PeerIdentityChangedRow` pill ("Klucze … się zmieniły. Dotknij, aby
+sprawdzić") — the refusal un-gates that pill even with key-change warnings OFF (the default).
+
+This is DESIGN, not a bug. The anchor moves only through a human confirmation (amendment (xlvi));
+the demoted auto-acknowledge can only promote a candidate this device RECORDED, and a plain
+server event stages none — `_demoteKeyChangeIfMuted` says so explicitly
+(`encryption_service.dart:306-319`), producing
+`PEER_IDENTITY_ACKNOWLEDGED {anchorAdvanced: false, source: pending_candidate}`. Auto-advancing
+there would let the server swap a peer's identity key with nobody ever comparing a number.
+
+After the peer taps the pill → "Odciski się zgadzają"
+(`PEER_IDENTITY_ACKNOWLEDGED {anchorAdvanced: true, source: displayed_candidate}`) → "Ponów",
+the message is delivered and **decrypts LIVE on the wiped device** (verified twice: 05:10 and
+05:23 rows, phone in the foreground in that chat).
+
+Two things that look like fixes and are not:
+
+- **Having the wiped device send first does NOT spare the peer.** Tested: the phone's PreKey
+  message decrypted on the peer, and the peer's reply STILL bounced with
+  `AccountIdentityMismatch`. The outbound path validates the anchor regardless of an existing
+  session.
+- **A recovery phrase only helps an ENROLLED account.** With linking OFF (the default) a keyless
+  login re-mints silently and never asks for the phrase, even when the account has one
+  (device-proven: `Generating new keys (fresh install)` with a phrase on file). With linking ON
+  the reinstall meets the device-link gate, which offers "Mam frazę odzyskiwania" → same identity
+  restored (`Loaded existing keys from storage`, no own-identity banner) → no peer sees a key
+  change and no confirmation is needed.
+
+### Live (socket) path
+
+No longer "not verified", but note what was actually observed: after the re-mint, **both** live
+post-heal messages DECRYPTED, so the live path never produced a failure row to mis-flag. Every
+failing row in every cycle was `isHistory: true`. `decideDecryptionFailure` differs only in the
+retry action for the live case (`scheduleLiveRetry` → `_runLiveDecryptRetries` →
+`_retryDecryptForPeers`, same `_requestSessionRebuildForPeer`), so the notify is covered there too.
+
+### Known rough edge after a phrase restore (separate, unfixed)
+
+The restore REBINDS the device id. A peer client already open keeps sending to the old one —
+`SEND_FAIL {error: Bad state: Recipient has no key bundle (userId=…, deviceId=1)}` for ~90 s of
+retries — and the restored device's first message sits as `[encrypted]` on their side (accept-side
+gate withholding an unverified origin). ONE reload/restart of the peer app clears both. Owner call
+pending on whether the inbound envelope should refresh the verified device list sooner.
 
 Repro (~15 min, prod): two throwaway accounts, exchange a message each way, then on the phone
 `adb shell pm clear com.fireplace.app`, relaunch and log back in — on an UN-ENROLLED account any
 keyless login re-mints (`encryption_service.dart:1201-1208`); an ENROLLED one gates instead
 (`:1166`), so use an un-enrolled account here. Then send peer → phone. Delete the accounts after.
-
-Not verified as of 2026-09-13: whether the LIVE (socket) path mis-flags the same way — every
-observed row was `isHistory:true`.
+**`pm clear` wipes the durable ring: read it with the hacker-mode panel's Copy button, which
+lands on the Windows clipboard through the emulator's clipboard sync, BEFORE clearing.**
 
 ## The 2-min persistence test (still not run as of 2026-07-07)
 

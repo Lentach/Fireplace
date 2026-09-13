@@ -315,6 +315,10 @@ Two starting states, and they do NOT behave the same:
    then clobber each other's identity epoch on every reconnect: a permanent flip-flop that burns
    both sides' prekeys and spams identity notices. **Enable linking on the web FIRST, then link the
    phone.** Never install-and-log-in on an un-enrolled account while the PWA is still live.
+   **A recovery phrase does NOT protect an un-enrolled account** (device-proven 2026-09-13): with
+   12 words saved but linking off, `pm clear` → log in re-mints silently
+   (`Generating new keys (fresh install)`) and never offers the restore door. The phrase becomes
+   usable only once linking is on, because the door lives on the device-link gate.
 
 History does NOT transfer on link (Phase 4 "history-on-link" is unbuilt, §9): the phone starts
 empty and fills from new traffic. Old history stays readable on the device that already has it.
@@ -353,6 +357,37 @@ the other's), and the comparison code is a **6-digit number, not words**. Use EX
 
 A Play listing must state **up to 3 devices per account, and adding one needs the first device in
 hand** — the old "one account, one device" claim must not ship.
+
+## What a reinstall / "Clear storage" costs — SETTLED 2026-09-13, NOT a ship-blocker
+
+Device-proven on the shippable 0.2.42 APK (`7818786…`, Pixel_7 AVD, prod) across four
+`pm clear` → re-login cycles. Mechanism, durable diag rows and the ruled-out fixes are in
+`docs/runbooks/e2e-decryption-failed.md` **Step 3G**. The short version:
+
+- **The channel always comes back. The backlog never does.** Everything a friend sent that the
+  phone had not already decrypted stays `[Decryption failed]` forever; your own sent copies show
+  `[encrypted]`.
+- **Our side self-heals unprompted:** the first failing decrypt after a re-mint asks the peer to
+  re-key (`notifyPeer: true`), the server replays that request to a peer that reconnects later,
+  and once the peer re-keys every message from then on decrypts — verified live, in the
+  foreground, twice.
+- **The friend pays exactly one manual step**, by design (anti-MITM anchor, amendment (xlvi)):
+  their first send bounces with "Ponów" and a red "Klucze … się zmieniły. Dotknij, aby sprawdzić"
+  pill until they tap it and confirm "Odciski się zgadzają". Sending them a message first does
+  NOT spare them this.
+- **The way to avoid all of it:** linked devices ON + the 12 words on paper. Then a reinstall
+  meets the gate's "Mam frazę odzyskiwania", the SAME identity comes back, and no peer sees a key
+  change. With linking off the login re-mints silently and never asks for the phrase.
+
+Add this to the friend-facing text:
+
+> If you ever reinstall Umbra or use "Clear storage" on the phone, the messages already on it are
+> gone for good — and everyone you chat with has to confirm your new security code once before
+> their messages reach you again: their app shows "Klucze … się zmieniły. Dotknij, aby sprawdzić"
+> and their first message to you bounces with "Ponów" until they tap it and confirm the codes
+> match. To avoid that entirely: turn on linked devices, write the 12 words down on paper, and
+> after a reinstall use **"Mam frazę odzyskiwania"** instead of just logging in — that brings the
+> same keys back and nobody has to confirm anything.
 
 ## Known-not-done (tracked, do not rediscover)
 

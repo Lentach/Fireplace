@@ -1,3 +1,9 @@
+> **SETTLED 2026-09-13 (part 3) — STOP HERE.** The fork below is closed: the rebuild request IS
+> emitted and IS delivered, the receiver side has no defect, and this does NOT block the APK.
+> Verdict + evidence: `docs/runbooks/e2e-decryption-failed.md` **Step 3G** and
+> `2026-09-13-session-post-wipe-fork-settled.md`. Everything under "The discriminator, do this
+> first" and the `idReset` reasoning below is superseded.
+
 # HANDOFF — messages sent AFTER a peer wipes their device render `[Decryption failed]`
 
 **Date:** 2026-09-13 · **Version:** 0.2.42 (`633f4dd`) · **Tiers deployed:** none · **Status:**
@@ -73,49 +79,14 @@ Evidence captured on 2026-09-13 (all of it — there is no more):
 
 ## Notes for next session
 
-**The discriminator, do this first.** `[Decryption failed]` covers two different bugs with
-different owners:
+**All superseded — nothing here is open.** The discriminator instructions, the `idReset`
+reasoning, the repro recipe, the tooling notes and the acceptance criteria that used to fill this
+section were answered on 2026-09-13 (part 3). Their conclusions now live where they get read:
 
-1. `NoSessionException` / receiver-side — the phone cannot accept the inbound message (e.g. it
-   is a whisper `2:` into a session the phone no longer has, instead of a PreKey `3:`).
-2. bad-MAC / `InvalidMessageException` — the **web encrypted to the STALE identity** despite
-   showing the note, i.e. the sender never rebuilt the session.
-
-Get it from `adb logcat -s flutter:V` on a fresh repro, and cross-check the durable in-app log
-`E2ePersistentDiag` (`e2e_diag_persist_v1`, shown/copied in the Privacy & Safety hacker-mode
-panel) — it survives restarts and ring eviction. On the **web** side, check in DevTools whether
-`sig_e2e_<uid>_session_<peerId>_<deviceId>` was actually REPLACED after the note appeared, and
-whether `sig_e2e_<uid>_trusted_identity_<peerId>_<deviceId>` holds the new key. Also check the
-ciphertext prefix the phone received (`3:` PreKey vs `2:` whisper) — that alone nearly settles it.
-
-**Repro recipe (~15 min).**
-1. Two FRESH throwaway accounts on prod (the previous pair was deleted; see the credential
-   warning below). Registration throttles **10 per 15 min per IP**.
-2. Befriend them, exchange one message each way, confirm both decrypt.
-3. On the phone: `adb shell pm clear com.fireplace.app`, relaunch, log back in (re-mints).
-4. Wait for the web peer to show the key-change note.
-5. Send web → phone. If it renders `[Decryption failed]`, you have the repro; capture logcat on
-   the phone AND the session-record state on the web in the same minute.
-
-**Environment / tooling that already works.**
-- Emulator: AVD `Pixel_7`; APK `0.2.42` versionCode 20042, SHA256 `7818786…`, built from
-  `633f4dd` (CI 6/6 green). Install with `adb install -r`.
-- Release builds set `FLAG_SECURE`: `screencap` fails, but **`uiautomator dump` works** — drive
-  the phone via the a11y tree + `adb input`. Wrap dumps in a timeout; they hang during animation.
-- **Flutter WEB input resists synthetic typing** — `keyboard.type` drops all but the first char
-  and the `<textarea>` under `flt-semantics` is a proxy the composer does NOT read. Judge by
-  SCREENSHOT, and to send deterministically use the **emoji picker** (real Flutter code path).
-- Web app is portrait-locked: set a ~430x930 viewport, then reload.
-
-**Hard constraints.**
-- Prod is the only backend here. Use throwaway accounts and **delete them when finished**.
-- **NEVER put a working credential in a session summary** — this repo is PUBLIC and it happened
-  on 2026-09-13 (`f35ef7b`); the accounts had to be deleted to make the leak inert.
-- Shared worktree: stage by explicit path, never `git add -A`; `git diff --cached --stat` before
-  every commit. Push `git push origin HEAD:master` then the branch.
-- Read `docs/agents/traps.md` § E2E and § Android before starting; run the `umbra-session-end`
-  skill at the end.
-
-**Acceptance.** Either (a) a red-first regression test plus a fix, or (b) a written verdict that
-this is expected behaviour with the evidence that proves it — and in that case a user-facing line
-in `docs/runbooks/android-release.md` telling friends what reinstalling costs them.
+- Verdict + mechanism + the corrected `needsKeyUpload` fact + the repro recipe:
+  `docs/runbooks/e2e-decryption-failed.md` **Step 3G**.
+- What a reinstall costs a user, and the friend-facing wording:
+  `docs/runbooks/android-release.md` § "What a reinstall / Clear storage costs".
+- Standing warnings (anchor never auto-advances, sending first does not help, a phrase is inert
+  on an un-enrolled account, the restore REBIND): `docs/agents/traps.md` § E2E.
+- Full diag dumps and the drill scripts: `.planning/post-wipe-live-fork/` (gitignored).
