@@ -242,26 +242,40 @@ void main() {
   // ---- Amendment (lxxix): the demoted surface (falsification F11) ----
 
   testWidgets(
-      'F11: setting OFF + noted peer → muted note present, red pill absent',
-      (tester) async {
+      'an UNABSORBED change surfaces the pill even with warnings OFF '
+      '(supersedes F11)', (tester) async {
+    // (lxxix) demoted a key change to one muted line, and F11 pinned that the
+    // setting was honoured even for an alarmed peer. That is right for a
+    // change the anchor ABSORBED — but a peer stays in
+    // `peersWithChangedIdentity` EXACTLY when the anchor did not advance, and
+    // then `buildSession` fails closed and every send to them is refused
+    // (`AccountIdentityMismatch`). The old gate therefore left a calm "keys
+    // updated" note in front of a chat that could not send, and the user found
+    // out only when a message bounced with "Ponów" — field-observed
+    // 2026-09-13 after a peer reinstalled.
+    //
+    // The setting chooses how an ABSORBED change is announced; it was never a
+    // licence to hide a blocked chat. The absorbed shape still has its own
+    // case below (`alarmed: false` → note, no pill).
     await _pumpChat(
       tester,
-      alarmed: true, // a standing warning must NOT surface as the pill
+      alarmed: true,
       noted: true,
       keyChangeWarnings: false,
       withMessages: true,
     );
 
     expect(
-      find.byKey(const ValueKey('peer-identity-changed-note')),
+      find.byType(PeerIdentityChangedRow),
       findsOneWidget,
-      reason: 'the demoted change renders as ONE muted system line',
+      reason: 'a stale anchor blocks sending, so the door to the ceremony must '
+          'be visible BEFORE the user composes anything',
     );
     expect(
-      find.byType(PeerIdentityChangedRow),
+      find.byKey(const ValueKey('peer-identity-changed-note')),
       findsNothing,
-      reason: 'toggle ignored → the red pill would render with the setting '
-          'off (F11)',
+      reason: 'the two surfaces stay mutually exclusive — a blocked chat must '
+          'not also claim the keys were quietly updated',
     );
   });
 

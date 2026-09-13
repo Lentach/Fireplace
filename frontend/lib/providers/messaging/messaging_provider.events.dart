@@ -501,7 +501,7 @@ extension MessagingEvents on MessagingProvider {
     _encryptionProvider?.invalidateDecryptionCache(messageId);
     final candidate = existing.copyWith(
       encryptedContent: newCipher,
-      content: _kEncryptedPlaceholderLabel,
+      content: kEncryptedPlaceholderLabel,
       editedAt: editedAt,
       // Adopt the producer of THIS ciphertext, or the decrypt below binds the
       // wrong pairwise session and fails with a Bad-MAC on a row that

@@ -487,6 +487,10 @@ class AppLocalizationsPl extends AppLocalizations {
       'Ta wiadomość nie jest już przechowywana na tym urządzeniu.';
 
   @override
+  String get messageUnreadableOnThisDevice =>
+      'Nie można odczytać tej wiadomości na tym urządzeniu.';
+
+  @override
   String get historyBeforeDeviceLinked =>
       'Historia sprzed połączenia tego urządzenia';
 

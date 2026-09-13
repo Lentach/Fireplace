@@ -3,7 +3,11 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../constants/app_constants.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
-import '../../providers/messaging_provider.dart' show kRetiredMessageLabel;
+import '../../providers/messaging_provider.dart'
+    show
+        kDecryptionFailedLabel,
+        kEncryptedPlaceholderLabel,
+        kRetiredMessageLabel;
 import '../../services/link_preview_service.dart';
 import '../../utils/linkify.dart';
 import '../../theme/rpg_theme.dart';
@@ -50,32 +54,60 @@ class _TextMessageContentState extends State<TextMessageContent> {
     if (oldWidget.message.id != widget.message.id) _expanded = false;
   }
 
-  /// The string actually shown in the bubble.
+  /// The string actually shown in the bubble. Three states, three sentences,
+  /// and NONE of them is a raw sentinel.
   ///
-  /// A cold chat entry has to Signal-decrypt every row before it can show
-  /// anything, and that takes seconds on a full page. Rendering the raw
-  /// "[encrypted]" sentinel for that whole window made a normal wait look like
-  /// a failure — the user reads "encrypted" as "this message is broken", then
-  /// watches it flip. Only rows the pass has genuinely not reached yet are
-  /// relabelled:
-  ///   * "[Decryption failed]" is TERMINAL and must never become a spinner
-  ///     that resolves to nothing;
-  ///   * once the pass ends, `decryptInProgress` is false again, so a row that
-  ///     stayed unresolved falls back to the real sentinel instead of claiming
-  ///     to still be working.
+  /// The server ships `content: "[encrypted]"` for every E2E row and the
+  /// provider writes "[Decryption failed]" when a decrypt is terminally lost.
+  /// Both are internal state that used to leak straight into the bubble, where
+  /// the user reads "encrypted" as "this message is broken" and "[Decryption
+  /// failed]" as "the app is broken" — when the truth is "the keys for this row
+  /// are gone from this device".
+  ///
+  ///   * a row the history pass has not reached yet → "Decrypting…". It WILL
+  ///     resolve, so this one keeps the model's own predicate: a row with no
+  ///     ciphertext is not waiting on the pass and must not claim to be.
+  ///   * a row whose plaintext is gone for good → an honest sentence;
+  ///   * anything else → the real content, untouched.
+  ///
+  /// Display-only. [MessageModel.content] is NEVER rewritten here:
+  /// "[Decryption failed]" is persisted for some failure kinds and the durable
+  /// plaintext cache has to keep seeing the sentinel it stored.
+  /// Resolved LAZILY, never hoisted: a plain-text bubble must keep building
+  /// without an [AppLocalizations] ancestor (`bubble_redesign_test.dart` pumps
+  /// exactly that, and hoisting the lookup crashed it on a null check).
   String _displayBody(BuildContext context) {
-    if (widget.message.content == kRetiredMessageLabel) {
+    final content = widget.message.content;
+    if (content == kRetiredMessageLabel) {
       return AppLocalizations.of(context).messageNoLongerStoredOnThisDevice;
     }
-    if (!widget.decryptInProgress) return widget.message.content;
-    // displayAsEncryptedPlaceholder is the model's own predicate: ciphertext
-    // present AND content still the "[encrypted]" sentinel. Reused rather than
-    // re-derived, so "[Decryption failed]" (terminal) and already-decrypted
-    // text are both excluded by construction.
-    if (!widget.message.displayAsEncryptedPlaceholder) {
-      return widget.message.content;
+    if (widget.decryptInProgress &&
+        widget.message.displayAsEncryptedPlaceholder) {
+      return AppLocalizations.of(context).decryptingMessage;
     }
-    return AppLocalizations.of(context).decryptingMessage;
+    // Tried and terminally lost. Safe to state outright: the post-retry sweep
+    // (`_markHistoryDecryptFailuresAfterRetry`) is what writes this label, so
+    // by the time a row carries it the pass is done with it.
+    if (content == kDecryptionFailedLabel) {
+      return AppLocalizations.of(context).messageUnreadableOnThisDevice;
+    }
+    // An OWN row is never Signal-decrypted — a sender cannot decrypt its own
+    // ciphertext — so its plaintext exists ONLY in the local cache. Once that
+    // is gone (wipe, reinstall, cache clear) no pass will ever resolve it, and
+    // it never carries the failed label because it never failed a decrypt.
+    // This is the row a user sees after reinstalling, above their own messages.
+    //
+    // Gated on the pass being idle, and deliberately NOT extended to PEER
+    // rows: a peer "[encrypted]" may simply be waiting for the pass (the frame
+    // before `decryptInProgress` goes true would flash a false "can't be
+    // read"), and an unresolved peer row is rewritten to "[Decryption failed]"
+    // by the sweep above anyway.
+    if (!widget.decryptInProgress &&
+        widget.isMine &&
+        content == kEncryptedPlaceholderLabel) {
+      return AppLocalizations.of(context).messageUnreadableOnThisDevice;
+    }
+    return content;
   }
 
   /// Builds the non-jumbo body spans: plain text + inline emoji + tappable URLs.

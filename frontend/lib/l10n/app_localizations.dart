@@ -944,6 +944,12 @@ abstract class AppLocalizations {
   /// **'Ta wiadomość nie jest już przechowywana na tym urządzeniu.'**
   String get messageNoLongerStoredOnThisDevice;
 
+  /// Replaces the raw '[encrypted]' / '[Decryption failed]' sentinels in a bubble. The row's keys are gone (this install was wiped/reinstalled, or the ratchet key was consumed), so it can never resolve — say that instead of leaking internal state the user reads as a crash.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie można odczytać tej wiadomości na tym urządzeniu.'**
+  String get messageUnreadableOnThisDevice;
+
   /// One pill at the oldest end of a thread, standing in for every row that predates this device's link (multi-device spec amendment (lxxxi)).
   ///
   /// In pl, this message translates to:

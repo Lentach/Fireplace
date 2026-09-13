@@ -975,13 +975,25 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
         : RpgTheme.textSecondaryLight;
     final otherUser = _getOtherUser();
     // Rebuilds when the peer's identity-change warning appears or clears
-    // (Phase 0a timeline row). (lxxix): the red pill renders while the user
-    // opted back into manual confirmation, and ALWAYS for a peer whose
-    // session build the account-anchor gate refused — a refusal blocks
-    // sending, so it must keep a visible door to the ceremony regardless of
-    // the setting. With warnings demoted (the default) an auto-acknowledged
-    // change renders as the muted one-shot note instead; a refused peer
-    // never gets the muted note.
+    // (Phase 0a timeline row).
+    //
+    // The pill renders whenever this device's account anchor still holds the
+    // peer's OLD key, because that state BLOCKS SENDING: `buildSession` fails
+    // closed with `AccountIdentityMismatch` until a human compares the new
+    // safety number. A peer leaves `peersWithChangedIdentity` exactly when the
+    // anchor advances (`EncryptionService.acknowledgePeerIdentity`), so
+    // membership IS "sends to this chat will fail" — and it is knowable the
+    // moment the change arrives, long before the user composes anything.
+    //
+    // It is therefore NO LONGER gated on the (lxxix) warnings setting. That
+    // setting chooses how an ABSORBED change is announced (muted note vs
+    // manual confirmation); it was never meant to hide a chat that cannot
+    // send. With warnings off (the default) a peer reinstall left a calm
+    // "klucze zaktualizowane" note and the user discovered the block only by
+    // having a message bounce with "Ponów" (field-observed 2026-09-13).
+    // `_demoteKeyChangeIfMuted` now leaves the peer in the set precisely when
+    // the anchor did NOT advance, so the muted note and this pill stay
+    // mutually exclusive.
     final warnOnKeyChange = context.select<SettingsProvider, bool>(
       (s) => s.keyChangeWarnings,
     );
@@ -993,7 +1005,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     final peerIdentityChanged =
         peerRefused ||
         (otherUser != null &&
-            warnOnKeyChange &&
             context.select<EncryptionProvider, bool>(
               (e) => e.peersWithChangedIdentity.contains(otherUser.id),
             ));

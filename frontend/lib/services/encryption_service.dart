@@ -311,9 +311,17 @@ class EncryptionService {
     await _persistKeyChangeNotes();
     // A bare acknowledge promotes the staged candidate (the local-detection
     // path stages it before firing). When nothing is staged — the plain
-    // server-event shape — nothing advances and nothing is pinned; the muted
-    // note still renders and the standing warning stays gated off the UI
-    // until the user re-enables warnings.
+    // server-event shape — nothing advances and nothing is pinned, so the peer
+    // STAYS in `_peersWithChangedIdentity`.
+    //
+    // That case no longer hides: since 2026-09-13 `chat_detail_screen` renders
+    // the actionable pill for any peer still in that set, because a
+    // non-advanced anchor makes `buildSession` fail closed and blocks every
+    // send to them. The muted note below is written either way, but the screen
+    // only shows it when the pill is absent — i.e. only for a change that
+    // actually WAS absorbed. Do not re-gate the pill on the warnings setting:
+    // that setting picks how an absorbed change is announced, not whether a
+    // chat that cannot send says so.
     await acknowledgePeerIdentity(peerId);
     onPeerIdentityChanged?.call(peerId);
   }

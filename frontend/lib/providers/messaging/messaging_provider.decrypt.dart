@@ -348,7 +348,7 @@ extension MessagingDecrypt on MessagingProvider {
   }
 
   Future<void> _persistDecryptedContent(MessageModel decrypted) async {
-    if (decrypted.content == _kDecryptionFailedLabel ||
+    if (decrypted.content == kDecryptionFailedLabel ||
         decrypted.content == '[Encryption not initialized]' ||
         decrypted.content == kRetiredMessageLabel) {
       return;
@@ -411,7 +411,7 @@ extension MessagingDecrypt on MessagingProvider {
   /// was linked" over rows it had already decrypted under its previous id.
   bool _hasUsableDecryptedContent(MessageModel msg) {
     if (_isRetiredMessage(msg) ||
-        msg.content == _kDecryptionFailedLabel ||
+        msg.content == kDecryptionFailedLabel ||
         msg.content == kNotLinkedYetMessageLabel ||
         msg.content == '[Encryption not initialized]') {
       return false;
@@ -433,7 +433,7 @@ extension MessagingDecrypt on MessagingProvider {
       return true;
     }
     if (!_needsDecryption(msg)) {
-      if (msg.content == _kEncryptedPlaceholderLabel ||
+      if (msg.content == kEncryptedPlaceholderLabel ||
           msg.displayAsEncryptedPlaceholder) {
         return false;
       }
@@ -654,7 +654,7 @@ extension MessagingDecrypt on MessagingProvider {
       final payload = persisted[row.id];
       if (payload == null) continue;
       final content = payload['content'] as String? ?? '';
-      if (content == _kDecryptionFailedLabel) continue;
+      if (content == kDecryptionFailedLabel) continue;
       final hasPayload =
           content.isNotEmpty ||
           payload['mediaUrl'] != null ||
@@ -759,13 +759,13 @@ extension MessagingDecrypt on MessagingProvider {
         // Cache-first: only skip live decrypt when cache holds real plaintext.
         final cached = _encryptionProvider?.getCachedDecryption(msg.id);
         if (cached != null) {
-          if (cached.content == _kDecryptionFailedLabel) {
+          if (cached.content == kDecryptionFailedLabel) {
             // Terminal failure cached — restore and skip without live decrypt.
             final idx = _messages.indexWhere((m) => m.id == msg.id);
             if (idx != -1 &&
-                _messages[idx].content != _kDecryptionFailedLabel) {
+                _messages[idx].content != kDecryptionFailedLabel) {
               _messages[idx] = _messages[idx].copyWith(
-                content: _kDecryptionFailedLabel,
+                content: kDecryptionFailedLabel,
               );
               changed = true;
             }
@@ -797,13 +797,13 @@ extension MessagingDecrypt on MessagingProvider {
                 persisted['messageType'] != null);
         if (hasPersistedPayload &&
             !_isEditStale(msg.editedAt, persistedEditedAt)) {
-          if (pContent == _kDecryptionFailedLabel) {
+          if (pContent == kDecryptionFailedLabel) {
             // Terminal failure persisted — restore and skip without live decrypt.
             final idx = _messages.indexWhere((m) => m.id == msg.id);
             if (idx != -1 &&
-                _messages[idx].content != _kDecryptionFailedLabel) {
+                _messages[idx].content != kDecryptionFailedLabel) {
               _messages[idx] = _messages[idx].copyWith(
-                content: _kDecryptionFailedLabel,
+                content: kDecryptionFailedLabel,
               );
               changed = true;
             }
@@ -862,7 +862,7 @@ extension MessagingDecrypt on MessagingProvider {
         // [Decryption failed] is a terminal state from a prior retry — skipping
         // prevents re-triggering deleteSessionWithPeer on every reconnect, which
         // would cascade to break decryption of all subsequent messages from this peer.
-        if (rowForDecrypt.content == _kDecryptionFailedLabel) continue;
+        if (rowForDecrypt.content == kDecryptionFailedLabel) continue;
         // No cache — live decrypt (advances session ratchet)
         final decrypted = await _decryptMessageAsyncQueued(rowForDecrypt);
         if (idx != -1) {
@@ -875,7 +875,7 @@ extension MessagingDecrypt on MessagingProvider {
           // holds its plaintext locally, so only that device restores from the
           // local store. A self-sync copy took the decrypt branch above.
           !_isSelfSyncRow(msg) &&
-          (msg.content == _kEncryptedPlaceholderLabel ||
+          (msg.content == kEncryptedPlaceholderLabel ||
               _missingEncryptedMediaKeys(msg))) {
         // Own-message branch, same batched snapshot + fall-through.
         final stored = await _persistedPlaintextFor(msg.id, persistedById);
@@ -1125,10 +1125,10 @@ extension MessagingDecrypt on MessagingProvider {
       // verified list arrives.
       if (_acceptGateWithheldIds.contains(m.id)) continue;
       if (!_hasUsableDecryptedContent(m) &&
-          m.content != _kDecryptionFailedLabel &&
+          m.content != kDecryptionFailedLabel &&
           (m.displayAsEncryptedPlaceholder ||
-              m.content == _kEncryptedPlaceholderLabel)) {
-        _messages[i] = m.copyWith(content: _kDecryptionFailedLabel);
+              m.content == kEncryptedPlaceholderLabel)) {
+        _messages[i] = m.copyWith(content: kDecryptionFailedLabel);
         changed = true;
       }
     }
@@ -1197,12 +1197,12 @@ extension MessagingDecrypt on MessagingProvider {
       // [Decryption failed] is terminal (same guard as the main history loop):
       // re-attempting it can only fail again, and the failure re-arms the
       // retry sets — that re-arming is what kept the reset loop alive forever.
-      if (row.content == _kDecryptionFailedLabel) continue;
+      if (row.content == kDecryptionFailedLabel) continue;
       final decrypted = await _decryptMessageAsyncQueued(row);
       if (idx == -1) continue;
       _messages[idx] = _mergeMessagePreferNewer(_messages[idx], decrypted);
       changed = true;
-      if (decrypted.content != _kDecryptionFailedLabel &&
+      if (decrypted.content != kDecryptionFailedLabel &&
           decrypted.content != '[Encryption not initialized]') {
         _encryptionProvider?.cacheDecryption(msg.id, _messages[idx]);
         _liveDecryptFailedPeers.remove(msg.senderId);
@@ -1540,7 +1540,7 @@ extension MessagingDecrypt on MessagingProvider {
       if (decision.persistTerminalFailure) {
         // Persist so future app starts skip this message without re-attempting.
         await _encryptionProvider?.saveDecryptedContent(msg.id, {
-          'content': _kDecryptionFailedLabel,
+          'content': kDecryptionFailedLabel,
         });
       }
       if (decision.notifyPeerRebuild) {
@@ -1575,7 +1575,7 @@ extension MessagingDecrypt on MessagingProvider {
           break;
       }
       return decision.markContentFailed
-          ? msg.copyWith(content: _kDecryptionFailedLabel)
+          ? msg.copyWith(content: kDecryptionFailedLabel)
           : msg;
     }
   }

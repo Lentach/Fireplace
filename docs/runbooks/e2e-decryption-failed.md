@@ -280,9 +280,17 @@ the peer actually having been affected.
 
 The peer's first send after your re-mint FAILS locally, before the wire:
 `SEND_FAIL {error: AccountIdentityMismatch: the bundle served for userId=… deviceId=1 carries an
-identity key that is not the account's}` (`encryption_service.dart:1864-1872`). Their UI shows
-"Ponów" plus the red `PeerIdentityChangedRow` pill ("Klucze … się zmieniły. Dotknij, aby
-sprawdzić") — the refusal un-gates that pill even with key-change warnings OFF (the default).
+identity key that is not the account's}` (`encryption_service.dart:1864-1872`).
+
+**Since 0.2.43 the peer is told BEFORE they compose, not after the bounce.** The red
+`PeerIdentityChangedRow` pill ("Klucze … się zmieniły. Dotknij, aby sprawdzić") now renders for
+any peer whose anchor has not advanced, regardless of the key-change warnings setting — that
+state is knowable the moment the change arrives, and it is exactly the state in which every send
+fails. Before that fix the default (warnings OFF) demoted it to a calm "klucze zaktualizowane"
+note and the pill appeared only AFTER a refused send had set `peersRefusedIdentity`, so the first
+symptom a user ever saw was a message bouncing with "Ponów" and no explanation. The failed bubble
+itself still says only "Ponów" — wiring `messaging_provider.send.dart`'s existing
+"compare their safety number" string onto the row is still owed.
 
 This is DESIGN, not a bug. The anchor moves only through a human confirmation (amendment (xlvi));
 the demoted auto-acknowledge can only promote a candidate this device RECORDED, and a plain

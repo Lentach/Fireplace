@@ -376,9 +376,11 @@ Device-proven on the shippable 0.2.42 APK (`7818786…`, Pixel_7 AVD, prod) acro
   and once the peer re-keys every message from then on decrypts — verified live, in the
   foreground, twice.
 - **The friend pays exactly one manual step**, by design (anti-MITM anchor, amendment (xlvi)):
-  their first send bounces with "Ponów" and a red "Klucze … się zmieniły. Dotknij, aby sprawdzić"
-  pill until they tap it and confirm "Odciski się zgadzają". Sending them a message first does
-  NOT spare them this.
+  they tap the red "Klucze … się zmieniły. Dotknij, aby sprawdzić" pill and confirm "Odciski się
+  zgadzają". Sending them a message first does NOT spare them this. **Since 0.2.43 that pill
+  appears as soon as your keys change, so they can clear it before they ever type** — on 0.2.42
+  and earlier the default hid it behind a calm note and the first symptom was their message
+  bouncing with "Ponów".
 - **The way to avoid the confirmation:** linked devices ON + the 12 words on paper. Then a
   reinstall meets the gate's "Mam frazę odzyskiwania", the SAME identity comes back, and no peer
   sees a key change. With linking off the login re-mints silently and never asks for the phrase.
@@ -391,12 +393,13 @@ Add this to the friend-facing text:
 
 > If you ever reinstall Umbra or use "Clear storage" on the phone, the messages already on it are
 > gone for good — and everyone you chat with has to confirm your new security code once before
-> their messages reach you again: their app shows "Klucze … się zmieniły. Dotknij, aby sprawdzić"
-> and their first message to you bounces with "Ponów" until they tap it and confirm the codes
-> match. To avoid that entirely: turn on linked devices, write the 12 words down on paper, and
-> after a reinstall use **"Mam frazę odzyskiwania"** instead of just logging in — that brings the
-> same keys back, so nobody has to confirm a code. If a friend had the app open while you did it,
-> they may need to close and reopen it once before messages flow again.
+> their messages reach you again. Their app shows "Klucze … się zmieniły. Dotknij, aby sprawdzić";
+> they tap it and confirm the codes match, and that's it. If they miss it, their next message to
+> you bounces with "Ponów" until they do. To avoid the whole thing: turn on linked devices, write
+> the 12 words down on paper, and after a reinstall use **"Mam frazę odzyskiwania"** instead of
+> just logging in — that brings the same keys back, so nobody has to confirm a code. If a friend
+> had the app open while you did it, they may need to close and reopen it once before messages
+> flow again.
 
 ## Known-not-done (tracked, do not rediscover)
 

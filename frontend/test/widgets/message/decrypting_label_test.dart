@@ -28,7 +28,11 @@ MessageModel _msg({
   createdAt: DateTime.now(),
 );
 
-Widget _wrap(MessageModel m, {required bool decrypting}) => MaterialApp(
+Widget _wrap(
+  MessageModel m, {
+  required bool decrypting,
+  bool isMine = false,
+}) => MaterialApp(
   theme: RpgTheme.themeDataDarkGray,
   localizationsDelegates: AppLocalizations.localizationsDelegates,
   supportedLocales: AppLocalizations.supportedLocales,
@@ -39,7 +43,7 @@ Widget _wrap(MessageModel m, {required bool decrypting}) => MaterialApp(
         alignment: Alignment.topLeft,
         child: TextMessageContent(
           message: m,
-          isMine: false,
+          isMine: isMine,
           textColor: Colors.white,
           isDark: true,
           maxWidth: 250,
@@ -97,11 +101,17 @@ void main() {
       ),
     );
 
-    expect(_body('[Decryption failed]'), findsOneWidget);
     expect(
       _body('Decrypting'),
       findsNothing,
       reason: 'terminal means terminal — a spinner here would never resolve',
+    );
+    expect(
+      _body("can't be read on this device"),
+      findsOneWidget,
+      reason:
+          'the user gets the reason, not the internal sentinel; the row is '
+          'still terminal, only the wording changed',
     );
   });
 
@@ -129,5 +139,62 @@ void main() {
           'displayAsEncryptedPlaceholder requires ciphertext; without it there '
           'is nothing being decrypted',
     );
+  });
+
+  testWidgets('a terminally failed row explains itself instead of leaking the '
+      'sentinel', (tester) async {
+    await tester.pumpWidget(
+      _wrap(
+        _msg(content: '[Decryption failed]', encryptedContent: '2:abc'),
+        decrypting: false,
+      ),
+    );
+
+    expect(_body("can't be read on this device"), findsOneWidget);
+    expect(
+      _body('[Decryption failed]'),
+      findsNothing,
+      reason: 'this is the string the user reported as looking like a crash',
+    );
+  });
+
+  testWidgets('an own row whose plaintext died with the cache explains itself',
+      (tester) async {
+    // The post-wipe case: a sender cannot decrypt its own ciphertext, so an
+    // own row's plaintext lived only in the local cache. A fan-out row carries
+    // no ciphertext for its own origin device (amendment (ix)), so this row
+    // does NOT satisfy displayAsEncryptedPlaceholder — keying the relabel on
+    // that predicate alone would miss exactly this row.
+    await tester.pumpWidget(
+      _wrap(_msg(content: '[encrypted]'), decrypting: false, isMine: true),
+    );
+
+    expect(_body("can't be read on this device"), findsOneWidget);
+    expect(_body('[encrypted]'), findsNothing);
+  });
+
+  testWidgets('an own row mid-pass is not declared lost', (tester) async {
+    // The lost-ack reconcile fills own rows during the pass; calling one
+    // unreadable while that is still running would flash a false verdict.
+    await tester.pumpWidget(
+      _wrap(_msg(content: '[encrypted]'), decrypting: true, isMine: true),
+    );
+
+    expect(_body("can't be read on this device"), findsNothing);
+  });
+
+  testWidgets('a peer row awaiting the pass is not declared lost',
+      (tester) async {
+    // Guards the regression the narrow rule exists to prevent: the frame
+    // before `decryptInProgress` goes true must not claim the row is lost, or
+    // every cold chat entry flashes a false verdict before showing text.
+    await tester.pumpWidget(
+      _wrap(
+        _msg(content: '[encrypted]', encryptedContent: '2:abc'),
+        decrypting: false,
+      ),
+    );
+
+    expect(_body("can't be read on this device"), findsNothing);
   });
 }

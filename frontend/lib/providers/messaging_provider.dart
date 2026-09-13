@@ -61,8 +61,8 @@ int _deliveryStatusRank(MessageDeliveryStatus status) {
 }
 
 const int _pageSize = 50;
-const String _kDecryptionFailedLabel = '[Decryption failed]';
-const String _kEncryptedPlaceholderLabel = '[encrypted]';
+const String kDecryptionFailedLabel = '[Decryption failed]';
+const String kEncryptedPlaceholderLabel = '[encrypted]';
 const String kRetiredMessageLabel = '[Message no longer stored on this device]';
 
 /// A row the server marked `none_for_device` (spec §5.3 + §12 amendment

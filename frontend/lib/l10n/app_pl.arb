@@ -167,6 +167,8 @@
   "decryptionFailed": "Odszyfrowanie nie powiodło się",
   "decryptingMessage": "Odszyfrowywanie…",
   "messageNoLongerStoredOnThisDevice": "Ta wiadomość nie jest już przechowywana na tym urządzeniu.",
+  "messageUnreadableOnThisDevice": "Nie można odczytać tej wiadomości na tym urządzeniu.",
+  "@messageUnreadableOnThisDevice": {"description": "Replaces the raw '[encrypted]' / '[Decryption failed]' sentinels in a bubble. The row's keys are gone (this install was wiped/reinstalled, or the ratchet key was consumed), so it can never resolve — say that instead of leaking internal state the user reads as a crash."},
   "historyBeforeDeviceLinked": "Historia sprzed połączenia tego urządzenia",
   "@historyBeforeDeviceLinked": {"description": "One pill at the oldest end of a thread, standing in for every row that predates this device's link (multi-device spec amendment (lxxxi))."},
   "devicesSyncingNote": "Synchronizowanie urządzeń…",

@@ -484,6 +484,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'This message is no longer stored on this device.';
 
   @override
+  String get messageUnreadableOnThisDevice =>
+      'This message can\'t be read on this device.';
+
+  @override
   String get historyBeforeDeviceLinked =>
       'History from before this device was linked';
 

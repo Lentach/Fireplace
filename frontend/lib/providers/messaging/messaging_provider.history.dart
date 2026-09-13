@@ -131,17 +131,17 @@ extension MessagingHistory on MessagingProvider {
     // Keep failure label over server "[encrypted]" on reload; successful decrypt wins.
     if (editStale) {
       content = server.content;
-    } else if (local.content == _kDecryptionFailedLabel) {
+    } else if (local.content == kDecryptionFailedLabel) {
       if (!server.displayAsEncryptedPlaceholder &&
           server.content.isNotEmpty &&
-          server.content != _kDecryptionFailedLabel) {
+          server.content != kDecryptionFailedLabel) {
         content = server.content;
       } else {
-        content = _kDecryptionFailedLabel;
+        content = kDecryptionFailedLabel;
       }
     } else if (!server.displayAsEncryptedPlaceholder &&
         (local.displayAsEncryptedPlaceholder ||
-            local.content == _kEncryptedPlaceholderLabel ||
+            local.content == kEncryptedPlaceholderLabel ||
             local.content.isEmpty) &&
         (server.content.isNotEmpty ||
             server.messageType != MessageType.text ||
@@ -150,7 +150,7 @@ extension MessagingHistory on MessagingProvider {
       content = server.content;
     } else if (server.content.isNotEmpty &&
         !server.displayAsEncryptedPlaceholder &&
-        local.content == _kEncryptedPlaceholderLabel) {
+        local.content == kEncryptedPlaceholderLabel) {
       content = server.content;
     }
 
