@@ -22,6 +22,13 @@
   local-notification launch intent. `fa97358`: the SAME latch for
   `FirebaseMessaging.getInitialMessage()`, whose stickiness is identical — the FCM-tap arm was
   still open when the issue was first closed. 3 new tests; suite 2112/14.
+- **`633f4dd`: the wrong mental model the bug exposed, plus its second victim.** The doc comment
+  claimed `PushService.initialize` "runs once per app run" — it runs once per LOGIN, which is why
+  the sticky reads replayed. Corrected, and acted on: `onTokenRefresh` was re-listened every
+  login and never cancelled (N logins ⇒ N live listeners re-registering the token), now held in
+  `_tokenRefreshSubscription` and cancelled before re-listen and on unregister. Both dead
+  `@visibleForTesting` latch-reset hooks deleted (no host caller can reach either path; they also
+  raised fatal `unused_shown_name` warnings).
 - Root `CLAUDE.md`: the "format only the lines you edited" clause is GONE (owner's call); the
   whole-tree-formatter ban is KEPT as its own bullet with the evidence for why.
 
@@ -57,6 +64,15 @@
   3175 → 3174 (floor lowered). On device: push wakes a killed app in <5 s, then the SAME
   notification-tap → logout → login-as-enrolled sequence lands on the link gate with no chat over
   it, and the gate's own scanner opens and stays for 18+ s. Issue #175 closed.
+- **CI 6/6 green on `633f4dd`** (`gh api …/commits/633f4dd/check-runs`). Note `fa97358`'s Flutter
+  and wire jobs read `cancelled` — superseded by a later push via the concurrency group, not a
+  failure; and a `.cursor/**`+`docs/**`-only tip runs ONLY CodeQL `Analyze` because of
+  `paths-ignore`, so always check the code commit.
+- **Shippable artifact: 0.2.42 / versionCode 20042 / `633f4dd` / SHA256 `7818786948ca79e11674a48e4999cc291bd749ba061361a9197efca200085bf0`.**
+  Installed, launched, footer reads `633f4dd`. Two earlier 0.2.42 builds are recorded as
+  NOT-shippable: `601248e0…` (uncommitted tree — footer names a fix-less commit) and
+  `7c8bb2ce…` (predates the listener fix). The device drill was run on `601248e0…` and is still
+  OWED on `7818786…`; it needs two fresh throwaway accounts.
 
 ## Notes for next session
 - **Issue #175 FIXED (`23be77d`) — do not re-simplify.** The guard must stay a NavigatorObserver:
