@@ -125,8 +125,8 @@ embedded fallback key despite the script's warning text; empty = GIF search disa
 defaults to production; override with `-BaseUrl` for a staging build. Requires an Android SDK with
 build-tools (for `apksigner`) via `ANDROID_HOME`/`ANDROID_SDK_ROOT`/`%LOCALAPPDATA%\Android\Sdk`.
 
-**versionCode floor — 20043 since 2026-09-13** (the 0.2.43 build below is installed on the Pixel_7
-AVD; it becomes the phone's floor too the moment it lands there). History: the first release build
+**versionCode floor — 20044 since 2026-09-14** (0.2.44 is INSTALLED on the owner's real phone,
+`f849cc68`; 20043 was the floor for the few minutes before that). History: the first release build
 (2026-09-02) was `0.1.24` from `feat/video-messages` (`1f9d96f`) → versionCode `10024`, SHA256
 `743612453b44ff2a961760cb010a4dac9b87868594080517c9c1ac1a2bc40ef1`, built for the owner's phone;
 `master` was still `0.1.21`, so a build from master would derive `10021` and Android would REFUSE
@@ -137,7 +137,7 @@ it as a downgrade. Every build meant to install over an existing one must bump
 rejects a lower versionCode with `INSTALL_FAILED_VERSION_DOWNGRADE`; the only way to install an
 older APK is `uninstall`, which is exactly the action that destroys that device's Signal keys and
 SQLCipher history (root `CLAUDE.md` §6) and forces the peer safety-number confirmation on every
-contact. So once a real device is on 20043, **never hand the owner an older APK to "go back"** —
+contact. So once a real device is on 20044, **never hand the owner an older APK to "go back"** —
 every later test build must be ≥ the installed versionCode. A bad build is fixed by bumping the
 patch and rolling FORWARD, never by reverting the install.
 
@@ -160,7 +160,8 @@ CI 6/6 green on that commit. Installs and launches; footer reads `633f4dd`. Carr
 the issue-#175 fix (`23be77d` route guard + local-notification latch, `fa97358` terminated-state
 FCM latch) AND the per-login `onTokenRefresh` cancel (`633f4dd`).
 
-**Build record — 0.2.43, 2026-09-13 (CURRENT — the bob208 field-test binary).**
+**Build record — 0.2.43, 2026-09-14 (SUPERSEDED by 0.2.44 below — the phone was upgraded off it
+the same night; this is the binary the link ceremony ran on).**
 `feat/passcode-lock` @ **`aae1defe`**, which is byte-identical to `origin/master`; the code gate is
 `5c91ccd6` (CI 6/6 green) and everything after it is docs-only → versionCode `20043`, 105.2 MB,
 SHA256 `40f02824057d2c215ce2df762e13caaab066f57c0b262fe3f48ae1d7dedad7a4`, 16KB gate 16/16.
@@ -175,7 +176,14 @@ dart-defines were verified INSIDE `lib/arm64-v8a/libapp.so`** — host `fireplac
 quotes, and `build-android.ps1` dot-sources that file itself, so no env-var export is needed); a
 byte search of `libapp.so` is the only proof a define survived into a release AOT build.
 Staged for hand-transfer at `C:/Users/Lentach/Desktop/umbra-0.2.43-aae1defe.apk`, hash re-verified
-after the copy. The versionCode floor becomes 20043 the moment it is installed anywhere.
+after the copy.
+
+**Build record — 0.2.44, 2026-09-14 (CURRENT — running on the owner's phone).** `master` @
+**`c7bcee7e`**, **CI 6/6 green on that exact commit** → versionCode `20044`, 105.2 MB, SHA256
+`20f46b671865ccfcfa3a28c13edf893ce34874b117d939427c1c068cc520176e`, 16KB gate 16/16, signer
+MEASURED `8e9a6bf3…5cdf405d` (= record-of-truth). Built with `-SkipClean` in 167 s. Carries the
+conversation-list sentinel fix: before it, a freshly linked device's ENTIRE chat list printed raw
+`[encrypted]`. **Installed over 0.2.43 on the phone with `adb install -r`** — see "Field test" below.
 
 ⚠️ **Two earlier 0.2.42 builds exist and must NOT be shipped.** `601248e0…` was built from a
 working tree whose fix was still uncommitted, so its embedded `GIT_COMMIT` (`f35ef7b`) names a
@@ -300,7 +308,41 @@ outcomes, three different flows:
 **This is NOT the untested "pre-Phase-2 install" upgrade gate** named in this runbook's header:
 `native_content_store.dart` landed in `33a906f4` (2026-07-29), so the 0.1.24 tree (`1f9d96f`,
 2026-09-02) already carried the SQLCipher store, and `content_db.dart` reads `schemaVersion => 1`
-in BOTH trees — no Drift migration crosses a 10024 → 20043 upgrade.
+in BOTH trees — no Drift migration crosses a 10024 → 20043 upgrade. **Answered on the night of
+2026-09-14: the phone had NOTHING installed** (`Unable to find package: com.fireplace.app`), so
+0.1.24 never lived there and this was a clean first install.
+
+## Field test — the owner's real phone, 2026-09-14 (account `bob208`)
+
+Mi 11 Lite 5G (`M2101K9G` / renoir_eea, Android 11, arm64-v8a), adb serial `f849cc68`, against prod
+(`0.2.41 / 49c77c10`). The owner drove every tap: **MIUI refuses synthetic input** —
+`adb shell input` dies with `SecurityException: Injecting to another application requires
+INJECT_EVENTS permission` unless the Mi-account-gated "USB debugging (Security settings)" is on.
+`adb install` worked (plain "Install via USB" was enough). The agent observed via logcat, the a11y
+tree and the prod DB.
+
+| Leg | Result |
+|---|---|
+| clean install of 0.2.43 | **PASS** — on-device `base.apk` hashes to `40f02824…`; `versionName 0.2.43 / versionCode 20043`; COLD start 1.34 s; footer `aae1defe` |
+| login as an ENROLLED account → §6.1 lock | **PASS on real hardware** — logcat `[EncryptionService] Identity incomplete — refusing to regenerate` + `E2eIdentityIncompleteException`, and `DeviceLinkGateScreen` rendered |
+| link ceremony | **PASS** — `devices` row `deviceId=11, platform=android`, un-revoked; its key bundle carries the SAME account identity key (`BQLKjKiYsGSO…`) as devices 1 and 5, and `identity_change_audit` stayed EMPTY — linking JOINS the identity, it never replaces it |
+| pre-link history | **PASS by design** — the thread shows the `historyBeforeDeviceLinked` pill (lxxxi). The conversation LIST did not: it printed raw `[encrypted]`, fixed in 0.2.44 |
+| E2E round trip | **PASS** — text and voice both directions (`24385` in, `24386`/`24387` out) |
+| self-sync | **PASS** — the phone's sends fan out to `37:1` and `37:5`; the owner saw AND heard them on his iOS PWA primary |
+| **in-place upgrade 20043 → 20044** | **PASS — the update path, on real hardware.** `adb install -r` → `Success`; `firstInstallTime` PRESERVED while `lastUpdateTime` moved; `base.apk` now `20f46b67…`; device #11 `lastSeenAt` advanced **43 s later with no login**, key bundle re-uploaded with the same identity key, `identity_change_audit` still 0 |
+| push with app KILLED (item 3), image send/receive (item 5) | **NOT RUN** — owner's phone locked for the night |
+
+Two things this run could not do and the next one should plan for: **release builds cannot be
+screenshotted** (`FLAG_SECURE`) so the owner cannot send a screenshot either — he photographs the
+screen or describes it; and with input injection blocked, every tap is the owner's, so batch the
+instructions instead of driving step by step.
+
+One unreproduced sighting, PARKED at the owner's request: an inbound 11 s voice note appeared to
+show `0:00`, then could not be reproduced. Facts if it returns: row `24385` holds
+`mediaDuration = 11`; the metadata fallback EXISTS and is wired
+(`playback_controller.dart:78-84` → `:330`); no code path nulls the server value (both suspect
+sites are null-preserving `copyWith`). Leading hypothesis: the loopback-proxied `just_audio` source
+reports an unknown duration until buffered or seeked. Needed: WHICH device, and leave it on screen.
 
 ## Distribution (decision 2026-07-29: direct APK first, Play later)
 
