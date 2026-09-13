@@ -2,12 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart'
-    show
-        debugPrint,
-        defaultTargetPlatform,
-        kIsWeb,
-        TargetPlatform,
-        visibleForTesting;
+    show debugPrint, defaultTargetPlatform, kIsWeb, TargetPlatform;
 import '../push_android_stub.dart'
     if (dart.library.io) 'android_fcm_local_notifications.dart'
     as push_android;
@@ -40,8 +35,9 @@ class WebPushRequestResult {
 /// session, and the launch fact is per process (#175).
 bool _coldStartFcmOpenDelivered = false;
 
-@visibleForTesting
-void resetColdStartFcmOpenLatchForTest() => _coldStartFcmOpenDelivered = false;
+// No `@visibleForTesting` reset hook: nothing on the host can drive
+// `getInitialMessage`, so a hook here would be dead API pretending to be
+// coverage. The latch is device-observed (#175), and the doc above says so.
 
 /// Handles FCM push notification registration and token lifecycle.
 ///
@@ -56,6 +52,10 @@ class PushService {
   final WebPushBridge _webPushBridge = createWebPushBridge();
 
   StreamSubscription<RemoteMessage>? _androidFcmOpenedSubscription;
+
+  /// Cancelled and re-listened on every [initialize] (i.e. every login), so a
+  /// second session cannot leave a live listener from the first behind.
+  StreamSubscription<String>? _tokenRefreshSubscription;
 
   /// Set by main.dart from the `notify_conv` URL param before initialize() is called.
   /// Drained once by ConnectionProvider._onSocketReady().
@@ -78,10 +78,14 @@ class PushService {
   /// [jwtToken] is the current user's JWT for the backend API call.
   ///
   /// [currentJwtToken] supplies the JWT that is current AT CALL TIME. The
-  /// `onTokenRefresh` listener below outlives many token rotations (initialize
-  /// runs once per app run), so capturing [jwtToken] there registered a rotated
-  /// device token with a stale JWT — 401, swallowed, push silently dead until
-  /// the next launch.
+  /// `onTokenRefresh` listener below outlives many token rotations, so
+  /// capturing [jwtToken] there registered a rotated device token with a stale
+  /// JWT — 401, swallowed, push silently dead until the next launch.
+  ///
+  /// **`initialize` runs once per LOGIN, not once per app run** — an earlier
+  /// version of this comment claimed the latter and that wrong model is what
+  /// let the process-sticky cold-start reads replay across accounts (#175).
+  /// Anything registered here must therefore be idempotent or cancelled first.
   ///
   /// [onNavigateToConversation]: notification tap routing (Android FCM + web push).
   Future<void> initialize(
@@ -130,13 +134,21 @@ class PushService {
       final platform = _currentPlatform();
       await _api.registerFcmToken(jwtToken, fcmToken, platform);
 
-      // Handle token rotation — Firebase periodically refreshes tokens
-      FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
-        final token = currentJwtToken?.call() ?? jwtToken;
-        _api.registerFcmToken(token, newToken, platform).catchError((error) {
-          debugPrint('[PushService] FCM token re-registration failed: $error');
-        });
-      });
+      // Handle token rotation — Firebase periodically refreshes tokens. Cancel
+      // first: `initialize` runs per LOGIN, so re-listening without this piles
+      // up one live listener per session and re-registers the token N times.
+      await _tokenRefreshSubscription?.cancel();
+      _tokenRefreshSubscription = FirebaseMessaging.instance.onTokenRefresh
+          .listen((newToken) {
+            final token = currentJwtToken?.call() ?? jwtToken;
+            _api.registerFcmToken(token, newToken, platform).catchError((
+              error,
+            ) {
+              debugPrint(
+                '[PushService] FCM token re-registration failed: $error',
+              );
+            });
+          });
 
       if (defaultTargetPlatform == TargetPlatform.android) {
         await push_android.initAndroidFcmLocalNotificationsOnMainIsolate();
@@ -190,6 +202,8 @@ class PushService {
     try {
       await _androidFcmOpenedSubscription?.cancel();
       _androidFcmOpenedSubscription = null;
+      await _tokenRefreshSubscription?.cancel();
+      _tokenRefreshSubscription = null;
       push_android.setAndroidNotificationConversationTapHandler(null);
 
       final fcmToken = await FirebaseMessaging.instance.getToken(

@@ -1,7 +1,7 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart'
-    show TargetPlatform, defaultTargetPlatform, kIsWeb, visibleForTesting;
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 
@@ -33,8 +33,8 @@ bool _backgroundIsolateReady = false;
 /// (issue #175). The launch intent is a cold-start fact: deliver it once.
 bool _coldStartTapDelivered = false;
 
-@visibleForTesting
-void resetColdStartTapLatchForTest() => _coldStartTapDelivered = false;
+// No `@visibleForTesting` reset hook: this file is platform-gated
+// (`_isAndroid`), so a host test cannot reach the latched path anyway.
 
 /// Mutable tap target — updated each login so logout does not keep stale closures.
 void setAndroidNotificationConversationTapHandler(
