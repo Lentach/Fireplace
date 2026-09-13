@@ -54,7 +54,7 @@
   message_context_menu_bubble_highlight}.dart`, `screens/chat_detail_screen.dart`,
   `providers/messaging_provider.dart` (+ `.send` part), `lib/l10n/app_{en,pl}.arb` (+ generated).
 - Contracts/versions: `frontend/pubspec.yaml` (0.2.43), `CLAUDE.md` (test count),
-  `scripts/dart-lint-baseline.json` (3174 → 3173). Full list: `git show --stat`.
+  `scripts/dart-lint-baseline.json` (3174 → 3172). Full list: `git show --stat`.
 - Docs: `frontend/docs/e2e-invariants.md`, `docs/agents/traps.md`,
   `docs/runbooks/{e2e-decryption-failed,android-release}.md`, `LATEST.md`.
 - Tests: `frontend/test/widgets/message/decrypting_label_test.dart` (+4),
@@ -69,9 +69,10 @@
 ## Verification
 - `flutter test` **2120 passed / 14 skipped / 0 failed** (was 2112); `CLAUDE.md` §3 updated and
   `node scripts/verify-claude-frontend-test-counts.mjs` → `OK: CLAUDE.md matches flutter test`.
-- `flutter analyze --no-fatal-infos`: **3173 issues, zero errors, zero warnings**. The ratchet
-  CAUGHT a +1 I introduced (a misplaced import → `directives_ordering`); sorting that block
-  properly cleared a pre-existing finding too, so the floor went 3174 → **3173**
+- `flutter analyze --no-fatal-infos`: **3172 issues, zero errors, zero warnings**. The ratchet
+  CAUGHT every info I added (a misplaced import, then `only_throw_errors` +
+  `cascade_invocations` in new test code); fixing those plus two pre-existing
+  `directives_ordering` findings moved the floor 3174 → **3172**
   (`scripts/dart-lint-baseline.json` updated in the same commit).
 - **Both new behaviours mutation-falsified** (sentinel relabel → 3 red; bounced-row gate flipped
   → both cases red in opposite directions), and the suite caught two regressions I introduced

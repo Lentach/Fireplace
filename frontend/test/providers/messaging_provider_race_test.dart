@@ -2,9 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:fake_async/fake_async.dart';
+import 'package:fireplace/models/message_model.dart';
 import 'package:fireplace/providers/conversations_provider.dart';
 import 'package:fireplace/providers/encryption_provider.dart';
-import 'package:fireplace/models/message_model.dart';
 import 'package:fireplace/providers/messaging_provider.dart';
 import 'package:fireplace/services/encryption_service.dart'
     show AccountIdentityMismatch;
