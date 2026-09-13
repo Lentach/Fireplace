@@ -27,6 +27,14 @@ class LinkScanManual extends LinkScanResult {
   const LinkScanManual();
 }
 
+/// Route name for the scanner surface.
+///
+/// While the device-link gate is up, `AuthGate` sweeps page routes off the
+/// root navigator so nothing can cover it (`main.dart`, issue #175). The
+/// ceremony's OWN scanner is the one page route that must survive that sweep,
+/// and this name is how the sweep recognises it.
+const String kLinkScanRouteName = 'link-scan';
+
 /// The §5.1 scanner as its OWN surface (Signal / WhatsApp / Telegram shape):
 /// the camera fills the viewport, a scrim with a square window says where to
 /// aim, one caption, an X, and the typed fallback. Pops a [LinkScanResult],

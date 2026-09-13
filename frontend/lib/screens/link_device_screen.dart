@@ -86,6 +86,7 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
     final result = await Navigator.of(context).push<LinkScanResult>(
       MaterialPageRoute(
         fullscreenDialog: true,
+        settings: const RouteSettings(name: kLinkScanRouteName),
         builder: (_) => LinkScanScreen(scannerBuilder: widget.scannerBuilder),
       ),
     );

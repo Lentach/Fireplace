@@ -1,7 +1,7 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart'
-    show TargetPlatform, defaultTargetPlatform, kIsWeb;
+    show TargetPlatform, defaultTargetPlatform, kIsWeb, visibleForTesting;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 
@@ -23,6 +23,18 @@ bool get _isAndroid =>
     !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
 bool _backgroundIsolateReady = false;
+
+/// `getNotificationAppLaunchDetails()` keeps answering with the SAME launch
+/// intent for the WHOLE process lifetime, and `PushService.initialize` runs on
+/// EVERY login — so a second login in one process re-delivered the FIRST
+/// account's notification tap to the NEW account. Device-observed 2026-09-13:
+/// after tap → logout → login as an enrolled account, the replay pushed that
+/// chat over the device-link gate, leaving a keyless `[encrypted]` shell
+/// (issue #175). The launch intent is a cold-start fact: deliver it once.
+bool _coldStartTapDelivered = false;
+
+@visibleForTesting
+void resetColdStartTapLatchForTest() => _coldStartTapDelivered = false;
 
 /// Mutable tap target — updated each login so logout does not keep stale closures.
 void setAndroidNotificationConversationTapHandler(
@@ -231,10 +243,17 @@ Future<void> showFireplaceMessageNotificationWithPlugin({
 }
 
 /// Cold start: user tapped a local notification while the app was terminated.
+///
+/// ONCE per process — see [_coldStartTapDelivered]. A re-delivery on a later
+/// login hands the previous account's conversation id to the next account.
 Future<void> deliverPendingLocalNotificationTapIfAny({
   required void Function(int conversationId) onConversationId,
 }) async {
   if (!_isAndroid || !_mainIsolatePluginReady) return;
+  if (_coldStartTapDelivered) return;
+  // Latch BEFORE the await: two logins racing initialize() must not both read
+  // the same launch intent.
+  _coldStartTapDelivered = true;
 
   final details =
       await _mainIsolateNotificationsPlugin.getNotificationAppLaunchDetails();

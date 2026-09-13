@@ -180,6 +180,9 @@ class _LinkThisDeviceBodyState extends State<LinkThisDeviceBody> {
     final result = await Navigator.of(context).push<LinkScanResult>(
       MaterialPageRoute(
         fullscreenDialog: true,
+        // Named so the gate's route sweep (main.dart, issue #175) keeps the
+        // ceremony's own scanner instead of closing it.
+        settings: const RouteSettings(name: kLinkScanRouteName),
         builder: (_) => LinkScanScreen(scannerBuilder: widget.scannerBuilder),
       ),
     );

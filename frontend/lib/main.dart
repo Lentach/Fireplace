@@ -32,6 +32,7 @@ import 'theme/app_scroll_behavior.dart';
 import 'utils/storage_persist.dart';
 import 'utils/e2e_persistent_diag.dart';
 import 'utils/web_document_background.dart';
+import 'utils/device_link_route_guard.dart';
 import 'widgets/portrait_lock_shell.dart';
 import 'widgets/passcode_gate.dart';
 
@@ -127,7 +128,7 @@ Future<void> main() async {
   );
 }
 
-class FireplaceApp extends StatelessWidget {
+class FireplaceApp extends StatefulWidget {
   const FireplaceApp({
     super.key,
     this.coldStartConversationId,
@@ -141,13 +142,24 @@ class FireplaceApp extends StatelessWidget {
   final String? initialThemePreference;
 
   @override
+  State<FireplaceApp> createState() => _FireplaceAppState();
+}
+
+class _FireplaceAppState extends State<FireplaceApp> {
+  /// Built once, from the provider instance that lives for the app's life —
+  /// a NavigatorObserver outlives any single build (issue #175).
+  DeviceLinkGateRouteGuard? _gateGuard;
+
+  @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(
           create: (_) =>
-              SettingsProvider(initialThemePreference: initialThemePreference),
+              SettingsProvider(
+                initialThemePreference: widget.initialThemePreference,
+              ),
         ),
         ChangeNotifierProvider(create: (_) => EncryptionProvider()),
         ChangeNotifierProvider(create: (_) => FriendsProvider()),
@@ -155,7 +167,7 @@ class FireplaceApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => MessagingProvider()),
         ChangeNotifierProvider(
           create: (_) => ConnectionProvider(
-            coldStartConversationId: coldStartConversationId,
+            coldStartConversationId: widget.coldStartConversationId,
           ),
         ),
         // 8th provider (was 7): the app-level Passcode Lock. Reads its
@@ -167,6 +179,9 @@ class FireplaceApp extends StatelessWidget {
       ],
       child: Consumer<SettingsProvider>(
         builder: (context, settings, _) {
+          _gateGuard ??= DeviceLinkGateRouteGuard(
+            context.read<EncryptionProvider>(),
+          );
           return MaterialApp(
             title: 'Umbra',
             debugShowCheckedModeBanner: false,
@@ -192,6 +207,7 @@ class FireplaceApp extends StatelessWidget {
             localizationsDelegates: const [
               ...AppLocalizations.localizationsDelegates,
             ],
+            navigatorObservers: [_gateGuard!],
             home: const AuthGate(),
           );
         },
@@ -266,17 +282,24 @@ class _AuthGateState extends State<AuthGate> {
       final gated = context.select<EncryptionProvider, bool>(
         (e) => e.needsDeviceLink || e.identityCheckUnavailable,
       );
-      // The gate lives in THIS subtree, under any route pushed on the root
-      // navigator. A verdict that lands while the user is inside a chat or the
-      // devices screen (a reconnect init after a mid-session wipe) would
-      // otherwise render the gate BEHIND that route — same shape as (lxvi)
-      // clause 1, same cure. Popping the devices screen also disposes its
-      // ceremony controller, so the gate's own controller is the only
-      // provisioning sink registered.
+      // TWO defences, because they cover opposite directions (issue #175):
+      //
+      // 1. Here: routes ALREADY on the stack when the verdict lands (a
+      //    reconnect init after a mid-session wipe leaves the user inside a
+      //    chat or the devices screen). Edge-triggered, because that is when
+      //    the stack changes meaning.
+      // 2. `DeviceLinkGateRouteGuard` on the root navigator: routes pushed
+      //    AFTER the verdict. A push does not rebuild `AuthGate`, so this
+      //    build-time branch cannot see them — and `MainShell` keeps building
+      //    under `Offstage` while gated, which is exactly how a chat got
+      //    pushed over the gate on the 0.2.41 APK.
+      //
+      // Both keep non-page routes (dialogs, sheets) and the ceremony's own
+      // scanner — see `gateKeepsRoute`.
       if (gated && !_previousGated) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
-          Navigator.of(context).popUntil((route) => route.isFirst);
+          Navigator.of(context).popUntil(gateKeepsRoute);
         });
       }
       _previousGated = gated;
