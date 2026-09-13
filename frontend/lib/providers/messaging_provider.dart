@@ -194,11 +194,14 @@ class MessagingProvider extends ChangeNotifier {
       tempId != null && _identityRefusedSendTempIds.contains(tempId);
 
   /// Test-only: record the same per-row verdict the send path writes when
-  /// `buildSession` throws `AccountIdentityMismatch`
-  /// (`messaging_provider.send.dart`, in the `_encryptAndSend` catch). A screen
-  /// test cannot reach that throw without a full E2E stack, so the seam exists
-  /// to drive the RENDER decision; the throw-to-flag classification itself is
-  /// three lines beside the diag record at the catch.
+  /// `ensureSession` throws `AccountIdentityMismatch` (`_encryptAndSend`'s
+  /// catch). This drives the RENDER decision from a SCREEN test, which cannot
+  /// reach that throw without a full E2E stack.
+  ///
+  /// It does NOT stand in for the classification: that is driven through the
+  /// real send path in `messaging_provider_race_test.dart` ("an anchor refusal
+  /// marks THAT row, a timeout does not"), which goes red if the
+  /// `AccountIdentityMismatch` branch is removed.
   @visibleForTesting
   void markSendRefusedForIdentityForTest(String tempId) =>
       _identityRefusedSendTempIds.add(tempId);

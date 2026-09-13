@@ -59,12 +59,15 @@
   `docs/runbooks/{e2e-decryption-failed,android-release}.md`, `LATEST.md`.
 - Tests: `frontend/test/widgets/message/decrypting_label_test.dart` (+4),
   `frontend/test/utils/message_display_text_test.dart` (own vs peer `[encrypted]`),
+  `frontend/test/providers/messaging_provider_race_test.dart` (+1: the anchor-refusal
+  classification driven through the REAL send path — a thrown `AccountIdentityMismatch` marks the
+  row, a `TimeoutException` does not; red when the branch is removed),
   `frontend/test/screens/chat_detail_identity_row_test.dart` (+3 bounced-row cases, −1 pill case
   that stopped discriminating; the alarmed-peer case at :244 retitled "supersedes F11" — the F11
   case itself is UNTOUCHED, so do not hunt for a modified F11).
 
 ## Verification
-- `flutter test` **2119 passed / 14 skipped / 0 failed** (was 2112); `CLAUDE.md` §3 updated and
+- `flutter test` **2120 passed / 14 skipped / 0 failed** (was 2112); `CLAUDE.md` §3 updated and
   `node scripts/verify-claude-frontend-test-counts.mjs` → `OK: CLAUDE.md matches flutter test`.
 - `flutter analyze --no-fatal-infos`: **3173 issues, zero errors, zero warnings**. The ratchet
   CAUGHT a +1 I introduced (a misplaced import → `directives_ordering`); sorting that block
@@ -78,12 +81,9 @@
   0.2.43 strings have never been seen on a phone, and the distributable APK `7818786…` is 0.2.42.
 
 ## Notes for next session
-- **REVIEW WANTED on the pill gate.** It re-points the alarmed-peer falsification of amendment
-  (lxxix) (`chat_detail_identity_row_test.dart:244`, now "supersedes F11"),
-  which deliberately honoured the setting for an alarmed peer. Justification: that assumed a
-  demoted change was absorbed, which is false when the anchor did not advance (field-observed
-  2026-09-13). The absorbed shape still has its own case (`alarmed: false` → note, no pill). If
-  the owner disagrees, revert `chat_detail_screen.dart` only — nothing else depends on it.
+- **REVIEW WANTED on the pill gate** — un-gating it from `keyChangeWarnings` re-points the
+  alarmed-peer falsification of (lxxix). Reverting `chat_detail_screen.dart` alone undoes it;
+  full justification in `.planning/review-0.2.43/findings.md`.
 - **Deliberately NOT done:** rewriting `_demoteKeyChangeIfMuted`. It broke 5 service tests
   including falsifications F47/F48, i.e. it rewrites spec (lxxix) itself — and it is unnecessary,
   since the screen already suppresses the note whenever the pill shows.

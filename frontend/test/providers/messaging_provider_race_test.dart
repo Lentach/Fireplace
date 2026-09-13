@@ -6,12 +6,19 @@ import 'package:fireplace/providers/conversations_provider.dart';
 import 'package:fireplace/providers/encryption_provider.dart';
 import 'package:fireplace/models/message_model.dart';
 import 'package:fireplace/providers/messaging_provider.dart';
+import 'package:fireplace/services/encryption_service.dart'
+    show AccountIdentityMismatch;
 import 'package:fireplace/utils/e2e_envelope.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _FakeEncryptionProvider extends EncryptionProvider {
   bool failEnsureSession = true;
   int ensureSessionCalls = 0;
+
+  /// What the ONE failing `ensureSession` throws. Defaults to the timeout the
+  /// retry tests rely on; the anchor-refusal test swaps in
+  /// `AccountIdentityMismatch` so the send path classifies a REAL throw.
+  Exception ensureSessionError = TimeoutException('timed out');
 
   @override
   bool get isE2EReady => true;
@@ -27,7 +34,7 @@ class _FakeEncryptionProvider extends EncryptionProvider {
     ensureSessionCalls++;
     if (failEnsureSession) {
       failEnsureSession = false;
-      throw TimeoutException('timed out');
+      throw ensureSessionError;
     }
   }
 
@@ -1146,6 +1153,47 @@ void main() {
               as Map<String, dynamic>;
       expect(payload.containsKey('messageType'), isFalse);
       expect(payload.containsKey('mediaUrl'), isFalse);
+    });
+
+    // The per-ROW verdict the failed bubble reads. Driven through the REAL
+    // send path (a thrown `ensureSession` error), because the whole point is
+    // the classification in `_encryptAndSend`'s catch: keying the bubble on
+    // the peer's standing alarm instead blamed a key change for any failure in
+    // that chat.
+    test('an anchor refusal marks THAT row, a timeout does not', () async {
+      encryption.ensureSessionError = const AccountIdentityMismatch(
+        userId: 2,
+        deviceId: 1,
+      );
+      await provider.encryptAndSendForTest(
+        recipientId: 2,
+        content: 'blocked',
+        tempId: 'temp_refused',
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        provider.sendRefusedForIdentity('temp_refused'),
+        isTrue,
+        reason: 'this row bounced on the account anchor, so it may say so',
+      );
+
+      encryption
+        ..failEnsureSession = true
+        ..ensureSessionError = TimeoutException('timed out');
+      await provider.encryptAndSendForTest(
+        recipientId: 2,
+        content: 'timed out',
+        tempId: 'temp_timeout',
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        provider.sendRefusedForIdentity('temp_timeout'),
+        isFalse,
+        reason: 'a timeout is worth retrying; it must not be dressed up as a '
+            "peer's key change",
+      );
     });
 
     test(
