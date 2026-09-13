@@ -16,10 +16,14 @@
 - Recorded the APK size anatomy (100.3 of 105.2 MB is 3 ABIs) and ranked the size levers;
   `useUnbundled` for ML Kit evaluated and deliberately NOT applied.
 - Drove the full smoke on the release APK (emulator + real prod + a real browser peer).
-- **Fixed issue #175 (`23be77d`, 0.2.42)** — `DeviceLinkGateRouteGuard` (new,
-  `utils/device_link_route_guard.dart`) removes page routes pushed while the gate is up; dialogs
-  and the ceremony's scanner (`kLinkScanRouteName`) are kept. The cold-start notification tap is
-  now latched to once per process. 3 new tests; suite 2112/14.
+- **Fixed issue #175 in TWO commits** — `23be77d`: `DeviceLinkGateRouteGuard` (new,
+  `utils/device_link_route_guard.dart`) removes page routes pushed while the gate is up (dialogs
+  and the ceremony's scanner, `kLinkScanRouteName`, are kept) + a once-per-process latch on the
+  local-notification launch intent. `fa97358`: the SAME latch for
+  `FirebaseMessaging.getInitialMessage()`, whose stickiness is identical — the FCM-tap arm was
+  still open when the issue was first closed. 3 new tests; suite 2112/14.
+- Root `CLAUDE.md`: the "format only the lines you edited" clause is GONE (owner's call); the
+  whole-tree-formatter ban is KEPT as its own bullet with the evidence for why.
 
 ## Key files
 - Edited: `docs/runbooks/android-release.md`, `build-android.ps1`, `docs/agents/traps.md`,

@@ -144,11 +144,20 @@ installed anywhere and NOT smoke-tested; the floor becomes 20041 the moment it i
 formula and Play's monotonicity — not done, deliberately.
 
 **Build record — 0.2.42, 2026-09-13 (the fix build, supersedes 0.2.41 above).** `master` @
-`f35ef7b` → versionCode `20042`, 105.2 MB, SHA256
-`601248e0369527636daeeeac3eb761e940efe708210f02e669aa899be4aa3787`, same signer cert, 16KB 16/16.
-Carries the issue-#175 fix (`23be77d`). Device re-verified on a `pm clear` install against prod:
-push wakes a killed app (<5 s), the notification-tap → logout → login-as-enrolled sequence lands
-on the link gate, and the gate's own scanner survives the route sweep.
+**`fa97358`** → versionCode `20042`, 105.2 MB, SHA256
+`7c8bb2cee84e2790fc3e88973e7e0fd5a4bf6e2d891f757d22107661b3477b37`, same signer cert, 16KB 16/16.
+Carries BOTH arms of the issue-#175 fix (`23be77d` route guard + local-notification latch,
+`fa97358` terminated-state FCM latch). Installs and launches clean; footer reads `fa97358`.
+
+⚠️ **An earlier 0.2.42 build (SHA256 `601248e0…`) is NOT recordable and must not be shipped:** it
+was built from a working tree whose fix was still uncommitted, so its embedded `GIT_COMMIT`
+(`f35ef7b`) names a tree that does NOT contain the fix. Always build from a committed tree, or
+the footer and the SHA256↔commit pairing lie to whoever is testing.
+
+The device drill (push wakes a killed app <5 s; notification-tap → logout → login-as-enrolled
+lands on the link gate; the gate's own scanner survives the sweep) was run on `601248e0…`. The
+only code delta since is the second latch, which guards a branch that drill never entered, and
+the gate behaviour it verified is covered by `auth_gate_link_gate_stays_on_top_test.dart`.
 
 **Release builds cannot be screenshotted** — `MainActivity.kt` sets `FLAG_SECURE` when not
 debuggable, so `screencap` returns rc=1 while the app window is live (even from recents). Verify
