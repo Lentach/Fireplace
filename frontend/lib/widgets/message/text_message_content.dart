@@ -3,12 +3,12 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../constants/app_constants.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
-import '../../utils/message_display_text.dart';
 import '../../services/link_preview_service.dart';
-import '../../utils/linkify.dart';
 import '../../theme/rpg_theme.dart';
 import '../../utils/anti_quantum_note_link.dart';
 import '../../utils/jumbo_emoji.dart';
+import '../../utils/linkify.dart';
+import '../../utils/message_display_text.dart';
 import 'anti_quantum_note_card.dart';
 
 /// Content widget for TEXT message type, including link detection, link preview

@@ -130,6 +130,8 @@ Future<_AlarmedEncryption> _pumpChat(
   // (lxxxiv): the loaded rows belong to ANOTHER conversation — the frame
   // right after an embedded-pane switch, before `didUpdateWidget` reloads.
   int messagesConversationId = 10,
+  // Seeds one OWN row stuck on `failed`, i.e. a send that already bounced.
+  bool failedOwnRow = false,
 }) async {
   SharedPreferences.setMockInitialValues({
     'key_change_warnings': keyChangeWarnings,
@@ -155,6 +157,12 @@ Future<_AlarmedEncryption> _pumpChat(
         MessageModel.fromJson(
           _messageJson(1000 + i, conversationId: messagesConversationId),
         ),
+    if (failedOwnRow)
+      MessageModel.fromJson({
+        ..._messageJson(1003, conversationId: messagesConversationId),
+        'deliveryStatus': 'FAILED',
+        'tempId': 'temp-1003',
+      }),
   ]);
   messaging.loadCachedMessages(10);
 
@@ -476,5 +484,46 @@ void main() {
     );
 
     expect(find.byType(PeerIdentityChangedRow), findsOneWidget);
+  });
+
+  testWidgets('a bounced row names the refusal, not just "Retry"',
+      (tester) async {
+    await _pumpChat(
+      tester,
+      alarmed: true,
+      refused: true,
+      keyChangeWarnings: false,
+      withMessages: true,
+      failedOwnRow: true,
+    );
+    final en = await AppLocalizations.delegate.load(const Locale('en'));
+
+    expect(
+      find.text(en.messageSendBlockedKeysChanged),
+      findsOneWidget,
+      reason: 'the anchor is stale, so every retry fails the same way — the '
+          'row must point at the fingerprint comparison instead',
+    );
+    expect(find.text(en.messageRetrySend), findsOneWidget);
+  });
+
+  testWidgets('an ordinary failed row says only "Retry"', (tester) async {
+    await _pumpChat(
+      tester,
+      alarmed: false,
+      refused: false,
+      keyChangeWarnings: false,
+      withMessages: true,
+      failedOwnRow: true,
+    );
+    final en = await AppLocalizations.delegate.load(const Locale('en'));
+
+    expect(find.text(en.messageRetrySend), findsOneWidget);
+    expect(
+      find.text(en.messageSendBlockedKeysChanged),
+      findsNothing,
+      reason: 'a timeout or a dropped socket IS worth retrying; blaming the '
+          "peer's keys for it would send the user on a pointless ceremony",
+    );
   });
 }

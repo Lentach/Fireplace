@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/conversations_provider.dart';
 import '../../providers/encryption_provider.dart';
 import '../../providers/messaging_provider.dart';
 import '../../providers/settings_provider.dart';
@@ -74,6 +75,28 @@ class ChatMessageBubble extends StatelessWidget {
         foregroundColor: Theme.of(context).colorScheme.error,
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       ),
+    );
+  }
+
+  /// True when the account-anchor gate is REFUSING sends to this chat's peer.
+  ///
+  /// `peersRefusedIdentity` is written by the send path itself when
+  /// `buildSession` throws `AccountIdentityMismatch` ((xxxix)/(lv)), so this is
+  /// the recorded reason the row bounced, not a guess correlated after the
+  /// fact. It is also what un-gates the red pill, so the sentence below and the
+  /// pill that fixes it appear and disappear together.
+  ///
+  /// Read, not selected, for the conversation lookup: the peer of an open 1:1
+  /// chat does not change under us, and the refusal set IS selected, so the
+  /// row still rebuilds the moment the anchor advances.
+  bool _sendRefusedForIdentity(BuildContext context) {
+    final conv = context.read<ConversationsProvider>().getConversationById(
+      message.conversationId,
+    );
+    if (conv == null) return false;
+    final peerId = context.read<ConversationsProvider>().getOtherUserId(conv);
+    return context.select<EncryptionProvider, bool>(
+      (e) => e.peersRefusedIdentity.contains(peerId),
     );
   }
 
@@ -167,12 +190,30 @@ class ChatMessageBubble extends StatelessWidget {
           builder: (ctx) {
             final retryBtn = _buildRetryButton(ctx);
             if (retryBtn == null) return const SizedBox.shrink();
+            // "Retry" alone is a trap here: while the anchor is stale every
+            // attempt fails the same way, so the row has to name the remedy.
+            final refused = _sendRefusedForIdentity(ctx);
             return Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: isMine
                   ? CrossAxisAlignment.end
                   : CrossAxisAlignment.start,
-              children: [const SizedBox(height: 4), retryBtn],
+              children: [
+                const SizedBox(height: 4),
+                if (refused)
+                  ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: contentAreaWidth),
+                    child: Text(
+                      AppLocalizations.of(ctx).messageSendBlockedKeysChanged,
+                      textAlign: isMine ? TextAlign.end : TextAlign.start,
+                      style: RpgTheme.bodyFont(
+                        fontSize: 12,
+                        color: Theme.of(ctx).colorScheme.error,
+                      ),
+                    ),
+                  ),
+                retryBtn,
+              ],
             );
           },
         ),

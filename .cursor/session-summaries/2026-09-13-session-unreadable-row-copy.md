@@ -30,6 +30,16 @@
   anchor never advanced, which means every send to them fails closed — so the door to the ceremony
   now appears when the change arrives, not after a message has bounced. The muted (lxxix) note is
   suppressed automatically (`peerKeyChangeNoteAt` is computed under `!peerIdentityChanged`).
+- **A bounced row now names the refusal.** With the chat's peer in `peersRefusedIdentity`,
+  `ChatMessageBubble` puts `messageSendBlockedKeysChanged` above the retry button — while the
+  anchor is stale every retry fails identically, so "Ponów" alone invited an endless loop. An
+  ordinary failure (timeout, dropped socket) still shows "Ponów" ALONE; both directions are
+  pinned, and flipping the gate turned both red.
+- **Found and documented, NOT wired:** `_markMessageFailed` discards its `errorMsg` argument at
+  all ~15 call sites, so every reason the send path computes (including the whole
+  `_userFriendlySendError` ladder) reaches nobody. That is why the row said only "Ponów". The
+  reason above is rendered from live state instead — those strings are unlocalized English and
+  would ship into a Polish UI. Localizing the other ~14 is an owner copy decision.
 - New ARB key + PL/EN strings; `flutter gen-l10n` added exactly 18 lines, no churn.
 - Retired the now-unreferenced `decryptionFailed` ARB key ("Decryption failed" / "Odszyfrowanie
   nie powiodło się") — the replica's mapping was its only caller. `flutter gen-l10n` removed
@@ -49,16 +59,21 @@
   `docs/runbooks/android-release.md`, `docs/agents/traps.md`, `LATEST.md`.
 - Tests: `frontend/test/widgets/message/decrypting_label_test.dart` (+4),
   `frontend/test/utils/message_display_text_test.dart` (own vs peer `[encrypted]`),
-  `frontend/test/screens/chat_detail_identity_row_test.dart` (F11 re-pointed).
+  `frontend/test/screens/chat_detail_identity_row_test.dart` (F11 re-pointed, +2 for the
+  bounced-row reason and its falsification).
 
 ## Verification
-- `flutter test` **2117 passed / 14 skipped / 0 failed** (was 2112); `CLAUDE.md` §3 updated and
+- `flutter test` **2119 passed / 14 skipped / 0 failed** (was 2112); `CLAUDE.md` §3 updated and
   `node scripts/verify-claude-frontend-test-counts.mjs` → `OK: CLAUDE.md matches flutter test`.
-- `flutter analyze --no-fatal-infos`: **3174 issues, zero errors, zero warnings** — below the 3175
-  ratchet floor.
+- `flutter analyze --no-fatal-infos`: **3173 issues, zero errors, zero warnings**. The ratchet
+  CAUGHT a +1 I introduced (a misplaced import → `directives_ordering`); sorting that block
+  properly cleared a pre-existing finding too, so the floor went 3174 → **3173**
+  (`scripts/dart-lint-baseline.json` updated in the same commit).
 - **Falsified the new behaviour:** `sed`-mutated both `messageUnreadableOnThisDevice` returns to
-  `content` → 3 tests red (terminal-failure, own-row, and the leak assertion); restored → 9/9
-  green; `git diff` confirmed no mutant and no backup left on disk.
+  `content` → 3 tests red (terminal-failure, own-row, and the leak assertion); and flipped the
+  bounced-row gate to `if (!refused)` → both new cases red in OPPOSITE directions (the refused
+  row lost its sentence, the ordinary one gained it). Restored green each time; `git diff`
+  confirmed no mutant and no backup left on disk.
 - **The suite caught a regression I introduced TWICE**: hoisting `AppLocalizations.of(context)` to
   the top of the mapping made a plain-text bubble require a localizations ancestor it never
   needed, crashing `bubble_redesign_test.dart` on a null check — once in `_displayBody`, again
@@ -80,6 +95,9 @@
   durable pending-send record is written at `SEND_EMIT` keyed by the emitted ciphertext, and
   `AccountIdentityMismatch` fails BEFORE encryption — so this would need a NEW store holding
   unencrypted message text at rest. Owner call, not plumbing.
-- Still owed: the failed bubble says only "Ponów"; `messaging_provider.send.dart` already has the
-  right sentence ("compare their safety number") and it is not wired to the row.
-- Traps: 2 E2E, 1 agent tooling (the `git status` CRLF trap — my own mistake this session).
+- **Owner copy decision left open:** `_markMessageFailed` throws away the reason at ~15 call
+  sites. The identity refusal is now rendered from live state, but the other ~14 (media too
+  large, upload failed, connection reset…) still show a bare "Ponów", and their existing strings
+  are English-only. Localizing them is a copy task, not plumbing.
+- Traps: 3 E2E (incl. the discarded `errorMsg`), 1 agent tooling (the `git status` CRLF trap —
+  my own mistake this session).

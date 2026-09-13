@@ -501,6 +501,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get messageRetrySend => 'Retry';
 
   @override
+  String get messageSendBlockedKeysChanged =>
+      'Not sent: this contact\'s security keys changed. Open the warning above and compare your safety numbers, then retry.';
+
+  @override
   String get authStatusSavedSessionUnreadable =>
       'Could not read the session. Restart the app.';
 

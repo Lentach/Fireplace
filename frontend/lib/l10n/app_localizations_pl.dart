@@ -505,6 +505,10 @@ class AppLocalizationsPl extends AppLocalizations {
   String get messageRetrySend => 'Ponów';
 
   @override
+  String get messageSendBlockedKeysChanged =>
+      'Nie wysłano: klucze bezpieczeństwa tego kontaktu się zmieniły. Otwórz ostrzeżenie powyżej i porównajcie odciski, a potem ponów.';
+
+  @override
   String get authStatusSavedSessionUnreadable =>
       'Nie udało się odczytać sesji. Uruchom aplikację ponownie.';
 
