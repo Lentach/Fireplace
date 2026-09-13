@@ -143,6 +143,13 @@ installed anywhere and NOT smoke-tested; the floor becomes 20041 the moment it i
 `--split-per-abi` would roughly halve the download but interacts with both the versionCode
 formula and Play's monotonicity — not done, deliberately.
 
+**Build record — 0.2.42, 2026-09-13 (the fix build, supersedes 0.2.41 above).** `master` @
+`f35ef7b` → versionCode `20042`, 105.2 MB, SHA256
+`601248e0369527636daeeeac3eb761e940efe708210f02e669aa899be4aa3787`, same signer cert, 16KB 16/16.
+Carries the issue-#175 fix (`23be77d`). Device re-verified on a `pm clear` install against prod:
+push wakes a killed app (<5 s), the notification-tap → logout → login-as-enrolled sequence lands
+on the link gate, and the gate's own scanner survives the route sweep.
+
 **Release builds cannot be screenshotted** — `MainActivity.kt` sets `FLAG_SECURE` when not
 debuggable, so `screencap` returns rc=1 while the app window is live (even from recents). Verify
 release behavior via logcat, the prod DB, and the notification shade with the app dead.
@@ -252,15 +259,18 @@ Two starting states, and they do NOT behave the same:
 1. **Account already enrolled** (linked devices enabled on the primary): the §6.1 registration lock
    refuses a password-only identity replacement — device-proven 2026-09-13, logcat reads
    `[EncryptionService] Identity incomplete — refusing to regenerate` — and `AuthGate` renders
-   `DeviceLinkGateScreen` (`frontend/lib/screens/device_link_gate_screen.dart:24-35`). **⚠ The gate
-   can be COVERED (defect found 2026-09-13):** it is a `Stack` child, not a route
-   (`main.dart:283-288`), and its `popUntil` defence fires ONCE on the gated edge
-   (`main.dart:276-281`). A route pushed AFTER the verdict — e.g. a pending notification
-   deep-link that survived a logout→login in the same process — renders on top, and the user sees
-   a keyless shell full of `[encrypted]` with no hint that a link is required. Pressing Back
-   reveals the gate. Reproduced end-to-end below.
-2. **Account NOT enrolled** (linking never enabled): §6.1 is not armed (§8, amendment (lxxiii)), so
-   the phone silently re-mints the identity **into the primary slot** — and because every client
+   `DeviceLinkGateScreen` (`frontend/lib/screens/device_link_gate_screen.dart:24-35`).
+   **The gate used to be COVERABLE — FIXED in 0.2.42 (`23be77d`, issue #175).** On 0.2.41 a route
+   pushed AFTER the verdict rendered on top (`MainShell` keeps BUILDING under `Offstage`, and its
+   pending-notification consumer replayed the previous account's tap), so the user met a keyless
+   `[encrypted]` shell and had to press Back. Now `DeviceLinkGateRouteGuard` removes page routes
+   pushed while gated, and the cold-start tap is delivered once per process. Re-verified on the
+   0.2.42 APK: the same sequence lands on the gate, and the gate's own scanner still opens.
+2. **Account NOT enrolled** (linking never enabled) — **the re-mint is device-proven (a `pm clear`
+   install logged in with no gate and the peer saw "nowe urządzenie — klucze zaktualizowane"), but
+   the FLIP-FLOP itself is still INFERENCE, never exercised:** §6.1 is not armed (§8, amendment
+   (lxxiii)), so the phone re-mints the identity **into the primary slot** — and because every
+   client
    re-uploads its key bundle on EVERY socket connect (`encryption_provider.dart`), two live devices
    then clobber each other's identity epoch on every reconnect: a permanent flip-flop that burns
    both sides' prekeys and spams identity notices. **Enable linking on the web FIRST, then link the

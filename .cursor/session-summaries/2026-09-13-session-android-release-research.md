@@ -1,6 +1,6 @@
-# Android release: runbook was three-ways wrong, 0.2.41 APK built and smoke-driven, two defects found
+# Android release: runbook corrected, 0.2.41 smoke-driven, issue #175 found AND fixed in 0.2.42
 
-**Date:** 2026-09-13 · **Version:** unchanged (0.2.41) · **Tiers deployed:** none
+**Date:** 2026-09-13 · **Version:** 0.2.41 → **0.2.42** · **Tiers deployed:** none (APK only)
 
 ## What was done
 - `docs/runbooks/android-release.md` user wording retired the pre-multi-device "create a new
@@ -16,9 +16,18 @@
 - Recorded the APK size anatomy (100.3 of 105.2 MB is 3 ABIs) and ranked the size levers;
   `useUnbundled` for ML Kit evaluated and deliberately NOT applied.
 - Drove the full smoke on the release APK (emulator + real prod + a real browser peer).
+- **Fixed issue #175 (`23be77d`, 0.2.42)** — `DeviceLinkGateRouteGuard` (new,
+  `utils/device_link_route_guard.dart`) removes page routes pushed while the gate is up; dialogs
+  and the ceremony's scanner (`kLinkScanRouteName`) are kept. The cold-start notification tap is
+  now latched to once per process. 3 new tests; suite 2112/14.
 
 ## Key files
-- Edited: `docs/runbooks/android-release.md`, `build-android.ps1`, `docs/agents/traps.md`.
+- Edited: `docs/runbooks/android-release.md`, `build-android.ps1`, `docs/agents/traps.md`,
+  `frontend/lib/main.dart`, `frontend/lib/screens/link_{scan,this_device,device}_screen.dart`,
+  `frontend/lib/services/android_fcm_local_notifications.dart`, `frontend/pubspec.yaml`,
+  `CLAUDE.md` (test count), `scripts/dart-lint-baseline.json`.
+- New: `frontend/lib/utils/device_link_route_guard.dart`,
+  `frontend/test/main/auth_gate_link_gate_stays_on_top_test.dart`.
 - Read only (load-bearing): `docs/design/multi-device.md` §1/§5.1/§8/§9, `main.dart:255-292`,
   `device_link_gate_screen.dart`, `link_crypto.dart:379-431`, `devices_screen.dart:425-426`,
   `encryption_provider.dart:2116,1523`, `backend/src/auth/auth.service.ts:158`.
@@ -39,21 +48,28 @@
   content keys work on a real device.
 - NOT verified: physical phone (emulator only), voice/image, delete-for-everyone, the un-enrolled
   flip-flop drill, iOS, Play Console (nothing touched).
+- **Fix verification (0.2.42, versionCode 20042, `pm clear` install, prod):** 3 new tests green
+  and the sweep test is RED without the observer; full suite **2112 pass / 14 skip**; ratchet
+  3175 → 3174 (floor lowered). On device: push wakes a killed app in <5 s, then the SAME
+  notification-tap → logout → login-as-enrolled sequence lands on the link gate with no chat over
+  it, and the gate's own scanner opens and stays for 18+ s. Issue #175 closed.
 
 ## Notes for next session
-- **DEFECT 1 (user-visible):** the device-link gate is a `Stack` child (`main.dart:283-288`) and
-  its `popUntil` defence is edge-triggered once (`:276-281`). A route pushed AFTER the verdict
-  covers it — observed: a pending notification deep-link survived logout→login in the SAME process
-  and pushed a chat over the gate, leaving a keyless `[encrypted]` shell with no hint. Back
-  reveals the gate. Fix candidates: make the gate a route, or re-assert `popUntil` while gated.
-- **DEFECT 2:** that pending deep-link was consumed by the NEXT account; only a shared
-  conversation id made it look harmless. Cross-account pending state should be cleared on logout.
+- **Issue #175 FIXED (`23be77d`) — do not re-simplify.** The guard must stay a NavigatorObserver:
+  a route push never rebuilds `AuthGate`, so any build-time `popUntil` (edge-triggered or not)
+  cannot see it. Dialogs and `kLinkScanRouteName` are deliberate carve-outs.
+- **OPEN, needs a look:** after `pm clear` re-minted `apkeae3`'s identity, messages the web sent
+  AFTERWARDS (02:38, 02:44) still rendered `[Decryption failed]` on the phone, even though the
+  web had shown the "nowe urządzenie — klucze zaktualizowane" note. Expected a fresh PreKey
+  session. Not investigated; "Clear storage" / reinstall is a real user action, so this matters.
 - Owner-owed, unchanged: Play vs sideload-forever; Play Console account status; report-user UX;
   who writes privacy policy + ToS; R8 for libsignal/drift/Firebase.
 - **Never let Play generate the app signing key** — PEPK-transfer this `.jks` instead, or every
   sideloaded friend is stranded (uninstall = identity + history loss).
 - Before any friends build: linking cannot be enabled from a browser TAB (must be an installed
   PWA), the match code is 6 digits, and the ceremony is symmetric — the shipped wording now says so.
-- Test fixtures on prod: `apkeae3#4259` / `webb2e6#6353` (both `SmokeTest2609`, phrases in the
-  transcript); `test_web_sender#7207` was logged OUT of the dev browser (password unknown, keys
-  still in that profile's localStorage).
+- Test fixtures on prod: `apkeae3#4259` / `webb2e6#6353` were throwaway smoke accounts sharing one
+  password (`<REDACTED>` — it WAS committed in `f35ef7b` on this PUBLIC repo, so both accounts
+  were DELETED at session end; never put a working credential in a summary again).
+  `test_web_sender#7207` was logged OUT of the dev browser (password unknown, keys still in that
+  profile's localStorage).
