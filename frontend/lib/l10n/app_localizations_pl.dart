@@ -477,9 +477,6 @@ class AppLocalizationsPl extends AppLocalizations {
   String get encryptedMessage => 'Wiadomość zaszyfrowana';
 
   @override
-  String get decryptionFailed => 'Odszyfrowanie nie powiodło się';
-
-  @override
   String get decryptingMessage => 'Odszyfrowywanie…';
 
   @override

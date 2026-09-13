@@ -474,9 +474,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get encryptedMessage => 'Encrypted message';
 
   @override
-  String get decryptionFailed => 'Decryption failed';
-
-  @override
   String get decryptingMessage => 'Decrypting…';
 
   @override

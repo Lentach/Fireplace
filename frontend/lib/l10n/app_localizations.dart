@@ -926,12 +926,6 @@ abstract class AppLocalizations {
   /// **'Wiadomość zaszyfrowana'**
   String get encryptedMessage;
 
-  /// No description provided for @decryptionFailed.
-  ///
-  /// In pl, this message translates to:
-  /// **'Odszyfrowanie nie powiodło się'**
-  String get decryptionFailed;
-
   /// No description provided for @decryptingMessage.
   ///
   /// In pl, this message translates to:

@@ -31,6 +31,9 @@
   now appears when the change arrives, not after a message has bounced. The muted (lxxix) note is
   suppressed automatically (`peerKeyChangeNoteAt` is computed under `!peerIdentityChanged`).
 - New ARB key + PL/EN strings; `flutter gen-l10n` added exactly 18 lines, no churn.
+- Retired the now-unreferenced `decryptionFailed` ARB key ("Decryption failed" / "Odszyfrowanie
+  nie powiodło się") — the replica's mapping was its only caller. `flutter gen-l10n` removed
+  exactly 14 lines, zero churn.
 
 ## Key files
 - Edited: `frontend/lib/utils/message_display_text.dart`,

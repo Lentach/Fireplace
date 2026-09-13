@@ -164,7 +164,6 @@
   },
 
   "encryptedMessage": "Encrypted message",
-  "decryptionFailed": "Decryption failed",
   "decryptingMessage": "Decrypting…",
   "messageNoLongerStoredOnThisDevice": "This message is no longer stored on this device.",
   "messageUnreadableOnThisDevice": "This message can't be read on this device.",

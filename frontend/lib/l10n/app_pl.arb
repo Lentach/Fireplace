@@ -164,7 +164,6 @@
   },
 
   "encryptedMessage": "Wiadomość zaszyfrowana",
-  "decryptionFailed": "Odszyfrowanie nie powiodło się",
   "decryptingMessage": "Odszyfrowywanie…",
   "messageNoLongerStoredOnThisDevice": "Ta wiadomość nie jest już przechowywana na tym urządzeniu.",
   "messageUnreadableOnThisDevice": "Nie można odczytać tej wiadomości na tym urządzeniu.",
