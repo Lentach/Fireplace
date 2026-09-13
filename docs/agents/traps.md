@@ -55,6 +55,7 @@ Standing warnings that used to live in the `LATEST.md` banner and in rotated-out
 - Hostile `nextListVersion` inflation is bounded by a plausibility ceiling (`2026-08-26-session-t10-reset-addressability.md`).
 - Wake delivers `hidden → inactive → resumed`; the privacy curtain is the DOM `#fp-curtain`, not a Flutter widget (`2026-09-06-session-passcode-wake-curtain-merge.md`).
 - Multi-device permanent record: `.planning/multi-device/` (`FINISH-HERE.md`, `progress.md`, `task_plan.md`) and `docs/design/multi-device.md` §12 — not LATEST.
+- **OPEN (2026-09-13, unproven): messages sent AFTER a peer wipes their device may render `[Decryption failed]`** — observed once on prod after `pm clear` re-minted the peer's identity, with the sender's key-change note already shown. Brief, repro and the `NoSessionException`-vs-bad-MAC discriminator: `.cursor/session-summaries/2026-09-13-HANDOFF-decryption-after-peer-wipe.md`.
 
 ## Auth
 - A 409 the client could not SPEAK created a duplicate account — `ApiException` carries the STATUS, `classifyAuthFailure` maps per door, registration signs in and tries the typed credentials on 409 BEFORE refusing (`2026-09-06-session-register-409-diagnosis.md`).

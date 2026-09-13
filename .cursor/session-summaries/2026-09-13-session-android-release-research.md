@@ -82,6 +82,8 @@
   AFTERWARDS (02:38, 02:44) still rendered `[Decryption failed]` on the phone, even though the
   web had shown the "nowe urządzenie — klucze zaktualizowane" note. Expected a fresh PreKey
   session. Not investigated; "Clear storage" / reinstall is a real user action, so this matters.
+  **Full brief for a fresh agent: `2026-09-13-HANDOFF-decryption-after-peer-wipe.md`** (repro,
+  the NoSessionException-vs-bad-MAC discriminator, and where to read the evidence).
 - Owner-owed, unchanged: Play vs sideload-forever; Play Console account status; report-user UX;
   who writes privacy policy + ToS; R8 for libsignal/drift/Firebase.
 - **Never let Play generate the app signing key** — PEPK-transfer this `.jks` instead, or every
