@@ -269,9 +269,12 @@ void main() {
     // out only when a message bounced with "Ponów" — field-observed
     // 2026-09-13 after a peer reinstalled.
     //
-    // The setting chooses how an ABSORBED change is announced; it was never a
-    // licence to hide a blocked chat. The absorbed shape still has its own
-    // case below (`alarmed: false` → note, no pill).
+    // OWNER-APPROVED 2026-09-13, with the counter-argument stated (warnings
+    // off was chosen to mean "do not alarm me about key changes", and this
+    // does alarm on a peer reinstall). The ruling: the setting chooses how an
+    // ABSORBED change is announced; it was never a licence to hide a blocked
+    // chat. So (lxxix) is narrowed, not overridden — the absorbed shape keeps
+    // its own case below (`alarmed: false` → note, no pill), untouched.
     await _pumpChat(
       tester,
       alarmed: true,

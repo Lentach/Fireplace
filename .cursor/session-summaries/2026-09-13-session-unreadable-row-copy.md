@@ -82,12 +82,13 @@
   0.2.43 strings have never been seen on a phone, and the distributable APK `7818786…` is 0.2.42.
 
 ## Notes for next session
-- **REVIEW WANTED on the pill gate** — un-gating it from `keyChangeWarnings` re-points the
-  alarmed-peer falsification of (lxxix). Reverting `chat_detail_screen.dart` alone undoes it;
-  full justification in `.planning/review-0.2.43/findings.md`.
-- **Deliberately NOT done:** rewriting `_demoteKeyChangeIfMuted`. It broke 5 service tests
-  including falsifications F47/F48, i.e. it rewrites spec (lxxix) itself — and it is unnecessary,
-  since the screen already suppresses the note whenever the pill shows.
+- **The pill gate is OWNER-APPROVED (2026-09-13)** — not awaiting review any more. The ruling:
+  the warnings setting governs how an ABSORBED key change is announced, never whether a
+  fail-closed chat says so, so (lxxix) is NARROWED and its absorbed case still passes. Anchored
+  in `e2e-invariants.md` bullet 26, `traps.md` § E2E and the test comment.
+- **Still owner-owned:** `_demoteKeyChangeIfMuted` writes a note for an UNABSORBED change that
+  the screen never renders — dead state, and removing the write edits (lxxix) itself (5 service
+  tests, incl. F47/F48). Both items in `.planning/review-0.2.43/findings.md`.
 - **WITHDRAWN proposal:** parking a blocked message and auto-sending after confirmation — it
   would need a NEW store holding unencrypted message text at rest, a different security posture.
   Owner call; reasoning in `.planning/review-0.2.43/findings.md`.
