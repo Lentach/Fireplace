@@ -41,6 +41,7 @@ were not what they claimed to be.
 | `kind:badMac` | Peer encrypting from a stale sender ratchet or session mismatch | Existing rebuild-request machinery handles it; investigate only if looping |
 | `ENCRYPT_OVERLAP` events | INFO only: proves sends were concurrent. Expected and safe under the lock | Ignore |
 | Own SENT message shows `[encrypted]` on the SENDER's device only; recipient reads it fine; NO `DECRYPT_DECISION` for it; log shows `SEND_EMIT` followed by `SOCKET_DISCONNECT` within seconds and no `RECV_MSG` echo. CAVEAT: those events live only in the in-memory ring (wiped on restart) — capture in-session, or add a durable `SEND_UNACKED` event first | **Lost `messageSent` ack** (07-08 field case, msg 14667): socket died inside the ack window, so the tempId→realId mapping never happened and the plaintext was never persisted under the real id. NOT an E2E failure — the wire was fine, the recipient got it; a Signal sender cannot decrypt its own ciphertext, so the sender's copy stays `[encrypted]`. Message content is recoverable only by resending | **FIXED (0.0.102, `fix/lost-ack-pending-send-reconcile`)**: durable pending-send records — ONE SharedPreferences key per EXACT emitted ciphertext (`e2e_${uid}_pendsend_v1_<ciphertext>`, NOT a shared JSON blob: concurrent-save RMW on one blob is the `_sessionTails` lost-update shape), written at `SEND_EMIT`, consumed on ack, TTL 72h + cap 40; history merge reconciles an own `[encrypted]` row via peek → persist under real id → VERIFY by read-back (`saveDecryptedContent` swallows failures) → take, emitting durable `SEND_ACK_RECONCILED`. Wiped by `clearAllKeys`/`clearDecryptedContentCache` (plaintext at rest); deliberately NOT cleared on reconnect. NEVER replace the exact-ciphertext matcher with heuristics: review rejected timestamp proximity because a wrong match persists the WRONG plaintext under a real id — permanent, worse than `[encrypted]` |
+| `kind:noSession` + `hadSession:false` + **`idReset:false`** on messages sent AFTER this device wiped/reinstalled and re-minted | The device re-minted its identity in an EARLIER process, so `hadIdentityReset` (an unpersisted in-memory flag) is false by the time these decrypt — the `identityReset` rule never fires | **Step 3G** |
 
 **Dating rule (learned twice — msg 14149, then msgs 14389/14423):** a
 `DECRYPT_DECISION` timestamp is when the receiver ATTEMPTED the decrypt, not
@@ -210,6 +211,58 @@ uploads in the backend log, per Step 1). It is also indistinguishable from a
 server handing us a substituted bundle, which is why the user is told rather
 than the client deciding for them. There is no action to take in the app; the
 resolution is the two humans confirming over another channel.
+
+## Step 3G — everything from a peer fails after THIS device was wiped/reinstalled
+
+Signature: `peer <id> · noSession · N messages`, every row
+`DECRYPT_DECISION {kind: noSession, rule: noSession, isHistory: true, idReset: false,
+hadSession: false, persist: false, markFailed: false, retry: markHistoryPeerForRetry,
+notifyPeer: false}` — on messages the peer sent AFTER this device re-minted.
+
+First: `kind:noSession` with `hadSession:false` means the RECEIVER has no session to open the
+message with. It is NOT `badMac`, so "the peer encrypted to a stale identity" is ruled out.
+[INFERENCE] the peer sent a whisper (`2:`) rather than a PreKey (`3:`) — a PreKey message needs
+no prior session and would have decrypted.
+
+**Why `idReset:false` even though the identity WAS replaced.** `hadIdentityReset` is
+`_encryptionService.needsKeyUpload` (`encryption_provider.dart:119`), a plain in-memory field
+(`encryption_service.dart:234`) that is set on mint/adopt (`:1223`, `:1434`, `:1666`), cleared on
+upload/reset (`:1473`, `:4296`, `:4336`) and **never persisted**. So it is false in any process
+that did not itself mint. Observed 2026-09-13 on `7818786…`:
+
+```
+pid 11214  04:26:50  IDENTITY_MINTED {reason: server-bundle-unlocked-remint}   <- flag set here
+           (app killed; FCM wakes a NEW process)
+pid 11694  04:28:08  [E2E] Re-uploaded key bundle on connect   <- the ELSE of if(needsKeyUpload)
+pid 11694  04:28:09  DECRYPT_DECISION ... idReset: false       <- flag was never true here
+```
+
+`decideDecryptionFailure` (`utils/decryption_failure_policy.dart:132-153`) therefore takes the
+`noSession` branch, not `identityReset` (`:135-142`) — so the **immediate** `notifyPeerRebuild`
+(`messaging_provider.decrypt.dart:1546-1549`) is skipped. A re-mint followed by any app restart —
+i.e. every reinstall — is invisible to that policy.
+
+⚠️ **Do not conclude "the peer was never told."** `_retryDecryptForPeers`
+(`messaging_provider.decrypt.dart:1149-1168`) separately calls `_requestSessionRebuildForPeer`
+once per pass for every peer with rows still needing decryption, and `noSession` leaves
+`markFailed:false`, so those rows qualify. Settle which it is before assigning an owner:
+
+1. On the receiver, look for `SESSION_RESET` / a rebuild request for that peer in the same pass.
+2. On the sender (web), check whether the request arrived and whether
+   `sig_e2e_<uid>_session_<peer>_<device>` was REPLACED after it.
+
+- Request emitted, peer ignored it → sender-side bug.
+- Request never emitted → the missed `identityReset` classification above is the defect; the fix
+  shape is a DURABLE "identity replaced; peer N not yet re-keyed" marker (`OWN_IDENTITY_REPLACED`
+  is already recorded durably), cleared per peer on acknowledgement — not an in-memory
+  upload-pending flag.
+
+Repro (~15 min, prod): two throwaway accounts, exchange a message each way, then on the phone
+`adb shell pm clear com.fireplace.app`, relaunch, log back in (the "Nie pamiętam hasła" door
+re-mints too), and send peer → phone. Delete the accounts afterwards.
+
+Not verified as of 2026-09-13: whether the LIVE (socket) path mis-flags the same way — every
+observed row was `isHistory:true`.
 
 ## The 2-min persistence test (still not run as of 2026-07-07)
 

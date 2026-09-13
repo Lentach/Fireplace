@@ -156,11 +156,30 @@ tree WITHOUT the fix. `7c8bb2ce…` (`fa97358`) was honest but predates the list
 **build from the tip of a pushed commit, and re-record the hash whenever code lands after it** —
 otherwise the footer and the SHA256↔commit pairing lie to whoever is testing.
 
-The device drill (push wakes a killed app <5 s; notification-tap → logout → login-as-enrolled
-lands on the link gate; the gate's own scanner survives the sweep) was run on `601248e0…`. Deltas
-since are the second latch and the listener cancel — neither touches a path that drill entered,
-and the gate behaviour it verified is covered by `auth_gate_link_gate_stays_on_top_test.dart`.
-**Re-run the drill on `7818786…` before distributing** (needs two fresh throwaway accounts).
+**Device drill RE-RUN on `7818786…` — 2026-09-13, PASS** (Pixel_7 AVD `emulator-5554`, prod
+backend, three throwaway accounts, all deleted at the end). The earlier run was on `601248e0…`;
+this one is on the shippable hash. Driven over `uiautomator` + `adb input`.
+
+| Leg | Result |
+|---|---|
+| Push wakes a KILLED app (`am kill`, never force-stop) | **PASS — 3.16 s and 3.29 s** in two independent runs, measured as the notification record's `when=` minus the send click on the DEVICE clock; FCM cold-started a NEW process each time (`ActivityManager: Start proc … for broadcast` +2.73/+2.81 s, `FLTFireMsgReceiver: broadcast received` +2.88/+2.95 s) |
+| Notification tap → right chat | **PASS** — tap on the shade entry ("Umbra / You have a new message") opened the correct conversation in the FCM-woken process. ⚠️ Only ONE conversation existed this run, so "the RIGHT chat" is weakly discriminating here; the multi-conversation proof stands from the 0.2.41 run |
+| notification-tap → logout → login-as-enrolled → link gate | **PASS** — password-only login as an enrolled account landed on `Połącz to urządzenie` with **nothing rendered over it**, in the SAME process (pid 11694) that had consumed the tap |
+| Gate's own scanner survives the sweep | **PASS** — `Zeskanuj kod` opened and was still up after 27 s (the `kLinkScanRouteName` carve-out holds) |
+
+**Reproducing the gate needs a device with NO local identity for that account — `pm clear`, not
+logout.** Logging out and immediately logging back in with the password lands in the normal shell:
+the account's identity keys survive logout on that device, so the §6.1 lock has nothing to refuse.
+Only the true fresh-install state (what a friend's phone is in) reaches the gate.
+
+Two flow facts this run pinned down, both un-recorded before:
+- **Enabling linking forces a recovery phrase first** — `Włącz łączenie` routes to the recovery-key
+  screen with NO "Później" escape, and the 12 words + a word challenge must be completed before the
+  device becomes primary. Budget for it when writing user instructions.
+- **The "Nie pamiętam hasła" door RE-MINTS the identity, it does not restore the old one** — the
+  diag logs `IDENTITY_GUARD_UNLOCKED_REMINT` + `IDENTITY_MINTED {reason: server-bundle-unlocked-remint}`
+  + `OWN_IDENTITY_REPLACED`. It is a password-recovery door that costs you your identity, not a
+  key restore. (The gate's own `linkGateRestoreAction` door is the separate one.)
 
 **Release builds cannot be screenshotted** — `MainActivity.kt` sets `FLAG_SECURE` when not
 debuggable, so `screencap` returns rc=1 while the app window is live (even from recents). Verify

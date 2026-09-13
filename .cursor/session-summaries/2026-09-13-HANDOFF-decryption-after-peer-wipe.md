@@ -1,6 +1,27 @@
 # HANDOFF — messages sent AFTER a peer wipes their device render `[Decryption failed]`
 
-**Date:** 2026-09-13 · **Version:** 0.2.42 (`633f4dd`) · **Tiers deployed:** none · **Status:** UNINVESTIGATED, one observation only
+**Date:** 2026-09-13 · **Version:** 0.2.42 (`633f4dd`) · **Tiers deployed:** none · **Status:**
+**REPRODUCED on a second path; discriminator answered; root-cause CANDIDATE identified, not yet fixed**
+
+## Status update — 2026-09-13 (later, during the `7818786…` device drill)
+
+**REPRODUCED, and the discriminator is settled. The full diagnosis now lives in the runbook:
+`docs/runbooks/e2e-decryption-failed.md` → Step 2 table row + **Step 3G**.** Read that first; the
+original write-up below is kept for the first observation only, and two of its assumptions were
+wrong.
+
+In one paragraph: hit again via `pm clear` → relogin (the "Nie pamiętam hasła" door **re-mints**,
+it does not restore), peer sent 48 s later → `[Decryption failed]`. Durable diag:
+`peer 122 · noSession · 9 messages`, every row `{kind: noSession, hadSession: false,
+idReset: false, notifyPeer: false, retry: markHistoryPeerForRetry}` ⇒ **receiver-side, NOT
+bad-MAC**. Root-cause candidate: `hadIdentityReset` is `_encryptionService.needsKeyUpload`, an
+unpersisted in-memory field, so it is false in any process that did not itself mint — and a
+reinstall always restarts the process. **One fork still open and it decides the owner:**
+`_retryDecryptForPeers` emits its own `requestSessionRebuild`, so "the peer was never told" is
+NOT established. Step 3G says exactly what to capture to settle it.
+
+**Fixtures:** the three accounts used (`drillenr#8917`, `drillphn#8873`, `drillweb#7055`) were
+DELETED at session end — all three now return `401 Invalid credentials` on `POST /auth/login`.
 
 ## What was done
 
