@@ -38,7 +38,7 @@ class ChatMessageBubble extends StatelessWidget {
   });
 
   String _displayContent(BuildContext context) =>
-      messageDisplayContent(context, message);
+      messageDisplayContent(context, message, isMine: isMine);
 
   String _replyDisplayContent(BuildContext context, ReplyToPreview replyTo) {
     final l10n = AppLocalizations.of(context);

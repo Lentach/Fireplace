@@ -369,8 +369,11 @@ Device-proven on the shippable 0.2.42 APK (`7818786…`, Pixel_7 AVD, prod) acro
 `docs/runbooks/e2e-decryption-failed.md` **Step 3G**. The short version:
 
 - **The channel always comes back. The backlog never does.** Everything a friend sent that the
-  phone had not already decrypted stays `[Decryption failed]` forever; your own sent copies show
-  `[encrypted]`.
+  phone had not already decrypted stays unreadable forever, and so do your own sent copies (a
+  sender cannot decrypt its own ciphertext, so their plaintext lived only in the wiped cache).
+  On this 0.2.42 APK both read as raw `[Decryption failed]` / `[encrypted]`; 0.2.43 replaces
+  them with "This message can't be read on this device." — **that needs a rebuild, the binary
+  above does not contain it.**
 - **Our side self-heals unprompted:** the first failing decrypt after a re-mint asks the peer to
   re-key (`notifyPeer: true`), the server replays that request to a peer that reconnects later,
   and once the peer re-keys every message from then on decrypts — verified live, in the

@@ -23,8 +23,13 @@ class MessageContextMenuBubbleHighlight extends StatelessWidget {
   final double maxWidth;
   final String themePreference;
 
+  // `isMine` matters: an own "[encrypted]" row is permanently unreadable and
+  // says so, and the overlay must not contradict the bubble underneath it.
+  // `decryptInProgress` is deliberately left at its default — this replica
+  // mounts provider-free in an Overlay, so it cannot know, and defaulting to
+  // false means it never claims a decrypt is still running.
   String _displayContent(BuildContext context) =>
-      messageDisplayContent(context, message);
+      messageDisplayContent(context, message, isMine: isMine);
 
   Widget _metadataRow(BuildContext context, Color timeColor) {
     IconData? deliveryIcon;

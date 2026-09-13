@@ -3,11 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../constants/app_constants.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
-import '../../providers/messaging_provider.dart'
-    show
-        kDecryptionFailedLabel,
-        kEncryptedPlaceholderLabel,
-        kRetiredMessageLabel;
+import '../../utils/message_display_text.dart';
 import '../../services/link_preview_service.dart';
 import '../../utils/linkify.dart';
 import '../../theme/rpg_theme.dart';
@@ -54,61 +50,30 @@ class _TextMessageContentState extends State<TextMessageContent> {
     if (oldWidget.message.id != widget.message.id) _expanded = false;
   }
 
-  /// The string actually shown in the bubble. Three states, three sentences,
-  /// and NONE of them is a raw sentinel.
+  /// The string actually shown in the bubble: the shared sentinel mapping, else
+  /// the real content untouched.
   ///
-  /// The server ships `content: "[encrypted]"` for every E2E row and the
-  /// provider writes "[Decryption failed]" when a decrypt is terminally lost.
-  /// Both are internal state that used to leak straight into the bubble, where
-  /// the user reads "encrypted" as "this message is broken" and "[Decryption
-  /// failed]" as "the app is broken" — when the truth is "the keys for this row
-  /// are gone from this device".
+  /// The mapping itself lives in [sentinelDisplayText] because the
+  /// context-menu replica draws a body too, and when the two decided
+  /// separately they disagreed — the replica localized `[Decryption failed]`
+  /// while this path printed the raw sentinel (live QA 2026-08-31). Add
+  /// sentinels THERE, never here.
   ///
-  ///   * a row the history pass has not reached yet → "Decrypting…". It WILL
-  ///     resolve, so this one keeps the model's own predicate: a row with no
-  ///     ciphertext is not waiting on the pass and must not claim to be.
-  ///   * a row whose plaintext is gone for good → an honest sentence;
-  ///   * anything else → the real content, untouched.
-  ///
-  /// Display-only. [MessageModel.content] is NEVER rewritten here:
-  /// "[Decryption failed]" is persisted for some failure kinds and the durable
+  /// Display-only: [MessageModel.content] is never rewritten, because
+  /// `[Decryption failed]` is persisted for some failure kinds and the durable
   /// plaintext cache has to keep seeing the sentinel it stored.
-  /// Resolved LAZILY, never hoisted: a plain-text bubble must keep building
-  /// without an [AppLocalizations] ancestor (`bubble_redesign_test.dart` pumps
-  /// exactly that, and hoisting the lookup crashed it on a null check).
-  String _displayBody(BuildContext context) {
-    final content = widget.message.content;
-    if (content == kRetiredMessageLabel) {
-      return AppLocalizations.of(context).messageNoLongerStoredOnThisDevice;
-    }
-    if (widget.decryptInProgress &&
-        widget.message.displayAsEncryptedPlaceholder) {
-      return AppLocalizations.of(context).decryptingMessage;
-    }
-    // Tried and terminally lost. Safe to state outright: the post-retry sweep
-    // (`_markHistoryDecryptFailuresAfterRetry`) is what writes this label, so
-    // by the time a row carries it the pass is done with it.
-    if (content == kDecryptionFailedLabel) {
-      return AppLocalizations.of(context).messageUnreadableOnThisDevice;
-    }
-    // An OWN row is never Signal-decrypted — a sender cannot decrypt its own
-    // ciphertext — so its plaintext exists ONLY in the local cache. Once that
-    // is gone (wipe, reinstall, cache clear) no pass will ever resolve it, and
-    // it never carries the failed label because it never failed a decrypt.
-    // This is the row a user sees after reinstalling, above their own messages.
-    //
-    // Gated on the pass being idle, and deliberately NOT extended to PEER
-    // rows: a peer "[encrypted]" may simply be waiting for the pass (the frame
-    // before `decryptInProgress` goes true would flash a false "can't be
-    // read"), and an unresolved peer row is rewritten to "[Decryption failed]"
-    // by the sweep above anyway.
-    if (!widget.decryptInProgress &&
-        widget.isMine &&
-        content == kEncryptedPlaceholderLabel) {
-      return AppLocalizations.of(context).messageUnreadableOnThisDevice;
-    }
-    return content;
-  }
+  ///
+  /// The tail deliberately differs from [messageDisplayContent]: an empty
+  /// content stays empty here rather than becoming "unsupported message type",
+  /// because a legitimately empty decrypted row renders through this path.
+  String _displayBody(BuildContext context) =>
+      sentinelDisplayText(
+        context,
+        widget.message,
+        isMine: widget.isMine,
+        decryptInProgress: widget.decryptInProgress,
+      ) ??
+      widget.message.content;
 
   /// Builds the non-jumbo body spans: plain text + inline emoji + tappable URLs.
   List<InlineSpan> _buildBodySpans(BuildContext context) {

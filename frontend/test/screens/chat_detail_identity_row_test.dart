@@ -405,12 +405,15 @@ void main() {
     expect(find.byType(PeerIdentityChangedRow), findsNothing);
   });
 
-  testWidgets('setting ON keeps the red pill and suppresses the muted note',
+  testWidgets('an alarmed peer gets the pill and never the muted note',
       (tester) async {
     await _pumpChat(
       tester,
       alarmed: true,
-      noted: true, // a note may coexist; the pill wins while warnings are on
+      // A note may coexist in storage; the pill always wins. Since the gate
+      // came off (0.2.43) the setting no longer discriminates — the
+      // "supersedes F11" case pins this same precedence with warnings OFF.
+      noted: true,
       keyChangeWarnings: true,
       withMessages: true,
     );
