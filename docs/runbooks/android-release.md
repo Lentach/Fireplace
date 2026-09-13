@@ -125,12 +125,21 @@ embedded fallback key despite the script's warning text; empty = GIF search disa
 defaults to production; override with `-BaseUrl` for a staging build. Requires an Android SDK with
 build-tools (for `apksigner`) via `ANDROID_HOME`/`ANDROID_SDK_ROOT`/`%LOCALAPPDATA%\Android\Sdk`.
 
-**versionCode floor — 10024.** The first release build (2026-09-02) was `0.1.24` from
-`feat/video-messages` (`1f9d96f`) → versionCode `10024`, SHA256
-`743612453b44ff2a961760cb010a4dac9b87868594080517c9c1ac1a2bc40ef1`, built for the owner's phone.
-`master` was still `0.1.21` at the time, so a build from master would derive `10021` and Android
-would REFUSE it as a downgrade. Every build meant to install over an existing one must bump
+**versionCode floor — 20043 since 2026-09-13** (the 0.2.43 build below is installed on the Pixel_7
+AVD; it becomes the phone's floor too the moment it lands there). History: the first release build
+(2026-09-02) was `0.1.24` from `feat/video-messages` (`1f9d96f`) → versionCode `10024`, SHA256
+`743612453b44ff2a961760cb010a4dac9b87868594080517c9c1ac1a2bc40ef1`, built for the owner's phone;
+`master` was still `0.1.21`, so a build from master would derive `10021` and Android would REFUSE
+it as a downgrade. Every build meant to install over an existing one must bump
 `frontend/pubspec.yaml` past the highest version ever installed — regardless of branch.
+
+⛔ **`install -r` only works FORWARD, and on a linked device there is NO rollback.** Android
+rejects a lower versionCode with `INSTALL_FAILED_VERSION_DOWNGRADE`; the only way to install an
+older APK is `uninstall`, which is exactly the action that destroys that device's Signal keys and
+SQLCipher history (root `CLAUDE.md` §6) and forces the peer safety-number confirmation on every
+contact. So once a real device is on 20043, **never hand the owner an older APK to "go back"** —
+every later test build must be ≥ the installed versionCode. A bad build is fixed by bumping the
+patch and rolling FORWARD, never by reverting the install.
 
 **Build record — 0.2.41, 2026-09-13 (the friends-test candidate).** `master` @ `3122cc1` →
 versionCode `20041`, **105.2 MB**, SHA256
@@ -143,12 +152,30 @@ installed anywhere and NOT smoke-tested; the floor becomes 20041 the moment it i
 `--split-per-abi` would roughly halve the download but interacts with both the versionCode
 formula and Play's monotonicity — not done, deliberately.
 
-**Build record — 0.2.42, 2026-09-13 (CURRENT, supersedes 0.2.41 above).** `master` @
+**Build record — 0.2.42, 2026-09-13 (SUPERSEDED by 0.2.43 below; its binary no longer exists on
+the dev PC — the 0.2.43 build overwrote `app-release.apk`).** `master` @
 **`633f4dd`** → versionCode `20042`, 105.2 MB, SHA256
 `7818786948ca79e11674a48e4999cc291bd749ba061361a9197efca200085bf0`, same signer cert, 16KB 16/16,
 CI 6/6 green on that commit. Installs and launches; footer reads `633f4dd`. Carries both arms of
 the issue-#175 fix (`23be77d` route guard + local-notification latch, `fa97358` terminated-state
 FCM latch) AND the per-login `onTokenRefresh` cancel (`633f4dd`).
+
+**Build record — 0.2.43, 2026-09-13 (CURRENT — the bob208 field-test binary).**
+`feat/passcode-lock` @ **`aae1defe`**, which is byte-identical to `origin/master`; the code gate is
+`5c91ccd6` (CI 6/6 green) and everything after it is docs-only → versionCode `20043`, 105.2 MB,
+SHA256 `40f02824057d2c215ce2df762e13caaab066f57c0b262fe3f48ae1d7dedad7a4`, 16KB gate 16/16.
+**Signer MEASURED, not inherited:** `apksigner verify --print-certs` → DN `CN=Rick Sanches`,
+certificate SHA-256 `8e9a6bf37b58a8432c42d89e3199007c4aa9077e297a966a2f2ca7585cdf405d`, equal to
+the record-of-truth fingerprint above — so the USB/cloud keystore copies can sign every future
+update for this install. `build-android.ps1` itself only asserts the DN and rejects the debug cert;
+the digest comparison is a manual step. Adds what the 0.2.42 binary lacks:
+`sentinelDisplayText` for unreadable rows and the un-gated key-change pill. **All three
+dart-defines were verified INSIDE `lib/arm64-v8a/libapp.so`** — host `fireplace.ignorelist.com`,
+`GIT_COMMIT` `aae1defe`, and the 32-char Giphy key (`deploy-web.config.ps1` assigns it in SINGLE
+quotes, and `build-android.ps1` dot-sources that file itself, so no env-var export is needed); a
+byte search of `libapp.so` is the only proof a define survived into a release AOT build.
+Staged for hand-transfer at `C:/Users/Lentach/Desktop/umbra-0.2.43-aae1defe.apk`, hash re-verified
+after the copy. The versionCode floor becomes 20043 the moment it is installed anywhere.
 
 ⚠️ **Two earlier 0.2.42 builds exist and must NOT be shipped.** `601248e0…` was built from a
 working tree whose fix was still uncommitted, so its embedded `GIT_COMMIT` (`f35ef7b`) names a
@@ -243,11 +270,56 @@ plaintext — the SQLCipher store + Keystore content keys work on a real device,
 covered by a route pushed after the verdict, and a pending notification deep-link survived a
 logout→login in the SAME process and was consumed by the NEXT account.
 
+**Emulator pre-flight of the 0.2.43 build (2026-09-13, Pixel_7 AVD, prod backend
+`0.2.41/49c77c10`) — PASS, and it doubles as the UPGRADE-PATH proof:**
+
+| Leg | Result |
+|---|---|
+| `adb install -r` over the install already on the AVD — a REAL versionCode bump 20042 → 20043 | **PASS** — `Success`; `firstInstallTime=2026-09-13 01:28:30` (predates this session and matches the overnight `7818786…` drill install, so the outgoing build was 0.2.42/20042 — inferred from the timestamp, not measured before the overwrite) stayed put while only `lastUpdateTime` moved; on-device `base.apk` then hashes to `40f02824…`, the identity check the version string cannot give |
+| boot | **PASS** — auth screen, footer commit `aae1defe` |
+| register on prod → shell | **PASS** — `updtest0913#7416`; the recovery phrase is offered right after registration ((lxxxiii)), skipped with "Później" |
+| **`adb install -r` AGAIN, over the LOGGED-IN install** | **PASS — nothing lost.** The relaunch went straight to Czaty (no auth screen: the JWT in Keystore-backed storage survived) and server-side the identity key stayed byte-identical (`BUOpbmrldsbm50zt…`) with `identity_change_audit` still EMPTY — a patch install is invisible to peers: no re-link, no safety-number confirmation |
+| footer after the upgrade | **PASS** — `0.2.43 · aae1defe · 2026-09-13T20:21:41Z` |
+
+Throwaway `updtest0913` was deleted in-app (password-confirmed dialog) and its `users`,
+`key_bundles` and `devices` rows are gone. NOT covered — every leg needing a second human device:
+E2E round trip, push-with-app-killed, voice/image, and the LINK ceremony (checklist items 2-7).
+
+**First command on the owner's REAL phone, before any claim about its state:**
+`adb shell dumpsys package com.fireplace.app | grep -E "versionCode|firstInstallTime"`. An empty
+`fcm_token` for the account proves only that no LIVE push registration exists — not that the app is
+absent — and the 0.1.24 build (versionCode `10024`, 2026-09-02) was made FOR that phone. Three
+outcomes, three different flows:
+
+- nothing installed → clean first install; the account is enrolled, so login lands on the link gate.
+- `10024` present, not logged into the account → plain in-place upgrade, then the gate as above.
+- `10024` present AND logged in as the account → **that install already IS a live device** (it would
+  be the `platform = legacy` row in `devices`), so `install -r` upgrades it in place and **no link
+  ceremony is needed at all**.
+
+**This is NOT the untested "pre-Phase-2 install" upgrade gate** named in this runbook's header:
+`native_content_store.dart` landed in `33a906f4` (2026-07-29), so the 0.1.24 tree (`1f9d96f`,
+2026-09-02) already carried the SQLCipher store, and `content_db.dart` reads `schemaVersion => 1`
+in BOTH trees — no Drift migration crosses a 10024 → 20043 upgrade.
+
 ## Distribution (decision 2026-07-29: direct APK first, Play later)
 
 - Attach `app-release.apk` + its SHA256 to a GitHub Release on `Lentach/Fireplace`.
-- No auto-update exists for sideloaded APKs: announce updates in-app/manually; users re-install
-  over the top (same signature = data survives).
+- **Updating a sideload is NOT a reinstall-from-scratch — MEASURED 2026-09-13 (pre-flight above).**
+  A newer APK installed OVER the old one (`adb install -r <apk>`, or the user taps the downloaded
+  file) keeps session, Signal identity, SQLCipher history and content keys, and leaves
+  `identity_change_audit` empty, so no peer is asked to confirm a safety number. What destroys data
+  is `uninstall`, "Clear storage" and `pm clear` — drill tools for reproducing a fresh install,
+  never an update step. **Updates are FORWARD-ONLY:** versionCode must rise (bump
+  `frontend/pubspec.yaml`), Android answers a lower one with `INSTALL_FAILED_VERSION_DOWNGRADE`,
+  and the only way past that is `uninstall` — i.e. there is no rollback on a real device, only
+  another bump. See the ⛔ note under "versionCode floor".
+- No auto-update exists for sideloads — someone must TELL users. Options, cheapest first:
+  Obtainium pointed at GitHub Releases (zero app code; each user installs Obtainium once); a
+  self-hosted manifest + in-app "update available" banner (the JSON and APK must live OUTSIDE
+  `frontend-build`, which every `deploy-web.ps1` deletes — an `android-dist/` nginx alias beside
+  `landing-build/` — plus `REQUEST_INSTALL_PACKAGES` for a one-tap install); or a Play
+  internal-testing track (real silent updates, but the whole Play gate list below applies).
 - Play Store later: needs `flutter build appbundle` — and the signer + 16KB gates must move onto the
   BUNDLE's output, because `build-android.ps1` only ever inspects an APK — plus a privacy policy,
   the data-safety form, and an in-app report path (UGC policy); 16KB + targetSdk are already met.
@@ -329,9 +401,12 @@ empty and fills from new traffic. Old history stays readable on the device that 
 
 **Device-proven 2026-09-13** on the 0.2.41 release APK (Pixel_7 AVD, prod backend): enroll → code
 → SAS `334 092` identical on both screens → approve on primary → `android · #2` in the device
-list → gate closes → self-sync works. Corrections the run forced on the earlier draft: the
-PRIMARY must be an INSTALLED PWA (a browser tab shows only "Najpierw zainstaluj Umbra jako
-aplikację" — `devices_screen.dart:425-426`, `isInstalledDisplayMode()`), the ceremony is
+list → gate closes → self-sync works. Corrections the run forced on the earlier draft:
+the PRIMARY must be an INSTALLED PWA **to ENABLE linking** — that gate sits inside the
+`notEnrolled` branch (`devices_screen.dart:426`, a plain tab shows only "Najpierw zainstaluj Umbra
+jako aplikację"); once the account IS enrolled the browser-tab case gets only an informational
+nudge (`:468`) and `devices-link-a-device` still renders (`:485`), so **an enrolled account can
+approve a new device from a plain tab**. The ceremony is
 SYMMETRIC (both sides display a code — `.web.p` and `.android.n`; either side may scan or type
 the other's), and the comparison code is a **6-digit number, not words**. Use EXACTLY this:
 
