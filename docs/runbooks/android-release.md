@@ -157,8 +157,13 @@ tree WITHOUT the fix. `7c8bb2ce…` (`fa97358`) was honest but predates the list
 otherwise the footer and the SHA256↔commit pairing lie to whoever is testing.
 
 **Device drill RE-RUN on `7818786…` — 2026-09-13, PASS** (Pixel_7 AVD `emulator-5554`, prod
-backend, three throwaway accounts, all deleted at the end). The earlier run was on `601248e0…`;
-this one is on the shippable hash. Driven over `uiautomator` + `adb input`.
+backend, three throwaway accounts, all deleted at the end). The earlier run was on `601248e0…`.
+**Identity of the binary under test was PROVEN by hash, not by the version string** — three
+0.2.42 builds exist and all report `versionName 0.2.42 / versionCode 20042`, so the footer and
+`dumpsys package` cannot tell them apart:
+`adb shell sha256sum "$(adb shell pm path com.fireplace.app | sed 's/^package://')"` →
+`7818786948ca…`, equal to the recorded shippable hash. Nothing was reinstalled mid-drill, and
+`pm clear` wipes data, not the APK. Driven over `uiautomator` + `adb input`.
 
 | Leg | Result |
 |---|---|
@@ -176,10 +181,14 @@ Two flow facts this run pinned down, both un-recorded before:
 - **Enabling linking forces a recovery phrase first** — `Włącz łączenie` routes to the recovery-key
   screen with NO "Później" escape, and the 12 words + a word challenge must be completed before the
   device becomes primary. Budget for it when writing user instructions.
-- **The "Nie pamiętam hasła" door RE-MINTS the identity, it does not restore the old one** — the
-  diag logs `IDENTITY_GUARD_UNLOCKED_REMINT` + `IDENTITY_MINTED {reason: server-bundle-unlocked-remint}`
-  + `OWN_IDENTITY_REPLACED`. It is a password-recovery door that costs you your identity, not a
-  key restore. (The gate's own `linkGateRestoreAction` door is the separate one.)
+- **A keyless login RE-MINTS the identity on an UN-ENROLLED account** — diag logs
+  `IDENTITY_GUARD_UNLOCKED_REMINT` + `IDENTITY_MINTED {reason: server-bundle-unlocked-remint}` +
+  `OWN_IDENTITY_REPLACED`. This is the identity-bootstrap guard
+  (`encryption_service.dart:1201-1208`), NOT a property of the door: an ENROLLED account hits
+  `:1166` instead and gets `E2eIdentityIncompleteException` → the gate. Observed here via "Nie
+  pamiętam hasła", which is why that door looked like the cause; **the phrase door is a
+  password-recovery door and does not restore keys** — the gate's `linkGateRestoreAction` is the
+  separate key-restore path. Not tested: the phrase door against an ENROLLED keyless device.
 
 **Release builds cannot be screenshotted** — `MainActivity.kt` sets `FLAG_SECURE` when not
 debuggable, so `screencap` returns rc=1 while the app window is live (even from recents). Verify

@@ -64,7 +64,8 @@
   recorded and is NOT open**: PEPK-transfer the existing `.jks`, never let Play generate a key
   (`traps.md` § Android).
 - Traps (all appended to `docs/agents/traps.md`): gate needs `pm clear` not logout; enabling
-  linking forces a recovery phrase; the "Nie pamiętam hasła" door re-mints; `hadIdentityReset` is
-  an unpersisted in-memory flag; the diag panel is a LONG-PRESS on the Privacy shield; first
-  `input tap` after a dump is swallowed and ESC does not close Flutter's IME; `dumpsys
-  notification` false-positives on an `AppSettings:` line.
+  linking forces a recovery phrase; a keyless login re-mints on an UN-ENROLLED account and gates
+  on an enrolled one; `hadIdentityReset` is an unpersisted in-memory flag; the diag panel is a
+  LONG-PRESS on the Privacy shield; ESC does not close Flutter's IME (use `keyevent 4`) and an
+  inert-looking button is usually an async action in flight, so re-dump instead of re-tapping;
+  `dumpsys notification` false-positives on an `AppSettings:` line.

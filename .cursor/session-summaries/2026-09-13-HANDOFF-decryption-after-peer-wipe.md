@@ -10,8 +10,9 @@
 original write-up below is kept for the first observation only, and two of its assumptions were
 wrong.
 
-In one paragraph: hit again via `pm clear` → relogin (the "Nie pamiętam hasła" door **re-mints**,
-it does not restore), peer sent 48 s later → `[Decryption failed]`. Durable diag:
+In one paragraph: hit again via `pm clear` → relogin on an UN-ENROLLED account, which re-mints
+(that is the identity-bootstrap guard, not the door), peer sent 48 s later → `[Decryption
+failed]`. Durable diag:
 `peer 122 · noSession · 9 messages`, every row `{kind: noSession, hadSession: false,
 idReset: false, notifyPeer: false, retry: markHistoryPeerForRetry}` ⇒ **receiver-side, NOT
 bad-MAC**. Root-cause candidate: `hadIdentityReset` is `_encryptionService.needsKeyUpload`, an

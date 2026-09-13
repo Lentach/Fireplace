@@ -258,8 +258,9 @@ once per pass for every peer with rows still needing decryption, and `noSession`
   upload-pending flag.
 
 Repro (~15 min, prod): two throwaway accounts, exchange a message each way, then on the phone
-`adb shell pm clear com.fireplace.app`, relaunch, log back in (the "Nie pamiętam hasła" door
-re-mints too), and send peer → phone. Delete the accounts afterwards.
+`adb shell pm clear com.fireplace.app`, relaunch and log back in — on an UN-ENROLLED account any
+keyless login re-mints (`encryption_service.dart:1201-1208`); an ENROLLED one gates instead
+(`:1166`), so use an un-enrolled account here. Then send peer → phone. Delete the accounts after.
 
 Not verified as of 2026-09-13: whether the LIVE (socket) path mis-flags the same way — every
 observed row was `isHistory:true`.
