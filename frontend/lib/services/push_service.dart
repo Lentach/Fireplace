@@ -2,9 +2,15 @@ import 'dart:async';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart'
-    show debugPrint, defaultTargetPlatform, kIsWeb, TargetPlatform;
+    show
+        debugPrint,
+        defaultTargetPlatform,
+        kIsWeb,
+        TargetPlatform,
+        visibleForTesting;
 import '../push_android_stub.dart'
-    if (dart.library.io) 'android_fcm_local_notifications.dart' as push_android;
+    if (dart.library.io) 'android_fcm_local_notifications.dart'
+    as push_android;
 import '../utils/pending_deep_link_stub.dart'
     if (dart.library.html) '../utils/pending_deep_link_web.dart';
 import '../utils/page_lifecycle_stub.dart'
@@ -28,6 +34,14 @@ class WebPushRequestResult {
 
   const WebPushRequestResult(this.status, {this.details});
 }
+
+/// Whether this PROCESS has already consumed the terminated-state FCM open
+/// (`getInitialMessage`). Deliberately top-level: `PushService` is rebuilt per
+/// session, and the launch fact is per process (#175).
+bool _coldStartFcmOpenDelivered = false;
+
+@visibleForTesting
+void resetColdStartFcmOpenLatchForTest() => _coldStartFcmOpenDelivered = false;
 
 /// Handles FCM push notification registration and token lifecycle.
 ///
@@ -136,24 +150,30 @@ class PushService {
           },
         );
 
-        final initial = await FirebaseMessaging.instance.getInitialMessage();
-        if (initial != null) {
-          push_android.handleFcmRemoteMessageOpen(
-            initial,
-            onConversationId: (id) =>
-                onNavigateToConversation?.call(id),
-          );
+        // Same stickiness as the launch-details read above (#175): a
+        // terminated-state open is a COLD-START fact, but `initialize` runs on
+        // every login, so an unlatched re-read hands the previous account's
+        // conversation id to the next one. Process-level, not per-instance:
+        // a new PushService per login would reset a field.
+        if (!_coldStartFcmOpenDelivered) {
+          _coldStartFcmOpenDelivered = true;
+          final initial = await FirebaseMessaging.instance.getInitialMessage();
+          if (initial != null) {
+            push_android.handleFcmRemoteMessageOpen(
+              initial,
+              onConversationId: (id) => onNavigateToConversation?.call(id),
+            );
+          }
         }
 
         await _androidFcmOpenedSubscription?.cancel();
-        _androidFcmOpenedSubscription =
-            FirebaseMessaging.onMessageOpenedApp.listen((message) {
-          push_android.handleFcmRemoteMessageOpen(
-            message,
-            onConversationId: (id) =>
-                onNavigateToConversation?.call(id),
-          );
-        });
+        _androidFcmOpenedSubscription = FirebaseMessaging.onMessageOpenedApp
+            .listen((message) {
+              push_android.handleFcmRemoteMessageOpen(
+                message,
+                onConversationId: (id) => onNavigateToConversation?.call(id),
+              );
+            });
       }
     } catch (_) {
       // Push setup failed (Firebase not configured, no permission, etc.) — silently ignored
@@ -194,14 +214,15 @@ class PushService {
       return const WebPushRequestResult(WebPushRequestStatus.unsupported);
     }
     if (!_webPushBridge.isStandaloneOrNotRequired()) {
-      return const WebPushRequestResult(WebPushRequestStatus.requiresStandalone);
+      return const WebPushRequestResult(
+        WebPushRequestStatus.requiresStandalone,
+      );
     }
 
     try {
-      final payload =
-          await _webPushBridge.requestSubscriptionFromUserGesture(
-            vapidPublicKey: _vapidKey,
-          );
+      final payload = await _webPushBridge.requestSubscriptionFromUserGesture(
+        vapidPublicKey: _vapidKey,
+      );
       if (payload == null) {
         final permission = _webPushBridge.notificationPermission;
         if (permission == 'denied') {
