@@ -330,19 +330,23 @@ tree and the prod DB.
 | E2E round trip | **PASS** — text and voice both directions (`24385` in, `24386`/`24387` out) |
 | self-sync | **PASS** — the phone's sends fan out to `37:1` and `37:5`; the owner saw AND heard them on his iOS PWA primary |
 | **in-place upgrade 20043 → 20044** | **PASS — the update path, on real hardware.** `adb install -r` → `Success`; `firstInstallTime` PRESERVED while `lastUpdateTime` moved; `base.apk` now `20f46b67…`; device #11 `lastSeenAt` advanced **43 s later with no login**, key bundle re-uploaded with the same identity key, `identity_change_audit` still 0 |
-| push with app KILLED (item 3), image send/receive (item 5) | **NOT RUN** — owner's phone locked for the night |
+| **push with the app KILLED, on 0.2.44** (item 3) | **PASS — 3.54 s to process start, 3.65 s to the receiver.** `am kill` only reaps BACKGROUND processes, so the app was first sent behind the launcher (`am start -c android.intent.category.HOME`) and the test gated on `pidof` returning EMPTY. Peer sent at server `23:01:51.931Z`; logcat `Start proc 26446 … FlutterFirebaseMessagingReceiver caller=com.google.android.gms` at device `23:01:54.887` and `FLTFireMsgReceiver: broadcast received` at `23:01:54.996`, with the device clock measured **585 ms behind** the server and corrected for. **The tap opened the RIGHT chat and the message decrypted.** Pairing proven sound: no other message exists between 23:00:00 and 23:01:50, so nothing else could have woken the process |
+| **image send/receive, plus an unplanned VIDEO** (item 5) | **PASS for images — the 16KB-patched `libwebcrypto.so` works at runtime on a real ARM device**, which no emulator run had ever shown. Phone → peer IMAGE `24390` (envelopes `37:1 37:5 75:1`) and peer → phone IMAGE `24392` (`37:1 37:5 37:11`): the owner confirmed images work, so encrypt-on-send AND decrypt-on-receive are both exercised. VIDEO `24391` (peer → phone) also arrived with a `mediaUrl` and envelopes for device #11, but **its rendering was never separately confirmed** — the owner was answering an images-only instruction and the follow-up screen dump caught a notification shade, not the thread. Treat video as arrived-but-unverified |
+| **disappearing-message expiry** (item 5, second half) | **ARMING VERIFIED, DISAPPEARANCE NOT OBSERVED — and the reason is by design.** The owner sent two 60 s rows (`24393`, `24394`) from the phone and expected a send-time countdown. The timer is **read-triggered**: the row is created with `expiresAt: null` + `disappearAfterSeconds` (`chat-message.service.ts:346, 446`) and `expiresAt = now + ttl` is stamped only in the READ handler (`messages.service.ts:811-813`). Seven minutes later both rows were still `DELIVERED` with `expiresAt` NULL because the PEER never opened the thread — that is correct, not a defect (a send-time countdown would burn down in the recipient's pocket). Backstop for a never-read row: `createdAt + DISAPPEARING_MAX_UNREAD_SECONDS` = **1 day** (`disappearing.constants.ts:8`). Expired rows are then HARD-deleted — `repository.remove()` with media unlinked first, cron `EVERY_MINUTE` (`message-cleanup.service.ts:39-99`) — not merely filtered. **Owed follow-up (2 min):** read the thread as the peer, watch `expiresAt` get stamped, then confirm the rows leave Postgres and the bubbles leave both screens |
 
 Two things this run could not do and the next one should plan for: **release builds cannot be
 screenshotted** (`FLAG_SECURE`) so the owner cannot send a screenshot either — he photographs the
 screen or describes it; and with input injection blocked, every tap is the owner's, so batch the
 instructions instead of driving step by step.
 
-One unreproduced sighting, PARKED at the owner's request: an inbound 11 s voice note appeared to
-show `0:00`, then could not be reproduced. Facts if it returns: row `24385` holds
-`mediaDuration = 11`; the metadata fallback EXISTS and is wired
-(`playback_controller.dart:78-84` → `:330`); no code path nulls the server value (both suspect
-sites are null-preserving `copyWith`). Leading hypothesis: the loopback-proxied `just_audio` source
-reports an unknown duration until buffered or seeked. Needed: WHICH device, and leave it on screen.
+**The "0 s voice note" is CLOSED — not a defect.** The label is `position/duration`, and the a11y
+tree after the push test reads `0:00/0:11` for the inbound 11 s note (plus `0:00/0:06` and
+`0:00/0:04` for the owner's own sends): the duration was always correct and the leading `0:00` is
+the PLAYBACK POSITION before play is pressed. Keep this in mind when a user reports a "0 second"
+clip — ask what the whole label said. (The earlier hypothesis about the loopback-proxied
+`just_audio` source reporting an unknown duration was never needed; the metadata fallback at
+`playback_controller.dart:78-84` was doing its job all along.) Incidental, and worth knowing before
+diagnosing a "vanishing" message in that thread: it has **disappearing messages ON at 2 days**.
 
 ## Distribution (decision 2026-07-29: direct APK first, Play later)
 
