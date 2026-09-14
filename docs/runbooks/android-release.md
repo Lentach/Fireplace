@@ -125,8 +125,8 @@ embedded fallback key despite the script's warning text; empty = GIF search disa
 defaults to production; override with `-BaseUrl` for a staging build. Requires an Android SDK with
 build-tools (for `apksigner`) via `ANDROID_HOME`/`ANDROID_SDK_ROOT`/`%LOCALAPPDATA%\Android\Sdk`.
 
-**versionCode floor — 20044 since 2026-09-14** (0.2.44 is INSTALLED on the owner's real phone,
-`f849cc68`; 20043 was the floor for the few minutes before that). History: the first release build
+**versionCode floor — 20046 since 2026-09-14** (0.2.46 is INSTALLED on the owner's real phone,
+`f849cc68`; 20043/20044/20045 each held the floor for minutes on the way there). History: the first release build
 (2026-09-02) was `0.1.24` from `feat/video-messages` (`1f9d96f`) → versionCode `10024`, SHA256
 `743612453b44ff2a961760cb010a4dac9b87868594080517c9c1ac1a2bc40ef1`, built for the owner's phone;
 `master` was still `0.1.21`, so a build from master would derive `10021` and Android would REFUSE
@@ -178,12 +178,26 @@ byte search of `libapp.so` is the only proof a define survived into a release AO
 Staged for hand-transfer at `C:/Users/Lentach/Desktop/umbra-0.2.43-aae1defe.apk`, hash re-verified
 after the copy.
 
-**Build record — 0.2.44, 2026-09-14 (CURRENT — running on the owner's phone).** `master` @
+**Build record — 0.2.44, 2026-09-14 (superseded by 0.2.45/0.2.46 below).** `master` @
 **`c7bcee7e`**, **CI 6/6 green on that exact commit** → versionCode `20044`, 105.2 MB, SHA256
 `20f46b671865ccfcfa3a28c13edf893ce34874b117d939427c1c068cc520176e`, 16KB gate 16/16, signer
 MEASURED `8e9a6bf3…5cdf405d` (= record-of-truth). Built with `-SkipClean` in 167 s. Carries the
 conversation-list sentinel fix: before it, a freshly linked device's ENTIRE chat list printed raw
 `[encrypted]`. **Installed over 0.2.43 on the phone with `adb install -r`** — see "Field test" below.
+
+**Build record — 0.2.45, 2026-09-14 (superseded by 0.2.46).** `master` @ **`eb455f5b`**, CI 6/6 →
+versionCode `20045`, SHA256 `99e1bfdebffd81cffa921b84467fd0567b9c19d6743f5a3d123d5d6ef101519f`, signer digest
+MEASURED = record-of-truth, 16KB 16/16. Two owner nits from the field test: the shell now pays the status-bar
+inset ONCE (see "Field test"), and fullscreen stills/GIFs dismiss on swipe down like video.
+
+**Build record — 0.2.46, 2026-09-14 (CURRENT — running on the owner's phone, and the version PROD runs).**
+`master` @ **`43481643`**, CI 6/6 → versionCode `20046`, 105.2 MB, SHA256
+`58ec84a96672c1aeeed73ea1467986e0a2dc0c340be6b22ffea535bc33875103`, signer digest MEASURED
+`8e9a6bf3…5cdf405d`, 16KB 16/16. Moves the key-loss warning off the version footer into Privacy & Safety
+(owner's call — he asked for it gone from the footer, NOT deleted; native is the one platform where it is true).
+**Installed over 0.2.45 with `adb install -r`; `firstInstallTime` `2026-09-13 23:53:44` has now survived FOUR
+in-place upgrades (20043 → 20044 → 20045 → 20046) on that phone.** Both prod tiers were deployed at this commit
+the same night (`/version` → `0.2.46 / 43481643`, web smoke 5/5).
 
 ⚠️ **Two earlier 0.2.42 builds exist and must NOT be shipped.** `601248e0…` was built from a
 working tree whose fix was still uncommitted, so its embedded `GIT_COMMIT` (`f35ef7b`) names a
@@ -332,7 +346,7 @@ tree and the prod DB.
 | **in-place upgrade 20043 → 20044** | **PASS — the update path, on real hardware.** `adb install -r` → `Success`; `firstInstallTime` PRESERVED while `lastUpdateTime` moved; `base.apk` now `20f46b67…`; device #11 `lastSeenAt` advanced **43 s later with no login**, key bundle re-uploaded with the same identity key, `identity_change_audit` still 0 |
 | **push with the app KILLED, on 0.2.44** (item 3) | **PASS — 3.54 s to process start, 3.65 s to the receiver.** `am kill` only reaps BACKGROUND processes, so the app was first sent behind the launcher (`am start -c android.intent.category.HOME`) and the test gated on `pidof` returning EMPTY. Peer sent at server `23:01:51.931Z`; logcat `Start proc 26446 … FlutterFirebaseMessagingReceiver caller=com.google.android.gms` at device `23:01:54.887` and `FLTFireMsgReceiver: broadcast received` at `23:01:54.996`, with the device clock measured **585 ms behind** the server and corrected for. **The tap opened the RIGHT chat and the message decrypted.** Pairing proven sound: no other message exists between 23:00:00 and 23:01:50, so nothing else could have woken the process |
 | **image send/receive, plus an unplanned VIDEO** (item 5) | **PASS for images — the 16KB-patched `libwebcrypto.so` works at runtime on a real ARM device**, which no emulator run had ever shown. Phone → peer IMAGE `24390` (envelopes `37:1 37:5 75:1`) and peer → phone IMAGE `24392` (`37:1 37:5 37:11`): the owner confirmed images work, so encrypt-on-send AND decrypt-on-receive are both exercised. VIDEO `24391` (peer → phone) also arrived with a `mediaUrl` and envelopes for device #11, but **its rendering was never separately confirmed** — the owner was answering an images-only instruction and the follow-up screen dump caught a notification shade, not the thread. Treat video as arrived-but-unverified |
-| **disappearing-message expiry** (item 5, second half) | **ARMING VERIFIED, DISAPPEARANCE NOT OBSERVED — and the reason is by design.** The owner sent two 60 s rows (`24393`, `24394`) from the phone and expected a send-time countdown. The timer is **read-triggered**: the row is created with `expiresAt: null` + `disappearAfterSeconds` (`chat-message.service.ts:346, 446`) and `expiresAt = now + ttl` is stamped only in the READ handler (`messages.service.ts:811-813`). Seven minutes later both rows were still `DELIVERED` with `expiresAt` NULL because the PEER never opened the thread — that is correct, not a defect (a send-time countdown would burn down in the recipient's pocket). Backstop for a never-read row: `createdAt + DISAPPEARING_MAX_UNREAD_SECONDS` = **1 day** (`disappearing.constants.ts:8`). Expired rows are then HARD-deleted — `repository.remove()` with media unlinked first, cron `EVERY_MINUTE` (`message-cleanup.service.ts:39-99`) — not merely filtered. **Owed follow-up (2 min):** read the thread as the peer, watch `expiresAt` get stamped, then confirm the rows leave Postgres and the bubbles leave both screens |
+| **disappearing-message expiry** (item 5, second half) | **PASS end-to-end — and the "it didn't disappear" report was correct behaviour, not a defect.** The timer is **read-triggered**: the row is created with `expiresAt: null` + `disappearAfterSeconds` (`chat-message.service.ts:346, 446`) and `expiresAt = now + ttl` is stamped only in the READ handler (`messages.service.ts:811-813`). The owner's two 60 s rows (`24393`, `24394`) therefore sat at `DELIVERED` with `expiresAt` NULL for SEVEN MINUTES while the peer had not opened the thread — a send-time countdown would burn down in the recipient's pocket, so this is by design. Backstop for a never-read row: `createdAt + DISAPPEARING_MAX_UNREAD_SECONDS` = **1 day** (`disappearing.constants.ts:8`). Once he read them the clock armed and an `EVERY_MINUTE` cron HARD-deleted both, media unlinked first (`message-cleanup.service.ts:39-99`): **`select count(*) … where id in (24393,24394)` → 0** and `max(id)` fell back to 24392. Real `repository.remove()`, not a display filter. **Never report "it didn't disappear" without reading `expiresAt` first.** |
 
 Two things this run could not do and the next one should plan for: **release builds cannot be
 screenshotted** (`FLAG_SECURE`) so the owner cannot send a screenshot either — he photographs the
