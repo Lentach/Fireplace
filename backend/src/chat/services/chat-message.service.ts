@@ -1009,7 +1009,8 @@ export class ChatMessageService {
       // whose `mediaUrl` points at nothing — unrecoverable, and invisible
       // until someone opens the chat. Reproduced over the wire 2026-09-14
       // (msg 977: file gone, row intact). Media still goes BEFORE the row
-      // (backend/CLAUDE.md §8) — just never before authorization.
+      // (backend/CLAUDE.md §8 and the §12 checklist) — just never before
+      // authorization.
       if (message.sender?.id !== userId) {
         client.emit('error', {
           message: 'Only the sender can delete for everyone',
