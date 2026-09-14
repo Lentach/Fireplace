@@ -419,8 +419,16 @@ diagnosing a "vanishing" message in that thread: it has **disappearing messages 
   `com.fireplace.app`, but the only name a friend should ever see is **Umbra**
   (`aapt2 dump badging` → `application-label:'Umbra'`). `applicationId` can NEVER change — Android
   identifies the app by it, so a rename would be a different app and every friend would have to
-  uninstall, destroying their keys and history. Renaming the GITHUB REPO is safe at any time
-  (GitHub keeps permanent redirects, which Obtainium follows).
+  uninstall, destroying their keys and history. Renaming the GITHUB REPO is a different matter and
+  is safe for the repo itself — GitHub keeps permanent redirects — but **whether Obtainium follows
+  a renamed repo is UNVERIFIED**, so if the rename is wanted, do it BEFORE any friend adds the URL
+  and the dependency disappears. `v0.2.48` also introduces the FIRST `v*` tag: the existing tags
+  (`pre-multidevice-master`, `landing-pre-blackhole`, …) are descriptive snapshots and no deploy
+  tooling keys off tags (the VM deploys by `git pull` on master), so the two conventions coexist.
+- ⚠️ **A release on a PUBLIC repo is world-downloadable — that is a product decision, not a side
+  effect.** Anyone who finds `v0.2.48` can install Umbra and register against prod. The APK is not
+  the gate; REGISTRATION openness is. If that is unwanted the options are a private repo's releases
+  (friends need GitHub accounts + access) or a plain cloud link. Decided 2026-09-14: accepted.
 - **Updating a sideload is NOT a reinstall-from-scratch — MEASURED 2026-09-13 (pre-flight above).**
   A newer APK installed OVER the old one (`adb install -r <apk>`, or the user taps the downloaded
   file) keeps session, Signal identity, SQLCipher history and content keys, and leaves
