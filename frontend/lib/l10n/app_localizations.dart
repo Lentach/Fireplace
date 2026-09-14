@@ -218,6 +218,12 @@ abstract class AppLocalizations {
   /// **'Nie odinstalowuj i nie czyść danych — historia zniknie.'**
   String get uninstallWarning;
 
+  /// No description provided for @uninstallWarningTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Odinstalowanie lub czyszczenie danych'**
+  String get uninstallWarningTitle;
+
   /// No description provided for @chat.
   ///
   /// In pl, this message translates to:

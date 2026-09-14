@@ -73,6 +73,9 @@ class AppLocalizationsPl extends AppLocalizations {
       'Nie odinstalowuj i nie czyść danych — historia zniknie.';
 
   @override
+  String get uninstallWarningTitle => 'Odinstalowanie lub czyszczenie danych';
+
+  @override
   String get chat => 'Czaty';
 
   @override

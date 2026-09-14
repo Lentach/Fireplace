@@ -20,6 +20,7 @@
   "deleteAccount": "Usuń konto",
   "logout": "Wyloguj",
   "uninstallWarning": "Nie odinstalowuj i nie czyść danych — historia zniknie.",
+  "uninstallWarningTitle": "Odinstalowanie lub czyszczenie danych",
   "chat": "Czaty",
   "contacts": "Kontakty",
   "uploadFailed": "Nie udało się przesłać",

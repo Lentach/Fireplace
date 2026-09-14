@@ -169,6 +169,18 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
                 title: l10n.webKeyStorage,
                 body: l10n.webKeyStorageDescription,
               ),
+            // Moved off the Settings version footer 2026-09-14 (owner's call):
+            // this is a security fact about local key/history loss, so it
+            // belongs next to the other key-material rows, not under a build
+            // string. It is literally true on NATIVE — uninstalling the mobile
+            // app destroys the Signal keys and the SQLCipher store — while an
+            // installed PWA's origin storage usually survives (root
+            // `CLAUDE.md` §6), which is why it reads as a warning, not a step.
+            ConsoleInfoRow(
+              glyph: ConsoleGlyph.deleteNode,
+              title: l10n.uninstallWarningTitle,
+              body: l10n.uninstallWarning,
+            ),
             SettingsSectionCaption(label: l10n.privacySafetyTitle),
             ConsoleInfoRow(
               glyph: ConsoleGlyph.media,

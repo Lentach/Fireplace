@@ -73,6 +73,9 @@ class AppLocalizationsEn extends AppLocalizations {
       'Don\'t uninstall or clear data — history is lost.';
 
   @override
+  String get uninstallWarningTitle => 'Uninstalling or clearing data';
+
+  @override
   String get chat => 'Chats';
 
   @override

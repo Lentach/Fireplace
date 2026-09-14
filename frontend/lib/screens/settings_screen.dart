@@ -688,20 +688,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ],
 
+                  // The uninstall/clear-data key-loss warning used to sit here,
+                  // under the version line. Moved to Privacy & Safety
+                  // 2026-09-14 (owner's call): it is a security fact, and a
+                  // build string is the wrong neighbour for it.
                   const SizedBox(height: 16),
-                  // E2E key-loss warning - the uninstall/clear-data danger
-                  // point. It stays at the very bottom, under everything.
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: Text(
-                      l10n.uninstallWarning,
-                      textAlign: TextAlign.center,
-                      style: RpgTheme.bodyFont(
-                        fontSize: 11,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ),
