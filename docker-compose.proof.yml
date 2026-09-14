@@ -16,6 +16,17 @@ services:
   backend:
     ports: !override
       - '3100:3000'
+    # NOTE on restarts: the base file runs `npm install && npm run start:dev`,
+    # so every restart re-runs a full install against the Windows bind mount
+    # (~6 min). You need restarts, because the register throttle (10/hr per IP)
+    # is in-memory and only a fresh node process clears it. Two shortcuts were
+    # tried and BOTH failed — do not retry them:
+    #   * `touch src/main.ts` in the container: inotify does not cross the bind
+    #     mount, `nest --watch` never fires, the app PID survives unchanged.
+    #   * overriding `command` to skip the install: the app then starts but
+    #     hangs before its first log line, with no DB connection and no port
+    #     bound (observed stable for 3+ min).
+    # Budget the ~6 min, or run the suite once and capture the whole transcript.
     environment:
       ALLOWED_ORIGINS: 'http://localhost:3100,http://127.0.0.1:3100'
       MEDIA_BASE_URL: 'http://localhost:3100'
