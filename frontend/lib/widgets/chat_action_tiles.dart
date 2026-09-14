@@ -856,10 +856,17 @@ class _CenterProgressOverlay extends StatelessWidget {
             // gesture is still abortable and the wipe has not been requested,
             // and silent about the scope. The label now says what completing
             // the hold does.
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              style: RpgTheme.bodyFont(fontSize: 14, color: Colors.white),
+            // Bounded so the caption WRAPS instead of running to the screen
+            // edges: the old `clearingChat` was one short word, this is a
+            // sentence, and `textAlign` alone centres nothing when the Text is
+            // free to size to its full intrinsic width.
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 240),
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style: RpgTheme.bodyFont(fontSize: 14, color: Colors.white),
+              ),
             ),
           ],
         ),
