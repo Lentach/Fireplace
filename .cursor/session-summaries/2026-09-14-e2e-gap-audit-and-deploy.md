@@ -19,7 +19,7 @@
 - **Web deploy:** `deploy-web.ps1` → `PUBLISHED_OK`, exit 0, no Kaspersky exit-21. Smoke **5/5**, including `main.dart.js` contains `eefc44b0` (the only real stale-bundle detector) and app-boot render.
 - **CI:** 6/6 on the code-bearing commit `1f05e3e6` (backend tests, Flutter tests, 3 E2E probes, CodeQL). Master's tip `eefc44b0` is docs-only, so `paths-ignore` leaves it with 1 row — check the code commit, not the tip.
 - **Attachment encryption:** 24 blobs on the dev volume, all predating the session (newest `2026-09-05 01:47:59`, zero dated `2026-09-14`); entropy 7.999 bits/byte; no JPEG/PNG/GIF/PDF/ZIP/RIFF/Ogg magic and no `JFIF`/`Exif`/`IHDR`/`ftyp`/`moov` in-file; `createCipheriv` absent from all of `backend/src`.
-- **NOT verified:** iOS; the owner's installed `0.2.47` APK (unaffected by a web deploy); `for_me` soft-hide on real devices; whether `blockUser` / `deleteConversationOnly` / `clearChatHistory` authorise before unlinking media; any cryptographic review of the libsignal port.
+- **NOT verified:** iOS; the owner's installed `0.2.47` APK (unaffected by a web deploy); `for_me` soft-hide on real devices; sibling destructive paths (enumerated in the local audit, §9); any cryptographic review of the libsignal port.
 
 ## Notes for next session
 - **Owner-owed:** the PWA must be fully closed and reopened on the phone to pick up `0.2.48` (never uninstall — that wipes Signal keys).
