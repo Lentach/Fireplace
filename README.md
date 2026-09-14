@@ -202,7 +202,7 @@ cannot compile the Flutter web bundle (dart2js OOM):
     git pull ; .\deploy-web.ps1
 
 Verify: `curl -sS https://fireplace.ignorelist.com/version` and `/health`.
-Full runbook: `.cursor/rules/production-vm-deploy.mdc`. (The legacy `deploy.sh`
+Full runbook: `.omp/rules/production-vm-deploy.md`. (The legacy `deploy.sh`
 is disabled — it targeted the decommissioned GCP VM and the dev compose.)
 
 Stack: Docker + Nginx reverse proxy + Let's Encrypt TLS.

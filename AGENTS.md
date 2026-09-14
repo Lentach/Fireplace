@@ -7,12 +7,15 @@ Universal agent entrypoint. **In Oh-My-Pi this is the ONLY project file injected
 1. Root `CLAUDE.md` — workflow, architecture, deploy safety, version contract.
 2. The tier file before your first change in that tier: `backend/CLAUDE.md` or `frontend/CLAUDE.md`.
 3. `.cursor/session-summaries/LATEST.md` (5 entries), then `grep docs/agents/traps.md` for the area you will touch — standing warnings live there, one line each.
-4. Area docs, before the first edit in a matching file (a rule fires on edit in OMP; Cursor/Claude Code see the same list in `.cursor/rules/`):
+4. Area docs, before the first edit in a matching file (an edit-time rule fires in OMP from `.omp/rules/`; Claude Code sees the same list in `.claude/rules/`):
    - `docs/contracts/wire.md` — `chat.gateway.ts`, `**/dto/**`, `key-bundles/` (incl. devices), `auth/`, `socket_service.dart`, `connection_provider.dart`, `messaging_provider.dart`
    - `frontend/docs/e2e-invariants.md` — `services/encryption/**`, `encryption_service.dart`, `device_list/`, `device_link/`, `recovery_phrase.dart`, `encryption_provider.dart`
    - `frontend/docs/composer-media.md` — `chat_input_bar*`, `composer*`, `chat_action_tiles.dart`, `web_file_input.dart`, `widgets/message/**`
    - `frontend/docs/passcode-lock.md` — `**/passcode*`, `privacy_curtain*`, `content_key_wrap.dart`, `web/index.html`
-5. Delegating? Subagents inherit nothing: name the files above in the task.
+   - `skill://flutter-frontend-design` — any visual Flutter change: `frontend/lib/{widgets,screens,theme}/`
+5. Skills: **`.claude/skills/` IS the set** — `.omp/config.yml` mutes the machine-wide `~/.agents` tree, so nothing depends on a home directory and every worktree inherits it. Add skills there. Map + MCP: `docs/agents/skills-and-mcp.md`.
+   - By trigger: broken/slow → `diagnosing-bugs` · "review since X" → `code-review` · stress-test a plan → `grilling` · module shape → `codebase-design`, `design-an-interface` · docs/API facts → `research` · open design question → `prototype` · merge/rebase → `resolving-merge-conflicts` · file it → `qa`, `request-refactor-plan` · `/skill:` only → `triage`, `to-spec`, `to-tickets`. Flutter visuals, Dart idioms and tests fire from `.omp/rules/`.
+6. Delegating? Subagents inherit nothing: name the files above in the task.
 
 ## Non-negotiable (details in root `CLAUDE.md` §1, §4, §6)
 

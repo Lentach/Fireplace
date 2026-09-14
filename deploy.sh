@@ -11,7 +11,7 @@
 # Use the split deploy instead:
 #   Backend  (on the VM):  cd ~/fireplace && ./deploy-backend.sh
 #   Frontend (on your PC): git pull ; .\deploy-web.ps1
-# See CLAUDE.md §4 and .cursor/rules/production-vm-deploy.mdc.
+# See CLAUDE.md §4 and .omp/rules/production-vm-deploy.md.
 
 echo "deploy.sh is disabled. Use ./deploy-backend.sh (VM) + deploy-web.ps1 (PC). See CLAUDE.md §4." >&2
 exit 1

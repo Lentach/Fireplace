@@ -1,0 +1,11 @@
+# Project settings for Fireplace (Umbra). Merged OVER ~/.omp/agent/config.yml
+# (omp://settings.md § Precedence). Loaded because this directory's .omp/ is non-empty
+# — discovery checks the CWD's .omp/ only, never an ancestor, so always start omp at the
+# repo root. Tracked in git, so every worktree of this repo inherits it.
+skills:
+  # This repo's skill set is exactly `.claude/skills/` — see docs/agents/skills-and-mcp.md.
+  # `false` mutes the machine-wide ~/.agents/skills tree (39 Matt Pocock skills, of which
+  # 15 were dead weight here) for Fireplace sessions ONLY; other repos on this box are
+  # unaffected. The useful ones are vendored into .claude/skills/ so they travel with the
+  # checkout instead of depending on one developer's home directory.
+  enableAgentsUser: false

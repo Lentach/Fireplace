@@ -5,7 +5,7 @@ alwaysApply: true
 
 # CLAUDE.md — Fireplace
 
-**Source of truth = this root file + the two tier files + the on-demand area docs** (`docs/contracts/wire.md`, `frontend/docs/*.md`, each behind a `.cursor/rules/*.mdc` trigger). Root is cross-cutting and stays in context — read it before any Fireplace work. The tier files hold the tier-wide traps and are **not** auto-injected. Read the matching one **once, before your first change in that tier**, then keep it in context — do not re-read it on every edit:
+**Source of truth = this root file + the two tier files + the on-demand area docs** (`docs/contracts/wire.md`, `frontend/docs/*.md`, each behind a `.omp/rules/*.md` trigger, mirrored in `.claude/rules/`). Root is cross-cutting and stays in context — read it before any Fireplace work. The tier files hold the tier-wide traps and are **not** auto-injected. Read the matching one **once, before your first change in that tier**, then keep it in context — do not re-read it on every edit:
 
 - Changing anything under `frontend/` (Flutter/PWA/client) → read `frontend/CLAUDE.md` first.
 - Changing anything under `backend/` (NestJS/Postgres/server) → read `backend/CLAUDE.md` first.
@@ -15,7 +15,7 @@ Keep root cross-cutting: if a fact only matters while editing Flutter or NestJS 
 
 ## 1. Non-negotiable workflow
 
-- Read this root file before any Fireplace app work, and the matching tier file before your first change in that tier (see the header rule). **Area docs are loaded on demand, not up front:** the wire contracts (`docs/contracts/wire.md`), E2E/storage invariants, composer/media, and passcode lock (`frontend/docs/*.md`) each have a `.cursor/rules/*.mdc` entry naming the files that trigger them — read the doc before the first edit in such a file. When delegating, tell the subagent which of these to read — subagents do not inherit your loaded context.
+- Read this root file before any Fireplace app work, and the matching tier file before your first change in that tier (see the header rule). **Area docs are loaded on demand, not up front:** the wire contracts (`docs/contracts/wire.md`), E2E/storage invariants, composer/media, and passcode lock (`frontend/docs/*.md`) each have a `.omp/rules/*.md` entry naming the files that trigger them — read the doc before the first edit in such a file. When delegating, tell the subagent which of these to read — subagents do not inherit your loaded context.
 - **`C:/Users/Lentach/Desktop/Fireplace` is THE working copy — but it is on `feat/passcode-lock`, NOT `master`** (`master` is checked out in the `fireplace-0a` worktree, so it cannot be checked out here — `git worktree list`). The branch is kept AT master's tip by convention, not by git: **it drifts the moment anyone pushes to master from elsewhere** (it did on 2026-09-10 while a concurrent session shipped 0.2.37/0.2.38). Every session: `git fetch && git status -sb && git log --oneline HEAD..origin/master` FIRST; if behind, `git merge --ff-only origin/master`. Commits made here go out as `git push origin HEAD:master` then `git push origin feat/passcode-lock`. The landing page lives in its own repo: `Desktop/fireplace-landing` (`Lentach/fireplaceWebsite`).
 - **PUBLIC repo** — `Lentach/Fireplace` is public (since 2026-08-18; `gh repo view --json isPrivate` → `false`). Treat every tracked file as world-readable. A pre-commit hook runs `gitleaks git --staged` (8.30.1 on the dev PC; regex fallback elsewhere) and `scripts/verify-context-budget.mjs`; activate once per clone with `git config core.hooksPath .githooks`. Bypass only in emergencies (`--no-verify`). gitleaks is not a substitute for care: write `<REDACTED>` when pasting a URL or curl; a key-NAME literal that trips a rule gets `// gitleaks:allow` on the line.
 - **Session start:** read `.cursor/session-summaries/LATEST.md` (≤5 entries, ≤900 chars each), then `grep docs/agents/traps.md` for the area you will touch. Standing warnings live in `traps.md`, one line each — never in LATEST.
@@ -76,7 +76,7 @@ Production: `https://fireplace.ignorelist.com`, **OVH VPS** `ubuntu@51.68.138.13
 - Backend, on the VM: `cd ~/fireplace && ./deploy-backend.sh`
 - Verify: `cd scripts/smoke && node post-deploy-smoke.mjs`
 
-**➡ Everything else — script internals, staging rehearsal, backups/restore, the env-var table, branch testing, VM logs — is in `.cursor/rules/production-vm-deploy.mdc`. Read it before any non-trivial prod op.**
+**➡ Everything else — script internals, staging rehearsal, backups/restore, the env-var table, branch testing, VM logs — is in `.omp/rules/production-vm-deploy.md` (`rule://production-vm-deploy`). Read it before any non-trivial prod op.**
 
 Non-negotiable, because each one is silent or irreversible:
 
@@ -105,7 +105,7 @@ Non-negotiable, because each one is silent or irreversible:
 
 ## 7. Shared wire contracts
 
-**Moved to `docs/contracts/wire.md` (2026-09-10) — read it BEFORE touching any of:** `backend/src/chat/chat.gateway.ts`, DTOs under `backend/src/**/dto/`, `frontend/lib/services/socket_service.dart`, `frontend/lib/providers/connection_provider.dart`, `frontend/lib/providers/messaging_provider.dart`, any `@SubscribeMessage` or `socket.on(` site, or a message-envelope / key-bundle / device-list shape. The rule `wire-contracts` (`.cursor/rules/wire-contracts.mdc`) carries the same trigger list.
+**Moved to `docs/contracts/wire.md` (2026-09-10) — read it BEFORE touching any of:** `backend/src/chat/chat.gateway.ts`, DTOs under `backend/src/**/dto/`, `frontend/lib/services/socket_service.dart`, `frontend/lib/providers/connection_provider.dart`, `frontend/lib/providers/messaging_provider.dart`, any `@SubscribeMessage` or `socket.on(` site, or a message-envelope / key-bundle / device-list shape. The rule `wire-contracts` (`.omp/rules/wire-contracts.md`, mirrored in `.claude/rules/`) carries the same trigger list.
 
 Index of what lives there: E2E envelope + `senderListInfo`; `socketReady`/`serverTime` clock and the fail-closed destruction law; `getServedMessageIds` reconciliation; delete/edit semantics (`editMessage` full re-fan); throttled-request answers (`rate_limited`); takeover alarm (§6.0), registration lock (§6.1), reset ceremony + REBIND (§6.2), `POST /auth/recover`; `ownKeyBundleStatus` fields; per-device key material, OTP identity pin, device-material guard (lxiv); provisioning ceremony; envelope fan-out; device revocation + session gates; reset roster teardown; login resolves the live primary; client accept-side gate.
 
@@ -117,6 +117,8 @@ Index of what lives there: E2E envelope + `senderListInfo`; `socketReady`/`serve
 
 ## 9. Agent skills
 
+**The skill set is `.claude/skills/` — see `docs/agents/skills-and-mcp.md`** for what loads where, the trigger routing, and the MCP inventory. `.omp/config.yml` mutes the machine-wide `~/.agents` tree for this repo, so the committed set is the whole set. **Cursor is no longer used:** `.cursor/rules/` was removed 2026-09-14 (its one unique file became `.omp/rules/production-vm-deploy.md`); `.cursor/session-summaries/` is unrelated to Cursor and stays — it is the handoff store the pre-commit gate enforces.
+
 ### Issue tracker
 
 Issues live in GitHub Issues (`Lentach/Fireplace`) via the `gh` CLI; external PRs are not a triage surface. See `docs/agents/issue-tracker.md`.
@@ -127,6 +129,6 @@ Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-
 
 ### Domain docs
 
-Multi-context: `CONTEXT-MAP.md` at the root points to `backend/CONTEXT.md` and `frontend/CONTEXT.md`; system-wide ADRs go in `docs/adr/`, context-scoped ones in `backend/docs/adr/` and `frontend/docs/adr/`. **All of these are created LAZILY by `/domain-modeling` — their absence is normal, not a gap to fix or flag.** See `docs/agents/domain.md`.
+Multi-context: `CONTEXT-MAP.md` at the root (778 B, tracked) points to `backend/CONTEXT.md` and `frontend/CONTEXT.md`; system-wide ADRs would go in `docs/adr/`, context-scoped ones in `backend/docs/adr/` and `frontend/docs/adr/`. **Verified 2026-09-14: only `CONTEXT-MAP.md` exists — both `CONTEXT.md` files and all three `adr/` dirs are absent, and that absence is normal, not a gap to fix or flag.** They would only appear if we deliberately adopt that layout; the `domain-modeling` skill that used to create them is NOT vendored here (`.claude/skills/VENDORED.md` says why), so `/skill:domain-modeling` does not resolve in this repo. See `docs/agents/domain.md`.
 
 Maintain this file by pruning. If a fact only matters while editing Flutter or NestJS code, put it in the tier file. After adding/removing backend tests, update the count in §3 so `node scripts/verify-claude-backend-test-counts.mjs` stays green.

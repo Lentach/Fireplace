@@ -8,12 +8,44 @@
         "/c",
         "C:\\Users\\Lentach\\AppData\\Local\\Pub\\Cache\\bin\\dart_mcp_server.bat",
         "--disable",
-        "pub_dev_search",
-        "--disable",
-        "create_project",
-        "--disable",
-        "flutter_driver_user_journey_test"
+        "pub_dev_search"
       ]
+    },
+    "chrome-devtools": {
+      "type": "stdio",
+      "enabled": false,
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "chrome-devtools-mcp@1.9.0",
+        "--isolated",
+        "--no-usage-statistics",
+        "--no-performance-crux"
+      ]
+    },
+    "github": {
+      "type": "stdio",
+      "enabled": false,
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "GITHUB_PERSONAL_ACCESS_TOKEN",
+        "-e",
+        "GITHUB_TOOLSETS",
+        "-e",
+        "GITHUB_READ_ONLY",
+        "ghcr.io/github/github-mcp-server"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "GITHUB_PERSONAL_ACCESS_TOKEN",
+        "GITHUB_TOOLSETS": "actions,pull_requests,issues",
+        "GITHUB_READ_ONLY": "true"
+      }
     }
   }
 }
