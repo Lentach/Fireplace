@@ -152,7 +152,6 @@ Standing warnings that used to live in the `LATEST.md` banner and in rotated-out
 - **Never wire an MCP server from `modelcontextprotocol/servers-archived`** (postgres, github, puppeteer, redis, sentry, slack, sqlite, gitlab, brave-search…) — that repo states no security updates will EVER be issued, yet the active servers repo's own "Getting Started" block still shows the archived `server-github`/`server-postgres` entries and most tutorials copy it (`2026-09-14-session-skills-mcp-audit.md`).
 
 ## Owner-owed decisions (open)
-- ~~0.2.47 undeployed~~ — **ANSWERED 2026-09-14: the owner ordered "commit and deploy everything" and both tiers now serve `0.2.47 / 4e38c417`** (CI 6/6 on the tip; backend health `starting → healthy` in 10 s with `fireplace-db-1` NOT recreated; web smoke 5/5 incl. the stale-build gate). The composer-rule commit `3fb54309` shipped with that explicit OK. Nothing owed.
 - README screenshot recapture, GitHub repo renames, the domain decision (`2026-08-26-session.md`).
 - Thief-with-password matrix answers (`2026-09-03-session-lxxii-reset-door.md`).
 - iPhone PWA camera recording for the WebKit probe fix; iOS eyeballing of reset-ceremony statuses, revoke/mismatch notices, fingerprint sheet, phrase reveal (`2026-09-08-session-c8-register-ceremony.md`).
