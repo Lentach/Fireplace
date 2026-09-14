@@ -489,7 +489,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get messageUnreadableReasonKeysGone =>
-      'A new browser or reinstall replaced the keys.';
+      'The keys are gone — reinstalling won\'t bring them back.';
 
   @override
   String get messageUnreadableReasonOwnCopyGone =>

@@ -492,7 +492,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get messageUnreadableReasonKeysGone =>
-      'Nowa przeglądarka lub reinstalacja zastąpiła klucze.';
+      'Klucze zniknęły — reinstalacja ich nie przywróci.';
 
   @override
   String get messageUnreadableReasonOwnCopyGone =>

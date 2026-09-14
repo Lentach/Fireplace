@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../constants/app_constants.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
+import '../../providers/settings_provider.dart';
 import '../../services/link_preview_service.dart';
 import '../../theme/rpg_theme.dart';
 import '../../utils/anti_quantum_note_link.dart';
@@ -25,6 +26,17 @@ class TextMessageContent extends StatefulWidget {
   /// "[encrypted]" sentinel into an honest "Decrypting…" for rows the pass has
   /// not reached yet.
   final bool decryptInProgress;
+
+  /// Which palette the bubble is painted in, passed down ONLY so the
+  /// unreadable-reason caption can use [RpgTheme.messageBubbleMetaColor] —
+  /// the same token the timestamp uses, because it plays the same role.
+  /// Without it the caption would need its own alpha, and on the teal/blue
+  /// palettes (where an own bubble's text is white) a hand-picked alpha and
+  /// the timestamp's would visibly disagree inside one bubble.
+  ///
+  /// A plain default rather than a provider read: this widget is constructed
+  /// directly by tests with no [SettingsProvider] above it.
+  final String themePreference;
   const TextMessageContent({
     super.key,
     required this.message,
@@ -33,6 +45,7 @@ class TextMessageContent extends StatefulWidget {
     required this.isDark,
     required this.maxWidth,
     this.decryptInProgress = false,
+    this.themePreference = SettingsProvider.kDefaultThemePreference,
   });
 
   @override
@@ -300,7 +313,11 @@ class _TextMessageContentState extends State<TextMessageContent> {
                 textAlign: widget.isMine ? TextAlign.right : TextAlign.left,
                 style: RpgTheme.bodyFont(
                   fontSize: 11,
-                  color: widget.textColor.withValues(alpha: 0.62),
+                  color: RpgTheme.messageBubbleMetaColor(
+                    context,
+                    isMine: widget.isMine,
+                    themePreference: widget.themePreference,
+                  ),
                 ).copyWith(height: 1.3),
               ),
             ),

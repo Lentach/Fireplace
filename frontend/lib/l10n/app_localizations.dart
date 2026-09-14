@@ -950,10 +950,10 @@ abstract class AppLocalizations {
   /// **'Nie można odczytać tej wiadomości na tym urządzeniu.'**
   String get messageUnreadableOnThisDevice;
 
-  /// Short second line under an unreadable PEER bubble. States the cause the symptom line hides: the row was sealed to an identity/ratchet key this install no longer holds, which is what a reinstall, a new browser or cleared site data does. Must stay short — it renders as a caption inside the bubble.
+  /// Short second line under an unreadable PEER bubble. Deliberately GENERIC about the cause: the client cannot tell 'this install is newer than the message' (identity replaced by a reinstall, new browser or cleared site data) from 'the ratchet key was already consumed', and asserting the wrong one is worse than the silence it replaces. What IS always true is stated instead — the keys are gone from THIS device — plus the one actionable fact, that reinstalling is the cause rather than the cure. Must stay short: it renders as a caption inside the bubble.
   ///
   /// In pl, this message translates to:
-  /// **'Nowa przeglądarka lub reinstalacja zastąpiła klucze.'**
+  /// **'Klucze zniknęły — reinstalacja ich nie przywróci.'**
   String get messageUnreadableReasonKeysGone;
 
   /// Short second line under an unreadable OWN bubble. A sender never decrypts its own ciphertext, so its plaintext lived only in this install's local cache; once that is wiped nothing can restore it.
