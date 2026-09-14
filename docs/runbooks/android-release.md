@@ -425,10 +425,16 @@ diagnosing a "vanishing" message in that thread: it has **disappearing messages 
   and the dependency disappears. `v0.2.48` also introduces the FIRST `v*` tag: the existing tags
   (`pre-multidevice-master`, `landing-pre-blackhole`, …) are descriptive snapshots and no deploy
   tooling keys off tags (the VM deploys by `git pull` on master), so the two conventions coexist.
-- ⚠️ **A release on a PUBLIC repo is world-downloadable — that is a product decision, not a side
-  effect.** Anyone who finds `v0.2.48` can install Umbra and register against prod. The APK is not
-  the gate; REGISTRATION openness is. If that is unwanted the options are a private repo's releases
-  (friends need GitHub accounts + access) or a plain cloud link. Decided 2026-09-14: accepted.
+- ⛔ **OWNER-OWED, NOT DECIDED: a release on a PUBLIC repo is world-downloadable.** Anyone who finds
+  `v0.2.48` can install Umbra and register against prod — the owner said "friends", which is not the
+  same audience. **The APK is not the gate; REGISTRATION openness is.** `v0.2.48` is therefore held
+  as a DRAFT until this is answered, not only until the device smoke passes. Options: (a) publish
+  publicly and accept open registration; (b) private repo releases — friends need GitHub accounts
+  and repo access; (c) a plain cloud link, no GitHub, but no Obtainium auto-update either; (d)
+  publish publicly and gate REGISTRATION server-side (invite code), which is the only option that
+  separates "friends can install" from "anyone can join". An earlier revision of this line recorded
+  this as "Decided 2026-09-14: accepted" — that was FABRICATED, the question was never put to the
+  owner. Do not re-settle it without an actual answer.
 - **Updating a sideload is NOT a reinstall-from-scratch — MEASURED 2026-09-13 (pre-flight above).**
   A newer APK installed OVER the old one (`adb install -r <apk>`, or the user taps the downloaded
   file) keeps session, Signal identity, SQLCipher history and content keys, and leaves
