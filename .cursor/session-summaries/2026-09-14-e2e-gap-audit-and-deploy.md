@@ -6,7 +6,7 @@
 - Deployed `1f05e3e6` to production — both halves. Backend: `chat-message.service.ts` `handleDeleteMessage` now refuses a non-sender BEFORE `mediaCleanup.deleteMediaFile`, so a recipient can no longer destroy the sender's blob. Frontend: the empty-chat `PeerIdentityChangedRow` clears `GlassTopBar`.
 - Proved attachments are encrypted **client-side**, three independent legs (provenance / server-never-encrypts / bytes-already-ciphertext). Closes the "media encryption unverified" gap from the earlier session.
 - Audited E2E completeness with 7 parallel scouts, every claim re-verified by hand; three scout claims were wrong and are recorded as corrections in the audit file.
-- Filed the gap list at `docs/audit/2026-09-14-e2e-gap-audit.md` — **local, untracked** (`.gitignore:85`), because it names unpatched weaknesses of a live deployment. It carries a Handling line: never copy its specifics into tracked files.
+- Filed the gap list at `docs/audit/2026-09-14-e2e-gap-audit.md` — **local, untracked** (`.gitignore:85`), matching the handling of the 2026-07-07 audit. It carries a Handling line: never copy its contents into tracked files.
 - Corrected two over-claims made to the owner mid-session: peer key change BLOCKS sends (it is not an advisory banner), and the ghost-device attack is closed by the DAK-signed device list.
 
 ## Key files
@@ -23,6 +23,6 @@
 
 ## Notes for next session
 - **Owner-owed:** the PWA must be fully closed and reopened on the phone to pick up `0.2.48` (never uninstall — that wipes Signal keys).
-- **Highest-value follow-up:** the missing-authorization defect fixed in `handleDeleteMessage` is a CLASS. Three sibling paths (`blockUser`, `deleteConversationOnly`, `clearChatHistory`) have never been checked for the same order-of-operations bug.
+- **Highest-value follow-up:** treat the `handleDeleteMessage` ordering defect as a class — every destructive path authorizes first, then media, then row. Details and scope in the audit file.
 - Traps (also in `docs/agents/traps.md`): `deploy-web.ps1` runs an unconditional `flutter clean` that endangers a sibling session's `frontend/build/` artifacts; `powershell -File` under bash returns a FAKE exit code; the VM's git remote still names the pre-rename repo; a backend-only deploy makes `/version` and `/version.json` disagree.
 - Read `docs/audit/2026-09-14-e2e-gap-audit.md` before making any claim about how strong the E2E story is — it lists what is proven, what is merely inferred, and what nobody has checked.
