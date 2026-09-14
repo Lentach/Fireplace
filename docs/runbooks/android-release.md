@@ -207,8 +207,8 @@ inset ONCE (see "Field test"), and fullscreen stills/GIFs dismiss on swipe down 
 in-place upgrades (20043 → 20044 → 20045 → 20046) on that phone.** Both prod tiers were deployed at this commit
 the same night (`/version` → `0.2.46 / 43481643`, web smoke 5/5).
 
-**Build record — 0.2.47, 2026-09-14 (CURRENT on the owner's phone — and THE FRIENDS-SHARE
-CANDIDATE, the first build under half the old size).** `feat/passcode-lock` @ **`320c11dd`**,
+**Build record — 0.2.47, 2026-09-14 (superseded by 0.2.48 below; the build that PROVED
+`useLegacyPackaging` on real hardware).** `feat/passcode-lock` @ **`320c11dd`**,
 byte-identical to `origin/master`, **CI 6/6 success on that exact commit** → versionCode `20047`,
 **48.9 MB** (was 105.2 — `useLegacyPackaging`, see "APK size" below), SHA256
 `788aba471ba4af3664289a56f2e4aa2e59de19b2f0b3619f43ff346c1466fec5`. Signer DN `CN=Rick Sanches`
@@ -225,6 +225,26 @@ up in two places (cloud + paper). **NOT driven:** no UI was exercised on the pho
 synthetic input, `FLAG_SECURE` blocks screencap) — the footer, an E2E round trip and a voice note
 on 0.2.47 are owner-eyeball items before the APK goes to friends. Staged for hand-transfer at
 `C:/Users/Lentach/Desktop/umbra-0.2.47-320c11dd.apk`, hash re-verified after the copy.
+
+**Build record — 0.2.48, 2026-09-14 (THE PUBLISHED FRIENDS BUILD — draft release, awaiting the
+owner's device smoke).** `feat/passcode-lock` @ **`75601dc4`** (a version-bump commit on top of
+`0a7031ae`; the code gate is **`1f05e3e6`, CI 6/6 green** — authorize before unlinking media on
+delete-for-everyone, and the identity banner no longer sticks in the top bar) → versionCode
+`20048`, **48.9 MB**, SHA256
+`976106d7b3cb44d870bc8c4267e14f0966214bfa1b4d79995ce818a1cddb6e0c`. Signer DN `CN=Rick Sanches`,
+16KB gate 16/16, 24 libs all deflated, all three dart-defines verified in the EXTRACTED
+`lib/arm64-v8a/libapp.so`. `aapt2 dump badging` confirms `application-label:'Umbra'` and
+`package: name='com.fireplace.app' versionCode='20048' versionName='0.2.48'`.
+⚠️ **NOT installed anywhere and NOT smoke-tested** — the phone and the emulator were both
+disconnected during the 10.5-minute build. The floor stays **20047** until it is installed.
+**First GitHub Release ever created**, as a DRAFT so an unsmoked binary is not publicly
+downloadable: `gh release view v0.2.48 --repo Lentach/Fireplace` → `draft=true`, asset
+`umbra-0.2.48.apk` 51 325 941 bytes. Publish with
+`gh release edit v0.2.48 --repo Lentach/Fireplace --draft=false` AFTER the smoke.
+Notes (Polish install steps + Play Protect warning + the never-uninstall rule) live in the release
+body; source kept at `C:/Users/Lentach/Desktop/release-notes-0.2.48.md`.
+⚠️ `gh release create --target <sha>` is REJECTED with `Release.target_commitish is invalid` —
+pass a BRANCH name (`--target master`).
 
 ⚠️ **Two earlier 0.2.42 builds exist and must NOT be shipped.** `601248e0…` was built from a
 working tree whose fix was still uncommitted, so its embedded `GIT_COMMIT` (`f35ef7b`) names a
@@ -391,7 +411,16 @@ diagnosing a "vanishing" message in that thread: it has **disappearing messages 
 
 ## Distribution (decision 2026-07-29: direct APK first, Play later)
 
-- Attach `app-release.apk` + its SHA256 to a GitHub Release on `Lentach/Fireplace`.
+- Attach the APK + its SHA256 to a GitHub Release on `Lentach/Fireplace`. **The repo is PUBLIC and
+  the first release is `v0.2.48` (2026-09-14), created as a DRAFT** — that is the pattern: create
+  the draft, smoke the binary on a real phone, then `gh release edit <tag> --draft=false`, so an
+  unsmoked build is never publicly downloadable. Name the asset `umbra-<version>.apk` and title the
+  release `Umbra <version>`: the repo is still `Fireplace` and `applicationId` is still
+  `com.fireplace.app`, but the only name a friend should ever see is **Umbra**
+  (`aapt2 dump badging` → `application-label:'Umbra'`). `applicationId` can NEVER change — Android
+  identifies the app by it, so a rename would be a different app and every friend would have to
+  uninstall, destroying their keys and history. Renaming the GITHUB REPO is safe at any time
+  (GitHub keeps permanent redirects, which Obtainium follows).
 - **Updating a sideload is NOT a reinstall-from-scratch — MEASURED 2026-09-13 (pre-flight above).**
   A newer APK installed OVER the old one (`adb install -r <apk>`, or the user taps the downloaded
   file) keeps session, Signal identity, SQLCipher history and content keys, and leaves
