@@ -272,6 +272,17 @@ class _TextMessageContentState extends State<TextMessageContent> {
       body = _buildCollapsibleText(context);
     }
 
+    // The reason line sits under the body, never replaces it: the body states
+    // WHAT happened in the app's voice, this states WHY in a quieter one.
+    // Muted from the bubble's own text colour so it reads as a caption on
+    // both palettes without introducing a second colour source.
+    final reason = sentinelUnreadableReason(
+      context,
+      message,
+      isMine: widget.isMine,
+      decryptInProgress: widget.decryptInProgress,
+    );
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: widget.isMine
@@ -279,6 +290,21 @@ class _TextMessageContentState extends State<TextMessageContent> {
           : CrossAxisAlignment.start,
       children: [
         body,
+        if (reason != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: widget.maxWidth),
+              child: Text(
+                reason,
+                textAlign: widget.isMine ? TextAlign.right : TextAlign.left,
+                style: RpgTheme.bodyFont(
+                  fontSize: 11,
+                  color: widget.textColor.withValues(alpha: 0.62),
+                ).copyWith(height: 1.3),
+              ),
+            ),
+          ),
         if (message.linkPreviewUrl != null)
           Align(
             alignment: widget.isMine

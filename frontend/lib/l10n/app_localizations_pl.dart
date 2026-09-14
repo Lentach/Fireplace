@@ -491,6 +491,14 @@ class AppLocalizationsPl extends AppLocalizations {
       'Nie można odczytać tej wiadomości na tym urządzeniu.';
 
   @override
+  String get messageUnreadableReasonKeysGone =>
+      'Nowa przeglądarka lub reinstalacja zastąpiła klucze.';
+
+  @override
+  String get messageUnreadableReasonOwnCopyGone =>
+      'Twoja jedyna kopia była na urządzeniu wysyłającym.';
+
+  @override
   String get historyBeforeDeviceLinked =>
       'Historia sprzed połączenia tego urządzenia';
 
