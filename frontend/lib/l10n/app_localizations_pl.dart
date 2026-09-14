@@ -963,6 +963,22 @@ class AppLocalizationsPl extends AppLocalizations {
   String get actionTileDisappearingMessages => 'Znikające wiadomości';
 
   @override
+  String get actionTileClearChat => 'Usuń czat u obu stron';
+
+  @override
+  String get clearChatHoldLabel => 'Trzymaj — usuwa u obu stron';
+
+  @override
+  String get clearChatConfirmTitle => 'Usunąć ten czat u obu stron?';
+
+  @override
+  String get clearChatConfirmBody =>
+      'Wszystkie wiadomości, zdjęcia, filmy i wiadomości głosowe z tego czatu zostaną usunięte z serwera u Ciebie I u drugiej osoby. Tego nie można cofnąć — obejmuje to też wiadomości sprzed połączenia tego urządzenia.';
+
+  @override
+  String get clearChatConfirmAction => 'Usuń u obu stron';
+
+  @override
   String get disappearingTimerTitle => 'Znikające wiadomości';
 
   @override
@@ -1240,9 +1256,6 @@ class AppLocalizationsPl extends AppLocalizations {
   String get enterPasswordToConfirm => 'Wpisz hasło, aby potwierdzić';
 
   @override
-  String get clearingChat => 'Czyszczenie…';
-
-  @override
   String get gifNoResults => 'Nie znaleziono GIFów';
 
   @override
@@ -1434,7 +1447,7 @@ class AppLocalizationsPl extends AppLocalizations {
   String get messageTooLong => 'Wiadomość jest za długa, aby ją wysłać';
 
   @override
-  String get snackbarChatHistoryDeleted => 'Historia czatu została usunięta';
+  String get snackbarChatHistoryDeleted => 'Czat usunięty u obu stron';
 
   @override
   String get snackbarFailedToSendImage => 'Nie udało się wysłać zdjęcia';

@@ -1718,6 +1718,36 @@ abstract class AppLocalizations {
   /// **'Znikające wiadomości'**
   String get actionTileDisappearingMessages;
 
+  /// No description provided for @actionTileClearChat.
+  ///
+  /// In pl, this message translates to:
+  /// **'Usuń czat u obu stron'**
+  String get actionTileClearChat;
+
+  /// No description provided for @clearChatHoldLabel.
+  ///
+  /// In pl, this message translates to:
+  /// **'Trzymaj — usuwa u obu stron'**
+  String get clearChatHoldLabel;
+
+  /// No description provided for @clearChatConfirmTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Usunąć ten czat u obu stron?'**
+  String get clearChatConfirmTitle;
+
+  /// No description provided for @clearChatConfirmBody.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wszystkie wiadomości, zdjęcia, filmy i wiadomości głosowe z tego czatu zostaną usunięte z serwera u Ciebie I u drugiej osoby. Tego nie można cofnąć — obejmuje to też wiadomości sprzed połączenia tego urządzenia.'**
+  String get clearChatConfirmBody;
+
+  /// No description provided for @clearChatConfirmAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Usuń u obu stron'**
+  String get clearChatConfirmAction;
+
   /// No description provided for @disappearingTimerTitle.
   ///
   /// In pl, this message translates to:
@@ -2126,12 +2156,6 @@ abstract class AppLocalizations {
   /// **'Wpisz hasło, aby potwierdzić'**
   String get enterPasswordToConfirm;
 
-  /// No description provided for @clearingChat.
-  ///
-  /// In pl, this message translates to:
-  /// **'Czyszczenie…'**
-  String get clearingChat;
-
   /// No description provided for @gifNoResults.
   ///
   /// In pl, this message translates to:
@@ -2477,7 +2501,7 @@ abstract class AppLocalizations {
   /// No description provided for @snackbarChatHistoryDeleted.
   ///
   /// In pl, this message translates to:
-  /// **'Historia czatu została usunięta'**
+  /// **'Czat usunięty u obu stron'**
   String get snackbarChatHistoryDeleted;
 
   /// No description provided for @snackbarFailedToSendImage.

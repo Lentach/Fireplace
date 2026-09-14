@@ -141,6 +141,8 @@ describe('ChatMessageService', () => {
             findByConversation: findByConversationMock,
             findEnvelopeCiphertexts: findEnvelopeCiphertextsMock,
             findMediaUrlsByConversation: jest.fn().mockResolvedValue([]),
+            deleteAllByConversation: jest.fn().mockResolvedValue(undefined),
+            hideMessageForUser: jest.fn().mockResolvedValue(true),
             markConversationAsReadFromSender: jest.fn(),
             findByIdWithConversation: jest.fn(),
             updateDeliveryStatus: jest.fn(),
@@ -1490,12 +1492,29 @@ describe('ChatMessageService', () => {
   });
 
   describe('handleDeleteMessage', () => {
-    it('clears pin and emits messageUnpinned when deleting pinned message for everyone', async () => {
+    /**
+     * Captures the rooms a chained `server.to(a).to(b).emit(...)` addressed.
+     * Locals, not `mockServer.to`, because `expect(mockServer.to)` is an
+     * unbound-method lint error and the ratchet floor may not rise.
+     */
+    const captureFanOut = () => {
+      const rooms: string[] = [];
+      const emit = jest.fn();
+      const chain = { to: jest.fn(), emit };
+      chain.to.mockImplementation((room: string) => {
+        rooms.push(room);
+        return chain;
+      });
+      mockServer.to = chain.to as unknown as Server['to'];
+      return { rooms, emit };
+    };
+
+    const arrangeDeletable = (pinnedMessageId: number | null = null) => {
       const conv = {
         id: 10,
         userOne: { id: 1 },
         userTwo: { id: 2 },
-        pinnedMessageId: 55,
+        pinnedMessageId,
       };
       const msg = {
         id: 55,
@@ -1507,6 +1526,12 @@ describe('ChatMessageService', () => {
         msg as Message,
       );
       messagesService.deleteById.mockResolvedValue(msg as Message);
+      return msg;
+    };
+
+    it('clears pin and announces messageUnpinned to both users when deleting a pinned message for everyone', async () => {
+      arrangeDeletable(55);
+      const { rooms, emit } = captureFanOut();
 
       await service.handleDeleteMessage(
         mockClient as Socket,
@@ -1515,9 +1540,83 @@ describe('ChatMessageService', () => {
       );
 
       expect(conversationsService.clearPinnedMessage).toHaveBeenCalledWith(10);
-      expect(mockClient.emit).toHaveBeenCalledWith('messageUnpinned', {
+      expect(emit).toHaveBeenCalledWith('messageUnpinned', {
         conversationId: 10,
       });
+      // The deleter's own other devices must drop the pinned banner too.
+      expect(rooms).toContain('user:1');
+      expect(rooms).toContain('user:2');
+    });
+
+    it('fans messageDeleted for_everyone to BOTH users rooms, so the deleter other devices purge too', async () => {
+      arrangeDeletable();
+      const { rooms, emit } = captureFanOut();
+
+      await service.handleDeleteMessage(
+        mockClient as Socket,
+        { messageId: 55, mode: 'for_everyone' },
+        mockServer as Server,
+      );
+
+      // The row, its envelopes and its media are gone for good. A device that
+      // never hears this keeps decrypted plaintext forever: the client's
+      // history merge never prunes rows a server snapshot omits.
+      expect(emit).toHaveBeenCalledWith('messageDeleted', {
+        messageId: 55,
+        conversationId: 10,
+        forEveryone: true,
+      });
+      expect(rooms).toEqual(['user:1', 'user:2']);
+      // Socket-scoped delivery would reach exactly one of the deleter's tabs.
+      expect(mockClient.emit).not.toHaveBeenCalledWith(
+        'messageDeleted',
+        expect.anything(),
+      );
+    });
+
+    it('keeps a for_me delete inside the hiding user rooms and never tells the peer', async () => {
+      arrangeDeletable();
+      const { rooms, emit } = captureFanOut();
+
+      await service.handleDeleteMessage(
+        mockClient as Socket,
+        { messageId: 55, mode: 'for_me' },
+        mockServer as Server,
+      );
+
+      // `hiddenByUserIds` is per-USER state: every device of the hider must
+      // hide it, while the peer goes on reading the message.
+      expect(emit).toHaveBeenCalledWith('messageDeleted', {
+        messageId: 55,
+        conversationId: 10,
+        forEveryone: false,
+      });
+      expect(rooms).toEqual(['user:1']);
+      expect(rooms).not.toContain('user:2');
+    });
+
+    it('fans chatHistoryCleared to both users, because the wipe destroys every row for both', async () => {
+      conversationsService.findById.mockResolvedValue({
+        id: 10,
+        userOne: { id: 1 },
+        userTwo: { id: 2 },
+      } as never);
+      const { rooms, emit } = captureFanOut();
+
+      await service.handleClearChatHistory(
+        mockClient as Socket,
+        { conversationId: 10 },
+        mockServer as Server,
+      );
+
+      expect(emit).toHaveBeenCalledWith('chatHistoryCleared', {
+        conversationId: 10,
+      });
+      expect(rooms).toEqual(['user:1', 'user:2']);
+      expect(mockClient.emit).not.toHaveBeenCalledWith(
+        'chatHistoryCleared',
+        expect.anything(),
+      );
     });
   });
 
@@ -1635,7 +1734,10 @@ describe('ChatMessageService', () => {
       // idempotent, so a shared payload would brick a ratchet.
       expect(bob1.emit).toHaveBeenCalledWith(
         'messageEdited',
-        expect.objectContaining({ encryptedContent: '3:bob-1', originDeviceId: 2 }),
+        expect.objectContaining({
+          encryptedContent: '3:bob-1',
+          originDeviceId: 2,
+        }),
       );
       expect(bob2.emit).toHaveBeenCalledWith(
         'messageEdited',

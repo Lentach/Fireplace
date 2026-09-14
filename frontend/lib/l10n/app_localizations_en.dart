@@ -951,6 +951,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get actionTileDisappearingMessages => 'Disappearing messages';
 
   @override
+  String get actionTileClearChat => 'Delete chat for both sides';
+
+  @override
+  String get clearChatHoldLabel => 'Keep holding — deletes for both';
+
+  @override
+  String get clearChatConfirmTitle => 'Delete this chat for both of you?';
+
+  @override
+  String get clearChatConfirmBody =>
+      'Every message, photo, video and voice note in this chat is deleted from the server for you AND for the other person. This cannot be undone, and it includes messages from before this device was linked.';
+
+  @override
+  String get clearChatConfirmAction => 'Delete for both';
+
+  @override
   String get disappearingTimerTitle => 'Disappearing messages';
 
   @override
@@ -1218,9 +1234,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get enterPasswordToConfirm => 'Enter password to confirm';
 
   @override
-  String get clearingChat => 'Clearing…';
-
-  @override
   String get gifNoResults => 'No GIFs found';
 
   @override
@@ -1411,7 +1424,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get messageTooLong => 'Message is too long to send';
 
   @override
-  String get snackbarChatHistoryDeleted => 'Chat history deleted';
+  String get snackbarChatHistoryDeleted => 'Chat deleted for both sides';
 
   @override
   String get snackbarFailedToSendImage => 'Failed to send image';

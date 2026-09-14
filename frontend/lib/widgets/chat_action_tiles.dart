@@ -25,6 +25,7 @@ export 'disappearing_timer_sheet.dart';
 import 'disappearing_timer_sheet.dart';
 import 'top_snackbar.dart';
 import 'anti_quantum_note_dialog.dart';
+import 'dialogs/clear_chat_dialog.dart';
 import 'gif_picker_sheet.dart';
 import 'ping_glyph.dart';
 
@@ -105,6 +106,8 @@ class ChatActionTiles extends StatelessWidget {
                     _LongPressActionTile(
                       icon: Icons.delete_forever,
                       color: iconColor,
+                      tooltip: l10n.actionTileClearChat,
+                      holdLabel: l10n.clearChatHoldLabel,
                       onLongPressComplete: () =>
                           _handleClearChatHistory(context),
                     ),
@@ -374,17 +377,20 @@ class ChatActionTiles extends StatelessWidget {
     beginComposerNativePicker();
     Navigator.of(sheetContext).pop();
     pickFileViaAnchoredInput(
-      anchorRect: anchor,
-      accept: accept,
-      capture: capture,
-    ).then((picked) async {
-      if (picked == null || !context.mounted) return;
-      await _routePickedFile(
-        context,
-        fileName: picked.name,
-        bytes: picked.bytes,
-      );
-    }).whenComplete(endComposerNativePicker).ignore();
+          anchorRect: anchor,
+          accept: accept,
+          capture: capture,
+        )
+        .then((picked) async {
+          if (picked == null || !context.mounted) return;
+          await _routePickedFile(
+            context,
+            fileName: picked.name,
+            bytes: picked.bytes,
+          );
+        })
+        .whenComplete(endComposerNativePicker)
+        .ignore();
   }
 
   /// Routes a picked file by extension. Routing is EXPLICIT: whitelisted
@@ -477,7 +483,6 @@ class ChatActionTiles extends StatelessWidget {
       }
     }
   }
-
 
   static String _imageMimeForExtension(String ext) {
     switch (ext) {
@@ -577,28 +582,32 @@ class ChatActionTiles extends StatelessWidget {
     );
   }
 
-  void _handleClearChatHistory(BuildContext context) {
+  /// The hold gesture guards against an ACCIDENT; it cannot obtain informed
+  /// consent for a wipe that also destroys the other person's copy, so the
+  /// scope is spelled out in [showClearChatDialog] before anything is emitted.
+  Future<void> _handleClearChatHistory(BuildContext context) async {
     if (!_ensureHasActiveConversation(context)) return;
 
     final convs = context.read<ConversationsProvider>();
     final messaging = context.read<MessagingProvider>();
+    final l10n = AppLocalizations.of(context);
     final conversationId = convs.activeConversationId!;
 
-    // Clear chat history
-    messaging.clearChatHistory(conversationId);
+    await showClearChatDialog(
+      context: context,
+      onConfirm: () {
+        messaging.clearChatHistory(conversationId);
 
-    // Show success feedback
-    if (context.mounted) {
-      showTopSnackBar(
-        context,
-        AppLocalizations.of(context).snackbarChatHistoryDeleted,
-      );
-    }
+        if (context.mounted) {
+          showTopSnackBar(context, l10n.snackbarChatHistoryDeleted);
+        }
 
-    // Close action panel (navigate back if possible)
-    if (context.mounted && Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
-    }
+        // Close action panel (navigate back if possible)
+        if (context.mounted && Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
+      },
+    );
   }
 }
 
@@ -630,7 +639,6 @@ class _AttachmentDoorRow extends StatelessWidget {
     );
   }
 }
-
 
 class _ActionTile extends StatelessWidget {
   final IconData? icon;
@@ -696,11 +704,21 @@ class _ActionTile extends StatelessWidget {
 class _LongPressActionTile extends StatefulWidget {
   final IconData icon;
   final Color color;
+
+  /// Named like every sibling [_ActionTile]: an unlabelled destructive tile
+  /// tells the user nothing about what completing the hold will do.
+  final String tooltip;
+
+  /// Shown under the progress ring WHILE holding, so the scope is on screen
+  /// during the window where releasing still aborts.
+  final String holdLabel;
   final VoidCallback onLongPressComplete;
 
   const _LongPressActionTile({
     required this.icon,
     required this.color,
+    required this.tooltip,
+    required this.holdLabel,
     required this.onLongPressComplete,
   });
 
@@ -723,15 +741,14 @@ class _LongPressActionTileState extends State<_LongPressActionTile>
     // rebuilds per 1500 ms gesture.
     _animationController =
         AnimationController(
-            vsync: this,
-            duration: const Duration(milliseconds: 1500),
-          )
-          ..addStatusListener((status) {
-            if (status == AnimationStatus.completed && _isPressed) {
-              widget.onLongPressComplete();
-              _reset();
-            }
-          });
+          vsync: this,
+          duration: const Duration(milliseconds: 1500),
+        )..addStatusListener((status) {
+          if (status == AnimationStatus.completed && _isPressed) {
+            widget.onLongPressComplete();
+            _reset();
+          }
+        });
   }
 
   @override
@@ -762,6 +779,7 @@ class _LongPressActionTileState extends State<_LongPressActionTile>
       builder: (context) => _CenterProgressOverlay(
         progress: _animationController,
         color: accentColor,
+        label: widget.holdLabel,
       ),
     );
     overlay.insert(_progressOverlay!);
@@ -785,15 +803,18 @@ class _LongPressActionTileState extends State<_LongPressActionTile>
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onLongPressStart: _onLongPressStart,
-      onLongPressEnd: _onLongPressEnd,
-      onLongPressCancel: _onLongPressCancel,
-      child: Container(
-        width: 40,
-        height: 40,
-        padding: const EdgeInsets.all(8),
-        child: Icon(widget.icon, size: 24, color: widget.color),
+    return Tooltip(
+      message: widget.tooltip,
+      child: GestureDetector(
+        onLongPressStart: _onLongPressStart,
+        onLongPressEnd: _onLongPressEnd,
+        onLongPressCancel: _onLongPressCancel,
+        child: Container(
+          width: 40,
+          height: 40,
+          padding: const EdgeInsets.all(8),
+          child: Icon(widget.icon, size: 24, color: widget.color),
+        ),
       ),
     );
   }
@@ -802,8 +823,13 @@ class _LongPressActionTileState extends State<_LongPressActionTile>
 class _CenterProgressOverlay extends StatelessWidget {
   final Animation<double> progress;
   final Color color;
+  final String label;
 
-  const _CenterProgressOverlay({required this.progress, required this.color});
+  const _CenterProgressOverlay({
+    required this.progress,
+    required this.color,
+    required this.label,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -826,8 +852,13 @@ class _CenterProgressOverlay extends StatelessWidget {
               },
             ),
             const SizedBox(height: 16),
+            // Was `clearingChat` ("Clearing…") — present tense while the
+            // gesture is still abortable and the wipe has not been requested,
+            // and silent about the scope. The label now says what completing
+            // the hold does.
             Text(
-              AppLocalizations.of(context).clearingChat,
+              label,
+              textAlign: TextAlign.center,
               style: RpgTheme.bodyFont(fontSize: 14, color: Colors.white),
             ),
           ],

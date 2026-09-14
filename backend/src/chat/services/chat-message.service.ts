@@ -232,7 +232,8 @@ export class ChatMessageService {
       return 'recipient_device_list_replacement_owed';
     }
     if (
-      (await this.deviceListService.pendingReplacementVersion(senderId)) !== null
+      (await this.deviceListService.pendingReplacementVersion(senderId)) !==
+      null
     ) {
       return 'sender_device_list_replacement_owed';
     }
@@ -912,7 +913,6 @@ export class ChatMessageService {
     );
     await this.messagesService.deleteAllByConversation(data.conversationId);
 
-    // Emit to both users
     const otherUserId =
       conversation.userOne.id === userId
         ? conversation.userTwo.id
@@ -920,10 +920,18 @@ export class ChatMessageService {
 
     const payload = { conversationId: data.conversationId };
 
-    // Emit to initiating user
-    client.emit('chatHistoryCleared', payload);
-
-    server.to(userRoom(otherUserId)).emit('chatHistoryCleared', payload);
+    // A clear is a MUTUAL, irreversible wipe: `deleteAllByConversation` drops
+    // every row of the conversation for BOTH participants, so every device of
+    // both users must purge its local plaintext. `client.emit` told only the
+    // clearing socket, which left that user's OTHER devices displaying a
+    // thread that no longer exists anywhere — and the client's history merge
+    // deliberately never prunes rows the server stopped returning
+    // (`_mergeHistorySnapshot`, messaging_provider.history.dart), so that
+    // stale copy survived every future reconnect instead of healing.
+    server
+      .to(userRoom(userId))
+      .to(userRoom(otherUserId))
+      .emit('chatHistoryCleared', payload);
 
     this.logger.debug(
       `User ${userId} cleared chat history for conversation ${data.conversationId}`,
@@ -977,7 +985,12 @@ export class ChatMessageService {
         client.emit('error', { message: 'Failed to hide message' });
         return;
       }
-      client.emit('messageDeleted', {
+      // Per-USER state (`hiddenByUserIds`), so this fans out to the hiding
+      // user's room ONLY — the peer must keep seeing the message. Every one of
+      // this user's own devices has to hide it though: `client.emit` told just
+      // the acting socket, and the row stays readable for the other side, so a
+      // sibling device would go on showing a message this user deleted.
+      server.to(userRoom(userId)).emit('messageDeleted', {
         messageId,
         conversationId,
         forEveryone: false,
@@ -1000,19 +1013,26 @@ export class ChatMessageService {
       if (conv.pinnedMessageId === messageId) {
         await this.conversationsService.clearPinnedMessage(conversationId);
         const unpinPayload = { conversationId };
-        client.emit('messageUnpinned', unpinPayload);
-        server.to(userRoom(otherUserId)).emit('messageUnpinned', unpinPayload);
+        server
+          .to(userRoom(userId))
+          .to(userRoom(otherUserId))
+          .emit('messageUnpinned', unpinPayload);
       }
-      client.emit('messageDeleted', {
-        messageId,
-        conversationId,
-        forEveryone: true,
-      });
-      server.to(userRoom(otherUserId)).emit('messageDeleted', {
-        messageId,
-        conversationId,
-        forEveryone: true,
-      });
+      // The row, its per-device envelopes (FK CASCADE) and its media are gone
+      // for good, so EVERY device of BOTH users must drop its local copy. Both
+      // emits used to skip the deleting user's other devices, which then kept
+      // the decrypted plaintext on screen permanently — the history merge
+      // never prunes rows missing from a server snapshot, so no later
+      // reconnect could heal it. Deleting on a phone left the message
+      // readable on that same account's other clients.
+      server
+        .to(userRoom(userId))
+        .to(userRoom(otherUserId))
+        .emit('messageDeleted', {
+          messageId,
+          conversationId,
+          forEveryone: true,
+        });
       this.logger.debug(
         `User ${userId} deleted message ${messageId} for everyone`,
       );

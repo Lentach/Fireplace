@@ -368,6 +368,11 @@
   "attachmentOptionRecordVideo": "Record video",
   "attachmentOptionFile": "File",
   "actionTileDisappearingMessages": "Disappearing messages",
+  "actionTileClearChat": "Delete chat for both sides",
+  "clearChatHoldLabel": "Keep holding — deletes for both",
+  "clearChatConfirmTitle": "Delete this chat for both of you?",
+  "clearChatConfirmBody": "Every message, photo, video and voice note in this chat is deleted from the server for you AND for the other person. This cannot be undone, and it includes messages from before this device was linked.",
+  "clearChatConfirmAction": "Delete for both",
   "disappearingTimerTitle": "Disappearing messages",
   "disappearingTimerExplainerLine1": "Messages are removed after they are read.",
   "disappearingTimerExplainerLine2": "The countdown starts when someone opens the chat.",
@@ -480,7 +485,6 @@
   "deleteAccountWarning": "This action is permanent and cannot be undone. All your messages and conversations will be deleted.",
   "enterPasswordToConfirm": "Enter password to confirm",
 
-  "clearingChat": "Clearing…",
   "gifNoResults": "No GIFs found",
   "gifSearchHint": "Search GIFs...",
 
@@ -551,7 +555,7 @@
   "snackbarNoActiveConversation": "No active conversation",
   "snackbarOpenConversationFirst": "Open a conversation first",
   "messageTooLong": "Message is too long to send",
-  "snackbarChatHistoryDeleted": "Chat history deleted",
+  "snackbarChatHistoryDeleted": "Chat deleted for both sides",
   "snackbarFailedToSendImage": "Failed to send image",
   "snackbarMicrophonePermissionRequired": "Microphone permission required",
   "snackbarMicrophonePermissionDenied": "Microphone permission denied",

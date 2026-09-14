@@ -366,6 +366,11 @@
   "attachmentOptionRecordVideo": "Nagraj wideo",
   "attachmentOptionFile": "Plik",
   "actionTileDisappearingMessages": "Znikające wiadomości",
+  "actionTileClearChat": "Usuń czat u obu stron",
+  "clearChatHoldLabel": "Trzymaj — usuwa u obu stron",
+  "clearChatConfirmTitle": "Usunąć ten czat u obu stron?",
+  "clearChatConfirmBody": "Wszystkie wiadomości, zdjęcia, filmy i wiadomości głosowe z tego czatu zostaną usunięte z serwera u Ciebie I u drugiej osoby. Tego nie można cofnąć — obejmuje to też wiadomości sprzed połączenia tego urządzenia.",
+  "clearChatConfirmAction": "Usuń u obu stron",
   "disappearingTimerTitle": "Znikające wiadomości",
   "disappearingTimerExplainerLine1": "Wiadomości znikają po odczytaniu.",
   "disappearingTimerExplainerLine2": "Odliczanie startuje, gdy ktoś otworzy czat.",
@@ -466,7 +471,6 @@
   "deleteAccountWarning": "Ta operacja jest nieodwracalna. Wszystkie Twoje wiadomości i rozmowy zostaną usunięte.",
   "enterPasswordToConfirm": "Wpisz hasło, aby potwierdzić",
 
-  "clearingChat": "Czyszczenie…",
   "gifNoResults": "Nie znaleziono GIFów",
   "gifSearchHint": "Szukaj GIFów...",
 
@@ -537,7 +541,7 @@
   "snackbarNoActiveConversation": "Brak aktywnej rozmowy",
   "snackbarOpenConversationFirst": "Najpierw otwórz rozmowę",
   "messageTooLong": "Wiadomość jest za długa, aby ją wysłać",
-  "snackbarChatHistoryDeleted": "Historia czatu została usunięta",
+  "snackbarChatHistoryDeleted": "Czat usunięty u obu stron",
   "snackbarFailedToSendImage": "Nie udało się wysłać zdjęcia",
   "snackbarMicrophonePermissionRequired": "Wymagane jest uprawnienie do mikrofonu",
   "snackbarMicrophonePermissionDenied": "Odmowa dostępu do mikrofonu",
