@@ -107,6 +107,38 @@ android {
             }
         }
     }
+
+    // Native libs are STORED uncompressed by default (AGP does this whenever
+    // minSdk >= 23 so the loader can mmap straight out of the APK). For a
+    // SIDELOADED apk that friends download over mobile data, that is the wrong
+    // trade: the 24 `.so` entries deflate 100.29 MiB -> 44.19 MiB (44.1%),
+    // taking the universal APK from 105.2 MiB to 48.9 MiB (MEASURED, 0.2.46).
+    // Nothing is removed — every ABI still ships, so the file installs on any
+    // friend's phone and on the x86_64 emulator.
+    //
+    // It also costs NOTHING on the device, because only the ONE matching ABI is
+    // extracted. Measured on real hardware, same app version:
+    //   phone  f849cc68 (stored):         base.apk 105.3 MiB + lib/ 7 KB  = 105.3
+    //   emulator-5554 (legacy packaging): base.apk  48.9 MiB + lib/ 37.2  =  86.2
+    // So the on-device footprint DROPS ~19 MiB as well. (It would only grow for
+    // a SINGLE-ABI apk: 38.8 stored vs 19.7 + 33.9 extracted.)
+    //
+    // 16KB compliance is unaffected: the loader mmaps the EXTRACTED copy, so
+    // ELF p_align >= 16384 still governs and scripts/verify-apk-16k.mjs still
+    // reads it (it inflates method-8 entries — see its `entryData`). Verified
+    // 16/16 green on the packed APK, which then installed and cold-started on
+    // the emulator in 3.94 s with no dlopen/UnsatisfiedLink errors.
+    //
+    // TWO consequences, both recorded in docs/runbooks/android-release.md:
+    //   - a --dart-define can no longer be byte-searched in the RAW apk;
+    //     extract lib/<abi>/libapp.so first, then search it.
+    //   - revisit this if we ever ship an AAB: Play does its own delivery
+    //     compression and prefers uncompressed libs.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
 }
 
 flutter {

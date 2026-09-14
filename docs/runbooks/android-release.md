@@ -125,6 +125,14 @@ embedded fallback key despite the script's warning text; empty = GIF search disa
 defaults to production; override with `-BaseUrl` for a staging build. Requires an Android SDK with
 build-tools (for `apksigner`) via `ANDROID_HOME`/`ANDROID_SDK_ROOT`/`%LOCALAPPDATA%\Android\Sdk`.
 
+⚠️ **Since `useLegacyPackaging = true` (2026-09-14) a `--dart-define` can NO LONGER be byte-searched
+in the raw APK.** `lib/<abi>/libapp.so` is now DEFLATED inside the zip, so grepping `app-release.apk`
+for `fireplace.ignorelist.com` finds nothing and reads as "the define was lost" when it was not.
+Extract the entry first, then search it:
+`python -c "import zipfile,sys; open('libapp.so','wb').write(zipfile.ZipFile(sys.argv[1]).read('lib/arm64-v8a/libapp.so'))" <apk>`
+then `grep -c fireplace.ignorelist.com libapp.so`. Everything else is unchanged: `apksigner`,
+`scripts/verify-apk-16k.mjs` (it inflates), `adb install -r`, and the on-device `base.apk` hash check.
+
 **versionCode floor — 20046 since 2026-09-14** (0.2.46 is INSTALLED on the owner's real phone,
 `f849cc68`; 20043/20044/20045 each held the floor for minutes on the way there). History: the first release build
 (2026-09-02) was `0.1.24` from `feat/video-messages` (`1f9d96f`) → versionCode `10024`, SHA256
@@ -550,28 +558,79 @@ Add this to the friend-facing text:
   rendered as retired ids rather than `[Decryption failed]`.
   Acceptance is executable: `cd frontend && flutter test integration_test -d <deviceId>` (8 tests,
   including a real-Keystore content-key wipe that must retire history, never crash).
-- **APK size anatomy (measured on the 0.2.41 build).** 105.2 MB, of which **100.3 MB is native
-  libraries in three ABIs** — `x86_64` 37.2 (emulator only), `arm64-v8a` 33.9, `armeabi-v7a` 29.2;
-  everything else is 5.6 MB dex + 2.4 MB assets/res. Per-ABI on arm64: `libapp.so` 12.8 (our Dart
-  AOT), `libflutter.so` 11.0 (engine), `libsqlcipher.so` 4.9, `libbarhopper_v3.so` 4.7 (ML Kit
-  barcode model). Levers, in order of payoff:
-  1. `--target-platform android-arm64` / `--split-per-abi` → **~42 MB**, the single biggest win.
-     NOT applied: Flutter's split convention adds a 1000×ABI offset to versionCode, which collides
-     with our `major*1e6+minor*1e4+patch` formula and with Play's monotonicity. Decide once.
-  2. `--split-debug-info=<dir>` strips `libapp.so` symbols (~3-5 MB) and still allows symbolizing.
-     Avoid `--obfuscate` while there is no crash reporting — logcat is the only diagnostic channel.
-  3. `dev.steenbakker.mobile_scanner.useUnbundled=true` in `frontend/android/gradle.properties`
+- **APK size — SETTLED 2026-09-14. `useLegacyPackaging = true` is APPLIED**
+  (`frontend/android/app/build.gradle.kts`), taking the universal APK from **105.2 MiB to 48.9 MiB
+  with nothing removed** (measured, not projected). Every ABI still ships, so the file installs on
+  any friend's phone and on the x86_64 emulator. The 24 `.so` entries are STORED by default (AGP
+  does that for minSdk >= 23) and deflate **100.29 MiB → 44.19 MiB (44.1%)** — `libapp.so` 40.6%,
+  `libflutter.so` 46.7%, `libsqlcipher.so` 44.0%, `libbarhopper_v3.so` 41.3%. Flag is live:
+  `android:extractNativeLibs="true"` in the merged release manifest
+  (`cmd /c gradlew.bat :app:processReleaseManifest`, no keystore needed).
+  **16KB compliance is unaffected** — the loader mmaps the EXTRACTED copy, so ELF
+  `p_align >= 16384` still governs, and `scripts/verify-apk-16k.mjs` inflates method-8 entries
+  (`entryData`) so the gate keeps reading real program headers: **16/16 green on the packed APK.**
+  **It costs nothing on the device either — only the ONE matching ABI is extracted.** Measured on
+  real hardware at the same app version:
+  | device | `base.apk` | extracted `lib/` | total |
+  |---|---|---|---|
+  | phone `f849cc68`, stored | 105.3 MiB | 7 KB (empty) | **105.3** |
+  | `emulator-5554`, legacy packaging | 48.9 MiB | 37.2 MiB (x86_64 only) | **86.2** |
+
+  So the on-device footprint drops ~19 MiB as well. It would only GROW for a single-ABI APK
+  (38.8 stored vs 19.7 + 33.9 extracted) — another reason the universal build is the right shape
+  here. Install on the emulator took 9.8 s and the app cold-started in **3.94 s** (`am start -W` →
+  `Status: ok`, `LaunchState: COLD`) with no `dlopen`/`UnsatisfiedLink`/FATAL in logcat.
+  ⚠️ **Revisit for an AAB** — Play does its own delivery compression and prefers uncompressed libs.
+- **Anatomy behind that number (measured on 0.2.44, units are MiB).** 105.2 total, of which
+  **100.3 is native libraries in three ABIs** — `x86_64` 37.2 (emulator only), `arm64-v8a` 33.9,
+  `armeabi-v7a` 29.2; everything else is 2.6 dex + 2.1 assets/res. Per-ABI on arm64: `libapp.so`
+  12.75 (our Dart AOT), `libflutter.so` 11.05 (engine), `libsqlcipher.so` 4.95,
+  `libbarhopper_v3.so` 4.72 (ML Kit barcode model), `libwebcrypto.so` 0.37. `frontend/assets` is
+  416 KiB — app assets are never the problem here.
+  `libapp.so` by package (`--analyze-size`, fully accounted): `package:flutter` 3.17,
+  `package:fireplace` 1.76, `package:emoji_picker_flutter` 1.38, `@unknown` 1.06,
+  `package:unorm_dart` 0.81 (transitive from `bip39_mnemonic` — BIP-39 mandates NFKD, so it is
+  load-bearing recovery-phrase crypto, not bloat), then 113 entries under 0.4 each.
+- **Remaining size levers, in order of payoff — none applied:**
+  1. **ABI narrowing → 19.7 MiB arm64-only, 33.6 MiB dropping just x86_64** (on top of legacy
+     packaging). **NOT applied by decision 2026-09-14: the APK is shared with friends whose
+     hardware is unknown, and `armeabi-v7a` is the only ABI a 32-bit-only phone will accept — there
+     is no fallback, the install just fails with `INSTALL_FAILED_NO_MATCHING_ABIS`.** Dropping
+     x86_64 alone is free for distribution but kills the release-APK drill on the x86_64 Pixel_7
+     AVD. ⚠️ Two mechanics to get right if this is ever revisited:
+     - `--target-platform android-arm64` **alone does NOT do it** — measured 2026-09-14 at
+       **57.26 MiB**, because the Flutter plugin forces `abiFilters` to all three ABIs on every
+       non-split build (`FlutterPlugin.kt:589-598` `configureAbiWithoutSplits` +
+       `FlutterPluginConstants.kt:60-63`). It narrows only `libapp.so`/`libflutter.so`; the six
+       third-party natives (`libsqlcipher`, `libbarhopper_v3`, `libwebcrypto`,
+       `libimage_processing_util_jni`, `libsurface_util_jni`, `libdatastore_shared_counter`) still
+       ship ×3, leaving 18.5 MiB of dead weight. You also need an explicit `ndk { abiFilters }` plus
+       `-Pdisable-abi-filtering=true` (`FlutterPluginUtils.kt:41,292-294`).
+     - the 1000×ABI versionCode offset is **exclusive to `--split-per-abi`**
+       (`FlutterPlugin.kt:655-677`, `ABI_VERSION` arm32=1/arm64=2/x86_64=4). A
+       `--target-platform` build leaves versionCode on our `major*1e6+minor*1e4+patch` formula.
+       `--split-per-abi` would put arm64 at 22046 — a ONE-WAY DOOR against the installed floor, and
+       it renames the output so `build-android.ps1:125`'s `Test-Path` fails.
+  2. `dev.steenbakker.mobile_scanner.useUnbundled=true` in `frontend/android/gradle.properties`
      swaps the bundled ML Kit model for the Play-Services one (`mobile_scanner-7.4.0`
-     `android/build.gradle:63-69`): 4.7 MB → ~600 KB per ABI. **Evaluated 2026-09-13, NOT applied:**
+     `android/build.gradle:62-70`): saves `libbarhopper_v3.so` + `assets/mlkit_barcode_models`,
+     ≈2.8 MiB post-compression on a single-ABI build. **Evaluated 2026-09-13, NOT applied:**
      the model then downloads on FIRST USE, and the scanner's only job is the link ceremony, so a
      weak connection breaks the one flow a new install must complete. Degradation is graceful
      (`LinkScanUnsupported` + the mandatory typed-code path, spec §12(i)) and Play Services is
      already required for FCM, so the dependency itself is not new — revisit once the ceremony is
      device-proven, and note it matters less on Play, where the AAB splits ABIs anyway.
-- R8/minify is OFF (default): enable later with keep-rules if APK size matters; not a security
-  gate — and per the measurement above there is only 5.6 MB of dex to shrink, so the payoff is
-  small next to the ABI split. `light_compressor_v2` needs no keep-rules (its README); libsignal,
-  drift and Firebase are unassessed.
+  3. `--split-debug-info=<dir>` — **the payoff is UNMEASURED and the old "~3-5 MB strips symbols"
+     claim was wrong.** Release AOT is already stripped: `libapp.so` has 11 sections, no `.symtab`,
+     no `.debug_*`, `.dynsym` ≈ 0, just `.text` 7.58 MB + `.rodata` 5.73 MB. The flag removes the
+     Dart name table INSIDE `.rodata`, which section headers cannot size, and `--analyze-size`
+     refuses to combine with it. Avoid `--obfuscate` while there is no crash reporting — logcat is
+     the only diagnostic channel.
+  4. R8/minify is OFF (default); not a security gate. There is only 2.6 MiB of compressed dex, so
+     the payoff is ~1 MiB against keep-rule risk in libsignal, drift and Firebase reflection.
+     `light_compressor_v2` needs no keep-rules (its README); the others are unassessed.
+  5. `package:emoji_picker_flutter` 1.38 MiB of Dart — real, but not worth replacing a working
+     picker.
 - `network_security_config` now EXISTS and is deliberately narrow: `frontend/android/app/src/main/res/xml/`
   permits cleartext to `127.0.0.1`/`localhost` ONLY (just_audio serves unsealed voice bytes through a
   loopback proxy; API 28+ blocks that otherwise), with no `base-config`, so every other host keeps
