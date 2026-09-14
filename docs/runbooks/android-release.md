@@ -133,8 +133,8 @@ Extract the entry first, then search it:
 then `grep -c fireplace.ignorelist.com libapp.so`. Everything else is unchanged: `apksigner`,
 `scripts/verify-apk-16k.mjs` (it inflates), `adb install -r`, and the on-device `base.apk` hash check.
 
-**versionCode floor — 20046 since 2026-09-14** (0.2.46 is INSTALLED on the owner's real phone,
-`f849cc68`; 20043/20044/20045 each held the floor for minutes on the way there). History: the first release build
+**versionCode floor — 20047 since 2026-09-14** (0.2.47 is INSTALLED on the owner's real phone,
+`f849cc68`; 20043/20044/20045/20046 each held the floor on the way there). History: the first release build
 (2026-09-02) was `0.1.24` from `feat/video-messages` (`1f9d96f`) → versionCode `10024`, SHA256
 `743612453b44ff2a961760cb010a4dac9b87868594080517c9c1ac1a2bc40ef1`, built for the owner's phone;
 `master` was still `0.1.21`, so a build from master would derive `10021` and Android would REFUSE
@@ -198,7 +198,7 @@ versionCode `20045`, SHA256 `99e1bfdebffd81cffa921b84467fd0567b9c19d6743f5a3d123
 MEASURED = record-of-truth, 16KB 16/16. Two owner nits from the field test: the shell now pays the status-bar
 inset ONCE (see "Field test"), and fullscreen stills/GIFs dismiss on swipe down like video.
 
-**Build record — 0.2.46, 2026-09-14 (CURRENT — running on the owner's phone, and the version PROD runs).**
+**Build record — 0.2.46, 2026-09-14 (superseded by 0.2.47 below; still the version PROD runs).**
 `master` @ **`43481643`**, CI 6/6 → versionCode `20046`, 105.2 MB, SHA256
 `58ec84a96672c1aeeed73ea1467986e0a2dc0c340be6b22ffea535bc33875103`, signer digest MEASURED
 `8e9a6bf3…5cdf405d`, 16KB 16/16. Moves the key-loss warning off the version footer into Privacy & Safety
@@ -206,6 +206,25 @@ inset ONCE (see "Field test"), and fullscreen stills/GIFs dismiss on swipe down 
 **Installed over 0.2.45 with `adb install -r`; `firstInstallTime` `2026-09-13 23:53:44` has now survived FOUR
 in-place upgrades (20043 → 20044 → 20045 → 20046) on that phone.** Both prod tiers were deployed at this commit
 the same night (`/version` → `0.2.46 / 43481643`, web smoke 5/5).
+
+**Build record — 0.2.47, 2026-09-14 (CURRENT on the owner's phone — and THE FRIENDS-SHARE
+CANDIDATE, the first build under half the old size).** `feat/passcode-lock` @ **`320c11dd`**,
+byte-identical to `origin/master`, **CI 6/6 success on that exact commit** → versionCode `20047`,
+**48.9 MB** (was 105.2 — `useLegacyPackaging`, see "APK size" below), SHA256
+`788aba471ba4af3664289a56f2e4aa2e59de19b2f0b3619f43ff346c1466fec5`. Signer DN `CN=Rick Sanches`
+and certificate SHA-256 **MEASURED `8e9a6bf37b58a8432c42d89e3199007c4aa9077e297a966a2f2ca7585cdf405d`
+= the record-of-truth fingerprint**, so every future update can sign over this install; 16KB gate
+**16/16 on the packed APK** (the gate inflates method-8 entries, so compression does not blind it).
+All three dart-defines verified in the **EXTRACTED** `lib/arm64-v8a/libapp.so` — host, `320c11dd`,
+and the 32-char Giphy key — while the same search across the RAW apk bytes returns **0 hits**.
+**Installed over 0.2.46 with `adb install -r`** in 6.5 s: on-device `base.apk` hashes to
+`788aba47…`, `firstInstallTime` `2026-09-13 23:53:44` has now survived FIVE in-place upgrades
+(20043 → 20044 → 20045 → 20046 → 20047), and the app cold-started live. Device footprint FELL
+105.3 → 82.9 MiB because only the arm64 slice is extracted. Owner confirmed the keystore is backed
+up in two places (cloud + paper). **NOT driven:** no UI was exercised on the phone (MIUI blocks
+synthetic input, `FLAG_SECURE` blocks screencap) — the footer, an E2E round trip and a voice note
+on 0.2.47 are owner-eyeball items before the APK goes to friends. Staged for hand-transfer at
+`C:/Users/Lentach/Desktop/umbra-0.2.47-320c11dd.apk`, hash re-verified after the copy.
 
 ⚠️ **Two earlier 0.2.42 builds exist and must NOT be shipped.** `601248e0…` was built from a
 working tree whose fix was still uncommitted, so its embedded `GIT_COMMIT` (`f35ef7b`) names a
