@@ -29,6 +29,6 @@
 ## Notes for next session
 
 - Owner-owed: the real phone leg. `f849cc68` runs the release 0.2.47 against PROD and is keyguarded — `am start` works, `input` does not, and the debug APK cannot be installed over it. Either the owner taps (send a throwaway message in `bob208`↔`alteregobob8`, then delete for everyone; prod baseline captured `max(messages.id)=24404` at 05:16:43Z) or the owner unlocks the phone and I drive the dev web build in its Chrome over `adb reverse tcp:8088` + CDP.
-- Owner-owed: nothing is committed yet — the backend fix is a data-loss fix and should ship.
+- Owner-owed: shipped as `1f05e3e6` (+ doc fixes `a9fba52b`), CI 6/6 on the tip, but **not deployed** — prod still serves 0.2.47 with the unlink bug until someone runs `./deploy-backend.sh` on the VM. The backend half is separable: `git show 1f05e3e6 -- backend/src/chat/services/chat-message.service*.ts docs/contracts/wire.md | git apply --reverse --check -` passes, so it can be reverted alone if the owner wants it reviewed first.
 - NOT-verified surface: whether any OTHER destructive path unlinks media before authorizing (block/delete-conversation/clear-history were not re-audited this session).
-- Traps appended to `docs/agents/traps.md`: recipient-unlink ordering, `socketReady` vs `connect` for wire clients, adb via powershell, MIUI keyguard, empty-state top clearance.
+- Traps appended to `docs/agents/traps.md`: recipient-unlink ordering, `socketReady` vs `connect` for wire clients, adb via powershell, MIUI keyguard, empty-state top clearance, and the CRLF `prettier --check` false signal (judge formatting from the committed blob, never the working copy).
