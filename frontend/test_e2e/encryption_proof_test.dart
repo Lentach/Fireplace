@@ -126,7 +126,11 @@ void main() {
   /// purpose: a sweep that silently scanned nothing would "find no plaintext"
   /// and prove absolutely nothing, so the tests assert on it.
   Future<(List<List<String>>, int)> sweepDatabaseFor(String literal) async {
-    if (!RegExp(r'^[A-Za-z0-9-]+$').hasMatch(literal)) {
+    // LIKE's only metacharacters are `%` and `_`. Standard base64
+    // (A-Za-z0-9+/=), hex, and the hyphenated needle contain neither, and no
+    // quote — so the FULL string is safe to sweep, which is a strictly
+    // stronger claim than sweeping a fragment of it.
+    if (!RegExp(r'^[A-Za-z0-9+/=-]+$').hasMatch(literal)) {
       throw ArgumentError('needle must be LIKE- and quote-safe: $literal');
     }
     final rows = await e2eSql('''
@@ -177,11 +181,9 @@ SELECT tbl, col, hits FROM _proof_hits ORDER BY tbl, col;
 
   /// The longest run of `[A-Za-z0-9]` inside [s].
   ///
-  /// Base64 key material contains `+`, `/` and `=`, which are LIKE wildcards
-  /// or quoting hazards. Stripping them would produce a string that is NOT a
-  /// substring of anything stored, so the sweep would be guaranteed to find
-  /// nothing and would prove nothing. A contiguous alphanumeric RUN is a real
-  /// substring: if the server held the key, this run would be in the column.
+  /// Only needed for the username control: harness usernames contain `_`,
+  /// which IS a LIKE metacharacter (any single character). Key material is
+  /// base64 and gets swept in full — see [sweepDatabaseFor].
   String longestAlnumRun(String s) {
     final runs = RegExp(r'[A-Za-z0-9]+').allMatches(s).map((m) => m[0]!);
     return runs.reduce((a, b) => b.length > a.length ? b : a);
@@ -410,14 +412,34 @@ SELECT "id", "content", coalesce("encryptedContent", '<NULL>'),
       rule('2. FULL-DATABASE SWEEP FOR THE PLAINTEXT');
       say('needle: $needle');
 
-      final (hits, scanned) = await sweepDatabaseFor(needle);
-      say('columns scanned across every table in schema "public": $scanned');
-      if (hits.isEmpty) {
-        say('hits: NONE');
-      } else {
+      // Three encodings, because a literal-only sweep would miss plaintext
+      // sitting verbatim inside a base64 or hex blob — e.g. an envelope that
+      // was stored unencrypted but base64'd on the way in.
+      final encodings = <String, String>{
+        'literal UTF-8': needle,
+        'base64': base64Encode(utf8.encode(needle)),
+        'hex': utf8
+            .encode(needle)
+            .map((b) => b.toRadixString(16).padLeft(2, '0'))
+            .join(),
+      };
+
+      var scanned = 0;
+      for (final entry in encodings.entries) {
+        final (hits, n) = await sweepDatabaseFor(entry.value);
+        scanned = n;
+        say('as ${entry.key.padRight(13)} -> '
+            '${hits.isEmpty ? 'NOT FOUND' : 'FOUND'} '
+            '(${entry.value.length} chars, $n columns scanned)');
         for (final h in hits) {
-          say('HIT -> ${h[0]}.${h[1]} x${h[2]}');
+          say('    HIT -> ${h[0]}.${h[1]} x${h[2]}');
         }
+        expect(
+          hits,
+          isEmpty,
+          reason: 'the sentence Alice typed must not exist anywhere in the '
+              'database, in any encoding (${entry.key})',
+        );
       }
 
       expect(
@@ -425,11 +447,6 @@ SELECT "id", "content", coalesce("encryptedContent", '<NULL>'),
         greaterThan(50),
         reason: 'the sweep must actually have scanned the schema; a sweep of '
             'nothing would find nothing and prove nothing',
-      );
-      expect(
-        hits,
-        isEmpty,
-        reason: 'the sentence Alice typed must not exist anywhere in the DB',
       );
 
       // Control: the sweep is capable of finding things. Without this the
@@ -473,18 +490,12 @@ SELECT "userId", "deviceId", "identityPublicKey"
         reason: 'the server holds exactly the PUBLIC half',
       );
 
-      // A contiguous alphanumeric run out of the private key's base64: a real
-      // substring of the key as it would be stored, and safe in a LIKE.
-      final privateNeedle = longestAlnumRun(bobPrivate);
+      // The WHOLE key, not a fragment: base64 contains no LIKE metacharacter
+      // (`%`, `_`) and no quote, so the entire string is a safe pattern.
       say('');
       say('bob\'s PRIVATE identity key : ${preview(bobPrivate)}');
-      say('searching the whole DB for this run of it: "$privateNeedle"');
-      expect(
-        privateNeedle.length,
-        greaterThanOrEqualTo(10),
-        reason: 'the needle must be long enough that a hit could not be luck',
-      );
-      final (hits, scanned) = await sweepDatabaseFor(privateNeedle);
+      say('searching every column of the database for it, in full…');
+      final (hits, scanned) = await sweepDatabaseFor(bobPrivate);
       say('columns scanned: $scanned');
       for (final h in hits) {
         say('HIT -> ${h[0]}.${h[1]} x${h[2]}');
@@ -498,11 +509,9 @@ SELECT "userId", "deviceId", "identityPublicKey"
 
       // Control: the PUBLIC half of the same key IS findable, which proves
       // the sweep would have found the private half had it been stored.
-      final publicNeedle = longestAlnumRun(bobPublic);
-      final (publicHits, _) = await sweepDatabaseFor(publicNeedle);
+      final (publicHits, _) = await sweepDatabaseFor(bobPublic);
       say('');
-      say('CONTROL — same sweep for a run of the PUBLIC half '
-          '("$publicNeedle"):');
+      say('CONTROL — the same full-string sweep for the PUBLIC half:');
       for (final h in publicHits) {
         say('HIT -> ${h[0]}.${h[1]} x${h[2]}');
       }
@@ -657,10 +666,9 @@ SELECT "content", coalesce("mediaUrl", '<NULL>'), "messageType"
       say('messages.messageType    : ${stored.single[2]}   <- METADATA the '
           'server does see');
 
-      // The media key must not be anywhere in the database.
-      final keyNeedle = longestAlnumRun(encrypted.keyBase64);
-      final (keyHits, scanned) = await sweepDatabaseFor(keyNeedle);
-      say('swept $scanned columns for a run of the media key ("$keyNeedle")');
+      // The media key must not be anywhere in the database — full string.
+      final (keyHits, scanned) = await sweepDatabaseFor(encrypted.keyBase64);
+      say('swept $scanned columns for the media key, in full');
       for (final h in keyHits) {
         say('HIT -> ${h[0]}.${h[1]} x${h[2]}');
       }

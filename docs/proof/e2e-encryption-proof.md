@@ -60,8 +60,28 @@ pg_stat_statements.query ........... 405 rows   <- Postgres' own SQL text cache
 web_push_subscription.userAgent .... 35 rows    <- browser UA strings
 ```
 
-Those are the only two. **No table in production holds message prose.** Not a
-cache, not a log, not a preview, not a search index.
+Those are the only two, and both were then ruled out rather than assumed:
+
+- **`pg_stat_statements.query`** is the one column that could plausibly have
+  captured message bytes, so it was checked directly: of 417 rows, **0** mention
+  `[encrypted]`, **0** match a ciphertext shape (`[0-9]+:[A-Za-z0-9+/]{40,}`),
+  and 328 carry `$1` placeholders — it holds *normalised* SQL text, not data.
+- **`web_push_subscription.userAgent`** is browser UA strings.
+
+**No table in production holds message prose.** Not a cache, not a log, not a
+preview, not a search index.
+
+### Where the 230 rows live, exactly
+
+| shape | rows | span | note |
+|---|---|---|---|
+| per-device envelopes only | 149 | | the current model |
+| legacy `encryptedContent` only | 74 | 2026-05-17 → 09-02 | 65 TEXT, 6 PING, 2 IMAGE, 1 GIF — the pre-envelope era |
+| **both** channels | 7 | 2026-09-05 | all VIDEO, all `content = '[encrypted]'`, all 7 legacy values Signal-shaped — the §8 ingest normalisation during the envelope rollout |
+| **neither** | **0** | | |
+
+$149 + 74 + 7 = 230$. The overlap is explained, not hand-waved: it is one day of
+video sends written under both models.
 
 ## 3. Real messages from a real phone, on production
 
@@ -157,22 +177,34 @@ Bob decrypts it back to  : UMBRA-PROOF-…-MEET-ME-AT-THE-DOCKS-AT-MIDNIGHT
 Base64-decoding the ciphertext gives 211 bytes that do not contain the sentence.
 Bob recovers it exactly — so this is encryption, not deletion.
 
-**2 — the plaintext is in zero columns of the entire database.** A dynamic sweep
-over **all 52 text columns of all tables**: `hits: NONE`. The test then sweeps
-for a string that *is* in the database (part of Alice's username) and finds it
-in `users.username` — so the empty result above is a real negative, not a broken
-query. A sweep that scanned nothing would prove nothing, so the test asserts on
-the column count too.
-
-**3 — the private keys are not on the server either.**
+**2 — the plaintext is in zero columns of the entire database**, in any
+encoding. A literal-only search would miss plaintext sitting verbatim inside a
+base64 or hex blob, so the sweep runs three times over **all 52 text columns of
+all tables**:
 
 ```
-stored identityPublicKey : BfhAJeHddaEV63bA…   (44-char base64, truncated here)
-bob's real PUBLIC key    : BfhAJeHddaEV63bA…   byte-identical to the stored one
+as literal UTF-8 -> NOT FOUND (58 chars,  52 columns scanned)
+as base64        -> NOT FOUND (80 chars,  52 columns scanned)
+as hex           -> NOT FOUND (116 chars, 52 columns scanned)
+
+CONTROL — a run of Alice's username : HIT users.username x1
+```
+
+The control makes the negative real: the same query finds a string that *is*
+there. A sweep that scanned nothing would prove nothing, so the test asserts on
+the column count too.
+
+**3 — the private keys are not on the server either.** LIKE's only
+metacharacters are `%` and `_`, and base64 contains neither, so the key is
+searched **in full** — not as a fragment:
+
+```
+stored identityPublicKey : BWSDcMDUdWMpOGEA…   (44-char base64, truncated here)
+bob's real PUBLIC key    : BWSDcMDUdWMpOGEA…   byte-identical to the stored one
 bob's PRIVATE key        : <44-char base64, never printed into a public file>
-  → swept 52 columns      : NOT FOUND
-CONTROL, the PUBLIC half  : HIT key_bundles.identityPublicKey x1
-                            HIT one_time_pre_keys.identityPublicKey x20
+  → full-string sweep, 52 columns : NOT FOUND
+CONTROL, the PUBLIC half, in full : HIT key_bundles.identityPublicKey x1
+                                    HIT one_time_pre_keys.identityPublicKey x20
 columns whose NAME suggests private material: none
 ```
 
