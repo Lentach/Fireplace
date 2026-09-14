@@ -226,25 +226,26 @@ synthetic input, `FLAG_SECURE` blocks screencap) — the footer, an E2E round tr
 on 0.2.47 are owner-eyeball items before the APK goes to friends. Staged for hand-transfer at
 `C:/Users/Lentach/Desktop/umbra-0.2.47-320c11dd.apk`, hash re-verified after the copy.
 
-**Build record — 0.2.48, 2026-09-14 (THE PUBLISHED FRIENDS BUILD — draft release, awaiting the
-owner's device smoke).** `feat/passcode-lock` @ **`75601dc4`** (a version-bump commit on top of
-`0a7031ae`; the code gate is **`1f05e3e6`, CI 6/6 green** — authorize before unlinking media on
-delete-for-everyone, and the identity banner no longer sticks in the top bar) → versionCode
+**Build record — 0.2.48, 2026-09-14 (THE FRIENDS-SHARE FILE — hand-delivered by cloud link,
+awaiting the owner's device smoke).** `feat/passcode-lock` @ **`75601dc4`** (a version-bump commit
+on top of `0a7031ae`; the code gate is **`1f05e3e6`, CI 6/6 green** — authorize before unlinking
+media on delete-for-everyone, and the identity banner no longer sticks in the top bar) → versionCode
 `20048`, **48.9 MB**, SHA256
 `976106d7b3cb44d870bc8c4267e14f0966214bfa1b4d79995ce818a1cddb6e0c`. Signer DN `CN=Rick Sanches`,
 16KB gate 16/16, 24 libs all deflated, all three dart-defines verified in the EXTRACTED
 `lib/arm64-v8a/libapp.so`. `aapt2 dump badging` confirms `application-label:'Umbra'` and
 `package: name='com.fireplace.app' versionCode='20048' versionName='0.2.48'`.
 ⚠️ **NOT installed anywhere and NOT smoke-tested** — the phone and the emulator were both
-disconnected during the 10.5-minute build. The floor stays **20047** until it is installed.
-**First GitHub Release ever created**, as a DRAFT so an unsmoked binary is not publicly
-downloadable: `gh release view v0.2.48 --repo Lentach/Umbra` → `draft=true`, asset
-`umbra-0.2.48.apk` 51 325 941 bytes. Publish with
-`gh release edit v0.2.48 --repo Lentach/Umbra --draft=false` AFTER the smoke.
-Notes (Polish install steps + Play Protect warning + the never-uninstall rule) live in the release
-body; source kept at `C:/Users/Lentach/Desktop/release-notes-0.2.48.md`.
-⚠️ `gh release create --target <sha>` is REJECTED with `Release.target_commitish is invalid` —
-pass a BRANCH name (`--target master`).
+disconnected during the 10.5-minute build. The floor stays **20047** until it is installed, and
+**0.2.47 remains the only build ever proven on real arm64 hardware.**
+Staged for hand-transfer at `C:/Users/Lentach/Desktop/umbra-0.2.48.apk`, hash re-verified after the
+copy; send the SHA256 with the file. A `v0.2.48` GitHub DRAFT release was created and then
+**DELETED** when the owner chose the cloud link (see "Distribution" below) — there is no release and
+no tag, so do NOT look for `gh release edit … --draft=false`. Friend-facing notes (Polish install
+steps, the Play Protect warning, the never-uninstall rule) are kept at
+`C:/Users/Lentach/Desktop/release-notes-0.2.48.md` — paste them alongside the link.
+⚠️ If a release is ever wanted again: `gh release create --target <sha>` is REJECTED with
+`Release.target_commitish is invalid` — pass a BRANCH name (`--target master`).
 
 ⚠️ **Two earlier 0.2.42 builds exist and must NOT be shipped.** `601248e0…` was built from a
 working tree whose fix was still uncommitted, so its embedded `GIT_COMMIT` (`f35ef7b`) names a
@@ -447,12 +448,17 @@ diagnosing a "vanishing" message in that thread: it has **disappearing messages 
   `frontend/pubspec.yaml`), Android answers a lower one with `INSTALL_FAILED_VERSION_DOWNGRADE`,
   and the only way past that is `uninstall` — i.e. there is no rollback on a real device, only
   another bump. See the ⛔ note under "versionCode floor".
-- No auto-update exists for sideloads — someone must TELL users. Options, cheapest first:
-  Obtainium pointed at GitHub Releases (zero app code; each user installs Obtainium once); a
-  self-hosted manifest + in-app "update available" banner (the JSON and APK must live OUTSIDE
-  `frontend-build`, which every `deploy-web.ps1` deletes — an `android-dist/` nginx alias beside
-  `landing-build/` — plus `REQUEST_INSTALL_PACKAGES` for a one-tap install); or a Play
-  internal-testing track (real silent updates, but the whole Play gate list below applies).
+- **No auto-update exists for sideloads, and the CHOSEN route has none at all** — with a plain cloud
+  link the owner re-sends the file and each friend taps it, every time. That is the accepted cost of
+  the 2026-09-14 decision above, not an oversight. The alternatives, cheapest first, ALL require
+  abandoning or supplementing the cloud link: Obtainium (zero app code, each user installs it once,
+  but it needs a **release feed** — i.e. GitHub Releases, which was declined for exposure reasons,
+  so it would only work on a PRIVATE repo the friends are invited to); a self-hosted manifest +
+  in-app "update available" banner (the JSON and APK must live OUTSIDE `frontend-build`, which every
+  `deploy-web.ps1` deletes — an `android-dist/` nginx alias beside `landing-build/` — plus
+  `REQUEST_INSTALL_PACKAGES` for a one-tap install; this is the only option that keeps distribution
+  entirely in our hands); or a Play internal-testing track (real silent updates, but the whole Play
+  gate list below applies).
 - Play Store later: needs `flutter build appbundle` — and the signer + 16KB gates must move onto the
   BUNDLE's output, because `build-android.ps1` only ever inspects an APK — plus a privacy policy,
   the data-safety form, and an in-app report path (UGC policy); 16KB + targetSdk are already met.
