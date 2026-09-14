@@ -1011,6 +1011,11 @@ class EncryptionProvider extends ChangeNotifier {
 
     if (orphans.isNotEmpty) {
       await purgeLocalPlaintext(orphans);
+      // The stored copies are gone; a live session may still be HOLDING these
+      // rows in memory with content it decrypted earlier, because it missed
+      // the live `messageDeleted` while offline and the history merge never
+      // prunes. Hand the ids to the owner of the message list.
+      onStoredPlaintextOrphaned?.call(Set<int>.unmodifiable(orphans));
       notifyListeners();
     }
     _e2eFlowLog('PLAINTEXT_RECONCILED', {
@@ -1693,6 +1698,12 @@ class EncryptionProvider extends ChangeNotifier {
   /// sweep. Wired by ConnectionProvider (which holds ConversationsProvider);
   /// a provider must not read another provider directly.
   List<int> Function()? sessionRebuildPeers;
+
+  /// Called with the ids [reconcileStoredPlaintext] found the server no longer
+  /// serves, AFTER their stored plaintext is destroyed. Wired by
+  /// ConnectionProvider to MessagingProvider (which owns the message list);
+  /// a provider must not read another provider directly.
+  void Function(Set<int> messageIds)? onStoredPlaintextOrphaned;
 
   Completer<Map<String, dynamic>>? _pendingIdentityBackupAnswer;
   Completer<String>? _pendingLockNonce;

@@ -24,6 +24,31 @@ extension MessagingEvents on MessagingProvider {
     _handleMessageDeleted(data);
   }
 
+  /// Drop rows whose plaintext the server-authoritative reconcile just
+  /// destroyed (`EncryptionProvider.reconcileStoredPlaintext` orphans).
+  ///
+  /// The live `messageDeleted` path already removes its row, but it only fires
+  /// for a device that was CONNECTED at delete time. A long-lived session that
+  /// was offline right then misses it, and the history merge deliberately
+  /// never prunes rows a snapshot omits (`_mergeHistorySnapshot`), so the row
+  /// survived in memory — still showing the plaintext the model decrypted
+  /// earlier — even after the reconcile had destroyed every stored copy.
+  ///
+  /// Nothing is inferred here: the ids come from the server answering "these
+  /// are the ones I no longer serve you".
+  void onStoredPlaintextOrphaned(Set<int> messageIds) {
+    if (messageIds.isEmpty) return;
+    // Same guard the live path sets, for the same reason: a history response
+    // already in flight must not re-add what this just removed.
+    _deletedMessageIds.addAll(messageIds);
+    final removedFromList = _messages.length;
+    _messages.removeWhere((msg) => messageIds.contains(msg.id));
+    for (final entry in _conversationCache.entries) {
+      entry.value.removeWhere((msg) => messageIds.contains(msg.id));
+    }
+    if (_messages.length != removedFromList) notifyListeners();
+  }
+
   void onMessageEdited(dynamic data) {
     _handleMessageEdited(data);
   }

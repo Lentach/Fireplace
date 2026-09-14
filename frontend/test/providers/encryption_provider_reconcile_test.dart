@@ -28,7 +28,10 @@ void main() {
     FlutterSecureStorage.setMockInitialValues({});
     SharedPreferences.setMockInitialValues({});
     service = EncryptionService();
-    await service.initialize(42, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
+    await service.initialize(
+      42,
+      checkServerIdentity: () async => const ServerIdentityGuard(exists: false),
+    );
     provider = EncryptionProvider(service: service);
     asked = [];
   });
@@ -51,16 +54,63 @@ void main() {
       (await service.getDecryptedContent(id)) != null;
 
   group('reconcileStoredPlaintext', () {
-    test('destroys records the server no longer serves, keeps the rest',
-        () async {
-      await seed([1, 2, 3]);
+    test(
+      'destroys records the server no longer serves, keeps the rest',
+      () async {
+        await seed([1, 2, 3]);
 
-      await provider.reconcileStoredPlaintext(serverWithout({2}));
+        await provider.reconcileStoredPlaintext(serverWithout({2}));
 
-      expect(await stored(1), isTrue);
-      expect(await stored(2), isFalse,
-          reason: 'the server dropped it, so nothing will ever return it');
-      expect(await stored(3), isTrue);
+        expect(await stored(1), isTrue);
+        expect(
+          await stored(2),
+          isFalse,
+          reason: 'the server dropped it, so nothing will ever return it',
+        );
+        expect(await stored(3), isTrue);
+      },
+    );
+
+    test(
+      'hands the orphaned ids to the message-list owner, and only those',
+      () async {
+        // Destroying the stored plaintext is half the job: a session that was
+        // offline when the row was deleted is still HOLDING it in memory with
+        // content decrypted earlier, and the history merge never prunes. Whoever
+        // owns the list has to be told which rows died.
+        await seed([1, 2, 3]);
+        final handed = <Set<int>>[];
+        provider.onStoredPlaintextOrphaned = handed.add;
+
+        await provider.reconcileStoredPlaintext(serverWithout({2}));
+
+        expect(handed.single, {2});
+      },
+    );
+
+    test(
+      'hands over nothing when the server still serves everything',
+      () async {
+        await seed([1, 2]);
+        final handed = <Set<int>>[];
+        provider.onStoredPlaintextOrphaned = handed.add;
+
+        await provider.reconcileStoredPlaintext(serverWithout(const <int>{}));
+
+        expect(handed, isEmpty);
+      },
+    );
+
+    test('an unanswered batch hands over nothing', () async {
+      // Same one-bit distinction as the purge case below: silence must not be
+      // read as "all of these are dead" and evict a live chat from the UI.
+      await seed([1, 2]);
+      final handed = <Set<int>>[];
+      provider.onStoredPlaintextOrphaned = handed.add;
+
+      await provider.reconcileStoredPlaintext((batch) async => null);
+
+      expect(handed, isEmpty);
     });
 
     test('an unanswered batch destroys NOTHING', () async {
@@ -90,42 +140,53 @@ void main() {
       expect(await stored(2), isFalse);
     });
 
-    test('a message saved DURING the pass is never asked about or destroyed',
-        () async {
-      // The race the snapshot-first ordering exists for: a message that
-      // arrives mid-pass is absent from the server's answer only because the
-      // answer predates it.
-      await seed([1, 2]);
+    test(
+      'a message saved DURING the pass is never asked about or destroyed',
+      () async {
+        // The race the snapshot-first ordering exists for: a message that
+        // arrives mid-pass is absent from the server's answer only because the
+        // answer predates it.
+        await seed([1, 2]);
 
-      await provider.reconcileStoredPlaintext((batch) async {
-        asked.add(batch);
-        await service.saveDecryptedContent(999, {'content': 'just arrived'});
-        return batch;
-      });
+        await provider.reconcileStoredPlaintext((batch) async {
+          asked.add(batch);
+          await service.saveDecryptedContent(999, {'content': 'just arrived'});
+          return batch;
+        });
 
-      expect(asked.single, {1, 2},
-          reason: 'the batch was snapshotted before the request went out');
-      expect(await stored(999), isTrue);
-    });
+        expect(
+          asked.single,
+          {1, 2},
+          reason: 'the batch was snapshotted before the request went out',
+        );
+        expect(await stored(999), isTrue);
+      },
+    );
 
-    test('purges only what was answered when a later batch goes unanswered',
-        () async {
-      final small = EncryptionProvider(service: service);
-      await seed(List.generate(EncryptionProvider.reconcileBatchSize + 1,
-          (i) => i + 1));
+    test(
+      'purges only what was answered when a later batch goes unanswered',
+      () async {
+        final small = EncryptionProvider(service: service);
+        await seed(
+          List.generate(
+            EncryptionProvider.reconcileBatchSize + 1,
+            (i) => i + 1,
+          ),
+        );
 
-      var call = 0;
-      await small.reconcileStoredPlaintext((batch) async {
-        asked.add(batch);
-        // First batch answered (one id gone), second never answers.
-        return call++ == 0 ? batch.difference({1}) : null;
-      });
+        var call = 0;
+        await small.reconcileStoredPlaintext((batch) async {
+          asked.add(batch);
+          // First batch answered (one id gone), second never answers.
+          return call++ == 0 ? batch.difference({1}) : null;
+        });
 
-      expect(asked.length, 2);
-      expect(asked.first.length, EncryptionProvider.reconcileBatchSize);
-      expect(await stored(1), isFalse, reason: 'batch 1 was answered');
-      expect(await stored(2), isTrue);
-    });
+        expect(asked.length, 2);
+        expect(asked.first.length, EncryptionProvider.reconcileBatchSize);
+        expect(await stored(1), isFalse, reason: 'batch 1 was answered');
+        expect(await stored(2), isTrue);
+      },
+    );
   });
 
   group('throttling', () {
@@ -142,8 +203,10 @@ void main() {
       await seed([1, 2]);
 
       await provider.reconcileStoredPlaintext(serverWithout(const {}));
-      await provider.reconcileStoredPlaintext(serverWithout(const {}),
-          force: true);
+      await provider.reconcileStoredPlaintext(
+        serverWithout(const {}),
+        force: true,
+      );
 
       expect(asked.length, 2);
     });
@@ -199,11 +262,19 @@ void main() {
 
       await provider.reconcileStoredPlaintext((batch) async {
         asked.add(batch);
-        await service.initialize(43, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
+        await service.initialize(
+          43,
+          checkServerIdentity: () async =>
+              const ServerIdentityGuard(exists: false),
+        );
         return <int>{};
       });
 
-      await service.initialize(42, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
+      await service.initialize(
+        42,
+        checkServerIdentity: () async =>
+            const ServerIdentityGuard(exists: false),
+      );
       expect(await stored(1), isTrue);
       expect(await stored(2), isTrue);
     });
@@ -221,25 +292,31 @@ void main() {
   });
 
   group('EncryptionService.storedMessageIds', () {
-    test('covers both id-keyed stores, including unstamped legacy records',
-        () async {
-      SharedPreferences.setMockInitialValues({
-        // A record from before the metadata stamps existed: no _cid, no
-        // _savedAt. Invisible to every other purge rule, which is the whole
-        // reason reconciliation exists.
-        'e2e_42_decrypted_7': '{"content":"legacy"}',
-        'e2e_42_decrypt_raw_v1_8': '{"plaintext":"raw","ciphertext":"c"}',
-        // Other keys in the same namespace must not be read as message ids.
-        'e2e_42_retired_v1': '[1,2]',
-        'e2e_42_purge_pending_v1': '{"ids":[],"cts":[]}',
-        'e2e_42_retention_epoch_v1': 1,
-        // Another account's record.
-        'e2e_43_decrypted_9': '{"content":"not mine"}',
-      });
-      final scanner = EncryptionService();
-      await scanner.initialize(42, checkServerIdentity: () async => const ServerIdentityGuard(exists: false));
+    test(
+      'covers both id-keyed stores, including unstamped legacy records',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          // A record from before the metadata stamps existed: no _cid, no
+          // _savedAt. Invisible to every other purge rule, which is the whole
+          // reason reconciliation exists.
+          'e2e_42_decrypted_7': '{"content":"legacy"}',
+          'e2e_42_decrypt_raw_v1_8': '{"plaintext":"raw","ciphertext":"c"}',
+          // Other keys in the same namespace must not be read as message ids.
+          'e2e_42_retired_v1': '[1,2]',
+          'e2e_42_purge_pending_v1': '{"ids":[],"cts":[]}',
+          'e2e_42_retention_epoch_v1': 1,
+          // Another account's record.
+          'e2e_43_decrypted_9': '{"content":"not mine"}',
+        });
+        final scanner = EncryptionService();
+        await scanner.initialize(
+          42,
+          checkServerIdentity: () async =>
+              const ServerIdentityGuard(exists: false),
+        );
 
-      expect(await scanner.storedMessageIds(), {7, 8});
-    });
+        expect(await scanner.storedMessageIds(), {7, 8});
+      },
+    );
   });
 }

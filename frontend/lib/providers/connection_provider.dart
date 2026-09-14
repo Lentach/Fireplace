@@ -132,15 +132,22 @@ class ConnectionProvider extends ChangeNotifier {
     // (lxxviii): the restore machine's post-rebind `requestSessionRebuild`
     // sweep needs the conversation peers, and a provider must not read
     // another provider directly.
-    encryption.sessionRebuildPeers = () {
-      final uid = _currentUserId;
-      if (uid == null) return const <int>[];
-      final convs = _conversationsProvider?.conversations ?? const [];
-      return [
-        for (final c in convs)
-          c.userOne.id == uid ? c.userTwo.id : c.userOne.id,
-      ];
-    };
+    encryption
+      ..sessionRebuildPeers = () {
+        final uid = _currentUserId;
+        if (uid == null) return const <int>[];
+        final convs = _conversationsProvider?.conversations ?? const [];
+        return [
+          for (final c in convs)
+            c.userOne.id == uid ? c.userTwo.id : c.userOne.id,
+        ];
+      }
+      // The reconcile destroys stored plaintext the server no longer serves;
+      // the rows themselves belong to MessagingProvider, and a session that
+      // was offline during the delete is still holding them in memory.
+      ..onStoredPlaintextOrphaned = (ids) {
+        _messagingProvider?.onStoredPlaintextOrphaned(ids);
+      };
   }
 
   /// Registers the screen-scoped §5.1 ceremony controller as the receiver of
