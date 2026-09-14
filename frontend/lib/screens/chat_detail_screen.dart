@@ -718,6 +718,16 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     final topClearance = topInsetHandled
         ? 8.0
         : MediaQuery.paddingOf(context).top + 8.0;
+    // The EMPTY-state column is static: its first child sits at `top`
+    // forever, unlike the reverse list whose content is anchored at the
+    // bottom and only reaches the chrome while scrolling. Status-bar inset
+    // alone put the identity-change row exactly under the GlassTopBar
+    // capsule (capsule spans [top + 8, top + 60]) — the avatar and the title
+    // pill painted over it and the warning was unreadable (owner report,
+    // 2026-09-14). Same clearance formula the other GlassTopBar screens use.
+    final emptyTopClearance = topInsetHandled
+        ? 8.0
+        : MediaQuery.paddingOf(context).top + GlassTopBar.capsuleHeight + 16;
     final settings = context.watch<SettingsProvider>();
     // Phase 0a: unacknowledged peer identity change renders a system row at
     // the newest end of the timeline (reverse list => index 0). Clears the
@@ -749,7 +759,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
               padding: EdgeInsets.only(
                 left: 16,
                 right: 20,
-                top: topClearance,
+                top: emptyTopClearance,
                 bottom: 8 + listBottomPadding,
               ),
               child: Column(

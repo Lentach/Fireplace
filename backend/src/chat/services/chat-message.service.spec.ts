@@ -104,6 +104,8 @@ describe('ChatMessageService', () => {
   let schedulePushMock: jest.Mock;
   let findByConversationMock: jest.Mock;
   let findEnvelopeCiphertextsMock: jest.Mock;
+  /** Raw handle: `expect(mediaCleanup.deleteMediaFile)` is `unbound-method`. */
+  let deleteMediaFileMock: jest.Mock;
   let mockClient: Partial<Socket>;
   let mockServer: Partial<Server>;
 
@@ -124,6 +126,7 @@ describe('ChatMessageService', () => {
     schedulePushMock = jest.fn().mockResolvedValue(undefined);
     findByConversationMock = jest.fn().mockResolvedValue([]);
     findEnvelopeCiphertextsMock = jest.fn().mockResolvedValue(new Map());
+    deleteMediaFileMock = jest.fn().mockResolvedValue(undefined);
     mockClient = {
       data: { user: { id: 1 } },
       emit: jest.fn(),
@@ -183,7 +186,7 @@ describe('ChatMessageService', () => {
         {
           provide: MediaCleanupService,
           useValue: {
-            deleteMediaFile: jest.fn().mockResolvedValue(undefined),
+            deleteMediaFile: deleteMediaFileMock,
           },
         },
         {
@@ -1572,6 +1575,34 @@ describe('ChatMessageService', () => {
         'messageDeleted',
         expect.anything(),
       );
+    });
+
+    it('never unlinks the media of a message the caller did not send', async () => {
+      // Membership is NOT authorization. The unlink used to run before
+      // `deleteById` rejected the non-sender, so the peer could destroy the
+      // sender's file on disk and leave the row behind pointing at nothing —
+      // irreversible, and reproduced over the wire on the dev stack
+      // (2026-09-14, msg 977). `deleteById` still refuses, so a test that
+      // only asserts the refusal passes either way: the unlink is the claim.
+      const conv = { id: 10, userOne: { id: 1 }, userTwo: { id: 2 } };
+      messagesService.findByIdWithConversation.mockResolvedValue({
+        id: 55,
+        sender: { id: 2 },
+        conversation: conv,
+        mediaUrl: 'http://localhost:3000/media/msgs/victim.bin',
+      } as Message);
+      messagesService.deleteById.mockResolvedValue(null);
+
+      await service.handleDeleteMessage(
+        mockClient as Socket,
+        { messageId: 55, mode: 'for_everyone' },
+        mockServer as Server,
+      );
+
+      expect(deleteMediaFileMock).not.toHaveBeenCalled();
+      expect(mockClient.emit).toHaveBeenCalledWith('error', {
+        message: 'Only the sender can delete for everyone',
+      });
     });
 
     it('keeps a for_me delete inside the hiding user rooms and never tells the peer', async () => {

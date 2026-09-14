@@ -28,6 +28,7 @@ import 'package:fireplace/providers/messaging_provider.dart';
 import 'package:fireplace/providers/settings_provider.dart';
 import 'package:fireplace/screens/chat_detail_screen.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
+import 'package:fireplace/widgets/glass/glass_top_bar.dart';
 import 'package:fireplace/widgets/peer_identity_changed_row.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -222,6 +223,26 @@ void main() {
           'a cleared or never-used chat is where a peer reset is most likely '
           'to arrive unannounced; suppressing the warning there makes it '
           'decorative',
+    );
+  });
+
+  testWidgets('the EMPTY-chat alarm row clears the floating top bar', (
+    tester,
+  ) async {
+    await _pumpChat(tester, alarmed: true, withMessages: false);
+
+    final barBottom = tester.getRect(find.byType(GlassTopBar)).bottom;
+    final rowTop = tester.getRect(find.byType(PeerIdentityChangedRow)).top;
+
+    expect(
+      rowTop,
+      greaterThanOrEqualTo(barBottom),
+      reason:
+          'the empty-state column is static, so its first child sits under '
+          'the floating chrome forever: with only the status-bar inset the '
+          'row painted BEHIND the glass capsule and the back button, title '
+          'pill and avatar covered the one takeover warning this app has '
+          '(owner report, 2026-09-14)',
     );
   });
 

@@ -1000,6 +1000,22 @@ export class ChatMessageService {
     }
 
     if (mode === 'for_everyone') {
+      // Authorization BEFORE the irreversible unlink. `deleteById` re-checks
+      // the sender and is still the authority for the row, but the media
+      // unlink used to run ahead of it while the only gate here was
+      // conversation MEMBERSHIP (line ~968): a RECIPIENT emitting
+      // `deleteMessage mode=for_everyone` destroyed the sender's file on
+      // disk, was then refused the row delete, and left a surviving message
+      // whose `mediaUrl` points at nothing — unrecoverable, and invisible
+      // until someone opens the chat. Reproduced over the wire 2026-09-14
+      // (msg 977: file gone, row intact). Media still goes BEFORE the row
+      // (backend/CLAUDE.md §8) — just never before authorization.
+      if (message.sender?.id !== userId) {
+        client.emit('error', {
+          message: 'Only the sender can delete for everyone',
+        });
+        return;
+      }
       if (message.mediaUrl) {
         await this.mediaCleanup.deleteMediaFile(message.mediaUrl);
       }
