@@ -462,12 +462,18 @@ diagnosing a "vanishing" message in that thread: it has **disappearing messages 
 - Play Store later: needs `flutter build appbundle` — and the signer + 16KB gates must move onto the
   BUNDLE's output, because `build-android.ps1` only ever inspects an APK — plus a privacy policy,
   the data-safety form, and an in-app report path (UGC policy); 16KB + targetSdk are already met.
-- **The signing certificate is a one-way door.** No APK has ever been published (`gh release list`
-  empty, 2026-09-13), so Play App Signing can still adopt THIS keystore (PEPK) as the app signing
-  key. Once sideloaded APKs are in users' hands, letting Google generate its own key means Play
-  updates are refused on those installs (different cert) and the only path left is uninstall —
-  which destroys the user's Signal identity and local history. Decide the cert before the first
-  APK leaves the building; rotation later does not repair already-installed sideloads.
+- ⛔ **The signing certificate is a one-way door, and the trigger is a USER INSTALL — not a
+  published release.** The old wording tied the deadline to "`gh release list` empty", which under
+  the cloud-link decision above is unreachable: there will never be a release, so that test would
+  read "still open" forever. What actually matters: any device holding an APK signed with THIS
+  keystore can only take a Play update if Play App Signing ADOPTED this keystore via PEPK. Let
+  Google generate its own key instead and those installs are refused (different cert) with uninstall
+  as the only path — which destroys that user's Signal identity and local history.
+  **Status: the door is ALREADY partly shut.** The owner's phone has been running builds signed with
+  this key since 0.2.43, and he can wipe his own device; **friends cannot be asked to.** So this is a
+  decision owed BEFORE `umbra-0.2.48.apk` is sent to anyone, not after: either commit to PEPK
+  adoption if Play is ever wanted, or accept sideload-forever for everyone who installs from now on.
+  Rotation later does not repair already-installed sideloads.
 - **Foreground-service declaration (Play only, and avoidable).** `light_compressor_v2-1.9.1`'s
   library manifest merges `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_DATA_SYNC` and a
   `CompressionForegroundService` (`foregroundServiceType="dataSync"`) into our APK
