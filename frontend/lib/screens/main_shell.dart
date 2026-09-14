@@ -338,16 +338,32 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
 
     return Scaffold(
       extendBody: true,
-      body: Column(
-        children: [
-          // ONE SafeArea for the whole identity stack, never one per banner.
-          // These are siblings, and a sibling `SafeArea` does not consume the
-          // inset for its neighbours — each one applies the FULL top inset, so
-          // three self-wrapping banners produced two phantom status-bar gaps
-          // between the red blocks. Each banner renders bare chrome now.
-          SafeArea(
-            bottom: false,
-            child: Column(
+      // ONE SafeArea for the WHOLE shell — the banner stack AND the tabs.
+      // Sibling SafeAreas do not consume the inset for each other: each
+      // applies the FULL top inset to its own subtree only
+      // (`MediaQuery.removePadding`). The previous shape therefore paid it
+      // TWICE — this wrapper sat around the banner stack alone, where it
+      // occupies a status-bar height even when both banners render nothing
+      // (the normal state), and then `MainTabScreenHeader` applied its own
+      // SafeArea inside every tab. On native that showed as a phantom
+      // status-bar band above the title capsule (owner-reported 2026-09-14);
+      // on web it hid because `padding.top` is 0 there — the PWA shell handles
+      // the notch in CSS (`viewport-fit=cover` + `env()`).
+      //
+      // Consequence for the tabs, and why their scroll padding still reads
+      // right: inside this SafeArea `MediaQuery.paddingOf(context).top` is 0,
+      // so `media.top + MainTabScreenHeader.clearance` collapses to the
+      // clearance alone — which is correct, because the inset is already
+      // spent here. Those lists scroll BEHIND the floating header, so they
+      // must keep clearing the capsule.
+      //
+      // `bottom: false` on purpose: the bottom nav consumes `media.bottom`
+      // itself under `extendBody: true`.
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            Column(
               children: const [
                 // The keyless/damaged and (lxiv)-mismatch states now open the
                 // (lxxiii) DeviceLinkGateScreen ABOVE this (Offstage) shell —
@@ -363,18 +379,18 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                 IdentityResetPendingBanner(),
               ],
             ),
-          ),
-          Expanded(
-            child: IndexedStack(
-              index: _selectedIndex,
-              children: [
-                ConversationsScreen(onAvatarTap: _openMyProfile),
-                const ContactsScreen(),
-                const SettingsScreen(),
-              ],
+            Expanded(
+              child: IndexedStack(
+                index: _selectedIndex,
+                children: [
+                  ConversationsScreen(onAvatarTap: _openMyProfile),
+                  const ContactsScreen(),
+                  const SettingsScreen(),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
       bottomNavigationBar: SafeArea(top: false, child: bottomNavigation),
     );

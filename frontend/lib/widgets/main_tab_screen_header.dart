@@ -49,21 +49,24 @@ class MainTabScreenHeader extends StatelessWidget {
   /// behind the header pad their top by safe-top + this.
   static const double clearance = topGap + capsuleHeight + 8;
 
+  /// The CALLER owns the status-bar inset. `MainShell` spends it once for the
+  /// whole shell (`main_shell.dart`), so applying a `SafeArea` here too paid
+  /// it twice — sibling SafeAreas each apply the full inset to their own
+  /// subtree, which put a phantom status-bar band above this capsule on native
+  /// (owner-reported 2026-09-14; invisible on web, where `padding.top` is 0).
+  /// Do not reintroduce one: mount this header inside the shell's SafeArea.
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      bottom: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          horizontalPadding,
-          topGap,
-          horizontalPadding,
-          0,
-        ),
-        child: SizedBox(
-          height: capsuleHeight,
-          child: custom ?? _buildCapsuleRow(context),
-        ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        horizontalPadding,
+        topGap,
+        horizontalPadding,
+        0,
+      ),
+      child: SizedBox(
+        height: capsuleHeight,
+        child: custom ?? _buildCapsuleRow(context),
       ),
     );
   }

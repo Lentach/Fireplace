@@ -11,6 +11,7 @@ import '../../utils/gif_blob_url_stub.dart'
     as gif_blob;
 import 'media_preview_frame.dart';
 import '../../utils/encrypted_media_loader.dart';
+import '../media/fullscreen_image_viewer.dart';
 
 /// GIF message: fetch, optional decrypt; web uses blob URL for animation.
 class GifMessageContent extends StatefulWidget {
@@ -90,37 +91,20 @@ class _GifMessageContentState extends State<GifMessageContent> {
   }
 
   void _showFullscreen(BuildContext context, _GifDisplay display) {
-    if (display.networkUrl != null) {
-      showDialog<void>(
-        context: context,
-        builder: (_) => Dialog(
-          backgroundColor: Colors.transparent,
-          child: GestureDetector(
-            onTap: () => Navigator.pop(context),
-            child: InteractiveViewer(
-              minScale: 0.5,
-              maxScale: 4.0,
-              child: Image.network(display.networkUrl!, fit: BoxFit.contain),
-            ),
-          ),
-        ),
-      );
-    } else if (display.memoryBytes != null) {
-      showDialog<void>(
-        context: context,
-        builder: (_) => Dialog(
-          backgroundColor: Colors.transparent,
-          child: GestureDetector(
-            onTap: () => Navigator.pop(context),
-            child: InteractiveViewer(
-              minScale: 0.5,
-              maxScale: 4.0,
-              child: Image.memory(display.memoryBytes!, fit: BoxFit.contain),
-            ),
-          ),
-        ),
-      );
-    }
+    final image = display.networkUrl != null
+        ? Image.network(display.networkUrl!, fit: BoxFit.contain)
+        : display.memoryBytes != null
+        ? Image.memory(display.memoryBytes!, fit: BoxFit.contain)
+        : null;
+    if (image == null) return;
+    showDialog<void>(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: FullscreenImageViewer(image: image),
+      ),
+    );
   }
 
   @override

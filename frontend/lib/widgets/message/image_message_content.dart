@@ -14,6 +14,7 @@ import '../../utils/download_utils_web.dart'
     as download_utils;
 import '../../utils/image_clipboard.dart';
 import '../top_snackbar.dart';
+import '../media/fullscreen_image_viewer.dart';
 
 /// IMAGE message: fetch URL, optional AES-GCM decrypt, display with fullscreen viewer.
 class ImageMessageContent extends StatefulWidget {
@@ -70,52 +71,36 @@ class _ImageMessageContentState extends State<ImageMessageContent> {
       builder: (dialogContext) => Dialog(
         backgroundColor: Colors.transparent,
         insetPadding: EdgeInsets.zero,
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: GestureDetector(
-                onTap: () => Navigator.pop(dialogContext),
-                child: InteractiveViewer(
-                  minScale: 0.5,
-                  maxScale: 4.0,
-                  child: Image.memory(bytes, fit: BoxFit.contain),
-                ),
-              ),
-            ),
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      if (canCopyImageToClipboard)
-                        _viewerAction(
-                          icon: Icons.content_copy,
-                          tooltip: l10n.copyImage,
-                          onTap: () => _copyImage(bytes),
-                        ),
-                      _viewerAction(
-                        icon: Icons.download,
-                        tooltip: l10n.saveImage,
-                        onTap: () => _saveImage(bytes),
-                      ),
-                      _viewerAction(
-                        icon: Icons.close,
-                        tooltip: MaterialLocalizations.of(
-                          context,
-                        ).closeButtonTooltip,
-                        onTap: () => Navigator.pop(dialogContext),
-                      ),
-                    ],
+        child: FullscreenImageViewer(
+          image: Image.memory(bytes, fit: BoxFit.contain),
+          actions: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  if (canCopyImageToClipboard)
+                    _viewerAction(
+                      icon: Icons.content_copy,
+                      tooltip: l10n.copyImage,
+                      onTap: () => _copyImage(bytes),
+                    ),
+                  _viewerAction(
+                    icon: Icons.download,
+                    tooltip: l10n.saveImage,
+                    onTap: () => _saveImage(bytes),
                   ),
-                ),
+                  _viewerAction(
+                    icon: Icons.close,
+                    tooltip: MaterialLocalizations.of(
+                      context,
+                    ).closeButtonTooltip,
+                    onTap: () => Navigator.pop(dialogContext),
+                  ),
+                ],
               ),
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -223,7 +208,10 @@ class _ImageMessageContentState extends State<ImageMessageContent> {
               padding: const EdgeInsets.all(8),
               child: Text(
                 AppLocalizations.of(context).imageFailedToLoad,
-                style: RpgTheme.bodyFont(fontSize: 12, color: Theme.of(context).colorScheme.error),
+                style: RpgTheme.bodyFont(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.error,
+                ),
               ),
             );
           }
