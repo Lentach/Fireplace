@@ -16,7 +16,7 @@ is the gate). Check with the commit-scoped API, never `gh run list --branch mast
 rows twice, 2026-09-08):
 
 ```bash
-gh api repos/Lentach/Fireplace/commits/master/check-runs --jq '.check_runs[] | [.name, .conclusion] | @tsv'
+gh api repos/Lentach/Umbra/commits/master/check-runs --jq '.check_runs[] | [.name, .conclusion] | @tsv'
 ```
 
 Every row `success` (or `skipped` for opt-in probes). Any `failure` → do not deploy.

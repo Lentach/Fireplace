@@ -42,7 +42,7 @@ Verified after the change: a fresh headless session (`omp -p --tools read`) list
 | `research` | Docs/API facts from primary sources | Pocock |
 | `prototype` | Throwaway code to answer a design question | Pocock |
 | `qa`, `request-refactor-plan` | Turning a conversation into GitHub issues via `gh` | Pocock |
-| `triage`, `to-spec`, `to-tickets` | **`/skill:` only** (hidden). Prerequisites verified present: `docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`, and all five labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`) exist in `Lentach/Fireplace` | Pocock |
+| `triage`, `to-spec`, `to-tickets` | **`/skill:` only** (hidden). Prerequisites verified present: `docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`, and all five labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`) exist in `Lentach/Umbra` | Pocock |
 | `umbra-session-end` | Task end — the handoff the pre-commit gate enforces | repo-authored |
 
 Licenses travel with the copies: `.claude/skills/LICENSE.dash_skills.txt` (Apache-2.0), `.claude/skills/LICENSE.mattpocock-skills.txt` (MIT). Provenance, SHAs and the not-vendored list: `.claude/skills/VENDORED.md`.
@@ -102,4 +102,4 @@ Verified TRUE by review, do not re-check: the 22/19/3 skill split, the 6-dash/14
 
 ## 7. Corrections to the background research
 
-Two findings in the background research were wrong and are corrected here: the five triage labels **do** exist in `Lentach/Fireplace`, and `docs/agents/{issue-tracker,triage-labels,domain}.md` are already present — `setup-matt-pocock-skills` was run here around 2026-07, which is why `code-review`, `triage`, `to-spec` and `to-tickets` are usable rather than blocked. Do **not** re-run that setup skill: it rewrites `CLAUDE.md`. The ecosystem survey behind §4 (superpowers, anthropics/skills, awesome-* indexes, the verified absence of any NestJS/Prisma/Socket.IO skill collection) stands.
+Two findings in the background research were wrong and are corrected here: the five triage labels **do** exist in `Lentach/Umbra`, and `docs/agents/{issue-tracker,triage-labels,domain}.md` are already present — `setup-matt-pocock-skills` was run here around 2026-07, which is why `code-review`, `triage`, `to-spec` and `to-tickets` are usable rather than blocked. Do **not** re-run that setup skill: it rewrites `CLAUDE.md`. The ecosystem survey behind §4 (superpowers, anthropics/skills, awesome-* indexes, the verified absence of any NestJS/Prisma/Socket.IO skill collection) stands.

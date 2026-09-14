@@ -238,9 +238,9 @@ delete-for-everyone, and the identity banner no longer sticks in the top bar) �
 ⚠️ **NOT installed anywhere and NOT smoke-tested** — the phone and the emulator were both
 disconnected during the 10.5-minute build. The floor stays **20047** until it is installed.
 **First GitHub Release ever created**, as a DRAFT so an unsmoked binary is not publicly
-downloadable: `gh release view v0.2.48 --repo Lentach/Fireplace` → `draft=true`, asset
+downloadable: `gh release view v0.2.48 --repo Lentach/Umbra` → `draft=true`, asset
 `umbra-0.2.48.apk` 51 325 941 bytes. Publish with
-`gh release edit v0.2.48 --repo Lentach/Fireplace --draft=false` AFTER the smoke.
+`gh release edit v0.2.48 --repo Lentach/Umbra --draft=false` AFTER the smoke.
 Notes (Polish install steps + Play Protect warning + the never-uninstall rule) live in the release
 body; source kept at `C:/Users/Lentach/Desktop/release-notes-0.2.48.md`.
 ⚠️ `gh release create --target <sha>` is REJECTED with `Release.target_commitish is invalid` —
@@ -409,32 +409,35 @@ clip — ask what the whole label said. (The earlier hypothesis about the loopba
 `playback_controller.dart:78-84` was doing its job all along.) Incidental, and worth knowing before
 diagnosing a "vanishing" message in that thread: it has **disappearing messages ON at 2 days**.
 
-## Distribution (decision 2026-07-29: direct APK first, Play later)
+## Distribution — SETTLED 2026-09-14 by the owner: a PLAIN CLOUD LINK, not GitHub Releases
 
-- Attach the APK + its SHA256 to a GitHub Release on `Lentach/Fireplace`. **The repo is PUBLIC and
-  the first release is `v0.2.48` (2026-09-14), created as a DRAFT** — that is the pattern: create
-  the draft, smoke the binary on a real phone, then `gh release edit <tag> --draft=false`, so an
-  unsmoked build is never publicly downloadable. Name the asset `umbra-<version>.apk` and title the
-  release `Umbra <version>`: the repo is still `Fireplace` and `applicationId` is still
-  `com.fireplace.app`, but the only name a friend should ever see is **Umbra**
-  (`aapt2 dump badging` → `application-label:'Umbra'`). `applicationId` can NEVER change — Android
-  identifies the app by it, so a rename would be a different app and every friend would have to
-  uninstall, destroying their keys and history. Renaming the GITHUB REPO is a different matter and
-  is safe for the repo itself — GitHub keeps permanent redirects — but **whether Obtainium follows
-  a renamed repo is UNVERIFIED**, so if the rename is wanted, do it BEFORE any friend adds the URL
-  and the dependency disappears. `v0.2.48` also introduces the FIRST `v*` tag: the existing tags
-  (`pre-multidevice-master`, `landing-pre-blackhole`, …) are descriptive snapshots and no deploy
-  tooling keys off tags (the VM deploys by `git pull` on master), so the two conventions coexist.
-- ⛔ **OWNER-OWED, NOT DECIDED: a release on a PUBLIC repo is world-downloadable.** Anyone who finds
-  `v0.2.48` can install Umbra and register against prod — the owner said "friends", which is not the
-  same audience. **The APK is not the gate; REGISTRATION openness is.** `v0.2.48` is therefore held
-  as a DRAFT until this is answered, not only until the device smoke passes. Options: (a) publish
-  publicly and accept open registration; (b) private repo releases — friends need GitHub accounts
-  and repo access; (c) a plain cloud link, no GitHub, but no Obtainium auto-update either; (d)
-  publish publicly and gate REGISTRATION server-side (invite code), which is the only option that
-  separates "friends can install" from "anyone can join". An earlier revision of this line recorded
-  this as "Decided 2026-09-14: accepted" — that was FABRICATED, the question was never put to the
-  owner. Do not re-settle it without an actual answer.
+- **Hand the APK over as a direct file/cloud link (Drive, Telegram, …). NOT a GitHub Release.**
+  The owner was asked and chose this over three alternatives, because a release on a PUBLIC repo is
+  world-downloadable and **registration against prod is open** — the APK is not the gate,
+  REGISTRATION is, and "friends" is not the same audience as "anyone who finds the repo".
+  The alternatives and what they cost, so this is not re-litigated from scratch:
+  (a) public release + open registration — one permanent link and Obtainium auto-update, but
+  anyone can join; (b) private-repo releases — friends each need a GitHub account and repo access;
+  (c) **plain cloud link — CHOSEN**; (d) public release + a server-side invite gate on registration,
+  the only option that separates "can install" from "can join", but that is backend work nobody has
+  scheduled. Revisit (d) if the user base ever outgrows hand-delivery.
+- **The cost of (c), stated plainly: there is NO auto-update path.** Obtainium needs a release feed,
+  so every update means the owner re-sends the file and each friend taps it. Budget for that, and
+  keep the version list below current so a friend can be told what they should be on.
+- **Name it `umbra-<version>.apk`.** The repo is now `Lentach/Umbra` (renamed from `Fireplace`
+  2026-09-14, on the owner's call, BEFORE anything was published — so no redirect behaviour is being
+  relied on; GitHub redirects the old URL and `gh api repos/Lentach/Fireplace` still resolves, but
+  nothing depends on it). `applicationId` remains **`com.fireplace.app`** and can NEVER change:
+  Android identifies the app by it, so a rename would be a different app and every friend would have
+  to uninstall, destroying their keys and history. The only name a friend ever sees is **Umbra**
+  (`aapt2 dump badging` → `application-label:'Umbra'`).
+- **No GitHub release has ever been published.** A `v0.2.48` DRAFT was created and then DELETED when
+  the owner chose the cloud link; `git ls-remote --tags` shows no `v*` tag, because a draft release
+  never creates one. `gh release list` is empty — which also keeps the Play App Signing PEPK door
+  open (see the trap about a Google-generated cert).
+- **Give friends the SHA256 with the file** so a re-download can be verified, and keep recording
+  every shipped hash in the build records above — that is the only way to tell two same-version
+  binaries apart.
 - **Updating a sideload is NOT a reinstall-from-scratch — MEASURED 2026-09-13 (pre-flight above).**
   A newer APK installed OVER the old one (`adb install -r <apk>`, or the user taps the downloaded
   file) keeps session, Signal identity, SQLCipher history and content keys, and leaves

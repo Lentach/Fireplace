@@ -63,4 +63,4 @@ If it blocks: the message names the file and the cap. Move content, do not trim 
 
 ## 5. Push in the same checkpoint
 
-Root `CLAUDE.md` §1: commit and `git push` together (the VM deploys via `git pull`). After pushing, CI status is `gh api repos/Lentach/Fireplace/commits/master/check-runs --jq '.check_runs[] | [.name, .conclusion] | @tsv'` — never `gh run list`.
+Root `CLAUDE.md` §1: commit and `git push` together (the VM deploys via `git pull`). After pushing, CI status is `gh api repos/Lentach/Umbra/commits/master/check-runs --jq '.check_runs[] | [.name, .conclusion] | @tsv'` — never `gh run list`.

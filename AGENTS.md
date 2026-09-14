@@ -23,7 +23,7 @@ Universal agent entrypoint. **In Oh-My-Pi this is the ONLY project file injected
 - **This checkout is on `feat/passcode-lock`; `master` lives in the `fireplace-0a` worktree.** `git fetch && git status -sb` first. Push as `git push origin HEAD:master`, then the branch. **The worktree is shared — stage by explicit path, never `git add -A`.**
 - Change only what was asked. Composer/attachment picker: nothing ships without a green repro AND the owner's explicit OK; never `git revert 0cbf17b`.
 - Pre-commit runs `gitleaks git --staged` and `scripts/verify-context-budget.mjs`. Never `--no-verify`. Never trim a fresh summary to fit — move detail out.
-- Prod: deploy is split (web from the PC, backend on the VM); CI must be green first — `gh api repos/Lentach/Fireplace/commits/master/check-runs`, **never `gh run list`**. Never `docker compose down -v` / `volume rm` / bare `up -d` on prod. Never tell a user to clear site data.
+- Prod: deploy is split (web from the PC, backend on the VM); CI must be green first — `gh api repos/Lentach/Umbra/commits/master/check-runs`, **never `gh run list`**. Never `docker compose down -v` / `volume rm` / bare `up -d` on prod. Never tell a user to clear site data.
 - Task end: dated summary ≤6 KB with the four sections, traps appended to `docs/agents/traps.md`, ≤900-char LATEST entry on top, oldest deleted. Skill: `umbra-session-end`.
 
 Maintain this file as the always-on layer: ≤40 lines, hard rules + pointers only. New facts go in `CLAUDE.md`, a tier file, an area doc, or `traps.md`.

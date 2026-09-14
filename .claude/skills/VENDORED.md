@@ -30,7 +30,7 @@ and no longer exist upstream — `npx skills update` 404s on them, so these copi
 `to-spec`, `to-tickets` and `triage` carry `disable-model-invocation: true`: hidden from the model's skill
 list, invoked deliberately with `/skill:<name>`. Their prerequisites are satisfied here —
 `docs/agents/issue-tracker.md` (GitHub via `gh`), `docs/agents/triage-labels.md`, and all five labels
-(`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`) exist in `Lentach/Fireplace`.
+(`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`) exist in `Lentach/Umbra`.
 
 **Local modifications — re-apply these after any re-pull:**
 
