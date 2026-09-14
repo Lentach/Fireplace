@@ -1,0 +1,21 @@
+# Isolated stack for the E2E-encryption proof run.
+# Override on top of docker-compose.yml, under its own compose project
+# (`-p fpproof`), so it cannot touch the fireplace-* dev stack another agent is
+# using: different container names, host ports and named volumes.
+#
+#   docker compose -p fpproof -f docker-compose.yml -f docker-compose.proof.yml up -d
+#
+# Host ports: backend 3100 (container 3000), db 5434 (container 5432).
+# `!override` is REQUIRED: Compose merges sequences like `ports`, so a plain
+# list would publish 5433 AND 5434 and collide with the dev stack.
+services:
+  db:
+    ports: !override
+      - '5434:5432'
+
+  backend:
+    ports: !override
+      - '3100:3000'
+    environment:
+      ALLOWED_ORIGINS: 'http://localhost:3100,http://127.0.0.1:3100'
+      MEDIA_BASE_URL: 'http://localhost:3100'
